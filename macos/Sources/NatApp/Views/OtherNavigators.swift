@@ -232,22 +232,35 @@ struct SessionMainPane: View {
 
 // MARK: - The workshop
 
-/// The workshop's navigator: one section, always open, holding what the
-/// planning agent is at — the request to start it on, its launch, the
-/// running note, or the plan it proposed with Accept beside Keep
-/// workshopping.
+/// Whether the workshop on screen has been launched — its agent live, or its
+/// launch under way: what moves the brief from the editor into the Brief
+/// section, read-only, and puts the terminal up in its place.
+@MainActor
+private func workshopLaunched(_ appModel: AppModel) -> Bool {
+    appModel.planningAgent != nil || appModel.workshopLaunching
+}
+
+/// The workshop's navigator, the same for an Untitled tab and a project:
+/// Brief — the request, Launch before and End session after — over Plan —
+/// what the agent has proposed, with Accept beside Keep workshopping.
 struct WorkshopNavigatorView: View {
     @Bindable var appModel: AppModel
     let projectName: String
+    @State private var folded: Set<String> = []
     @State private var confirmingEnd = false
     @State private var endError: String?
 
     var body: some View {
-        NavigatorColumn(anyOpen: true) {
-            NavSectionView(label: "Plan", open: true, onHead: {}) {
-                actions
+        NavigatorColumn(anyOpen: folded.count < 2) {
+            NavSectionView(label: "Brief", open: !folded.contains("brief"), onHead: { toggle("brief") }) {
+                briefActions
             } content: {
-                ScrollView { content }.thinScrollers()
+                ScrollView { briefContent }.thinScrollers()
+            }
+            NavSectionView(label: "Plan", open: !folded.contains("plan"), onHead: { toggle("plan") }) {
+                planActions
+            } content: {
+                ScrollView { planContent }.thinScrollers()
             }
         }
         .alert("End the workshop session?", isPresented: $confirmingEnd) {
@@ -260,17 +273,16 @@ struct WorkshopNavigatorView: View {
         }
     }
 
+    /// Sections snap open and shut, as a slice's do.
+    private func toggle(_ section: String) {
+        if folded.contains(section) { folded.remove(section) } else { folded.insert(section) }
+    }
+
+    // MARK: - Brief
+
     @ViewBuilder
-    private var actions: some View {
-        if appModel.activeProposal != nil {
-            Button(action: { appModel.keepWorkshopping() }) { HeaderActionLabel(title: ProposalText.keepLabel) }
-                .buttonStyle(GnatHeaderButtonStyle())
-            Button(action: { Task { await appModel.acceptProposal() } }) {
-                HeaderActionLabel(title: "Accept", systemImage: "checkmark", isBusy: appModel.proposalAccepting)
-            }
-            .buttonStyle(GnatHeaderButtonStyle(primary: true))
-            .disabled(appModel.proposalAccepting)
-        } else if appModel.planningAgent != nil {
+    private var briefActions: some View {
+        if appModel.planningAgent != nil {
             Button(action: { confirmingEnd = true }) { HeaderActionLabel(title: "End session") }
                 .buttonStyle(GnatHeaderButtonStyle())
         } else {
@@ -284,63 +296,147 @@ struct WorkshopNavigatorView: View {
     }
 
     @ViewBuilder
-    private var content: some View {
+    private var briefContent: some View {
+        if workshopLaunched(appModel) {
+            NavProse {
+                if let request = appModel.workshopRequest {
+                    if request.isEmpty {
+                        Text("Launched with no request — a plain planning session.").ink(.secondary)
+                    } else {
+                        Excerpt(text: request) { shown in
+                            Text(markdownAttributed(shown, size: GnatMetrics.body))
+                                .ink(.primary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                } else {
+                    Text("This session was launched before gnat was; what it was asked is in the terminal.")
+                        .ink(.secondary)
+                }
+                if let endError { Text(endError).ink(.danger) }
+            }
+        } else {
+            NavProse {
+                Text("Describe the changes you want to make in the editor on the right. You can list several and the agent will plan milestones and tasks for them in one go.")
+                    .ink(.secondary)
+                Text("\u{2318}\u{21A9} launches.").ink(.tertiary)
+                if let error = appModel.workshopLaunchError { Text(error).ink(.danger) }
+            }
+        }
+    }
+
+    // MARK: - Plan
+
+    @ViewBuilder
+    private var planActions: some View {
+        if appModel.activeProposal != nil {
+            Button(action: { appModel.keepWorkshopping() }) { HeaderActionLabel(title: ProposalText.keepLabel) }
+                .buttonStyle(GnatHeaderButtonStyle())
+                .disabled(appModel.proposalAccepting)
+            Button(action: { Task { await appModel.acceptProposal() } }) {
+                HeaderActionLabel(title: "Accept", systemImage: "checkmark", isBusy: appModel.proposalAccepting)
+            }
+            .buttonStyle(GnatHeaderButtonStyle(primary: true))
+            .disabled(appModel.proposalAccepting)
+        }
+    }
+
+    @ViewBuilder
+    private var planContent: some View {
         if let proposal = appModel.activeProposal {
             NavProse {
                 NavHeading(text: ProposalText.counts(milestones: proposal.milestoneCount, slices: proposal.sliceCount))
-                TextField("Project name", text: Binding(
-                    get: { appModel.proposalName }, set: { appModel.proposalName = $0 }))
-                    .textFieldStyle(.plain)
-                    .font(Typo.mono(size: GnatMetrics.body))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.border, on: .window), lineWidth: 1)
-                    }
-                    .onSubmit { Task { await appModel.acceptProposal() } }
-                Text(appModel.proposalError ?? ProposalText.acceptCaption(name: appModel.proposalName))
-                    .ink(appModel.proposalError == nil ? .secondary : .danger)
-                Text("The proposed tree is drawn under this project in the sidebar.").ink(.secondary)
-            }
-        } else if appModel.planningAgent != nil {
-            NavProse {
-                Text("The planning agent is running in the terminal on the right. When it proposes a plan, the plan appears here to accept.")
+                if appModel.activeTabIsUntitled {
+                    TextField("Project name", text: Binding(
+                        get: { appModel.proposalName }, set: { appModel.proposalName = $0 }))
+                        .textFieldStyle(.plain)
+                        .font(Typo.mono(size: GnatMetrics.body))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.border, on: .window), lineWidth: 1)
+                        }
+                        .onSubmit { Task { await appModel.acceptProposal() } }
+                        .disabled(appModel.proposalAccepting)
+                    Text(appModel.proposalError ?? ProposalText.acceptCaption(name: appModel.proposalName))
+                        .ink(appModel.proposalError == nil ? .secondary : .danger)
+                } else {
+                    Text(appModel.proposalError ?? ProposalText.projectAcceptCaption(project: projectName))
+                        .ink(appModel.proposalError == nil ? .secondary : .danger)
+                }
+                Text("The proposed tree is drawn under this project in the sidebar. A revised proposal replaces it.")
                     .ink(.secondary)
-                if let endError { Text(endError).ink(.danger) }
             }
-        } else if appModel.workshopLaunching {
+        } else if appModel.workshopLaunching && appModel.planningAgent == nil {
             NavProse { Text("Starting the workshop session\u{2026}").ink(.secondary) }
+        } else if workshopLaunched(appModel) {
+            NavProse {
+                Text("The planning agent is working in the terminal on the right. As soon as it has a draft it proposes it here, and again on every revision — Accept files it into the plan.")
+                    .ink(.secondary)
+            }
         } else {
             NavProse {
-                Text("Describe the changes you want to make. You can list several and the agent will plan milestones and tasks for them in one go.")
+                Text("Once launched, the planning agent drafts a plan with you and proposes it here. Accepting it is the one approval — nothing is filed until you do.")
                     .ink(.secondary)
-                TextEditor(text: $appModel.workshopDraft)
-                    .font(Typo.mono(size: 13))
-                    .scrollContentBackground(.hidden)
-                    .padding(4)
-                    .frame(minHeight: 180)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.border, on: .window), lineWidth: 1)
-                    }
-                if let error = appModel.workshopLaunchError { Text(error).ink(.danger) }
             }
         }
     }
 }
 
-/// The workshop's main pane: the planning agent's terminal.
+/// The workshop's main pane, with no tabs: before launch, the brief editor,
+/// the whole height of the pane; from launch on, the planning agent's
+/// terminal under its model heading.
 struct WorkshopMainPane: View {
     @Bindable var appModel: AppModel
 
     var body: some View {
         VStack(spacing: 0) {
-            MainPaneTitlebar { AgentModelHeading(agent: appModel.planningAgent) }
-            AgentTerminalPane(
-                agent: appModel.planningAgent,
-                emptyText: appModel.workshopLaunching ? "Starting the workshop session\u{2026}" : nil,
-                focusRequest: appModel.terminalFocusRequest,
-                sessionExists: { appModel.planningAgent != nil })
+            if workshopLaunched(appModel) {
+                MainPaneTitlebar { AgentModelHeading(agent: appModel.planningAgent) }
+                AgentTerminalPane(
+                    agent: appModel.planningAgent,
+                    emptyText: appModel.workshopLaunching ? "Starting the workshop session\u{2026}" : nil,
+                    focusRequest: appModel.terminalFocusRequest,
+                    sessionExists: { appModel.planningAgent != nil })
+            } else {
+                MainPaneTitlebar {
+                    Text("\u{2318}\u{21A9} to launch").monoXS().ink(.tertiary)
+                }
+                WorkshopBriefEditor(text: $appModel.workshopDraft) {
+                    Task { await appModel.launchWorkshop(request: appModel.workshopDraft) }
+                }
+            }
         }
         .surface(.window)
+    }
+}
+
+/// The brief being written, edge to edge in the main pane, with a
+/// placeholder until anything is typed and focus on arrival.
+private struct WorkshopBriefEditor: View {
+    @Binding var text: String
+    let onLaunch: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: $text)
+                .font(Typo.mono(size: Typo.code))
+                .lineSpacing(3)
+                .scrollContentBackground(.hidden)
+                .focused($focused)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+            if text.isEmpty {
+                Text("What should the plan cover? Describe the changes — several at once is fine.")
+                    .font(Typo.mono(size: Typo.code))
+                    .ink(.tertiary)
+                    .padding(.horizontal, 19)
+                    .padding(.vertical, 12)
+                    .allowsHitTesting(false)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { focused = true }
     }
 }

@@ -13,32 +13,38 @@ import (
 	"github.com/craigmjohnston/nat/internal/logging"
 )
 
-// planPropose validates a drafted plan the same way plan-apply does, but
-// writes it to a proposal file instead of Notion — there is no project for
-// it to land in yet. The new-project workshop drafts a plan with the user
-// and hands it here; the app's own new-project tab reads the file back and
-// shows it in the rail, and it is the user's Accept that turns it into a
-// real project and files it with project-create and plan-apply. Nothing
-// here talks to Notion, and nothing here creates anything the user has not
-// yet seen.
+// planPropose validates a drafted plan and writes it to a proposal file
+// instead of applying it — exactly one of --workspace (a brand-new project,
+// still being workshopped) or --project (a revision to a project already
+// tracked) names where the plan is headed. The new-project workshop, or a
+// gnat-launched planning agent working an existing project, drafts a plan
+// with the user and hands it here; the app's own rail reads the file back
+// and shows it, and it is the user's Accept (plan-accept) that turns it into
+// a real project, or new milestones and slices on one, and files it.
+// Nothing here talks to Notion, and nothing here creates anything the user
+// has not yet seen.
 //
-// A plan with nothing to resolve against is a narrower document than
-// plan-apply's: every milestone a slice names has to be one the same
-// document creates, since there is no project's own plan to resolve it
-// against, and depends_on can likewise only reach a slice the document
-// itself creates. The top-level dependencies list exists only to reach a
-// slice already on a board — there is none yet — so it is refused outright
-// rather than silently accepted and later ignored.
+// --workspace's plan has nothing to resolve against: every milestone a
+// slice names has to be one the same document creates, since there is no
+// project's own plan to resolve it against, and depends_on can likewise
+// only reach a slice the document itself creates. Its top-level dependencies
+// list exists only to reach a slice already on a board — there is none yet
+// — so it is refused outright rather than silently accepted and later
+// ignored. --project's plan is validated exactly as plan-apply validates
+// one, against that project's current shape and (where the plan depends on
+// anything) its slices — [validateAgainstProject] is the one implementation
+// both this and plan-apply run, so the two can never drift apart.
 //
-// Running plan-propose again for the same --workspace overwrites its
-// proposal file: that is how a revision lands, whether the user asked for
-// changes or the planning session simply drafted again.
-func planPropose(_ context.Context, args []string, env Env) error {
+// Running plan-propose again for the same --workspace or --project overwrites
+// its proposal file: that is how a revision lands, whether the user asked
+// for changes or the planning session simply drafted again.
+func planPropose(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("plan-propose", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
-	workspace := flags.String("workspace", "", "the app's own id for this new-project session (required)")
-	name := flags.String("name", "", "the plan's suggested project name (required)")
+	workspace := flags.String("workspace", "", "the app's own id for a new-project session (exclusive with --project)")
+	projectRef := projectFlag(flags)
+	name := flags.String("name", "", "the plan's suggested project name (required with --workspace; optional with --project)")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -50,12 +56,16 @@ func planPropose(_ context.Context, args []string, env Env) error {
 	// The workspace id is the app's own, with no fallback: it is what tells the
 	// app which new-project tab a proposal belongs to, and a command that
 	// guessed at it would file the proposal somewhere the app is not looking.
+	// --project is the other way a proposal is keyed, for a revision to a
+	// project already tracked — exactly one of the two names where this
+	// proposal belongs.
 	ws := strings.TrimSpace(*workspace)
-	if ws == "" {
-		return usageErrorf("plan-propose: no --workspace given: the app's own id for this session, with no fallback")
+	proj := strings.TrimSpace(*projectRef)
+	if (ws == "") == (proj == "") {
+		return usageErrorf("plan-propose: give exactly one of --workspace or --project")
 	}
 	suggested := strings.TrimSpace(*name)
-	if suggested == "" {
+	if ws != "" && suggested == "" {
 		return usageErrorf("plan-propose: no --name given: the plan's suggested project name")
 	}
 
@@ -70,23 +80,41 @@ func planPropose(_ context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	if len(p.Dependencies) > 0 {
-		return fmt.Errorf("plan-propose: the plan holds a top-level `dependencies` list, which reaches a " +
-			"slice already on a project's board — there is no project yet for it to reach. Put what a new " +
-			"slice waits on in its own `depends_on` instead")
-	}
-	// No existing project means no existing milestones or slices to resolve
-	// against: every milestone a slice names, and everything it depends on,
-	// has to be something this same document creates.
-	if _, err := validatePlan(p, nil, nil); err != nil {
-		return err
+
+	var key, label string
+	doc := proposalDoc{Name: suggested, Plan: p}
+	if ws != "" {
+		if len(p.Dependencies) > 0 {
+			return fmt.Errorf("plan-propose: the plan holds a top-level `dependencies` list, which reaches a " +
+				"slice already on a project's board — there is no project yet for it to reach. Put what a new " +
+				"slice waits on in its own `depends_on` instead")
+		}
+		// No existing project means no existing milestones or slices to resolve
+		// against: every milestone a slice names, and everything it depends on,
+		// has to be something this same document creates.
+		if _, err := validatePlan(p, nil, nil); err != nil {
+			return err
+		}
+		key, label, doc.Workspace = ws, "workspace "+ws, ws
+	} else {
+		_, projectID, project, err := env.projectFor(proj)
+		if err != nil {
+			return err
+		}
+		st, err := env.storeFor(ctx, projectID, project)
+		if err != nil {
+			return err
+		}
+		if _, _, err := validateAgainstProject(ctx, st, storeProject(projectID, project), p); err != nil {
+			return err
+		}
+		key, label, doc.Project = projectID, "project "+projectID, projectID
 	}
 
-	path, err := proposalPath(ws)
+	path, err := proposalPath(key)
 	if err != nil {
 		return fmt.Errorf("resolve the proposal file: %w", err)
 	}
-	doc := proposalDoc{Workspace: ws, Name: suggested, Plan: p}
 	data, err := marshalIndent(doc, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode the proposal: %w", err)
@@ -97,22 +125,26 @@ func planPropose(_ context.Context, args []string, env Env) error {
 	// The app polls the same marker every other write does, so it notices a
 	// fresh or revised proposal within a second rather than on its own timer.
 	env.nudged()
-	logging.Action("plan proposed", "workspace", ws, "milestones", len(p.Milestones), "slices", len(p.Slices))
+	logging.Action("plan proposed", "workspace", ws, "project", doc.Project,
+		"milestones", len(p.Milestones), "slices", len(p.Slices))
 
 	if *asJSON {
 		return writeJSON(env.Out, doc)
 	}
-	_, err = fmt.Fprintf(env.Out, "Proposed %s to workspace %s as %q.\n", counts(len(p.Milestones), len(p.Slices)), ws, suggested)
+	_, err = fmt.Fprintf(env.Out, "Proposed %s to %s as %q.\n", counts(len(p.Milestones), len(p.Slices)), label, suggested)
 	return err
 }
 
 // proposalDoc is what plan-propose writes to the proposal file: the plan
 // exactly as validated, and the name the app shows in the rail until the
-// user accepts it or edits it first. Workspace rides along in the file
-// itself as well as in its name, so a reader handed the file on its own
-// still knows which session it came from.
+// user accepts it or edits it first. Exactly one of Workspace or Project
+// rides along in the file itself as well as in its name, so a reader handed
+// the file on its own still knows which session or project it came from.
+// Both are omitted rather than written empty, so a file written before
+// --project existed round-trips unchanged.
 type proposalDoc struct {
-	Workspace string `json:"workspace"`
+	Workspace string `json:"workspace,omitempty"`
+	Project   string `json:"project,omitempty"`
 	Name      string `json:"name"`
 	Plan      plan   `json:"plan"`
 }

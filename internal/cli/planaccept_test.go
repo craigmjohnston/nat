@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // acceptEnv is a machine with no Notion at all (accepting a plan must touch
@@ -90,6 +91,39 @@ func TestPlanProposalRefusals(t *testing.T) {
 	defer func() { stateDir = prev }()
 	if err := Run(context.Background(), []string{"plan-proposal", "--workspace", "ws-1"}, env); err == nil {
 		t.Error("an unresolvable state directory should refuse")
+	}
+}
+
+// plan-proposal reads the same proposal back by --project as by --workspace.
+func TestPlanProposalWithProjectReadsWhatWasProposed(t *testing.T) {
+	env, out, _ := acceptEnv(t)
+	id := makeLocalProject(t, env)
+	proposeToProject(t, env, id, validProposalDoc)
+	out.Reset()
+
+	if err := Run(context.Background(), []string{"plan-proposal", "--project", id}, env); err != nil {
+		t.Fatalf("plan-proposal --project: %v", err)
+	}
+	var got proposalAnswer
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got.Proposal == nil || got.Proposal.Project != id || len(got.Proposal.Plan.Slices) != 2 {
+		t.Errorf("proposal = %+v", got.Proposal)
+	}
+}
+
+// Both or neither of --workspace/--project is a usage error for
+// plan-proposal too.
+func TestPlanProposalRequiresExactlyOneOfWorkspaceOrProject(t *testing.T) {
+	env, _, _ := acceptEnv(t)
+	if err := Run(context.Background(), []string{"plan-proposal"}, env); err == nil ||
+		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
+		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
+	}
+	if err := Run(context.Background(), []string{"plan-proposal", "--workspace", "ws-1", "--project", "p1"}, env); err == nil ||
+		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
+		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
 	}
 }
 
@@ -173,6 +207,255 @@ func TestPlanAcceptRefusals(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "proposals", "ws-1.json")); err != nil {
 		t.Errorf("a refused accept must leave the proposal: %v", err)
+	}
+}
+
+// makeLocalProject creates a local project through the same path
+// project-create --local uses, inside an acceptEnv-style env, and returns
+// its ID.
+func makeLocalProject(t *testing.T, env Env) string {
+	t.Helper()
+	var out strings.Builder
+	prevOut := env.Out
+	env.Out = &out
+	defer func() { env.Out = prevOut }()
+	if err := Run(context.Background(), []string{"project-create", "Tracked project", "--local",
+		"--repo", "/src/tracked", "--json"}, env); err != nil {
+		t.Fatalf("project-create --local: %v", err)
+	}
+	var got projectCreatedJSON
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("project-create output not JSON: %v\n%s", err, out.String())
+	}
+	return got.Project.ID
+}
+
+// proposeToProject files a proposal for an existing project the way a
+// gnat-launched planning agent does.
+func proposeToProject(t *testing.T, env Env, projectID, doc string) {
+	t.Helper()
+	env.In = strings.NewReader(doc)
+	if err := Run(context.Background(), []string{"plan-propose", "--project", projectID}, env); err != nil {
+		t.Fatalf("plan-propose --project: %v", err)
+	}
+}
+
+// TestPlanAcceptWithProjectFilesIntoTheExistingProject covers the whole
+// --project round trip: propose against a tracked project, accept with no
+// --name, and the plan lands in that same project rather than a new one.
+func TestPlanAcceptWithProjectFilesIntoTheExistingProject(t *testing.T) {
+	env, out, saved := acceptEnv(t)
+	id := makeLocalProject(t, env)
+	nudges := nudgeCounter(&env)
+	proposeToProject(t, env, id, validProposalDoc)
+	*nudges = 0
+	out.Reset()
+
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id, "--json"}, env); err != nil {
+		t.Fatalf("plan-accept --project: %v", err)
+	}
+	var got planAcceptedJSON
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got.Milestones != 1 || got.Slices != 2 || got.Project.ID != id {
+		t.Errorf("reported %+v", got)
+	}
+	if *nudges == 0 {
+		t.Error("accepting should nudge the board")
+	}
+	// No new project was created in config — the tracked one is still the
+	// only entry.
+	if len(saved.Projects) != 1 {
+		t.Errorf("projects = %+v, want only the one already tracked", saved.Projects)
+	}
+	dir, _ := stateDir()
+	if _, err := os.Stat(filepath.Join(dir, "proposals", id+".json")); !os.IsNotExist(err) {
+		t.Errorf("the proposal file should be gone, stat err = %v", err)
+	}
+
+	out.Reset()
+	if err := Run(context.Background(), []string{"info", "--project", id, "--json"}, env); err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	for _, want := range []string{"Lay the foundation", "Build on it", "M1: Groundwork"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("info lacks %q:\n%s", want, out.String())
+		}
+	}
+}
+
+// --name is refused with --project: the project already has one.
+func TestPlanAcceptWithProjectRefusesAName(t *testing.T) {
+	env, _, _ := acceptEnv(t)
+	id := makeLocalProject(t, env)
+	proposeToProject(t, env, id, validProposalDoc)
+
+	err := Run(context.Background(), []string{"plan-accept", "--project", id, "--name", "Nope"}, env)
+	if err == nil || !strings.Contains(err.Error(), "--name") {
+		t.Errorf("err = %v, want it to name --name as refused with --project", err)
+	}
+}
+
+// Both or neither of --workspace/--project is a usage error.
+func TestPlanAcceptRequiresExactlyOneOfWorkspaceOrProject(t *testing.T) {
+	env, _, _ := acceptEnv(t)
+	if err := Run(context.Background(), []string{"plan-accept"}, env); err == nil ||
+		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
+		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
+	}
+	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--project", "p1", "--name", "N"}, env); err == nil ||
+		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
+		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
+	}
+}
+
+// A plan the live project has outgrown since the proposal was written — a
+// milestone it named has since been renamed away — is refused rather than
+// half-applied, the whole reason --project validates against the project's
+// current plan rather than trusting what was true when it was proposed.
+func TestPlanAcceptWithProjectRefusesAPlanTheProjectHasOutgrown(t *testing.T) {
+	env, _, _ := acceptEnv(t)
+	id := makeLocalProject(t, env)
+	proposeToProject(t, env, id, validProposalDoc)
+
+	// Rewrite the proposal file underneath, as if a plan that validated
+	// against the project when it was proposed no longer does — here, a
+	// milestone it names was never created. --project's validation at
+	// accept-time has to catch this, exactly as plan-apply would.
+	dir, err := stateDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := `{"project":"` + id + `","plan":{"slices":[{"title":"A slice","milestone":"Ghost milestone"}]}}`
+	if err := os.WriteFile(filepath.Join(dir, "proposals", id+".json"), []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil {
+		t.Error("expected a refusal for a milestone the project does not have")
+	}
+}
+
+// An unknown --project is refused the same way every other project-scoped
+// command refuses it, and the proposal — there may be none anyway — is
+// never reached.
+func TestPlanAcceptRefusesAnUnknownProject(t *testing.T) {
+	env, _, _ := acceptEnv(t)
+	err := Run(context.Background(), []string{"plan-accept", "--project", "nope"}, env)
+	if err == nil {
+		t.Fatal("expected a refusal for an unknown project")
+	}
+}
+
+// A proposal that was never written for this project is refused before the
+// store is even opened.
+func TestPlanAcceptWithProjectRefusesWithNoProposal(t *testing.T) {
+	env, _, _ := acceptEnv(t)
+	id := makeLocalProject(t, env)
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil {
+		t.Error("expected a refusal for a project with no proposal")
+	}
+}
+
+// A project the store cannot be opened for — its plan file damaged since it
+// was created — fails at the store, not at the proposal, which already read
+// fine.
+func TestPlanAcceptWithProjectFailsWhereTheStoreCannotBeOpened(t *testing.T) {
+	env, _, _ := acceptEnv(t)
+	id := makeLocalProject(t, env)
+	proposeToProject(t, env, id, validProposalDoc)
+
+	path, err := store.LocalPath(id)
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	stampNewerSchema(t, path)
+
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil {
+		t.Error("expected a refusal for a plan written by a newer nat")
+	}
+}
+
+// stampNewerSchema bumps a plan file's own user_version past what this build
+// reads, through a live write via sqlite itself — never a raw byte overwrite,
+// which a WAL-backed file open since can simply reconstruct around.
+func stampNewerSchema(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`PRAGMA user_version = 99;`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// applyPlan itself failing (the slices table dropped under a project
+// already tracked) surfaces for --project exactly as it does for
+// --workspace, and leaves the proposal in place. The proposal names no
+// dependency, so validation itself never reads the slices table — the
+// failure this exercises is applyPlan's own AddSlice, not the earlier read.
+func TestPlanAcceptWithProjectReportsAFailedApply(t *testing.T) {
+	env, _, _ := acceptEnv(t)
+	id := makeLocalProject(t, env)
+	noDepsDoc := `{"milestones": [{"name": "M1: Groundwork"}], "slices": [
+		{"title": "Lay the foundation", "milestone": "M1: Groundwork"}
+	]}`
+	proposeToProject(t, env, id, noDepsDoc)
+
+	path, err := store.LocalPath(id)
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	dropTable(t, "slices")(path)
+
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil {
+		t.Fatal("want the failed apply surfaced")
+	}
+	dir, _ := stateDir()
+	if _, err := os.Stat(filepath.Join(dir, "proposals", id+".json")); err != nil {
+		t.Errorf("a failed accept must leave the proposal: %v", err)
+	}
+}
+
+// A proposal file that cannot be removed (a read-only proposals directory)
+// still leaves accepting into an existing project a success — the plan is in
+// either way.
+func TestPlanAcceptWithProjectSucceedsThoughTheProposalWillNotBeRemoved(t *testing.T) {
+	env, out, _ := acceptEnv(t)
+	id := makeLocalProject(t, env)
+	proposeToProject(t, env, id, validProposalDoc)
+	out.Reset()
+	dir, _ := stateDir()
+	proposals := filepath.Join(dir, "proposals")
+	if err := os.Chmod(proposals, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(proposals, 0o755) }()
+
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err != nil {
+		t.Fatalf("plan-accept --project: %v", err)
+	}
+	if !strings.Contains(out.String(), "Accepted") {
+		t.Errorf("output = %q", out.String())
+	}
+}
+
+// Markdown output, like --workspace's, names what was accepted and into
+// which project.
+func TestPlanAcceptWithProjectMarkdown(t *testing.T) {
+	env, out, _ := acceptEnv(t)
+	id := makeLocalProject(t, env)
+	proposeToProject(t, env, id, validProposalDoc)
+	out.Reset()
+
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err != nil {
+		t.Fatalf("plan-accept --project: %v", err)
+	}
+	if !strings.Contains(out.String(), `Accepted 1 milestone and 2 slices into "Tracked project"`) {
+		t.Errorf("output = %q", out.String())
 	}
 }
 

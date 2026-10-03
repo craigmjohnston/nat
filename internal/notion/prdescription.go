@@ -23,6 +23,17 @@ const (
 // read by store.VisualChanges.
 const VisualChangesHeading = "Visual changes"
 
+// SentBackHeading is the heading `slice-rework` files its review comments
+// under, when it sends a handed-back slice back for another pass.
+// RelaunchedHeading is the heading a relaunch (actions.Launch, picking a slice
+// back up that was not Todo, or whose brief already carries a task event)
+// files its one fixed line under. Both are matched as PRDescriptionHeading is,
+// and both are events store.TaskEvents reads back off a slice's body.
+const (
+	SentBackHeading   = "Sent back"
+	RelaunchedHeading = "Relaunched"
+)
+
 // PRDescriptionOf is the pull request description an agent left on a slice
 // page: the blocks between its PR description heading and the next heading of
 // the same or higher level, rendered as markdown. A page with no such heading —

@@ -252,7 +252,8 @@ public final class VisualStore {
         try await client.agentSend(projectID: projectID, sliceRef: sliceRef, text: prompt)
         comments[sliceRef] = nil
         if handedBack {
-            try await client.sliceRework(projectID: projectID, sliceRef: sliceRef)
+            try await client.sliceRework(
+                projectID: projectID, sliceRef: sliceRef, comments: visualCommentsRecord(pending))
         }
         return pending.count
     }

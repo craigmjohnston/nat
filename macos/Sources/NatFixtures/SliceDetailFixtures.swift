@@ -120,6 +120,46 @@ extension Fixtures {
         sliceDetails.merging([activitySliceID: followUpsSliceDetail]) { _, new in new }
     }
 
+    /// A merged slice with a history: handed back three times, sent back
+    /// with comments between them twice, two follow-ups triaged on the way,
+    /// then approved and merged — `slice-show`'s `events` for it, in order.
+    public static let taskLogEvents: [TaskLogEvent] = [
+        TaskLogEvent(.handedBack, note: "The shell window and its three panes, empty states in each."),
+        TaskLogEvent(.sentBack, note: "Sources/NatApp/NatApp.swift, line 42: the window should remember its frame."),
+        TaskLogEvent(.handedBack, note: "Window frame autosaved under the scene's id."),
+        TaskLogEvent(.followUps, followUps: [
+            TaskFollowUp(index: 1, title: "Restore the last selected project on launch", decision: .queued,
+                         link: "https://notion.so/f1x7queued"),
+            TaskFollowUp(index: 2, title: "Drop the unused toolbar style", decision: .dropped),
+        ]),
+        TaskLogEvent(.sentBack, note: "Sources/NatApp/Views/ShellView.swift, lines 10-14: use the design's 32pt titlebar."),
+        TaskLogEvent(.handedBack, note: "Titlebar at 32pt, traffic lights recentred."),
+        TaskLogEvent(.approved, pr: "https://github.com/craigmjohnston/notion-agent-tracker/pull/101"),
+        TaskLogEvent(.merged),
+    ]
+
+    /// The finished shell slice, read with that history.
+    public static let taskLogSliceDetail = SliceDetail(
+        id: shellSliceID,
+        name: "Bootstrap the SwiftUI shell",
+        url: "https://notion.so/\(shellSliceID)",
+        status: "Done",
+        milestone: "M1: Foundations",
+        assignee: "Craig Johnston",
+        branch: "slice/bootstrap-the-swiftui-shell",
+        pr: "https://github.com/craigmjohnston/notion-agent-tracker/pull/101",
+        blocked: false,
+        handedBack: false,
+        state: "done",
+        brief: "Stand up the SwiftUI shell: the window, its three panes and their empty states.",
+        events: taskLogEvents
+    )
+
+    /// `sliceDetails` with the shell slice's history added.
+    public static var taskLogSliceDetails: [String: SliceDetail] {
+        sliceDetails.merging([shellSliceID: taskLogSliceDetail]) { _, new in new }
+    }
+
     /// Every slice a fixture has a detail for, keyed the way
     /// `SliceDetailStore` asks for one.
     public static var sliceDetails: [String: SliceDetail] {

@@ -29,7 +29,11 @@ final class DiffFonts {
 @MainActor
 enum DiffInk {
     static let background = NSColor(DesignTokens.fill(.window))
-    static let headerBand = NSColor(DesignTokens.rowWash(selected: false, on: .window))
+    /// A file's header band: the pane's own ground, so the picked titlebar
+    /// tab — drawn in that ground and open into the pane — runs on down into
+    /// the first heading with no band of another colour between; its rules
+    /// are what set a heading off.
+    static let headerBand = NSColor(DesignTokens.fill(.window))
     static let rule = NSColor(DesignTokens.rule(.separator, on: .window))
     static let added = NSColor(DesignTokens.diffAddedRowBg(on: .window))
     static let removed = NSColor(DesignTokens.diffRemovedRowBg(on: .window))

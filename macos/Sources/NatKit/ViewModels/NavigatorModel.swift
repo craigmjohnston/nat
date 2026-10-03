@@ -201,6 +201,13 @@ public struct NavigatorModel: Equatable, Sendable {
     /// relaunch or a fix session offered on one already under way.
     public var launchIsPrimary: Bool { state == .todo }
 
+    /// The first section's label: "Task" while the slice is still to do, and
+    /// "Task log" from the moment it is under way on — what the section has
+    /// become by then is the record of what happened to it.
+    public var threadLabel: String {
+        state.isLaunched ? "Task log" : NavigatorSection.thread.label
+    }
+
     /// Whether the Thread header offers Launch: a slice not yet launched (a
     /// blocked one drawn disabled, as the design draws it), and one being
     /// worked whose agent is gone — a relaunch. A slice handed back, in
@@ -239,6 +246,16 @@ public enum ThreadEventKind: Equatable, Sendable {
     /// The live agent, working or waiting — or a session's, ended.
     case agent
     case handedBack
+    /// Sent back to its agent with review comments (`slice-rework`).
+    case sentBack
+    /// Released back to Todo, its session ended unfinished.
+    case released
+    /// Launched again on the work so far.
+    case relaunched
+    /// Handed in as blocked.
+    case blocked
+    /// Follow-ups the agent proposed, and what became of each.
+    case followUps
     case approved
     case merged
     /// Closed straight to Done with no branch.
@@ -265,10 +282,14 @@ public struct ThreadEvent: Equatable, Sendable {
     public let tone: ThreadTone
     public let body: String?
     public let facts: [ThreadFact]
+    /// A follow-ups card whose proposal still awaits the user's decision —
+    /// drawn as the triage card (Queue / Fold in / Drop, Apply) in its place
+    /// in the log rather than as a record.
+    public let awaitsTriage: Bool
 
     public init(
         _ kind: ThreadEventKind, who: String, meta: String? = nil, tone: ThreadTone = .muted,
-        body: String? = nil, facts: [ThreadFact] = []
+        body: String? = nil, facts: [ThreadFact] = [], awaitsTriage: Bool = false
     ) {
         self.kind = kind
         self.who = who
@@ -276,6 +297,7 @@ public struct ThreadEvent: Equatable, Sendable {
         self.tone = tone
         self.body = body
         self.facts = facts
+        self.awaitsTriage = awaitsTriage
     }
 }
 
@@ -290,30 +312,107 @@ public func agentFacts(_ agent: AgentStatus?) -> (model: [ThreadFact], context: 
     return (model, context)
 }
 
-/// The Thread log, built only from what nat reports: the live agent's own
+/// The Task log, built only from what nat reports: the live agent's own
 /// statusline reading (model, effort, context), the slice's recorded branch,
-/// the last hand-back note on its page, its pull request and its status. The
-/// design's launch time, token count, files touched, current tool and
-/// merged-by have no source in nat yet, and are left out rather than made up.
-public func buildThreadEvents(slice: Slice, agent: AgentStatus?, brief: String?) -> [ThreadEvent] {
+/// and `events` — `slice-show`'s ordered record of every hand-back, send-back,
+/// release, relaunch and proposal of follow-ups on the slice's page, then
+/// its approve and merge. The design's launch time, token count, files
+/// touched, current tool and merged-by have no source in nat yet, and are
+/// left out rather than made up.
+///
+/// With no `events` — the slice's detail not read yet, or a nat too old to
+/// report them — the log falls back to what the slice's properties and its
+/// last hand-back note alone say.
+public func buildThreadEvents(
+    slice: Slice, agent: AgentStatus?, brief: String?, events: [TaskLogEvent]? = nil
+) -> [ThreadEvent] {
     let state = displayState(
         for: slice, agent: agent.map { AgentActivity($0.activity) }, fixLaunched: false)
-    guard state.isLaunched || agent != nil else { return [] }
+    // A released slice is back to do, and its history is still its own.
+    guard state.isLaunched || agent != nil || !(events ?? []).isEmpty else { return [] }
 
-    var events: [ThreadEvent] = []
     let branch = (slice.branch ?? "").isEmpty ? nil : slice.branch
     let reading = agentFacts(agent)
-    events.append(ThreadEvent(
-        .launched, who: "Launched", facts: reading.model + (branch.map { [ThreadFact("branch", $0)] } ?? [])))
-
-    if let agent {
+    var log = [ThreadEvent(
+        .launched, who: "Launched", facts: reading.model + (branch.map { [ThreadFact("branch", $0)] } ?? []))]
+    let agentCard = agent.map { agent in
         let waiting = AgentActivity(agent.activity) == .waiting
-        events.append(ThreadEvent(
+        return ThreadEvent(
             .agent, who: "Agent",
             meta: waiting ? "waiting for you" : "working",
             tone: waiting ? .hot : .accent,
-            facts: reading.context))
+            facts: reading.context)
     }
+
+    guard let events else {
+        return log + legacyThreadEvents(slice: slice, state: state, branch: branch, agentCard: agentCard, brief: brief)
+    }
+    // What the page records, in the order it was written; then the agent as
+    // it is now; then what the properties say came of it all.
+    let closing: Set<TaskLogEvent.Kind> = [.approved, .merged]
+    log += events.filter { !closing.contains($0.kind) }.map(threadEvent)
+    if let agentCard { log.append(agentCard) }
+    log += events.filter { closing.contains($0.kind) }.map(threadEvent)
+    return log
+}
+
+/// One recorded event as its Task log card.
+private func threadEvent(_ event: TaskLogEvent) -> ThreadEvent {
+    let note = event.note.flatMap { $0.isEmpty ? nil : $0 }
+    switch event.kind {
+    case .handedBack:
+        return ThreadEvent(.handedBack, who: "Agent", meta: "handed back", body: note)
+    case .sentBack:
+        return ThreadEvent(.sentBack, who: "You", meta: "sent back with comments", tone: .accent, body: note)
+    case .released:
+        return ThreadEvent(.released, who: event.by.flatMap { $0.isEmpty ? nil : $0 } ?? "Released",
+                           meta: "released to Todo")
+    case .relaunched:
+        return ThreadEvent(.relaunched, who: "Relaunched", meta: "picking up the work so far")
+    case .blocked:
+        return ThreadEvent(.blocked, who: "Agent", meta: "blocked", tone: .hot, body: note)
+    case .summary:
+        return ThreadEvent(.closed, who: "Closed", body: note)
+    case .followUps:
+        let count = event.followUps.count
+        let pending = event.followUps.contains { $0.decision == nil }
+        return ThreadEvent(
+            .followUps, who: "Agent", meta: "proposed \(count) follow-up\(count == 1 ? "" : "s")",
+            tone: pending ? .hot : .muted,
+            facts: event.followUps.compactMap { followUp in
+                followUp.decision.map { ThreadFact(followUpDecisionWord($0), followUp.title) }
+            },
+            awaitsTriage: pending)
+    case .approved:
+        let pr = event.pr ?? ""
+        if let number = pullRequestNumber(pr) {
+            return ThreadEvent(
+                .approved, who: "You", meta: "approved",
+                facts: [ThreadFact("pr", "#\(number)"), ThreadFact("into", "main")])
+        }
+        return ThreadEvent(.approved, who: "You", meta: "approved", facts: pr.isEmpty ? [] : [ThreadFact("pr", pr)])
+    case .merged:
+        return ThreadEvent(.merged, who: "Merged")
+    }
+}
+
+/// What a triaged follow-up's line in the log says came of it.
+public func followUpDecisionWord(_ decision: TaskFollowUp.Decision) -> String {
+    switch decision {
+    case .queued: return "queued"
+    case .folded: return "folded in"
+    case .dropped: return "dropped"
+    }
+}
+
+/// The log as the slice's properties alone tell it, for a reading with no
+/// recorded events: one hand-back card carrying the last note, then the
+/// approve and the ending.
+private func legacyThreadEvents(
+    slice: Slice, state: SliceDisplayState, branch: String?, agentCard: ThreadEvent?, brief: String?
+) -> [ThreadEvent] {
+    var events: [ThreadEvent] = []
+    if let agentCard { events.append(agentCard) }
 
     if slice.handedBack || !slice.pr.isEmpty || (state == .done && branch != nil) {
         events.append(ThreadEvent(

@@ -18,13 +18,15 @@ type updateCall struct {
 // only the behaviour it cares about. Unset calls answer with a bare value
 // carrying the ID asked for.
 type fakeClient struct {
-	getPage    func(id string) (*notion.Page, error)
-	updatePage func(id string, properties map[string]notion.PropertyValue) (*notion.Page, error)
-	blocks     func(id string) ([]notion.Block, error)
+	getPage      func(id string) (*notion.Page, error)
+	updatePage   func(id string, properties map[string]notion.PropertyValue) (*notion.Page, error)
+	blocks       func(id string) ([]notion.Block, error)
+	appendBlocks func(id string, children []map[string]any) ([]notion.Block, error)
 
 	fetchedPages []string
 	updated      []updateCall
 	blockParents []string
+	appended     []string
 }
 
 var _ store.API = (*fakeClient)(nil)
@@ -77,8 +79,12 @@ func (f *fakeClient) CreatePage(context.Context, notion.Parent, map[string]notio
 	panic("not used")
 }
 
-func (f *fakeClient) AppendBlockChildren(context.Context, string, []map[string]any) ([]notion.Block, error) {
-	panic("not used")
+func (f *fakeClient) AppendBlockChildren(_ context.Context, id string, children []map[string]any) ([]notion.Block, error) {
+	f.appended = append(f.appended, id)
+	if f.appendBlocks == nil {
+		return nil, nil
+	}
+	return f.appendBlocks(id, children)
 }
 
 func (f *fakeClient) TrashPage(context.Context, string) error { panic("not used") }

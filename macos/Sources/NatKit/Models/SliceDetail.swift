@@ -26,6 +26,12 @@ public struct SliceDetail: Codable, Equatable, Sendable {
     /// The images the slice's agent last handed in of what it changed —
     /// `nat slice-show`'s `visuals`, absent (decoded as empty) when none were.
     public let visuals: [VisualChange]
+    /// What has happened to the slice, in order — `nat slice-show`'s
+    /// `events`: each hand-back, send-back, release, relaunch and proposal of
+    /// follow-ups its page records, then the approve and merge its properties
+    /// say. Nil from a nat too old to report them, which the Task log reads
+    /// as "fall back to what the properties alone say".
+    public let events: [TaskLogEvent]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -45,6 +51,7 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         case brief
         case followUps
         case visuals
+        case events
     }
 
     public init(from decoder: Decoder) throws {
@@ -66,6 +73,9 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         brief = try c.decode(String.self, forKey: .brief)
         followUps = try c.decodeIfPresent([FollowUp].self, forKey: .followUps) ?? []
         visuals = try c.decodeIfPresent([VisualChange].self, forKey: .visuals) ?? []
+        // A kind this build does not know is left out rather than failing
+        // the whole read — a newer nat may record more than this app draws.
+        events = try c.decodeIfPresent([LossyTaskLogEvent].self, forKey: .events)?.compactMap(\.event)
     }
 
     public init(
@@ -85,7 +95,8 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         state: String? = nil,
         brief: String,
         followUps: [FollowUp] = [],
-        visuals: [VisualChange] = []
+        visuals: [VisualChange] = [],
+        events: [TaskLogEvent]? = nil
     ) {
         self.id = id
         self.name = name
@@ -104,6 +115,100 @@ public struct SliceDetail: Codable, Equatable, Sendable {
         self.brief = brief
         self.followUps = followUps
         self.visuals = visuals
+        self.events = events
+    }
+}
+
+/// One thing that happened to a slice, as `nat slice-show`'s `events` reads
+/// it off the slice's page and properties.
+public struct TaskLogEvent: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable {
+        case handedBack = "handed_back"
+        case sentBack = "sent_back"
+        case released
+        case relaunched
+        case blocked
+        case summary
+        case followUps = "follow_ups"
+        case approved
+        case merged
+    }
+
+    public let kind: Kind
+    /// The section's own text: a hand-back's note, the comments sent back,
+    /// a blocked or closing summary.
+    public let note: String?
+    /// Who released it.
+    public let by: String?
+    /// The pull request an approve opened.
+    public let pr: String?
+    /// A proposal's follow-ups, each with what was decided about it.
+    public let followUps: [TaskFollowUp]
+
+    public init(
+        _ kind: Kind, note: String? = nil, by: String? = nil, pr: String? = nil, followUps: [TaskFollowUp] = []
+    ) {
+        self.kind = kind
+        self.note = note
+        self.by = by
+        self.pr = pr
+        self.followUps = followUps
+    }
+
+    enum CodingKeys: String, CodingKey { case kind, note, by, pr, followUps }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        note = try c.decodeIfPresent(String.self, forKey: .note)
+        by = try c.decodeIfPresent(String.self, forKey: .by)
+        pr = try c.decodeIfPresent(String.self, forKey: .pr)
+        followUps = try c.decodeIfPresent([TaskFollowUp].self, forKey: .followUps) ?? []
+    }
+}
+
+/// One follow-up of a proposal in the Task log: what it was, and what the
+/// user made of it — nil while it still awaits a decision.
+public struct TaskFollowUp: Codable, Equatable, Sendable {
+    public enum Decision: String, Codable, Sendable {
+        case queued, folded, dropped
+    }
+
+    public let index: Int
+    public let title: String
+    public let brief: String
+    public let decision: Decision?
+    /// Where a queued one's slice is.
+    public let link: String?
+
+    public init(index: Int, title: String, brief: String = "", decision: Decision? = nil, link: String? = nil) {
+        self.index = index
+        self.title = title
+        self.brief = brief
+        self.decision = decision
+        self.link = link
+    }
+
+    enum CodingKeys: String, CodingKey { case index, title, brief, decision, link }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        index = try c.decode(Int.self, forKey: .index)
+        title = try c.decode(String.self, forKey: .title)
+        brief = try c.decodeIfPresent(String.self, forKey: .brief) ?? ""
+        // An empty or unknown decision is one still to be made.
+        decision = (try c.decodeIfPresent(String.self, forKey: .decision)).flatMap(Decision.init(rawValue:))
+        link = try c.decodeIfPresent(String.self, forKey: .link)
+    }
+}
+
+/// An event that decodes to nil rather than failing where its kind is one
+/// this build does not know.
+private struct LossyTaskLogEvent: Decodable {
+    let event: TaskLogEvent?
+
+    init(from decoder: Decoder) throws {
+        event = try? TaskLogEvent(from: decoder)
     }
 }
 

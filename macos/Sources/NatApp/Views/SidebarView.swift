@@ -95,7 +95,7 @@ struct SidebarView: View {
                 if model.active.isEmpty {
                     GnatNote(text: EmptyActiveNote.text.lowercased(), height: GnatMetrics.sidebarRowHeight)
                 } else {
-                    ForEach(model.active) { activeRow($0, last: $0.id == model.active.last?.id) }
+                    ForEach(model.active) { activeRow($0) }
                 }
             }
 
@@ -103,11 +103,14 @@ struct SidebarView: View {
                 Spacer(minLength: 0)
             }
 
-            // 4pt of air above the line: under the empty note it is padding
-            // here; under rows it is the last row's own, so its wash meets
-            // the line; under a folded heading there is none, which would set
-            // the heading above it off-centre.
-            Rule(.separator).padding(.top, isOpen("active") && model.active.isEmpty ? 4 : 0)
+            // 4pt of air above the line under an open Active; under a folded
+            // heading there is none, which would set the heading above it
+            // off-centre. The line is not drawn while the row over it is
+            // selected, so the selection reads as one block rather than a
+            // wash cut by a rule — its place is kept, so nothing moves.
+            Rule(.separator)
+                .opacity(activeEndsInSelection(model) ? 0 : 1)
+                .padding(.top, isOpen("active") ? 4 : 0)
 
             head("work", label: "Projects", count: 0) {
                 Button(action: onNewProject) {
@@ -131,7 +134,7 @@ struct SidebarView: View {
             }
 
             if let scratch = model.scratch {
-                scratchFold(scratch, projectsOpen: isOpen("work"))
+                scratchFold(scratch, projectsOpen: isOpen("work"), hidesRule: projectsEndInSelection(model))
             }
 
             if appModel.mirrorNudgeShown {
@@ -336,7 +339,14 @@ struct SidebarView: View {
 
     // MARK: - Active
 
-    private func activeRow(_ row: SidebarActiveRow, last: Bool) -> some View {
+    /// Whether the last Active row is the selected one — what takes the line
+    /// under Active away.
+    private func activeEndsInSelection(_ model: SidebarModel) -> Bool {
+        guard isOpen("active"), let last = model.active.last else { return false }
+        return isSelected(last)
+    }
+
+    private func activeRow(_ row: SidebarActiveRow) -> some View {
         HStack(spacing: 6) {
             StateDot(state: row.state, live: row.live).frame(width: 12)
             (Text(row.projectTag)
@@ -352,13 +362,21 @@ struct SidebarView: View {
                 .ink(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
+            if row.kind == .workshop {
+                Button { closeWorkshopRow(row) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .medium))
+                        .ink(.tertiary)
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(GnatIconButtonStyle())
+                .help(row.live ? "End the workshop session\u{2026}" : "Close the workshop")
+            }
         }
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
-        // The last row owns the air above the line under Active, so its wash
-        // reaches the line while its text stays put.
-        .padding(.bottom, last ? 4 : 0)
         .gnatRow(selected: isSelected(row))
         .contentShape(Rectangle())
         .onTapGesture { select(row) }
@@ -371,6 +389,20 @@ struct SidebarView: View {
         case .slice: return appModel.selectedSliceID == row.targetID
         case .session: return appModel.selectedSessionID == row.targetID
         case .workshop: return appModel.workshopSelected
+        }
+    }
+
+    /// A workshop row's ✕: with nothing running, the row and its draft go at
+    /// once; with a planning agent live, its session is ended — asked first,
+    /// on the workshop itself.
+    private func closeWorkshopRow(_ row: SidebarActiveRow) {
+        guard row.live else {
+            appModel.dismissWorkshop(inProject: row.projectID)
+            return
+        }
+        Task {
+            await appModel.selectWorkshop(inProject: row.projectID)
+            workshopPendingClose = true
         }
     }
 
@@ -449,7 +481,15 @@ struct SidebarView: View {
                 Circle().fill(DesignTokens.hot).frame(width: 6, height: 6)
             }
             if project.kind != .untitled {
+                // Only on a project open on the tree or under the pointer —
+                // a column of `+`s down every row read as noise. Hidden
+                // rather than left out, so the title never shifts as it
+                // comes and goes.
+                let showsAdd = open || hoveredProject == project.id
                 addMenu(project)
+                    .opacity(showsAdd ? 1 : 0)
+                    .allowsHitTesting(showsAdd)
+                    .accessibilityHidden(!showsAdd)
             }
         }
         .padding(.leading, 18)
@@ -517,6 +557,22 @@ struct SidebarView: View {
                 ForEach(milestone.slices) { sliceRow($0, indent: 34 - outdent) }
             }
         }
+        // A project workshop's proposal: under the plan it would be filed
+        // into, set off by its own note, until it is accepted or revised.
+        if project.kind == .project, let proposal = appModel.proposal(forTab: project.id), !proposal.milestones.isEmpty {
+            GnatNote(
+                text: ProposalText.heading.lowercased(), role: .accent, leading: 26 - outdent,
+                height: GnatMetrics.sidebarRowHeight)
+            ForEach(proposal.folders, id: \.milestoneID) { folder in
+                let key = "pm:\(project.id)/\(folder.title)"
+                milestoneHead(name: folder.title, count: "\(folder.slices.count)", key: key, indent: 26 - outdent)
+                if isOpen(key) {
+                    ForEach(folder.slices, id: \.sliceID) { slice in
+                        sliceLine(title: slice.name, state: .todo, live: false, selected: false, indent: 34 - outdent)
+                    }
+                }
+            }
+        }
         // An ended session is drawn as done, so it goes with the rest of
         // the finished work under Hide done items.
         if isActive && showsDoneItems {
@@ -530,8 +586,8 @@ struct SidebarView: View {
     /// never drawn as one. Beside an open Projects tree it takes only the
     /// height it needs; with Projects folded, everything that is left.
     @ViewBuilder
-    private func scratchFold(_ scratch: SidebarProject, projectsOpen: Bool) -> some View {
-        Rule(.separator).padding(.top, projectsOpen ? 4 : 0)
+    private func scratchFold(_ scratch: SidebarProject, projectsOpen: Bool, hidesRule: Bool) -> some View {
+        Rule(.separator).opacity(hidesRule ? 0 : 1).padding(.top, projectsOpen ? 4 : 0)
         head("scratch", label: "Scratch", count: 0, openByDefault: false) { addMenu(scratch) }
             .contextMenu { addItems(scratch) }
         if isOpen("scratch", byDefault: false) {
@@ -545,6 +601,43 @@ struct SidebarView: View {
             .thinScrollers()
             .frame(maxHeight: projectsOpen ? scratchContentHeight : .infinity)
         }
+    }
+
+    /// Whether the Projects tree's last row is the selected one — what takes
+    /// the line over Scratch away, as a selected last Active row takes
+    /// Active's. Walks the tree from its foot in the order `projectBody` draws
+    /// it, stopping at the first row drawn: only a slice, an ended session or
+    /// an Untitled project row can be selected, so any heading or note there
+    /// first means the tree does not end in the selection.
+    private func projectsEndInSelection(_ model: SidebarModel) -> Bool {
+        guard isOpen("work"), let project = model.projects.last else { return false }
+        let isActive = appModel.activeProjectID == project.id
+        guard isProjectOpen(project) else { return project.kind == .untitled && isActive }
+        let selectedSlice = isActive ? appModel.selectedSliceID : nil
+        func endsIn(_ milestone: SidebarMilestone, key: String, byDefault: Bool = true) -> Bool {
+            guard isOpen(key, byDefault: byDefault), let last = milestone.slices.last else { return false }
+            return last.sliceID == selectedSlice
+        }
+        if let last = project.doneMilestones.last {
+            let holdsSelection = selectedSlice.map(project.doneContains) ?? false
+            guard isOpen("d:\(project.id)", byDefault: holdsSelection) else { return false }
+            let opensItself = selectedSlice.map { id in last.slices.contains { $0.sliceID == id } } ?? false
+            return endsIn(last, key: "m:\(project.id)/\(last.name)", byDefault: opensItself)
+        }
+        if isActive && showsDoneItems {
+            let live = (appModel.activityStore?.agents ?? [:]).mapValues { AgentActivity($0.activity) }
+            let ended = (appModel.sessionStore?.sessions ?? [])
+                .filter { sessionIsDone($0, liveAgents: live) }
+                .sorted { $0.startedAt > $1.startedAt }
+            if let last = ended.last {
+                return isOpen("m:\(project.id)/~sessions") && appModel.selectedSessionID == last.id
+            }
+        }
+        if appModel.proposal(forTab: project.id).map({ !$0.milestones.isEmpty }) ?? false { return false }
+        if let last = project.milestones.last {
+            return endsIn(last, key: "m:\(project.id)/\(last.name)")
+        }
+        return project.loose.last.map { $0.sliceID == selectedSlice } ?? false
     }
 
     /// An empty Scratch: what to do about it, each way in a link.

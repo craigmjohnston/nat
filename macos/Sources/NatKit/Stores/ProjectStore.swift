@@ -4,6 +4,7 @@ import SwiftUI
 /// A protocol for providing nat client functionality (allows injection for testing).
 public protocol NatClientProtocol: Sendable {
     func info(projectID: String) async throws -> ProjectInfo
+    func info(projectID: String, refresh: Bool) async throws -> ProjectInfo
     func status() async throws -> [AgentStatus]
     func usage() async throws -> UsageReading
     func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail
@@ -17,7 +18,7 @@ public protocol NatClientProtocol: Sendable {
     func agentKillWorkshop(projectID: String) async throws -> Void
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String
-    func sliceRework(projectID: String, sliceRef: String) async throws -> Void
+    func sliceRework(projectID: String, sliceRef: String, comments: String) async throws -> Void
     func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult
     func sliceDiscardFollowUps(projectID: String, sliceRef: String) async throws -> TriageResult
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail
@@ -41,11 +42,20 @@ public protocol NatClientProtocol: Sendable {
     func projectOpenFolder(path: String) async throws -> ProjectEntry
     func planProposal(workspaceID: String) async throws -> PlanProposal?
     func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted
+    func planProposal(projectID: String) async throws -> PlanProposal?
+    func planAccept(projectID: String) async throws -> PlanAccepted
     func notionSearch(query: String) async throws -> [NotionPlace]
     func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored
 }
 
 extension NatClientProtocol {
+    /// A plan read that may refresh the replica first: a conformer with no
+    /// replica to refresh — every test double and the fixture client —
+    /// answers it as the plain read, so none of them need say so.
+    public func info(projectID: String, refresh: Bool) async throws -> ProjectInfo {
+        try await info(projectID: projectID)
+    }
+
     /// A file's own lines: only `NatClient`, the fixture client and the
     /// diff store's tests implement this, the same reasoning as
     /// `workspaceLaunch`.
@@ -99,6 +109,15 @@ extension NatClientProtocol {
         throw NatError.commandFailed("plan-accept: not supported by this client")
     }
 
+    /// A project workshop's proposal: same reasoning.
+    public func planProposal(projectID: String) async throws -> PlanProposal? {
+        throw NatError.commandFailed("plan-proposal --project: not supported by this client")
+    }
+
+    public func planAccept(projectID: String) async throws -> PlanAccepted {
+        throw NatError.commandFailed("plan-accept --project: not supported by this client")
+    }
+
     /// Mirroring a local project into Notion: same reasoning, only `NatClient`
     /// and the fixture client implement them.
     public func notionSearch(query: String) async throws -> [NotionPlace] {
@@ -112,7 +131,7 @@ extension NatClientProtocol {
     /// A conformer that never reworks a slice — every test double but the
     /// ones exercising the approve-over-comments flow — need not say so:
     /// `NatClient` and the fixture client are the two that implement it.
-    public func sliceRework(projectID: String, sliceRef: String) async throws {
+    public func sliceRework(projectID: String, sliceRef: String, comments: String) async throws {
         throw NatError.commandFailed("slice-rework: not supported by this client")
     }
 
@@ -182,6 +201,10 @@ public final class ProjectStore {
     /// from and every refresh that fails keeps what it has anyway.
     private var cacheConsulted = false
 
+    /// Whether a read has landed yet — what makes every read after the first
+    /// one a refreshing read (`info(projectID:refresh:)`).
+    private var hasRead = false
+
     public init(
         projectID: String,
         client: NatClientProtocol = NatClient(),
@@ -221,7 +244,11 @@ public final class ProjectStore {
         }
 
         do {
-            let info = try await client.info(projectID: projectID)
+            // The first read takes the replica as it stands — a file read,
+            // nothing to wait on — and every read after it lets nat bring a
+            // stale one up to date first, behind what is already drawn.
+            let info = try await client.info(projectID: projectID, refresh: hasRead)
+            hasRead = true
             state = .loaded(info)
             // Every read that lands is what the next launch starts from.
             await cache.write(info, projectID: projectID)

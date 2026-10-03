@@ -9,14 +9,23 @@ import (
 	"strconv"
 
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // info prints everything an agent needs to know about a project: the
 // conventions written on its project page, its milestones in plan order, and
 // its slices grouped under them. Markdown by default, because the reader is
 // usually a person or a model; --json for anything parsing it.
+//
+// By default it reads the plan as the store's own copy stands
+// ([store.StoredPlan]), never paying [store.Mirrored]'s staleness pull —
+// every `nat info` is a fresh process with no board sitting on the result
+// long enough for that staleness to matter, and the pull it would otherwise
+// pay measures at roughly forty times the cost of a file read. --refresh
+// restores today's behaviour (pull first when the file's copy is stale) for
+// a caller that wants to be sure it is current.
 func info(ctx context.Context, args []string, env Env) error {
-	asJSON, projectRef, err := parseJSONFlag("info", args)
+	asJSON, projectRef, refresh, err := parseInfoFlags(args)
 	if err != nil {
 		return err
 	}
@@ -34,7 +43,12 @@ func info(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("load project page: %w", err)
 	}
-	plan, err := st.Plan(ctx, storeProject(projectID, project))
+	var plan store.Plan
+	if refresh {
+		plan, err = st.Plan(ctx, storeProject(projectID, project))
+	} else {
+		plan, err = store.StoredPlan(ctx, st, storeProject(projectID, project))
+	}
 	if err != nil {
 		return err
 	}
@@ -46,6 +60,24 @@ func info(ctx context.Context, args []string, env Env) error {
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
+}
+
+// parseInfoFlags reads info's own command line: --json and --project like
+// every other read, plus --refresh — info's alone, so it gets its own parser
+// rather than widening [parseJSONFlag] for every command that shares it.
+func parseInfoFlags(args []string) (asJSON bool, projectRef string, refresh bool, err error) {
+	flags := flag.NewFlagSet("info", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	j := flags.Bool("json", false, "print structured JSON instead of markdown")
+	r := flags.Bool("refresh", false, "pull from the workspace first if the replica is stale, instead of reading it as it stands")
+	ref := projectFlag(flags)
+	if err := flags.Parse(args); err != nil {
+		return false, "", false, usageErrorf("info: %s", err)
+	}
+	if flags.NArg() > 0 {
+		return false, "", false, usageErrorf("info: unexpected argument %q", flags.Arg(0))
+	}
+	return *j, *ref, *r, nil
 }
 
 // parseJSONFlag reads the command line of a command whose only flags are --json

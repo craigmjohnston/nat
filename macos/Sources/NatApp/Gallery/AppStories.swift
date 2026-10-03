@@ -67,6 +67,48 @@ enum AppStories {
         return shell(appModel, focus: focus)
     }
 
+    /// Starts an action whose nat call the fixture client holds, and gives it
+    /// long enough to reach that call — the state a story about an action in
+    /// flight is drawn in.
+    private static func startHeld(_ action: @escaping @MainActor () async -> Void) async {
+        Task { @MainActor in await action() }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+    }
+
+    /// Selects the last row of Active, once the activity poll's first
+    /// reading has filled it.
+    private static func selectLastActiveRow(_ appModel: AppModel) async {
+        for _ in 0..<50 where appModel.activityStore?.agents.isEmpty != false {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        guard let last = appModel.sidebarModel.active.last else { return }
+        await appModel.selectSlice(last.targetID, inProject: last.projectID)
+    }
+
+    /// Waits for the activity poll's first reading to report the active
+    /// project's planning agent, so a workshop story is drawn with it live.
+    private static func settleOnPlanner(_ appModel: AppModel) async {
+        for _ in 0..<50 where appModel.planningAgent == nil {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
+    /// A project's workshop, its agent live, holding the fixture proposal —
+    /// `accepting` with an Accept under way that never lands.
+    private static func projectProposalShell(accepting: Bool) async -> some View {
+        let client = FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner)
+        client.setProposal(Fixtures.proposal, forProject: Fixtures.projectID)
+        let appModel = await Fixtures.startedAppModel(client: client)
+        await settleOnPlanner(appModel)
+        appModel.workshopSelected = true
+        await appModel.refreshProposals()
+        if accepting {
+            client.holdAccepts()
+            await startHeld { await appModel.acceptProposal() }
+        }
+        return shell(appModel)
+    }
+
     /// The handed-back slice with its images handed in, the Visual changes
     /// section open and the image list up — `live` adding a waiting agent so
     /// there is one to send comments to.
@@ -526,22 +568,88 @@ enum AppStories {
 
         Story(
             name: "window-workshop",
-            summary: "A project's workshop with its planning agent live: the Plan section and the planning terminal.",
+            summary: "A project's workshop with its planning agent live and nothing proposed yet: Brief read-only with End session, Plan's note, the planning terminal.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel(
                 client: FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner))
+            await settleOnPlanner(appModel)
             appModel.workshopSelected = true
             return shell(appModel)
         },
 
         Story(
             name: "workshop-composer",
-            summary: "A project's workshop with nothing running: the request to start one on, Launch in the header.",
+            summary: "A project's workshop before launch: Brief and Plan in the middle, the brief editor full-height on the right, Launch in Brief's header.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel()
             appModel.workshopSelected = true
+            appModel.workshopDraft = "Split the importer into a reader and a writer, and add a dry-run flag."
+            return shell(appModel)
+        },
+
+        Story(
+            name: "workshop-launching",
+            summary: "A project's workshop mid-launch: Launch busy, the brief read-only, the terminal pane starting.",
+            size: window
+        ) {
+            let client = FixtureNatClient()
+            client.holdLaunches()
+            let appModel = await Fixtures.startedAppModel(client: client)
+            appModel.workshopSelected = true
+            appModel.workshopDraft = "Split the importer into a reader and a writer, and add a dry-run flag."
+            await startHeld { await appModel.launchWorkshop(request: appModel.workshopDraft) }
+            return shell(appModel)
+        },
+
+        Story(
+            name: "workshop-proposal",
+            summary: "A project's workshop that proposed a plan: the tree under the project in the sidebar, Accept and Keep workshopping in Plan's header.",
+            size: window
+        ) {
+            await projectProposalShell(accepting: false)
+        },
+
+        Story(
+            name: "workshop-accepting",
+            summary: "A project's proposal mid-Accept: Accept busy, Keep workshopping disabled.",
+            size: window
+        ) {
+            await projectProposalShell(accepting: true)
+        },
+
+        Story(
+            name: "window-workshop-pinned",
+            summary: "A workshop opened and not launched, then a task clicked: its row stays in Active, with its ✕, while the task is on screen.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(agents: Fixtures.agentStatuses), config: Fixtures.twoProjectConfig)
+            appModel.workshopSelected = true
+            appModel.workshopDraft = "Tidy the review flow."
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            return shell(appModel)
+        },
+
+        Story(
+            name: "window-task-log",
+            summary: "A merged task's log: handed back three times, sent back twice, two follow-ups triaged, then approved and merged.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.shellSliceID, agents: [], details: Fixtures.taskLogSliceDetails,
+                focus: NavigatorFocus(open: [.thread], main: .diff))
+        },
+
+        Story(
+            name: "sidebar-last-active-selected",
+            summary: "The last Active row selected: its highlight the ordinary row height, the line under Active not drawn.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(agents: Fixtures.agentStatuses), config: Fixtures.twoProjectConfig)
+            await selectLastActiveRow(appModel)
             return shell(appModel)
         },
 
@@ -595,6 +703,35 @@ enum AppStories {
             let appModel = await Fixtures.startedAppModel(config: Fixtures.emptyConfig, toolsReady: true)
             appModel.workshopDraft = "A habit tracker with streaks."
             await appModel.launchWorkshop(request: appModel.workshopDraft)
+            return shell(appModel)
+        },
+
+        Story(
+            name: "untitled-workshop-launching",
+            summary: "An Untitled project mid-launch from the starter card: the workshop's layout with Launch busy and the request read-only.",
+            size: window
+        ) {
+            let client = FixtureNatClient()
+            client.holdLaunches()
+            let appModel = await Fixtures.startedAppModel(client: client, config: Fixtures.emptyConfig, toolsReady: true)
+            appModel.workshopDraft = "A habit tracker with streaks."
+            await startHeld { await appModel.launchWorkshop(request: appModel.workshopDraft) }
+            return shell(appModel)
+        },
+
+        Story(
+            name: "untitled-accepting",
+            summary: "An Untitled project's proposal mid-Accept: Accept busy, the name field and Keep workshopping disabled.",
+            size: window
+        ) {
+            let client = FixtureNatClient()
+            client.setProposal(Fixtures.proposal)
+            let appModel = await Fixtures.startedAppModel(client: client, config: Fixtures.emptyConfig, toolsReady: true)
+            appModel.workshopDraft = "A Rust rewrite of the importer."
+            await appModel.launchWorkshop(request: appModel.workshopDraft)
+            await appModel.refreshProposals()
+            client.holdAccepts()
+            await startHeld { await appModel.acceptProposal() }
             return shell(appModel)
         },
 

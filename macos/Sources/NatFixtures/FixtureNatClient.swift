@@ -37,6 +37,14 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// The plan a workshop has proposed, as `plan-proposal` reads it back —
     /// nil until something sets one, as a workshop that has not drafted yet.
     private let proposalBox = Box<PlanProposal?>(nil)
+    /// What each project's own workshop has proposed, by project.
+    private let projectProposals = Box<[String: PlanProposal]>([:])
+    /// Set once an Accept should never come back — the accept-in-flight
+    /// story's state, held still.
+    private let acceptHangs = Box<Bool>(false)
+    /// The same for a workshop launch — the launching story's state.
+    private let launchHangs = Box<Bool>(false)
+    private let acceptRefusal = Box<String?>(nil)
     private let diff: SliceDiff
     private let pr: PRDetail
     private let config: ConfigDoc
@@ -88,6 +96,29 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// Say what the workshop has proposed, as `plan-propose` would have.
     public func setProposal(_ proposal: PlanProposal?) {
         proposalBox.set(proposal)
+    }
+
+    /// Say what a project's own workshop has proposed.
+    public func setProposal(_ proposal: PlanProposal?, forProject projectID: String) {
+        var all = projectProposals.get()
+        all[projectID] = proposal
+        projectProposals.set(all)
+    }
+
+    /// Hold every Accept from now on, so the app stays mid-accept.
+    public func holdAccepts() {
+        acceptHangs.set(true)
+    }
+
+    /// Refuse every project Accept from now on with `message`, as nat refuses
+    /// a proposal the plan has moved out from under.
+    public func refuseAccepts(_ message: String) {
+        acceptRefusal.set(message)
+    }
+
+    /// Hold every workshop launch from now on, so the app stays mid-launch.
+    public func holdLaunches() {
+        launchHangs.set(true)
     }
 
     /// The writes this client was asked to make, oldest first.
@@ -234,7 +265,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         return Fixtures.prURL
     }
 
-    public func sliceRework(projectID: String, sliceRef: String) async throws {
+    public func sliceRework(projectID: String, sliceRef: String, comments: String) async throws {
         try await record("slice-rework \(sliceRef)")
     }
 
@@ -280,6 +311,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     public func workshopLaunch(
         projectID: String, model: String?, effort: String?, request: String?
     ) async throws -> WorkshopLaunchResult {
+        if launchHangs.get() { try await Self.never() }
         try await record("workshop-launch \(projectID)")
         return WorkshopLaunchResult(
             session: TmuxSession.planSessionName(projectID: projectID),
@@ -290,6 +322,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     public func workspaceLaunch(
         workspaceID: String, model: String?, effort: String?, request: String
     ) async throws -> WorkshopLaunchResult {
+        if launchHangs.get() { try await Self.never() }
         try await record("workshop-launch --workspace \(workspaceID)")
         workspaceAgents.set(workspaceAgents.get() + [AgentStatus(
             sliceID: TmuxSession.planTag(projectID: workspaceID),
@@ -312,7 +345,25 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await answer(proposalBox.get())
     }
 
+    public func planProposal(projectID: String) async throws -> PlanProposal? {
+        try await answer(projectProposals.get()[projectID])
+    }
+
+    public func planAccept(projectID: String) async throws -> PlanAccepted {
+        if acceptHangs.get() { try await Self.never() }
+        if let refusal = acceptRefusal.get() { throw NatError.commandFailed(refusal) }
+        try await record("plan-accept --project \(projectID)")
+        let proposal = projectProposals.get()[projectID]
+        setProposal(nil, forProject: projectID)
+        return PlanAccepted(
+            project: ProjectEntry(id: projectID, name: (otherPlans[projectID] ?? plan).project.name),
+            milestones: proposal?.milestoneCount ?? 0,
+            slices: proposal?.sliceCount ?? 0
+        )
+    }
+
     public func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted {
+        if acceptHangs.get() { try await Self.never() }
         try await record("plan-accept --workspace \(workspaceID) --name \(name)")
         let proposal = proposalBox.get()
         proposalBox.set(nil)

@@ -408,25 +408,48 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 	b.WriteString("which they can switch while you work.\n")
 
 	b.WriteString("\n## Applying changes\n\n")
-	b.WriteString("Draft in conversation first, and write only after the user explicitly\n")
-	b.WriteString("approves. The `nat` planning commands are the only way to change the\n")
-	b.WriteString("plan:\n\n")
-	fmt.Fprintf(b, "- `nat plan-apply [FILE] --project %s` — a whole drafted\n", projectID)
-	b.WriteString("  plan of milestones and slices at once, from a JSON document (stdin\n")
-	b.WriteString("  without FILE)\n")
-	fmt.Fprintf(b, "- `nat milestone-add <name> --project %s` — one new\n", projectID)
-	b.WriteString("  milestone, Queued, at the end of the plan\n")
-	fmt.Fprintf(b, "- `nat slice-add <title> --milestone <name> [--description -] --project %s`\n", projectID)
-	b.WriteString("  — one new Todo slice, its brief read from stdin\n")
+	if frontend == FrontendGnat {
+		b.WriteString("Present the draft in conversation too, but the workshop's Plan section\n")
+		b.WriteString("in the app is what the user reads it from and accepts it in. As soon\n")
+		b.WriteString("as you have a draft, and again on every revision, without being asked,\n")
+		b.WriteString("pipe the plan JSON (the same document plan-apply reads) to this:\n\n")
+		fmt.Fprintf(b, "    nat plan-propose --project %s\n\n", projectID)
+		b.WriteString("Never run plan-apply, milestone-add or slice-add yourself — the\n")
+		b.WriteString("user's Accept in the app is the one approval there is, and it is what\n")
+		b.WriteString("applies the plan, not you. A revised proposal replaces whichever one\n")
+		b.WriteString("is on screen, so send the whole plan again each time rather than a\n")
+		b.WriteString("diff of it.\n")
+	} else {
+		b.WriteString("Draft in conversation first, and write only after the user explicitly\n")
+		b.WriteString("approves. The `nat` planning commands are the only way to change the\n")
+		b.WriteString("plan:\n\n")
+		fmt.Fprintf(b, "- `nat plan-apply [FILE] --project %s` — a whole drafted\n", projectID)
+		b.WriteString("  plan of milestones and slices at once, from a JSON document (stdin\n")
+		b.WriteString("  without FILE)\n")
+		fmt.Fprintf(b, "- `nat milestone-add <name> --project %s` — one new\n", projectID)
+		b.WriteString("  milestone, Queued, at the end of the plan\n")
+		fmt.Fprintf(b, "- `nat slice-add <title> --milestone <name> [--description -] --project %s`\n", projectID)
+		b.WriteString("  — one new Todo slice, its brief read from stdin\n")
+	}
 
 	b.WriteString("\n## Guardrails\n\n")
 	b.WriteString("- Plan only. Never claim, start, or complete a slice — launching work is\n")
 	b.WriteString("  the board's job, not yours.\n")
 	b.WriteString("- Never touch work in flight: slices in progress and Done slices, and the\n")
 	b.WriteString("  milestones holding them, are records of what happened.\n")
-	b.WriteString("- The commands above are the only way to change the plan; write nothing\n")
-	b.WriteString("  until the user has approved the draft.\n")
-	fmt.Fprintf(b, "- Every one of them carries `--project %s`.\n", projectID)
+	if frontend == FrontendGnat {
+		b.WriteString("- plan-propose is the only way to change the plan; never run\n")
+		b.WriteString("  plan-apply, milestone-add or slice-add yourself — applying a\n")
+		b.WriteString("  proposal is the user's Accept, not something you do.\n")
+	} else {
+		b.WriteString("- The commands above are the only way to change the plan; write nothing\n")
+		b.WriteString("  until the user has approved the draft.\n")
+	}
+	if frontend == FrontendGnat {
+		fmt.Fprintf(b, "- Every `nat` command you run, plan-propose included, carries `--project %s`.\n", projectID)
+	} else {
+		fmt.Fprintf(b, "- Every one of them carries `--project %s`.\n", projectID)
+	}
 	fmt.Fprintf(b, "- This session starts in %s; ", workingDir)
 	if frontend == FrontendGnat {
 		b.WriteString("the macOS app picks up\n  your changes on its own — there is no refresh key to press.\n")

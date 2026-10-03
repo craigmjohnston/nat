@@ -3,12 +3,16 @@ package cli
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // proposeEnv builds an Env with no Notion client at all — plan-propose talks
@@ -204,6 +208,141 @@ func assertNothingWritten(t *testing.T, workspace string) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "proposals", workspace+".json")); !os.IsNotExist(err) {
 		t.Errorf("expected no proposal file, stat err = %v", err)
+	}
+}
+
+// proposeProjectEnv builds an Env that can both resolve a tracked project
+// (like testEnv) and write a proposal file to a temp proposals directory
+// (like proposeEnv) — what plan-propose --project needs of both.
+func proposeProjectEnv(t *testing.T, cfg config.Config, api *fakeAPI) (Env, *bytes.Buffer) {
+	t.Helper()
+	env, out := testEnv(cfg, api)
+	dir := t.TempDir()
+	prev := stateDir
+	stateDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { stateDir = prev })
+	return env, out
+}
+
+// Exactly one of --workspace/--project is required; both or neither is a
+// usage error.
+func TestPlanProposeRequiresExactlyOneOfWorkspaceOrProject(t *testing.T) {
+	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
+	env.In = strings.NewReader(validProposalDoc)
+	if err := Run(context.Background(), []string{"plan-propose", "--name", "importer"}, env); err == nil ||
+		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
+		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
+	}
+
+	env2, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
+	env2.In = strings.NewReader(validProposalDoc)
+	err := Run(context.Background(), []string{"plan-propose", "--workspace", "ws-1", "--project", "project-1", "--name", "importer"}, env2)
+	if err == nil || !strings.Contains(err.Error(), "exactly one of --workspace or --project") {
+		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
+	}
+}
+
+// --name is optional with --project — unlike --workspace, where it is
+// required.
+func TestPlanProposeWithProjectNameIsOptional(t *testing.T) {
+	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
+	nudges := nudgeCounter(&env)
+	env.In = strings.NewReader(validProposalDoc)
+	if err := Run(context.Background(), []string{"plan-propose", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("plan-propose --project: %v", err)
+	}
+	if *nudges != 1 {
+		t.Errorf("nudges = %d, want 1", *nudges)
+	}
+	doc := readProposal(t, "project-1")
+	if doc.Project != "project-1" {
+		t.Errorf("Project = %q, want project-1", doc.Project)
+	}
+	if doc.Workspace != "" {
+		t.Errorf("Workspace = %q, want empty", doc.Workspace)
+	}
+	if doc.Name != "" {
+		t.Errorf("Name = %q, want empty: no --name given", doc.Name)
+	}
+}
+
+// --project validates the plan against that project's own shape — a
+// milestone the document names and the project already has is accepted,
+// since it is resolved against the live project rather than refused the way
+// a --workspace proposal (nothing to resolve against) would be.
+func TestPlanProposeWithProjectValidatesAgainstTheLiveProject(t *testing.T) {
+	doc := `{"slices": [{"title": "A slice", "milestone": "M1: Client"}]}`
+	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
+	env.In = strings.NewReader(doc)
+	if err := Run(context.Background(), []string{"plan-propose", "--project", "project-1", "--name", "x"}, env); err != nil {
+		t.Fatalf("plan-propose --project: %v", err)
+	}
+}
+
+// A milestone the live project does not have is refused, the same way
+// plan-apply refuses it — the shared [validateAgainstProject] is what keeps
+// the two from drifting.
+func TestPlanProposeWithProjectRefusesAnUnknownMilestone(t *testing.T) {
+	doc := `{"slices": [{"title": "A slice", "milestone": "No such milestone"}]}`
+	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
+	env.In = strings.NewReader(doc)
+	err := Run(context.Background(), []string{"plan-propose", "--project", "project-1", "--name", "x"}, env)
+	if err == nil {
+		t.Fatal("expected a refusal for a milestone the project does not have")
+	}
+	assertNothingWritten(t, "project-1")
+}
+
+// --project allows a top-level dependencies list — unlike --workspace, which
+// refuses it outright — since a live project may already have a slice for
+// one to reach.
+func TestPlanProposeWithProjectAllowsTopLevelDependencies(t *testing.T) {
+	doc := `{"dependencies": [{"slice": "Render the board", "on": ["Notion client"]}]}`
+	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
+	env.In = strings.NewReader(doc)
+	if err := Run(context.Background(), []string{"plan-propose", "--project", "project-1", "--name", "x"}, env); err != nil {
+		t.Fatalf("plan-propose --project: %v", err)
+	}
+}
+
+// An unknown --project is refused the same way every other project-scoped
+// command refuses it.
+func TestPlanProposeRefusesAnUnknownProject(t *testing.T) {
+	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
+	env.In = strings.NewReader(validProposalDoc)
+	err := Run(context.Background(), []string{"plan-propose", "--project", "nope", "--name", "x"}, env)
+	if err == nil {
+		t.Fatal("expected a refusal for an unknown project")
+	}
+}
+
+// A project whose store cannot be opened — its plan file damaged — fails
+// plan-propose --project at the store, before validation is even reached.
+func TestPlanProposeWithProjectFailsWhereTheStoreCannotBeOpened(t *testing.T) {
+	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
+	// project-1's plan has already been hydrated by populatedAPI's own fakeAPI
+	// the first time anything reads it; corrupt the file underneath once that
+	// has happened, by running a harmless read first.
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("info (hydrate): %v", err)
+	}
+	path, err := store.LocalPath("project-1")
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	if _, err := db.Exec(`PRAGMA user_version = 99;`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	env.In = strings.NewReader(validProposalDoc)
+	err = Run(context.Background(), []string{"plan-propose", "--project", "project-1", "--name", "x"}, env)
+	if err == nil {
+		t.Error("expected a refusal for a damaged plan file")
 	}
 }
 

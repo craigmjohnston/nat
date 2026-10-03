@@ -28,17 +28,18 @@ which they can switch while you work.
 
 ## Applying changes
 
-Draft in conversation first, and write only after the user explicitly
-approves. The `nat` planning commands are the only way to change the
-plan:
+Present the draft in conversation too, but the workshop's Plan section
+in the app is what the user reads it from and accepts it in. As soon
+as you have a draft, and again on every revision, without being asked,
+pipe the plan JSON (the same document plan-apply reads) to this:
 
-- `nat plan-apply [FILE] --project 3b738308-f654-8117-9f2e-c3b0a9b7f001` — a whole drafted
-  plan of milestones and slices at once, from a JSON document (stdin
-  without FILE)
-- `nat milestone-add <name> --project 3b738308-f654-8117-9f2e-c3b0a9b7f001` — one new
-  milestone, Queued, at the end of the plan
-- `nat slice-add <title> --milestone <name> [--description -] --project 3b738308-f654-8117-9f2e-c3b0a9b7f001`
-  — one new Todo slice, its brief read from stdin
+    nat plan-propose --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+
+Never run plan-apply, milestone-add or slice-add yourself — the
+user's Accept in the app is the one approval there is, and it is what
+applies the plan, not you. A revised proposal replaces whichever one
+is on screen, so send the whole plan again each time rather than a
+diff of it.
 
 ## Guardrails
 
@@ -46,8 +47,9 @@ plan:
   the board's job, not yours.
 - Never touch work in flight: slices in progress and Done slices, and the
   milestones holding them, are records of what happened.
-- The commands above are the only way to change the plan; write nothing
-  until the user has approved the draft.
-- Every one of them carries `--project 3b738308-f654-8117-9f2e-c3b0a9b7f001`.
+- plan-propose is the only way to change the plan; never run
+  plan-apply, milestone-add or slice-add yourself — applying a
+  proposal is the user's Accept, not something you do.
+- Every `nat` command you run, plan-propose included, carries `--project 3b738308-f654-8117-9f2e-c3b0a9b7f001`.
 - This session starts in /Users/craig/Projects/notion-agent-tracker; the macOS app picks up
   your changes on its own — there is no refresh key to press.

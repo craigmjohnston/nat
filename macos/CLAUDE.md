@@ -52,15 +52,24 @@ its PR open) — change `internal/domain/state.go` and the stage together. A
 live session never moves the stage; `fixing` comes only from
 `AppModel.fixLaunched`.
 
-## The new-project proposal
+## The workshop and its proposal
 
-An Untitled tab's workshop proposes with `nat plan-propose`; the app never
-reads the proposal file itself. `AppModel` watches the nudge marker (its own
-`NudgeWatcher`, alive while any Untitled tab is) and reads `nat plan-proposal`
-per tab; the sidebar draws `PlanProposal.folders` under the Untitled row and
-the workshop navigator holds the name field, Accept and Keep workshopping. Accept is `nat plan-accept` (project + plan are nat's doing), then the
-workshop session is killed and `addProject(replacing:)` hands the tab over.
-Stories: `window-untitled-proposal`, `window-plan-accepted`.
+Every workshop proposes with `nat plan-propose` — an Untitled tab's by its
+workspace, a project's (gnat-launched) by `--project` — and the app never
+reads the proposal file itself. `AppModel.refreshProposals` reads `nat
+plan-proposal` per tab (an Untitled tab's on its own `NudgeWatcher`, alive
+while any Untitled tab is; a project's on `refresh()`, only while its planner
+is live, its row pinned or a proposal is up); the sidebar draws
+`PlanProposal.folders` under the row. Accept is `nat plan-accept`: on an
+Untitled tab it makes the project, then the session is killed and
+`addProject(replacing:)` hands the tab over; on a project it files the plan
+(`--project`) and leaves the session running. The layout is one for both:
+the navigator's Brief (the request; Launch, then End session) over Plan (the
+proposal, Accept and Keep workshopping), and the main pane, with no tabs, the
+brief editor before launch and the terminal from launch on. Opening a
+workshop pins its row in Active (`workshopPinnedProjects`) until a launch or
+the row's ✕. Stories: `workshop-*`, `window-workshop*`,
+`untitled-*`, `window-untitled-proposal`, `window-plan-accepted`.
 
 ## The Notion mirror nudge
 
@@ -117,7 +126,11 @@ height and square, one per section that would put its view up
 `NavigatorFocus.showing`, which opens and never folds. The selection's name, and a slice's
 project and milestone crumbs in the status bar, each open `CrumbTreePicker`
 (projects → milestones → slices, `CrumbTree`) on themselves; with nothing
-selected there is no breadcrumb. Selecting sets the selection *before* awaiting the project's
+selected there is no breadcrumb. The Thread is labelled "Task" until the
+slice is under way and "Task log" after, and draws `slice-show`'s `events`
+in order — hand-backs, send-backs (`slice-rework --comments`), releases,
+relaunches, follow-ups (triaged ones as a record, pending ones as the triage
+card in their place), then approve and merge. Selecting sets the selection *before* awaiting the project's
 activation (`AppModel.select(inProject:)`), so a later click is never
 overwritten by an earlier one finishing. What the design does not draw
 (workshop, sessions, follow-ups, menus) lives on as the row or section it

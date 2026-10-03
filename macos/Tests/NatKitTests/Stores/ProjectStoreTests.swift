@@ -25,6 +25,14 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
         self.gate = gate
     }
 
+    /// Whether each read asked nat to refresh the replica first, in order.
+    private(set) var refreshFlags: [Bool] = []
+
+    func info(projectID: String, refresh: Bool) async throws -> ProjectInfo {
+        refreshFlags.append(refresh)
+        return try await info(projectID: projectID)
+    }
+
     func info(projectID: String) async throws -> ProjectInfo {
         callCount += 1
         if let gate {
@@ -144,6 +152,22 @@ final class ProjectStoreTests: XCTestCase {
         } else {
             XCTFail("Expected loaded state")
         }
+    }
+
+    /// The first read takes the replica as it stands; every one after it may
+    /// bring a stale one up to date first — and a first read that failed
+    /// leaves the next one still the first.
+    @MainActor
+    func testOnlyReadsAfterTheFirstAskForARefresh() async {
+        let mockClient = MockNatClient(response: .failure)
+        let store = ProjectStore(projectID: "proj-1", client: mockClient, cache: FakePlanCache())
+
+        await store.load()
+        mockClient.response = .success(testProjectInfo)
+        await store.load()
+        await store.refresh()
+
+        XCTAssertEqual(mockClient.refreshFlags, [false, false, true])
     }
 
     @MainActor

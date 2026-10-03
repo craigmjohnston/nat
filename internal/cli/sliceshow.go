@@ -92,6 +92,60 @@ type sliceShowJSON struct {
 	// Visuals are the images the slice's agent last handed in of what it
 	// changed, for the app's Visual changes section.
 	Visuals []visualJSON `json:"visuals,omitempty"`
+	// Events is the slice's whole task log: every store.TaskEvent its body
+	// carries, in the order they were written, plus — read off the slice's
+	// own properties rather than its body — an "approved" event where a pull
+	// request is recorded and a "merged" event where the slice is Done with
+	// a pull request or branch recorded. Always an array, even an empty one:
+	// the app ranges over it with no nil check, so it is never omitted or
+	// left null.
+	Events []taskEventJSON `json:"events"`
+}
+
+// taskEventJSON is one entry of a slice's task log, the wire form of
+// [store.TaskEvent].
+type taskEventJSON struct {
+	Kind      string             `json:"kind"`
+	Note      string             `json:"note,omitempty"`
+	By        string             `json:"by,omitempty"`
+	PR        string             `json:"pr,omitempty"`
+	FollowUps []taskFollowUpJSON `json:"followUps,omitempty"`
+}
+
+// taskFollowUpJSON is one follow-up of a "follow_ups" event, the wire form of
+// [store.TaskFollowUp].
+type taskFollowUpJSON struct {
+	Index    int    `json:"index"`
+	Title    string `json:"title"`
+	Brief    string `json:"brief"`
+	Decision string `json:"decision,omitempty"`
+	Link     string `json:"link,omitempty"`
+}
+
+// taskEventsJSON is a slice's whole task log: [store.TaskEvents]' own read of
+// its body, plus the two events only its properties can answer — "approved"
+// and "merged" are not sections of the body at all, since slice-approve
+// records only a URL and the merge only a status, so they are folded in
+// here rather than taught to store.TaskEvents, which knows only the body.
+func taskEventsJSON(s domain.Slice, brief string) []taskEventJSON {
+	events := store.TaskEvents(brief)
+	out := make([]taskEventJSON, 0, len(events)+2)
+	for _, e := range events {
+		tj := taskEventJSON{Kind: e.Kind, Note: e.Note, By: e.By}
+		for _, f := range e.FollowUps {
+			tj.FollowUps = append(tj.FollowUps, taskFollowUpJSON{
+				Index: f.Index, Title: f.Title, Brief: f.Brief, Decision: f.Decision, Link: f.Link,
+			})
+		}
+		out = append(out, tj)
+	}
+	if s.PRURL != "" {
+		out = append(out, taskEventJSON{Kind: "approved", PR: s.PRURL})
+	}
+	if s.Status == domain.SliceDone && (s.PRURL != "" || s.Branch != "") {
+		out = append(out, taskEventJSON{Kind: "merged"})
+	}
+	return out
 }
 
 // visualJSON is one handed-in image.
@@ -134,6 +188,7 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 		Blocked:    domain.Blocked(s, slicesByID),
 		HandedBack: s.HandedBack(),
 		Brief:      brief,
+		Events:     taskEventsJSON(s, brief),
 	}
 	if state != domain.SliceStateNone {
 		sj.State = state.String()

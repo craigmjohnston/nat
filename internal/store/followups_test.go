@@ -85,6 +85,15 @@ func TestPendingFollowUpsPastNine(t *testing.T) {
 	}
 }
 
+// decisionString's default case is unreachable through any of the three
+// named Decision values; this is the line a value outside them — which
+// nothing in this package ever constructs — would still answer safely.
+func TestDecisionStringOfAnUnknownDecision(t *testing.T) {
+	if got := decisionString(Decision(99)); got != "" {
+		t.Errorf("decisionString(99) = %q, want empty", got)
+	}
+}
+
 func TestTriagedLines(t *testing.T) {
 	got := triageMarkdown([]Triaged{
 		{Title: "A", Decision: Queued, Link: "https://notion.so/a"},

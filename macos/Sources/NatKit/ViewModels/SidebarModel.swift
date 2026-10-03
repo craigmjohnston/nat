@@ -299,14 +299,20 @@ public let workshopRowTitle = "Workshop the plan"
 ///
 /// `sessions` are the ad hoc sessions of `sessionsProjectID` alone — the one
 /// project `SessionStore` reads — and `planningAgents` the live planning
-/// agent of each project that has one, keyed by project ID. Active is sorted
-/// needs-you first and otherwise left in project, then plan, order.
+/// agent of each project that has one, keyed by project ID. `pinnedWorkshops`
+/// are the projects whose workshop was opened and not yet launched or
+/// dismissed, each a workshop row of its own with nothing running —
+/// `launchingWorkshop` the one whose launch is in flight. A live agent wins
+/// over both. Active is sorted needs-you first and otherwise left in project,
+/// then plan, order.
 public func buildSidebarModel(
     projects: [SidebarProjectInput],
     liveAgents: [String: AgentActivity],
     sessions: [Session] = [],
     sessionsProjectID: String? = nil,
     planningAgents: [String: AgentActivity] = [:],
+    pinnedWorkshops: Set<String> = [],
+    launchingWorkshop: String? = nil,
     fixLaunched: Set<String> = []
 ) -> SidebarModel {
     var active: [SidebarActiveRow] = []
@@ -322,6 +328,12 @@ public func buildSidebarModel(
             active.append(SidebarActiveRow(
                 kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
                 title: workshopRowTitle, state: state, live: true))
+        } else if pinnedWorkshops.contains(project.id) || launchingWorkshop == project.id {
+            // Opened and not yet running: a draft being written, or a launch
+            // on its way — the row holds the workshop's place until then.
+            active.append(SidebarActiveRow(
+                kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
+                title: workshopRowTitle, state: launchingWorkshop == project.id ? .working : .todo, live: false))
         }
 
         if project.id == sessionsProjectID {

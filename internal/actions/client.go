@@ -24,4 +24,8 @@ type Store interface {
 	RecordPR(ctx context.Context, id, url string) error
 	MarkDone(ctx context.Context, id string, sh store.Shape) error
 	ReopenSlice(ctx context.Context, id string, sh store.Shape) error
+	// RecordRelaunch files a relaunch's one fixed line in the task log, which
+	// [Launch] writes for a non-fix launch picking a session back up — never
+	// a fresh one. Its own failure is logged and never fails the launch.
+	RecordRelaunch(ctx context.Context, id string) error
 }
