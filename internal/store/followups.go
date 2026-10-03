@@ -169,22 +169,49 @@ func PendingFollowUps(body string) []FollowUp {
 // triagedTitle is the title a triage record's line names, and false for a line
 // that is not one of its bullets.
 func triagedTitle(line string) (string, bool) {
+	title, _, _, ok := triagedEntry(line)
+	return title, ok
+}
+
+// triagedEntry is everything one of a triage record's lines names: the title
+// it keys to the proposal, the decision, and — for a queued item — the slice
+// it became. [TaskEvents] is what reads the decision and link; [triagedTitle]
+// is the title alone, which is all [PendingFollowUps] has ever needed.
+func triagedEntry(line string) (title string, decision Decision, link string, ok bool) {
 	rest, ok := strings.CutPrefix(line, "- ")
 	if !ok {
-		return "", false
+		return "", 0, "", false
 	}
 	if t, ok := strings.CutPrefix(rest, queuedPrefix); ok {
 		if i := strings.LastIndex(t, queuedArrow); i >= 0 {
+			link = strings.TrimSpace(t[i+len(queuedArrow):])
 			t = t[:i]
 		}
-		return strings.TrimSpace(t), true
+		return strings.TrimSpace(t), Queued, link, true
 	}
-	for _, p := range []string{foldedPrefix, droppedPrefix} {
-		if t, ok := strings.CutPrefix(rest, p); ok {
-			return strings.TrimSpace(t), true
-		}
+	if t, ok := strings.CutPrefix(rest, foldedPrefix); ok {
+		return strings.TrimSpace(t), FoldedIn, "", true
 	}
-	return "", false
+	if t, ok := strings.CutPrefix(rest, droppedPrefix); ok {
+		return strings.TrimSpace(t), Dropped, "", true
+	}
+	return "", 0, "", false
+}
+
+// decisionString is the word [TaskEvents] names a triaged follow-up's
+// decision by, in the wire vocabulary the app reads ("queued"/"folded"/
+// "dropped") rather than [Decision]'s own int — a decision never otherwise
+// crosses out of this package as anything but the write methods that take it.
+func decisionString(d Decision) string {
+	switch d {
+	case Queued:
+		return "queued"
+	case FoldedIn:
+		return "folded"
+	case Dropped:
+		return "dropped"
+	}
+	return ""
 }
 
 // paragraphsOf is text split the way [paragraphBlocks] splits it: one chunk per

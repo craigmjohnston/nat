@@ -204,6 +204,14 @@ type Store interface {
 	// RecordVisuals files the images an agent rendered of its change, under a
 	// Visual changes heading in the body, where [VisualChanges] reads them back.
 	RecordVisuals(ctx context.Context, id string, items []VisualChange) error
+	// RecordSentBack files review comments on a handed-back slice under a
+	// Sent back heading, which `slice-rework` writes before it clears the
+	// slice's Branch — the task-log counterpart of a hand-back's own note.
+	RecordSentBack(ctx context.Context, id, comments string) error
+	// RecordRelaunch files one fixed line under a Relaunched heading, which
+	// [actions.Launch] writes when a session is picked back up rather than
+	// starting fresh.
+	RecordRelaunch(ctx context.Context, id string) error
 	// RecordPR writes a pull request's URL onto a slice and nothing else. The
 	// slice stays in progress: the merge is what marks work landed.
 	RecordPR(ctx context.Context, id, url string) error

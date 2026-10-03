@@ -69,28 +69,12 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	}
 	sp := storeProject(projectID, project)
 
-	shape, err := st.Shape(ctx, sp)
-	if err != nil {
-		return err
-	}
-	existing := shape.Milestones
-	// The project's own slices are only read when the plan names one: they are
-	// what a depends_on title may be resolved against, and a plan that declares
-	// no dependency has nothing to resolve.
-	var filed []domain.Slice
-	if p.dependsOnAnything() {
-		plan, err := st.Plan(ctx, sp)
-		if err != nil {
-			return fmt.Errorf("load slices: %w", err)
-		}
-		filed = plan.Project.Slices
-	}
-	targets, err := validatePlan(p, existing, filed)
+	shape, targets, err := validateAgainstProject(ctx, st, sp, p)
 	if err != nil {
 		return err
 	}
 
-	applied, err := applyPlan(ctx, st, sp, shape, p, targets, existing)
+	applied, err := applyPlan(ctx, st, sp, shape, p, targets, shape.Milestones)
 	// A run that failed partway has still written what it wrote — the error
 	// itself says so — and the board deserves to hear about that half as much
 	// as about a whole plan.
@@ -256,6 +240,38 @@ type filedDeps struct {
 type planTargets struct {
 	slices []sliceTarget
 	filed  []filedDeps
+}
+
+// validateAgainstProject reads a project's current shape — and, only if the
+// plan names any dependency, its slices — and validates the plan against
+// them exactly as [validatePlan] always has. plan-apply, plan-propose
+// (--project) and plan-accept (--project) all call this rather than each
+// rolling the same read-then-validate sequence by hand, so the three can
+// never drift apart on what a project-scoped proposal is checked against: a
+// plan a live project would refuse is refused the same way whichever of the
+// three is asking, and a plan changed since a proposal was written is caught
+// here rather than half-applied.
+func validateAgainstProject(ctx context.Context, st store.Store, sp store.Project, p plan) (store.Shape, planTargets, error) {
+	shape, err := st.Shape(ctx, sp)
+	if err != nil {
+		return store.Shape{}, planTargets{}, err
+	}
+	// The project's own slices are only read when the plan names one: they are
+	// what a depends_on title may be resolved against, and a plan that declares
+	// no dependency has nothing to resolve.
+	var filed []domain.Slice
+	if p.dependsOnAnything() {
+		existingPlan, err := st.Plan(ctx, sp)
+		if err != nil {
+			return store.Shape{}, planTargets{}, fmt.Errorf("load slices: %w", err)
+		}
+		filed = existingPlan.Project.Slices
+	}
+	targets, err := validatePlan(p, shape.Milestones, filed)
+	if err != nil {
+		return store.Shape{}, planTargets{}, err
+	}
+	return shape, targets, nil
 }
 
 // validatePlan checks the whole document and resolves every milestone

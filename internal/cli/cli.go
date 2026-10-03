@@ -184,8 +184,10 @@ usage:
                       current Pro/Max rate-limit usage, via a throwaway
                       detached session; prints nothing read where no window
                       is available
-  nat info [--json] --project ID
-                      print the project's conventions, milestones and slices
+  nat info [--json] [--refresh] --project ID
+                      print the project's conventions, milestones and slices;
+                      reads the replica as it stands by default, --refresh
+                      pulls from the workspace first if it is stale
   nat next-slice [--json] --project ID
                       claim the next Todo slice and print its brief
   nat start-slice <slice> [--json] --project ID
@@ -326,22 +328,32 @@ usage:
   nat plan-apply [FILE] [--json] --project ID
                       create a whole plan of milestones and slices from a JSON
                       document, read from FILE or stdin
-  nat plan-propose [FILE] --workspace ID --name NAME [--json]
+  nat plan-propose [FILE] (--workspace ID | --project ID) [--name NAME] [--json]
                       validate a drafted plan and write it to a proposal file
-                      for the app's new-project workshop, instead of to
-                      Notion — there is no project yet, so no --project.
-                      FILE or stdin, like plan-apply, but a milestone or a
-                      depends_on may only name what the document itself
-                      creates, and a top-level dependencies list is refused.
-                      Running it again for the same workspace replaces the
-                      proposal
-  nat plan-proposal --workspace ID --json
+                      instead of applying it — exactly one of --workspace (the
+                      app's new-project workshop; --name required) or
+                      --project (a revision to a project already tracked;
+                      --name optional) says where it is headed. FILE or
+                      stdin, like plan-apply. --workspace's plan has no
+                      project to resolve against: a milestone or a depends_on
+                      may only name what the document itself creates, and a
+                      top-level dependencies list is refused. --project's plan
+                      is validated against that project exactly as plan-apply
+                      validates one. Running it again for the same workspace
+                      or project replaces the proposal
+  nat plan-proposal (--workspace ID | --project ID) --json
                       read back the proposal plan-propose wrote for a
-                      workspace, as {"proposal": ...} — null with none yet
-  nat plan-accept --workspace ID --name NAME [--json]
-                      accept that proposal: create a local project named NAME
-                      (no Notion), file the proposal's plan into it, and drop
-                      the proposal file
+                      workspace or a project, as {"proposal": ...} — null
+                      with none yet
+  nat plan-accept (--workspace ID --name NAME | --project ID) [--json]
+                      accept that proposal: with --workspace, create a local
+                      project named NAME (no Notion), file the proposal's plan
+                      into it, and drop the proposal file; with --project, file
+                      the proposal's plan into that project already tracked —
+                      validated against its *current* plan, so one it has
+                      outgrown since is refused rather than half-applied — and
+                      drop the proposal file. No --name with --project: the
+                      project already has one
   nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
                       [--pr-description TEXT|-] [--blocked] --project ID
                       close out a slice you claimed: with --branch, handed back
@@ -373,10 +385,12 @@ usage:
                       for the user to review in the app: each value's first
                       line what it shows, the next the image's path or URI. A
                       later hand-in replaces an earlier one; nothing waits on it
-  nat slice-rework <slice> --project ID
+  nat slice-rework <slice> [--comments TEXT] --project ID
                       take a handed-back slice back out of review: its branch is
                       cleared and nothing else, so it reads as in progress until
-                      its agent hands back again
+                      its agent hands back again; --comments files what the
+                      review said under a Sent back heading first ('-' reads
+                      stdin)
   nat release-slice <slice> --project ID
                       hand a slice you claimed back to the plan: Todo and
                       unassigned, its brief and any branch left as they are, for

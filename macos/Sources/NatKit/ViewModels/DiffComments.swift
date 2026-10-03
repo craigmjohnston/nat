@@ -82,6 +82,23 @@ public func commentsPrompt(_ comments: [PendingComment], diff: DiffModel, handBa
     return out
 }
 
+/// The comments a send carried, as the slice's page keeps them under `Sent
+/// back`: one paragraph per comment, where it is and what it says — the
+/// review itself, without the quoted lines or the hand-back instruction the
+/// prompt wraps it in, and with no heading of its own, which on a page would
+/// end the section it is filed in.
+public func commentsRecord(_ comments: [PendingComment], diff: DiffModel) -> String {
+    var rowsByPath: [String: [DiffRow]] = [:]
+    for file in diff.files {
+        rowsByPath[file.path] = file.rows
+    }
+    return comments.map { comment in
+        let rows = anchoredRows(comment, rowsByPath: rowsByPath)
+        let span = rows.isEmpty ? comment.anchorRowIDs.count : rows.count
+        return "\(commentTitle(path: comment.path, ref: lineRef(for: rows), span: span)): \(comment.text)"
+    }.joined(separator: "\n\n")
+}
+
 /// What a send asks the agent to finish with: the slice and project its
 /// `nat complete-slice` hand-back names, and whether that hand-back opens the
 /// pull request (an approve over comments) or only returns the slice to review.

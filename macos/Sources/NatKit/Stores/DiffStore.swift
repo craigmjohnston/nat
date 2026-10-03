@@ -405,10 +405,11 @@ public final class DiffStore {
         guard let diff = loadState.diff, !comments.isEmpty else { return 0 }
         let handBack = HandBackInstruction(projectID: projectID, sliceRef: sliceRef, opensPullRequest: approving)
         let prompt = commentsPrompt(comments, diff: diff, handBack: handBack)
+        let record = commentsRecord(comments, diff: diff)
         let count = comments.count
         try await client.agentSend(projectID: projectID, sliceRef: sliceRef, text: prompt)
         comments = []
-        try await client.sliceRework(projectID: projectID, sliceRef: sliceRef)
+        try await client.sliceRework(projectID: projectID, sliceRef: sliceRef, comments: record)
         return count
     }
 

@@ -118,6 +118,16 @@ prompt and `/next-slice` carry the passage — the TUI has no triage surface.
 gnat's `FollowUpsSidebarView` is pane-level, shown while `slice-show`'s
 `followUps` is non-empty. Design: `docs/design/follow-up-triage/`.
 
+**Task log.** A slice's history is read off its body, in order, by
+`store.TaskEvents`: each `Handed back`, `Sent back` (`slice-rework
+--comments`, filed before the branch is cleared, as hand-back files before
+its property), `Relaunched` (written by a non-fix `actions.Launch` of a slice
+already under way or with history; a failure is logged, never fatal),
+`Blocked`, `Summary`, released line and `Follow-ups` section, each proposal
+decided by a later `Follow-ups triaged`. `slice-show --json`'s `events` is
+that list, then `approved` (a PR recorded) and `merged` (Done with a PR or
+branch). Both stores write the same markdown.
+
 **Visual changes.** Where a project already has a cheap or usual way to
 render what a slice changed (a gallery story, a screenshot script), every
 slice agent — slice prompt, fix prompt, `/next-slice` — hands the images in

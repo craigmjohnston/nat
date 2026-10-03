@@ -66,7 +66,18 @@ public final class NatClient: Sendable {
     /// - Returns: ProjectInfo containing the project, milestones, and slices
     /// - Throws: NatError if the command fails or output is invalid
     public func info(projectID: String) async throws -> ProjectInfo {
-        let output = try await runNat(arguments: ["info", "--project", projectID, "--json"])
+        try await info(projectID: projectID, refresh: false)
+    }
+
+    /// Get information about a project, `refresh` asking nat to bring a
+    /// Notion project's replica up to date first where it has gone stale
+    /// (`nat info --refresh`). Without it the plan is read as the replica
+    /// holds it — a file read, which is what a first load wants to draw at
+    /// once; the refreshes after it are what keep it current.
+    public func info(projectID: String, refresh: Bool) async throws -> ProjectInfo {
+        var arguments = ["info", "--project", projectID, "--json"]
+        if refresh { arguments.append("--refresh") }
+        let output = try await runNat(arguments: arguments)
         return try decodeJSON(ProjectInfo.self, from: output)
     }
 
@@ -289,11 +300,16 @@ public final class NatClient: Sendable {
     /// branch is cleared and nothing else, so it reads as in progress (its
     /// agent at work on the comments just sent) until the agent's own
     /// `complete-slice --branch` hands it back again. That re-hand-back is
-    /// what an approve-over-comments waits on.
+    /// what an approve-over-comments waits on. `comments` are what was sent,
+    /// filed on the slice's page under `Sent back` before the branch is
+    /// cleared — the Task log's record of the send-back — and go over stdin
+    /// (`--comments -`), as `agentSend`'s prompt does.
     ///
     /// - Throws: NatError if the slice is not handed back
-    public func sliceRework(projectID: String, sliceRef: String) async throws {
-        _ = try await runNatRaw(arguments: ["slice-rework", "--project", projectID, sliceRef])
+    public func sliceRework(projectID: String, sliceRef: String, comments: String) async throws {
+        _ = try await runNatRaw(
+            arguments: ["slice-rework", "--project", projectID, sliceRef, "--comments", "-"],
+            standardInput: Data(comments.utf8))
     }
 
     /// Decide every follow-up a slice's agent proposed — `nat slice-triage`:
@@ -734,6 +750,25 @@ public final class NatClient: Sendable {
     /// - Throws: NatError.commandFailed carrying the refusal
     public func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted {
         let output = try await runNat(arguments: ["plan-accept", "--workspace", workspaceID, "--name", name, "--json"])
+        return try decodeJSON(PlanAccepted.self, from: output)
+    }
+
+    /// Read the plan a project's workshop proposed (`nat plan-proposal
+    /// --project`) — nil until one has been proposed.
+    ///
+    /// - Throws: NatError if the proposal file will not parse, or nat fails
+    public func planProposal(projectID: String) async throws -> PlanProposal? {
+        let output = try await runNat(arguments: ["plan-proposal", "--project", projectID, "--json"])
+        return try decodeJSON(ProposalEnvelope.self, from: output).proposal
+    }
+
+    /// Accept a project workshop's proposal into the project (`nat
+    /// plan-accept --project`): validated against the plan as it now stands,
+    /// filed, and the proposal file dropped — all nat's doing.
+    ///
+    /// - Throws: NatError.commandFailed carrying the refusal
+    public func planAccept(projectID: String) async throws -> PlanAccepted {
+        let output = try await runNat(arguments: ["plan-accept", "--project", projectID, "--json"])
         return try decodeJSON(PlanAccepted.self, from: output)
     }
 

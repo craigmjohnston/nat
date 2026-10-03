@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -447,6 +448,75 @@ func TestInfoReportsAFailedPlanReadOnAnAlreadyHydratedPlan(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "milestones") {
 		t.Fatalf("err = %v, want the broken read reported", err)
+	}
+}
+
+// Once a plan is hydrated and goes stale, info's default read
+// (store.StoredPlan) never pulls again — unlike every other reader of a
+// store.Mirrored, which is exactly the point of A's perf fix.
+func TestInfoDefaultDoesNotPullAStaleReplica(t *testing.T) {
+	cfg := testConfig(t)
+	api := populatedAPI(t)
+	env, _ := testEnv(cfg, api)
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("info (hydrate): %v", err)
+	}
+	queriesAfterHydrate := len(api.queries)
+
+	staleTheReplica(t, "project-1")
+
+	env2, out := testEnv(cfg, api)
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env2); err != nil {
+		t.Fatalf("info (default): %v", err)
+	}
+	if len(api.queries) != queriesAfterHydrate {
+		t.Errorf("queries = %d, want %d: a stale replica should not be re-pulled without --refresh", len(api.queries), queriesAfterHydrate)
+	}
+	if !strings.HasPrefix(out.String(), "# nat\n") {
+		t.Errorf("output =\n%s\nwant the plan printed from the file", out.String())
+	}
+}
+
+// --refresh restores today's behaviour: a stale replica is pulled again
+// before the plan is read.
+func TestInfoRefreshPullsAStaleReplica(t *testing.T) {
+	cfg := testConfig(t)
+	api := populatedAPI(t)
+	env, _ := testEnv(cfg, api)
+	if err := Run(context.Background(), []string{"info", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("info (hydrate): %v", err)
+	}
+	queriesAfterHydrate := len(api.queries)
+
+	staleTheReplica(t, "project-1")
+
+	env2, _ := testEnv(cfg, api)
+	if err := Run(context.Background(), []string{"info", "--refresh", "--project", "project-1"}, env2); err != nil {
+		t.Fatalf("info --refresh: %v", err)
+	}
+	if len(api.queries) <= queriesAfterHydrate {
+		t.Errorf("queries = %d, want more than %d: --refresh should pull a stale replica again", len(api.queries), queriesAfterHydrate)
+	}
+}
+
+// staleTheReplica backdates a hydrated plan's own synced_at stamp, past
+// store's own staleness window, directly in the file — the same technique
+// TestInfoReportsAFailedPlanReadOnAnAlreadyHydratedPlan uses to reach into an
+// already-hydrated plan from outside the store package.
+func staleTheReplica(t *testing.T, projectID string) {
+	t.Helper()
+	path, err := store.LocalPath(projectID)
+	if err != nil {
+		t.Fatalf("LocalPath: %v", err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatalf("open the plan: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	old := time.Now().Add(-time.Hour).UTC().Format("2006-01-02T15:04:05.000Z")
+	if _, err := db.Exec(`UPDATE project SET synced_at = ? WHERE id = ?`, old, projectID); err != nil {
+		t.Fatalf("backdate synced_at: %v", err)
 	}
 }
 

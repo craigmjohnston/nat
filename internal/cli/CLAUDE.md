@@ -55,7 +55,11 @@ neither Notion nor config), `paths` (prints config/log/nudge paths),
 `status` (live tmux sessions + activity, no Notion at all; `--json` also gives each agent's `model`, `effort` and `context_percent` from its teed statusline — see `internal/agent/CLAUDE.md` — each omitted when unknown), `usage` (see
 below — a property of the logged-in Claude account, not of any project).
 
-Project-scoped reads: `info`, `slice-show` (full slice incl. computed
+Project-scoped reads: `info` (reads the replica as it stands —
+`store.StoredPlan`, never [`Mirrored`]'s staleness pull, since every `nat`
+is a fresh process with no board around to watch that copy age; `--refresh`
+restores the staleness-pull behaviour every other reader of a `Mirrored`
+still gets), `slice-show` (full slice incl. computed
 `State` — **computed with `domain.AgentNone`/`domain.PRUnread`, never a live
 tmux/gh reading**, so `working`/`awaiting review`/`ready to merge` collapse
 to whatever the page alone implies; only `slice-status`'s narrower read
@@ -105,6 +109,14 @@ once, or `--drop-all` alone; refuses a Todo slice, nothing pending, and any
 nudges, then sends one message — a failed send exits non-zero with the
 record standing). See root CLAUDE.md's Follow-ups rule.
 
+`slice-show --json`'s `events` is the slice's whole task log: every
+`store.TaskEvent` its body carries (`handed_back`/`sent_back`/`relaunched`/
+`released`/`blocked`/`summary`/`follow_ups`), in body order, plus — read off
+the slice's properties rather than its body — an `approved` event where a
+pull request is recorded and a `merged` event where the slice is Done with a
+pull request or branch recorded. Always an array, never `omitempty`: the app
+ranges over it with no nil check.
+
 `slice-visuals` (held slices, or — `canHandInVisuals` — a Done slice with a
 PR recorded, assigned to you where the project has an Assignee column: a fix
 session's, its PR not re-checked with gh; `--visual` repeatable, first line the
@@ -115,11 +127,16 @@ is filed as given. `Store.RecordVisuals`, nudge, print — never blocks
 `complete-slice`. `slice-show --json`'s `visuals` reads back the last section
 (`store.VisualChanges`). See root CLAUDE.md's Visual changes rule.
 
-`slice-rework` (handed-back slices only): clears the slice's `Branch` and
-nothing else (`Store.ClearBranch`), so it reads as in progress until the agent's
-next `complete-slice --branch` re-records it — the deterministic signal gnat's
-approve-over-comments flow waits on. The recorded PR description stays on the
-page for the eventual `slice-approve`.
+`slice-rework` (handed-back slices only): `--comments` (optional, `-` reads
+stdin) records what the review said under a `Sent back` heading
+(`Store.RecordSentBack`) **before** clearing the slice's `Branch` — same
+order as a hand-back's own note before its status write, for the same reason:
+a slice already cleared back out of review would read, to this command's own
+refusal, as never handed back, so the comments would be lost rather than
+retried. `ClearBranch` leaves everything else alone, so it reads as in
+progress until the agent's next `complete-slice --branch` re-records it — the
+deterministic signal gnat's approve-over-comments flow waits on. The recorded
+PR description stays on the page for the eventual `slice-approve`.
 
 PR actions: `slice-approve` (`actions.OpenPR` + `actions.RecordPR`, the
 approve key's two-step write, headless), `pr-comment` (`gh pr comment
@@ -179,14 +196,45 @@ Untitled-tab workspace id (`plan:<id>`), run in a scratch dir nat makes at
 `agent-kill --workshop --workspace <id>` ends only that tab's own session —
 never the legacy bare one.
 
-`plan-proposal --workspace <id> --json` reads back what `plan-propose` wrote
-(`{"proposal": null}` with none yet — the app polls it on every nudge; a file
-that won't parse is an error, which the app logs and ignores). `plan-accept
---workspace <id> --name <name>` is the user's Accept: `createLocalProject` (no
-working dir — Settings gives it later, as for an opened folder), then the
-proposal's plan through `applyPlan`, then the proposal file removed. Refusals
-(no proposal, empty name, an invalid plan) all land before the project is made;
-a failure while filing leaves the project, what was filed and the proposal.
+`plan-propose`, `plan-proposal` and `plan-accept` each take exactly one of
+`--workspace <id>` (a brand-new project, still being workshopped) or
+`--project <id>` (a revision to a project already tracked) — both or
+neither is a usage error on all three. The proposal file is keyed by
+whichever id named it (`proposals/<key>.json`); `proposalDoc` carries both
+`Workspace` and `Project`, each `omitempty`, so only the one that applies is
+ever written.
+
+`plan-propose --workspace <id> --name <name> [FILE]` validates a drafted plan
+with nothing of a project's own to resolve against — every milestone a slice
+names, and everything `depends_on` reaches, has to be something the same
+document creates, and a top-level `dependencies` list is refused outright —
+and writes it to the proposal file instead of Notion. `plan-propose --project
+<id> [--name <name>] [FILE]` (name optional) validates instead against that
+project's current shape and, where the plan depends on anything, its slices
+— `validateAgainstProject` is the one implementation this, `plan-apply`, and
+`plan-accept --project` all call, so a plan a live project would refuse is
+refused the same way by whichever of the three asks. Running either again for
+the same key replaces its proposal — how a revision lands.
+
+`plan-proposal (--workspace <id> | --project <id>) --json` reads back what
+`plan-propose` wrote for that key (`{"proposal": null}` with none yet — the
+app polls it on every nudge; a file that won't parse is an error, which the
+app logs and ignores).
+
+`plan-accept (--workspace <id> --name <name> | --project <id>)` is the user's
+Accept. `--workspace` makes a local project (`createLocalProject`, no working
+dir — Settings gives it later, as for an opened folder), then files the
+proposal's plan through `applyPlan`, then drops the proposal file; no
+`--name` with `--project`, since the project already has one. `--project`
+re-validates the proposal's plan against that project's *current* plan with
+`validateAgainstProject` — a plan the project has outgrown since the
+proposal was written (a milestone renamed, a slice a `depends_on` named
+since deleted) is refused here, not half-applied — applies it, nudges only
+once something was actually written (as `plan-apply` does), then drops the
+proposal file. Refusals (no proposal, empty name, an invalid or outgrown
+plan) all land before anything is written; a failure partway through filing
+leaves the project (made or already there), what was filed, and the
+proposal, in place.
 
 ## `usage`
 

@@ -467,9 +467,11 @@ final class NatClientTests: XCTestCase {
         let fakeRunner = FakeRunner(fixture: .agentSendSuccess)
         let client = NatClient(commandRunner: fakeRunner)
 
-        try await client.sliceRework(projectID: "proj-123", sliceRef: "slice-1")
+        try await client.sliceRework(projectID: "proj-123", sliceRef: "slice-1", comments: "clamp this")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["slice-rework", "--project", "proj-123", "slice-1"])
+        XCTAssertEqual(
+            fakeRunner.lastArguments, ["slice-rework", "--project", "proj-123", "slice-1", "--comments", "-"])
+        XCTAssertEqual(fakeRunner.lastStandardInput, "clamp this".data(using: .utf8))
     }
 
     /// A client that does not implement the rework — every test double but
@@ -477,7 +479,7 @@ final class NatClientTests: XCTestCase {
     func testAClientWithoutReworkRefuses() async {
         let client = MockActivityClient(response: .agents([]))
         do {
-            try await client.sliceRework(projectID: "p", sliceRef: "s")
+            try await client.sliceRework(projectID: "p", sliceRef: "s", comments: "")
             XCTFail("expected a refusal")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("slice-rework"))

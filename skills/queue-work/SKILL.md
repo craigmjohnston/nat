@@ -85,6 +85,14 @@ already in front of you and this read is only for when it later goes stale.
    anything you chose to leave out or split.
 2. **Write nothing until the user explicitly approves.** Iterate on their
    feedback by revising the proposal, not by writing part of it.
+
+   If your launch prompt says the app takes proposals instead
+   (`nat plan-propose --project <project>`), follow the prompt: propose the
+   plan there instead of applying it yourself, as soon as you have a draft
+   and again on every revision — the user's Accept in the app is the one
+   approval and what applies it. Steps 3 and 4 below, and the plain-terminal
+   approve-then-apply flow, are for a launch whose prompt says nothing of
+   the kind.
 3. On approval, write the whole plan in one go by piping this document to
    `nat plan-apply --project <project>`:
 

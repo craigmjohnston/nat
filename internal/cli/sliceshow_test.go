@@ -214,6 +214,157 @@ func TestSliceShowIncludeBrief(t *testing.T) {
 	}
 }
 
+// taskLogBlocks is a slice page body of a heading_3 and one paragraph under
+// it, the shape a task-log section takes.
+func taskLogBlocks(t *testing.T, heading, text string) []notion.Block {
+	t.Helper()
+	raw := `[` +
+		`{"id":"h1","type":"heading_3","heading_3":{"rich_text":[{"plain_text":` + mustJSON(t, heading) + `}]}},` +
+		`{"id":"p1","type":"paragraph","paragraph":{"rich_text":[{"plain_text":` + mustJSON(t, text) + `}]}}` +
+		`]`
+	var blocks []notion.Block
+	if err := json.Unmarshal([]byte(raw), &blocks); err != nil {
+		t.Fatal(err)
+	}
+	return blocks
+}
+
+// The task log is read off the slice's body, in body order.
+func TestSliceShowEventsFromTheBody(t *testing.T) {
+	const sliceID = "3b738308f65481708c99eccab4463d8f"
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			sliceID: {slicePageWithBranch(sliceID, "Test slice", notion.SliceInProgress, "M1: First", "")},
+		},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": selectMilestoneSlicesDS("M1: First"),
+		},
+		blocksByID: map[string][]notion.Block{
+			sliceID: taskLogBlocks(t, "Sent back", "Rename the helper."),
+		},
+	}
+	env, out := testEnv(testConfig(t), api)
+
+	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-show --json: %v", err)
+	}
+
+	var got sliceShowJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	if len(got.Events) != 1 || got.Events[0].Kind != "sent_back" || got.Events[0].Note != "Rename the helper." {
+		t.Errorf("events = %+v, want one sent_back event", got.Events)
+	}
+}
+
+// A slice with nothing in its task log yet still answers an empty array, not
+// a null, so a consumer can range over it with no nil check.
+func TestSliceShowEventsIsAnEmptyArrayNotNull(t *testing.T) {
+	const sliceID = "3b738308f65481708c99eccab4463d8f"
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			sliceID: {slicePageWithBranch(sliceID, "Test slice", notion.SliceTodo, "M1: First", "")},
+		},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": selectMilestoneSlicesDS("M1: First"),
+		},
+	}
+	env, out := testEnv(testConfig(t), api)
+
+	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-show --json: %v", err)
+	}
+	if !strings.Contains(out.String(), `"events": []`) {
+		t.Errorf("output =\n%s\nwant an empty events array", out.String())
+	}
+	var got sliceShowJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not JSON: %v", err)
+	}
+	if got.Events == nil {
+		t.Error("Events = nil, want an empty slice")
+	}
+}
+
+// A recorded pull request is an "approved" event, named by its URL, appended
+// after whatever the body itself carries.
+func TestSliceShowEventsIncludesApproved(t *testing.T) {
+	const sliceID = "3b738308f65481708c99eccab4463d8f"
+	page := slicePageWithBranch(sliceID, "Test slice", notion.SliceInProgress, "M1: First", "")
+	page.Properties[notion.PropPR] = notion.NewURL("https://github.com/o/r/pull/12")
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{sliceID: {page}},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": selectMilestoneSlicesDS("M1: First"),
+		},
+	}
+	env, out := testEnv(testConfig(t), api)
+
+	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-show --json: %v", err)
+	}
+	var got sliceShowJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not JSON: %v", err)
+	}
+	if len(got.Events) != 1 || got.Events[0].Kind != "approved" || got.Events[0].PR != "https://github.com/o/r/pull/12" {
+		t.Errorf("events = %+v, want one approved event naming the PR", got.Events)
+	}
+}
+
+// A Done slice with a pull request recorded carries both an "approved" and a
+// "merged" event, in that order.
+func TestSliceShowEventsIncludesApprovedAndMerged(t *testing.T) {
+	const sliceID = "3b738308f65481708c99eccab4463d8f"
+	page := slicePageWithBranch(sliceID, "Test slice", notion.SliceDone, "M1: First", "")
+	page.Properties[notion.PropPR] = notion.NewURL("https://github.com/o/r/pull/12")
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{sliceID: {page}},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": selectMilestoneSlicesDS("M1: First"),
+		},
+	}
+	env, out := testEnv(testConfig(t), api)
+
+	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-show --json: %v", err)
+	}
+	var got sliceShowJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not JSON: %v", err)
+	}
+	if len(got.Events) != 2 || got.Events[0].Kind != "approved" || got.Events[1].Kind != "merged" {
+		t.Errorf("events = %+v, want approved then merged", got.Events)
+	}
+}
+
+// A Done slice with only a branch recorded (merged with no pull request
+// ever opened) is a "merged" event alone, with no "approved" before it.
+func TestSliceShowEventsMergedWithNoPR(t *testing.T) {
+	const sliceID = "3b738308f65481708c99eccab4463d8f"
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			sliceID: {slicePageWithBranch(sliceID, "Test slice", notion.SliceDone, "M1: First", "branch-1")},
+		},
+		dataSources: map[string]notion.DataSource{
+			"slices-ds": selectMilestoneSlicesDS("M1: First"),
+		},
+	}
+	env, out := testEnv(testConfig(t), api)
+
+	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-show --json: %v", err)
+	}
+	var got sliceShowJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("output is not JSON: %v", err)
+	}
+	if len(got.Events) != 1 || got.Events[0].Kind != "merged" {
+		t.Errorf("events = %+v, want merged alone", got.Events)
+	}
+}
+
 func TestSliceShowNoDependencies(t *testing.T) {
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
 	api := &fakeAPI{

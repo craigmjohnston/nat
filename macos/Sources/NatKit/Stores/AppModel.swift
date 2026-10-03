@@ -53,6 +53,20 @@ public final class AppModel {
     /// selection: the rail draws one selected row.
     private var workshopSelectedProjects: Set<String> = []
 
+    /// The projects whose workshop has been opened and not yet launched or
+    /// dismissed — each holding a "Workshop the plan" row in Active while the
+    /// user is elsewhere, so clicking away loses neither the row nor the
+    /// draft under it. Per-project, beside `workshopSelectedProjects`; a
+    /// launch that takes hands the row to the live agent, and the row's ✕
+    /// (`closeWorkshopTab`) is the other way it goes.
+    public private(set) var workshopPinnedProjects: Set<String> = []
+
+    /// The request each project's workshop was launched on, as it was sent —
+    /// what the Brief section shows, read-only, once the draft it came from
+    /// has been cleared by the launch. In memory only: an agent this run did
+    /// not launch has no request here to show.
+    private var workshopRequests: [String: String] = [:]
+
     /// The composer's typed-but-not-yet-launched request, per project — kept
     /// here rather than as `WorkshopPaneView`'s own `@State` so switching to a
     /// slice and back does not tear the composer down with it (`PaneView`
@@ -68,8 +82,9 @@ public final class AppModel {
     /// took, or the tab closing.
     private var workshopPlanFiles: [String: PlanFile] = [:]
 
-    /// The plan each Untitled tab's workshop has proposed, by tab — what the
-    /// rail draws as the PROPOSED tree. Replaced in place by a revised one.
+    /// The plan each tab's workshop has proposed, by tab — an Untitled tab's
+    /// by its workspace, a project's by the project — what the sidebar draws
+    /// as the proposed tree. Replaced in place by a revised one.
     public private(set) var proposals: [String: PlanProposal] = [:]
 
     /// The project name the user has typed over the agent's suggestion, per
@@ -567,17 +582,21 @@ public final class AppModel {
             // unless it is all there is.
             let firstProjectID = sortedProjects.first { $0.key != scratchProjectID }?.key
                 ?? sortedProjects.first?.key
-            if let firstProjectID {
-                await activateProject(firstProjectID, nudgePath: nudgePath, config: loadedConfig)
-            }
 
-            // Every other tab needs a loaded plan too, so a live agent on a
-            // project the user has never clicked into still shows attention
-            // on its tab (`attention(projectID:)` has nothing to attribute
-            // without one) — loaded from each project's own cache and then
-            // refreshed in the background, never blocking startup on it.
+            // Every other tab needs a loaded plan too — the sidebar draws
+            // every project's tree, and a live agent on a project the user
+            // has never clicked into still shows attention on its tab
+            // (`attention(projectID:)` has nothing to attribute without one).
+            // Each is loaded from its own cache and then refreshed in the
+            // background, and started *before* the first project's
+            // activation is awaited: that runs its read, its review stats and
+            // a reaping sweep, and a tree waiting behind all of it is a tree
+            // that unfolds onto "loading…" when its cache was on disk all along.
             for tab in projectTabs where tab.id != firstProjectID {
                 loadBackgroundProject(tab.id)
+            }
+            if let firstProjectID {
+                await activateProject(firstProjectID, nudgePath: nudgePath, config: loadedConfig)
             }
         } catch {
             // No config file to read from is the common case here, not a
@@ -710,6 +729,7 @@ public final class AppModel {
         }
         forgetUntitledTab(projectID)
         workshopSelectedProjects.remove(projectID)
+        workshopPinnedProjects.remove(projectID)
         let closing = Set((stores[projectID]?.state.projectInfo?.slices ?? []).map(\.id))
         await reapFinishedAgents(ignoringHoldsFor: closing)
         projectTabs.remove(at: index)
@@ -856,6 +876,8 @@ public final class AppModel {
             sessions: sessionStore?.sessions ?? [],
             sessionsProjectID: activeProjectID,
             planningAgents: planningAgents,
+            pinnedWorkshops: workshopPinnedProjects,
+            launchingWorkshop: workshopLaunching ? activeProjectID : nil,
             fixLaunched: fixLaunchedSliceIDs)
     }
 
@@ -1058,6 +1080,28 @@ public final class AppModel {
         }
     }
 
+    /// What the active project's workshop was launched on, as the Brief
+    /// shows it once launched — nil where this run launched nothing there.
+    public var workshopRequest: String? {
+        activeProjectID.flatMap { workshopRequests[$0] }
+    }
+
+    /// Whether a project's workshop row is pinned to Active.
+    public func isWorkshopPinned(_ projectID: String) -> Bool {
+        workshopPinnedProjects.contains(projectID)
+    }
+
+    /// The ✕ on a pinned workshop row with nothing running: the row and its
+    /// draft go, wherever the user is — it navigates nowhere. One with a live
+    /// agent is `closeWorkshopTab`'s, after the caller has asked.
+    public func dismissWorkshop(inProject projectID: String) {
+        workshopPinnedProjects.remove(projectID)
+        workshopDrafts[projectID] = nil
+        workshopPlanFiles[projectID] = nil
+        workshopRequests[projectID] = nil
+        workshopSelectedProjects.remove(projectID)
+    }
+
     /// The plan document attached to the Untitled tab on screen, if any.
     public var workshopPlanFile: PlanFile? {
         activeProjectID.flatMap { workshopPlanFiles[$0] }
@@ -1116,6 +1160,8 @@ public final class AppModel {
         workspaceIDs[tabID] = nil
         workshopDrafts[tabID] = nil
         workshopPlanFiles[tabID] = nil
+        workshopPinnedProjects.remove(tabID)
+        workshopRequests[tabID] = nil
         proposals[tabID] = nil
         proposalNameEdits[tabID] = nil
         if !projectTabs.contains(where: { isUntitledTab($0.id) }) {
@@ -1138,9 +1184,12 @@ public final class AppModel {
         proposalWatcher = watcher
     }
 
-    /// Read every Untitled tab's proposal. One that will not read or parse is
-    /// logged and leaves the tab exactly as it was — the agent will propose
-    /// again — and none yet is the ordinary state, not news.
+    /// Read every workshop's proposal: each Untitled tab's by its workspace,
+    /// and each project's whose workshop could have one — its planning agent
+    /// live, its row pinned, or a proposal already on screen — by the
+    /// project. One that will not read or parse is logged and leaves the tab
+    /// exactly as it was — the agent will propose again — and none yet is
+    /// the ordinary state, not news.
     public func refreshProposals() async {
         for (tabID, workspace) in workspaceIDs {
             let proposal: PlanProposal?
@@ -1155,11 +1204,33 @@ public final class AppModel {
             proposals[tabID] = proposal
             proposalError = nil
         }
+        let planners = planningAgents
+        for tab in projectTabs where !isUntitledTab(tab.id) {
+            guard planners[tab.id] != nil || workshopPinnedProjects.contains(tab.id) || proposals[tab.id] != nil
+            else { continue }
+            let proposal: PlanProposal?
+            do {
+                proposal = try await clientFactory().planProposal(projectID: tab.id)
+            } catch {
+                NSLog("AppModel: could not read the proposal for %@: %@", tab.id, error.localizedDescription)
+                continue
+            }
+            guard let proposal, projectTabs.contains(where: { $0.id == tab.id }), proposals[tab.id] != proposal
+            else { continue }
+            proposals[tab.id] = proposal
+            proposalError = nil
+        }
     }
 
-    /// The proposal the Untitled tab on screen holds, if any.
+    /// The proposal the tab on screen holds, if any.
     public var activeProposal: PlanProposal? {
         activeProjectID.flatMap { proposals[$0] }
+    }
+
+    /// The proposal a tab holds, if any — what the sidebar draws under its
+    /// row.
+    public func proposal(forTab tabID: String) -> PlanProposal? {
+        proposals[tabID]
     }
 
     /// The name field: the user's own text, or the agent's suggestion until
@@ -1182,15 +1253,19 @@ public final class AppModel {
         terminalFocusRequest += 1
     }
 
-    /// "Accept plan": make the proposal a local project named from the field,
-    /// end the workshop session — accepting is the goodbye — and hand the tab
-    /// over to the project. An empty name refuses at the field; a refusal from
-    /// nat leaves the tab and its proposal as they were, with the reason at the
-    /// field.
+    /// "Accept plan": on an Untitled tab, make the proposal a local project
+    /// named from the field, end the workshop session — accepting is the
+    /// goodbye — and hand the tab over to the project. An empty name refuses
+    /// at the field; a refusal from nat leaves the tab and its proposal as
+    /// they were, with the reason at the field. On a project's tab it files
+    /// the proposal into the project — `acceptProjectProposal`.
     public func acceptProposal() async {
-        guard let tabID = activeProjectID, isUntitledTab(tabID),
-              let workspace = workspaceIDs[tabID], proposals[tabID] != nil,
-              !proposalAccepting else { return }
+        guard let tabID = activeProjectID, proposals[tabID] != nil, !proposalAccepting else { return }
+        guard isUntitledTab(tabID) else {
+            await acceptProjectProposal(tabID)
+            return
+        }
+        guard let workspace = workspaceIDs[tabID] else { return }
         let name = proposalName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
             proposalError = ProposalText.emptyNameError
@@ -1212,6 +1287,32 @@ public final class AppModel {
             mirrorNudgePending.insert(accepted.project.id)
             await addProject(id: accepted.project.id, name: accepted.project.name, replacing: tabID)
             activityStore?.kick()
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                proposalError = message
+            } else {
+                proposalError = error.localizedDescription
+            }
+        } catch {
+            proposalError = error.localizedDescription
+        }
+    }
+
+    /// A project workshop's Accept: `nat plan-accept --project` files the
+    /// proposal into the project through plan-apply's own validation and
+    /// drops it, and the project's tree is read again with the plan in it.
+    /// Unlike an Untitled tab's, the session is left running — the project
+    /// was there before the workshop and is there after it, and the user may
+    /// well keep planning — so the terminal stays where it was. A refusal
+    /// leaves the proposal on screen with nat's reason under it.
+    private func acceptProjectProposal(_ projectID: String) async {
+        proposalAccepting = true
+        proposalError = nil
+        defer { proposalAccepting = false }
+        do {
+            _ = try await clientFactory().planAccept(projectID: projectID)
+            proposals[projectID] = nil
+            await stores[projectID]?.refresh()
         } catch let error as NatError {
             if case .commandFailed(let message) = error {
                 proposalError = message
@@ -1281,6 +1382,7 @@ public final class AppModel {
         selectedSliceIDs[oldID] = nil
         selectedSessionIDs[oldID] = nil
         workshopSelectedProjects.remove(oldID)
+        workshopPinnedProjects.remove(oldID)
         workshopDrafts[oldID] = nil
         acceptedPlans[oldID] = nil
         let tab = (id: project.id, name: config?.projects[project.id]?.name ?? project.name)
@@ -1317,6 +1419,9 @@ public final class AppModel {
                 workshopSelectedProjects.insert(activeID)
                 selectedSliceIDs[activeID] = nil
                 selectedSessionIDs[activeID] = nil
+                // Opened with nothing running: pinned to Active until it is
+                // launched or dismissed, so clicking away keeps its row.
+                if planningAgent == nil { workshopPinnedProjects.insert(activeID) }
             } else {
                 workshopSelectedProjects.remove(activeID)
             }
@@ -1359,6 +1464,11 @@ public final class AppModel {
 
         workshopLaunching = true
         workshopLaunchError = nil
+        // What the Brief shows, read-only, from the moment Launch is pressed:
+        // the draft it came from is cleared by a launch that takes, and one
+        // that does not takes this back off again.
+        workshopRequests[projectID] = [trimmed, planFile.map { "Attached: \($0.name)" }]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
         do {
             if let workspace {
                 _ = try await clientFactory().workspaceLaunch(
@@ -1395,10 +1505,15 @@ public final class AppModel {
         if workshopLaunchError == nil {
             // The one thing that discards the draft besides the ✕: a launch
             // that took is the request actually being used, so there is
-            // nothing left in it worth keeping for the next visit.
+            // nothing left in it worth keeping for the next visit — bar the
+            // request itself, which the Brief goes on showing.
             workshopDrafts[projectID] = nil
             workshopPlanFiles[projectID] = nil
             await settleOnPlanningAgent()
+            // The live agent's row takes the pinned one's place.
+            if workshopLaunchError == nil { workshopPinnedProjects.remove(projectID) }
+        } else {
+            workshopRequests[projectID] = nil
         }
         workshopLaunching = false
     }
@@ -1454,6 +1569,9 @@ public final class AppModel {
         guard let projectStore = projectStore else { return }
         refreshBackgroundProjects()
         await projectStore.refresh()
+        // A project workshop's `plan-propose` nudges like any other write, so
+        // this is what brings its proposal up, and a revision over it.
+        await refreshProposals()
         await settlePendingApprovals(projectStore: projectStore)
         await updateReviewStats(projectID: projectStore.projectID, projectStore: projectStore)
         await reapFinishedAgents()
@@ -1602,6 +1720,8 @@ public final class AppModel {
             if let refusal = await killWorkshopAgent() { return refusal }
         }
         workshopDrafts[projectID] = nil
+        workshopRequests[projectID] = nil
+        workshopPinnedProjects.remove(projectID)
         workshopSelected = false
         return nil
     }

@@ -47,7 +47,7 @@ struct SliceNavigatorView: View {
         let nav = nav
         NavigatorColumn(anyOpen: !open.isEmpty) {
             NavSectionView(
-                label: NavigatorSection.thread.label, open: open.contains(.thread),
+                label: nav.threadLabel, open: open.contains(.thread),
                 selected: main == .terminal && nav.agentAvailable,
                 onHead: { click(.thread) }, onFold: { fold(.thread) }
             ) {
@@ -314,18 +314,32 @@ struct SliceNavigatorView: View {
         }
     }
 
-    /// The brief, what has happened since, any follow-ups, and — while the
-    /// slice can be launched — the launch card that says what comes next.
+    /// The brief, what has happened since — follow-ups in their place among
+    /// it, a proposal still awaiting a decision drawn as the card that takes
+    /// one — and, while the slice can be launched, the launch card that says
+    /// what comes next.
     @ViewBuilder
     private func threadBody(_ nav: NavigatorModel) -> some View {
+        let log = buildThreadEvents(
+            slice: slice, agent: agent, brief: detail.detail?.brief, events: detail.detail?.events)
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(spacing: 6) {
                     briefCard
-                    ForEach(Array(buildThreadEvents(slice: slice, agent: agent, brief: detail.detail?.brief).enumerated()), id: \.offset) {
-                        ThreadEventCard(event: $0.element)
+                    ForEach(Array(log.enumerated()), id: \.offset) { _, event in
+                        if event.awaitsTriage {
+                            if !followUps.isEmpty {
+                                FollowUpCards(
+                                    appModel: appModel, slice: slice, followUps: followUps, milestone: milestoneName,
+                                    hasLiveAgent: agent != nil)
+                            }
+                        } else {
+                            ThreadEventCard(event: event)
+                        }
                     }
-                    if !followUps.isEmpty {
+                    // A reading with no proposal in its log (a nat too old to
+                    // report one) still gets its pending follow-ups' card.
+                    if !followUps.isEmpty && !log.contains(where: \.awaitsTriage) {
                         FollowUpCards(appModel: appModel, slice: slice, followUps: followUps, milestone: milestoneName, hasLiveAgent: agent != nil)
                     }
                     if nav.showsLaunch {

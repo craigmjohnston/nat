@@ -612,7 +612,7 @@ func TestPromptFlagsAWorktreesOverrideByItsCheckout(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // merely says "the `nat` commands" is not read as one.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|release-slice|milestone-add|slice-add|slice-depends|plan-apply|plan-propose|project-create)\b`)
 
 // natCommands are the invocations a prompt names: each from the command word to
 // the end of its line, and on through the lines a trailing backslash continues
@@ -700,6 +700,7 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 		"fix":            Prompt(fixContext()),
 		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
 		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
+		"plan gnat":      PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
 	} {
 		cmds := natCommands(text)
 		if len(cmds) == 0 {

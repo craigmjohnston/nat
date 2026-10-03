@@ -53,10 +53,13 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
 
     /// Every `slice-rework` call this client received, in order.
     private(set) var reworkCalls: [String] = []
+    /// What each of those calls filed as the comments sent back.
+    private(set) var reworkComments: [String] = []
     var reworkError: Error?
 
-    func sliceRework(projectID: String, sliceRef: String) async throws {
+    func sliceRework(projectID: String, sliceRef: String, comments: String) async throws {
         reworkCalls.append(sliceRef)
+        reworkComments.append(comments)
         if let reworkError { throw reworkError }
     }
 
@@ -904,6 +907,12 @@ final class DiffStoreTests: XCTestCase {
         try await store.sendComments(projectID: "proj-1", sliceRef: "slice-1")
 
         XCTAssertEqual(client.reworkCalls, ["slice-1"])
+        // What the page files under Sent back: the comment and where it sits,
+        // without the quoted lines or the hand-back instruction.
+        XCTAssertEqual(client.reworkComments.count, 1)
+        XCTAssertTrue(client.reworkComments[0].hasPrefix("a.go, "))
+        XCTAssertTrue(client.reworkComments[0].hasSuffix(": clamp this"))
+        XCTAssertFalse(client.reworkComments[0].contains("complete-slice"))
         let prompt = client.sentPrompts[0].text
         XCTAssertTrue(prompt.hasSuffix(
             "nat complete-slice slice-1 --project proj-1 --branch nat/example --summary '<what you changed for these comments>'\n"))

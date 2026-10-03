@@ -38,6 +38,13 @@ public struct PendingVisualComment: Identifiable, Equatable, Sendable {
     }
 }
 
+/// The comments a send carried, as the slice's page keeps them under `Sent
+/// back` — `commentsRecord`'s shape: one paragraph per comment, its image and
+/// where on it, then what it says.
+public func visualCommentsRecord(_ comments: [PendingVisualComment]) -> String {
+    comments.map { "\($0.name), \($0.placement): \($0.text)" }.joined(separator: "\n\n")
+}
+
 /// Builds the one turn every pending visual comment is delivered to the agent
 /// as, in `commentsPrompt`'s shape: what was reviewed, then each image by
 /// name and URI with its comments under it, each saying where on the image it

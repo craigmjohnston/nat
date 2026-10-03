@@ -361,6 +361,108 @@ func TestLaunchReportsAFailedStart(t *testing.T) {
 	}
 }
 
+// TestLaunchRecordsARelaunchWhenTheSliceWasNotTodo covers a launch picking a
+// session back up: the slice was already In progress before this claim (a
+// relaunch, placed back on its own branch), so the task log gets one more
+// line saying so.
+func TestLaunchRecordsARelaunchWhenTheSliceWasNotTodo(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil }}
+
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), nil, "u1",
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed}, WorkingDir: t.TempDir()},
+		config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if len(client.appended) != 1 || client.appended[0] != "s5" {
+		t.Errorf("appended = %v, want the Relaunched note filed on the slice", client.appended)
+	}
+}
+
+// A slice still Todo, with nothing yet in its task log, is a fresh launch:
+// nothing is written about a relaunch.
+func TestLaunchWritesNoRelaunchForAFreshLaunch(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil }}
+
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), nil, "u1",
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceTodo}, WorkingDir: t.TempDir()},
+		config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if len(client.appended) != 0 {
+		t.Errorf("appended = %v, want nothing written about a relaunch", client.appended)
+	}
+}
+
+// A slice that reads Todo (the caller's own record may be stale) but whose
+// brief already carries a task event from an earlier pass is a relaunch too.
+func TestLaunchRecordsARelaunchWhenTheBriefAlreadyHasATaskEvent(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{
+		getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		blocks: func(id string) ([]notion.Block, error) {
+			if id == "s5" {
+				return []notion.Block{
+					block(t, "heading_3", "Sent back"),
+					block(t, "paragraph", "Rename the helper."),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), nil, "u1",
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceTodo}, WorkingDir: t.TempDir()},
+		config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if len(client.appended) != 1 || client.appended[0] != "s5" {
+		t.Errorf("appended = %v, want the Relaunched note filed on the slice", client.appended)
+	}
+}
+
+// A fix launch claims nothing at all, so it never reaches the relaunch write
+// either — see claim-less fix launches in TestLaunchGathersTheReviewForAFixLaunch.
+func TestLaunchNeverRecordsARelaunchForAFixLaunch(t *testing.T) {
+	client := &fakeClient{}
+	_, err := Launch(context.Background(), &fakeLauncher{}, &fakeWorktrees{}, &fakeRepo{base: "origin/main"},
+		client.store(), &fakeReviewer{}, "u1",
+		agent.PromptContext{
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceDone, PRURL: "https://example/pr/1"},
+			WorkingDir: t.TempDir(), Fix: true,
+		}, config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	if len(client.appended) != 0 {
+		t.Errorf("appended = %v, want a fix launch to write nothing", client.appended)
+	}
+}
+
+// A relaunch note that fails to write is logged and never fails the launch:
+// the agent is still started.
+func TestLaunchToleratesAFailedRelaunchWrite(t *testing.T) {
+	l := &fakeLauncher{}
+	client := &fakeClient{
+		getPage:      func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+		appendBlocks: func(string, []map[string]any) ([]notion.Block, error) { return nil, errors.New("notion: 500") },
+	}
+
+	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), nil, "u1",
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed}, WorkingDir: t.TempDir()},
+		config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through despite the failed note", err)
+	}
+	if res.Session == "" {
+		t.Error("session = \"\", want the agent launched regardless")
+	}
+}
+
 func TestWorkdirFor(t *testing.T) {
 	project := config.ProjectConfig{WorkingDir: "/Users/craig/Projects/tracker"}
 	tests := []struct {

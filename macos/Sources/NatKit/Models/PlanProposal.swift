@@ -63,7 +63,9 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decode(String.self, forKey: .name)
+        // A project's own workshop proposes into a project that already has
+        // a name, and may suggest none.
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         let plan = try container.decode(Plan.self, forKey: .plan)
         let slices = plan.slices ?? []
         milestones = (plan.milestones ?? []).map { milestone in
@@ -114,6 +116,11 @@ public enum ProposalText {
     /// The caption under the buttons, tracking the name field.
     public static func acceptCaption(name: String) -> String {
         "Accepting writes the plan to local storage as “\(name)”."
+    }
+
+    /// The same caption on a project's own workshop, which has its name.
+    public static func projectAcceptCaption(project: String) -> String {
+        "Accepting files these milestones and tasks into “\(project)”."
     }
 
     public static func acceptedSubtitle(milestones: Int, slices: Int) -> String {
