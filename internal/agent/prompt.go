@@ -354,6 +354,8 @@ func Prompt(c PromptContext) string {
 	b.WriteString("that doubling it on every touch adds up fast. The shell is for running\n")
 	b.WriteString("things — tests, git, the verification gate — not for reading or editing\n")
 	b.WriteString("files.\n\n")
+	b.WriteString(testingPassage("immediately before you hand back"))
+	b.WriteString("\n")
 	switch {
 	case Resuming(c):
 		b.WriteString("That directory is a git worktree cut for this slice alone, already on\n")
@@ -437,6 +439,11 @@ func Prompt(c PromptContext) string {
 	b.WriteString("what the change does and why, for whoever reviews it on GitHub, not a\n")
 	b.WriteString("report of your session. Pass `--pr-description -` to read it from stdin\n")
 	b.WriteString("when it is too long for an argument, and give `--summary` as a flag then.\n\n")
+	b.WriteString("Handing the same slice back a second time, leave `--pr-description` off\n")
+	b.WriteString("where the one already filed still describes the change: the last one\n")
+	b.WriteString("filed is what the pull request opens with, so restating it unchanged only\n")
+	b.WriteString("sends it again. Where the change has moved, amend the one you filed and\n")
+	b.WriteString("pass it whole — it replaces the earlier one, it is not added to it.\n\n")
 	b.WriteString("Make no unverifiable claims in either one: say only what you actually\n")
 	b.WriteString("checked, never what you assume or expect to be true. \"nothing invented\"\n")
 	b.WriteString("about a value you interpolated rather than read is exactly the kind of\n")
@@ -637,6 +644,20 @@ func visualsPassage(c PromptContext, when string) string {
 	b.WriteString("project has none — go on without images instead. The user reviews them\n")
 	b.WriteString("in the app; their comments, if any, arrive here as a message.\n\n")
 	return b.String()
+}
+
+// testingPassage holds a slice agent — a fresh one or a fix session — to
+// targeted tests while it iterates and one full gate at the end, where end is
+// when that is: most of the test time across audited sessions went on full-suite
+// runs mid-loop. CLAUDE.md's conventions and skills/next-slice/SKILL.md say the
+// same in their own words. A test walks each slice and fix prompt for it.
+func testingPassage(end string) string {
+	return "While you iterate, run only the tests for what you are touching — one\n" +
+		"package, `go test -run <Name>`, `swift test --filter <Name>` — never the\n" +
+		"full suite or the coverage gate mid-loop. Run the full verification gate\n" +
+		"once, " + end + "; if it fails, fix it with targeted runs\n" +
+		"and run the gate once more. Batch a stage's edits and build once per\n" +
+		"batch, not once per edit.\n"
 }
 
 // notesPassage tells a slice agent — a fresh one or a fix session — how to

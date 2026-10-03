@@ -88,7 +88,8 @@ func fixPrompt(c PromptContext) string {
 	}
 	b.WriteString("Read files with the Read tool, not `cat`/`sed`/`head`, and edit with Edit\n")
 	b.WriteString("or Write, not a shell heredoc — the shell is for running things, not for\n")
-	b.WriteString("reading or editing files.\n")
+	b.WriteString("reading or editing files.\n\n")
+	b.WriteString(testingPassage("immediately before you push"))
 	b.WriteString(gitSnapshotSection(c))
 
 	b.WriteString("\n## Already in your context\n\n")

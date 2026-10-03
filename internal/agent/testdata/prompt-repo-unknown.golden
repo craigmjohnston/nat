@@ -114,6 +114,13 @@ that doubling it on every touch adds up fast. The shell is for running
 things — tests, git, the verification gate — not for reading or editing
 files.
 
+While you iterate, run only the tests for what you are touching — one
+package, `go test -run <Name>`, `swift test --filter <Name>` — never the
+full suite or the coverage gate mid-loop. Run the full verification gate
+once, immediately before you hand back; if it fails, fix it with targeted runs
+and run the gate once more. Batch a stage's edits and build once per
+batch, not once per edit.
+
 Once the worktree above is cut, it is yours alone. If the work is code:
 commit there — exactly ONE change, this slice's — and push its branch.
 Do not create another branch and do not switch away; that one is what
@@ -198,6 +205,12 @@ line is the title and the rest the body, so write it ready to publish —
 what the change does and why, for whoever reviews it on GitHub, not a
 report of your session. Pass `--pr-description -` to read it from stdin
 when it is too long for an argument, and give `--summary` as a flag then.
+
+Handing the same slice back a second time, leave `--pr-description` off
+where the one already filed still describes the change: the last one
+filed is what the pull request opens with, so restating it unchanged only
+sends it again. Where the change has moved, amend the one you filed and
+pass it whole — it replaces the earlier one, it is not added to it.
 
 Make no unverifiable claims in either one: say only what you actually
 checked, never what you assume or expect to be true. "nothing invented"

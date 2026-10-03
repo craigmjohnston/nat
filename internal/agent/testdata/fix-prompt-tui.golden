@@ -38,6 +38,13 @@ Read files with the Read tool, not `cat`/`sed`/`head`, and edit with Edit
 or Write, not a shell heredoc — the shell is for running things, not for
 reading or editing files.
 
+While you iterate, run only the tests for what you are touching — one
+package, `go test -run <Name>`, `swift test --filter <Name>` — never the
+full suite or the coverage gate mid-loop. Run the full verification gate
+once, immediately before you push; if it fails, fix it with targeted runs
+and run the gate once more. Batch a stage's edits and build once per
+batch, not once per edit.
+
 ## Already in your context
 
 `CLAUDE.md` in the working directory — architecture and the verification
