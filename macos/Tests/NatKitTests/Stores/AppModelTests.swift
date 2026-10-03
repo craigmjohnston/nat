@@ -571,12 +571,14 @@ final class AppModelTests: XCTestCase {
     /// A model whose launches are the given closure's. `planningAgentAppears`
     /// is whether the activity poll behind it ever reports the session a
     /// launch starts — false is a launch nothing comes of, which is what the
-    /// settle wait gives up on. That wait is a no-op here, so a test never
-    /// spends thirty seconds finding out.
+    /// settle wait gives up on. That wait is 10ms here, so a test never
+    /// spends thirty seconds finding out (1.2s across the attempts at most),
+    /// yet real time rather than a yield: a loaded full-suite run does not
+    /// always land the poll within the attempts' worth of yields.
     @MainActor
     private func workshopModel(
         planningAgentAppears: Bool = false,
-        settleWait: @escaping @MainActor @Sendable () async -> Void = { await Task.yield() },
+        settleWait: @escaping @MainActor @Sendable () async -> Void = { try? await Task.sleep(for: .milliseconds(10)) },
         launcher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult
     ) async -> AppModel {
         let testConfig = NatProjectConfig(
@@ -804,8 +806,9 @@ final class AppModelTests: XCTestCase {
     @MainActor
     func testLaunchWorkshop_givesUpOnASessionThatNeverAppears() async {
         // The activity poll reports nothing, ever — a session that exited on
-        // the spot, or a tmux the poll cannot read.
-        let appModel = await workshopModel { _, _, _, _ in
+        // the spot, or a tmux the poll cannot read. Nothing is waited for,
+        // so the wait is a yield: real time would only slow the give-up.
+        let appModel = await workshopModel(settleWait: { await Task.yield() }) { _, _, _, _ in
             WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a")
         }
 
