@@ -356,6 +356,11 @@ about the right PR).
   `scripts/no-uncovered.sh` reads it exactly and prints any block nothing
   ran; one `go test ./...` writes it, since coverage merges across packages.
   `brew install golangci-lint` if missing.
+- While iterating, run only the tests for what you are touching — one
+  package, `go test -run <Name>`, `swift test --filter <Name>` — never the
+  full suite or the gate above mid-loop. Run the full gate once, immediately
+  before hand-back; if it fails, fix with targeted runs and run it once more.
+  Batch a stage's edits and build once per batch, not once per edit.
 - A macOS UI change is verified by rendering its gallery, not launching the
   app — see `macos/CLAUDE.md`/`macos/README.md`.
 - Before starting work, pull the latest `main` and branch off it. Only ever

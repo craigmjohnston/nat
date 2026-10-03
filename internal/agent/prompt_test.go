@@ -886,6 +886,37 @@ func TestSliceAndFixPromptsCarryTheNoteCommand(t *testing.T) {
 	}
 }
 
+// Every slice and fix prompt holds the agent to targeted tests mid-loop and
+// one full gate at its end, and every slice prompt says a second hand-back
+// leaves an unchanged PR description off rather than sending it again.
+func TestSliceAndFixPromptsCarryTheTestingRule(t *testing.T) {
+	for prompt, c := range map[string]PromptContext{
+		"slice":          testContext(),
+		"slice worktree": worktreeContext(),
+		"slice gnat":     gnatContext(),
+		"slice resume":   resumeContext(),
+		"slice no repo":  repoUnknownContext(),
+		"fix":            fixContext(),
+	} {
+		end := "immediately before you hand back"
+		if c.Fix {
+			end = "immediately before you push"
+		}
+		text := Prompt(c)
+		if !strings.Contains(text, testingPassage(end)) {
+			t.Errorf("the %s prompt does not carry the testing rule ending %q", prompt, end)
+		}
+		if again := "Handing the same slice back a second time"; c.Fix == strings.Contains(text, again) {
+			t.Errorf("the %s prompt: carries %q = %v, want %v", prompt, again, c.Fix, !c.Fix)
+		}
+	}
+	for _, want := range []string{"`go test -run <Name>`", "`swift test --filter <Name>`", "never the\nfull suite or the coverage gate mid-loop", "build once per\nbatch"} {
+		if !strings.Contains(testingPassage("x"), want) {
+			t.Errorf("the testing rule does not say %q", want)
+		}
+	}
+}
+
 // The pin is worth explaining as well as applying: an agent that understands
 // why puts --project on the commands it runs of its own accord, which are the
 // ones no prompt can spell out for it.

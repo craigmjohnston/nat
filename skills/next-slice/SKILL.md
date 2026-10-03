@@ -149,6 +149,12 @@ might not be.
   next: they are part of the brief.
 - Honour the brief's acceptance criteria and the project's verification gate
   before calling anything done.
+- While you iterate, run only the tests for what you are touching — one
+  package, `go test -run <Name>`, `swift test --filter <Name>` — never the full
+  suite or the coverage gate mid-loop. Run the full verification gate once,
+  immediately before you hand back; if it fails, fix it with targeted runs and
+  run the gate once more. Batch a stage's edits and build once per batch, not
+  once per edit.
 - **If the work is code**: the worktree is already on the slice's branch, so
   keep the change to exactly ONE branch's worth of work, commit there, and
   push the branch — do not create a branch of your own and do not switch to
@@ -260,6 +266,12 @@ report of your session. It is filed on the slice page under its own heading, so
 the user can approve the branch days later and still get it. Pass
 `--pr-description -` to read it from stdin when it is too long for an argument,
 and give `--summary` as a flag then, since stdin is taken.
+
+Handing the same slice back a second time, leave `--pr-description` off where
+the one already filed still describes the change: the last one filed is what
+the pull request opens with, so restating it unchanged only sends it again.
+Where the change has moved, amend the one you filed and pass it whole — it
+replaces the earlier one, it is not added to it.
 
 Make no unverifiable claims in either one: say only what you actually checked,
 never what you assume or expect to be true. A summary that says a value was
