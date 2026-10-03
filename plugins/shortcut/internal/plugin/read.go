@@ -1,0 +1,338 @@
+package plugin
+
+import (
+	"context"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/craigmjohnston/nat/internal/source"
+	"github.com/craigmjohnston/nat/plugins/shortcut/internal/shortcut"
+)
+
+// iconSVG is the Shortcut mark from the mock (gsc-shell.jsx's `I`), one
+// colour, painted with currentColor so gnat can draw it as a template image.
+const iconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M18.2765 8.46875H39.8392L30.0769 19.183L39.652 28.7301L29.7873 39.5561L8.15918 39.5506L17.9624 28.7915L8.42517 19.2828L18.2765 8.46875ZM19.7228 30.5467L13.8141 37.0315L26.2301 37.0346L19.7228 30.5467ZM29.2139 36.498L21.3993 28.7067L28.4005 21.0229L36.2151 28.8147L29.2139 36.498ZM26.6401 19.2677L19.6388 26.9516L11.8619 19.1979L18.8627 11.5129L26.6401 19.2677ZM28.3166 17.4277L34.183 10.9893H21.8593L28.3166 17.4277Z"/></svg>`
+
+// describeResponse is who the plugin is. It needs no project and no API call.
+func describeResponse() source.Describe {
+	return source.Describe{
+		Protocol:      source.ProtocolVersion,
+		Name:          "shortcut",
+		Title:         "Shortcut",
+		Tag:           "SC",
+		IconSymbol:    "rectangle.on.rectangle.angled",
+		IconSVG:       iconSVG,
+		ContainerNoun: "card",
+		TaskNoun:      "task",
+		Menu: []source.Action{
+			{ID: "refresh", Label: "Refresh", Input: source.InputNone},
+			{ID: "new-segment", Label: "New Segment…", Input: source.InputText},
+		},
+	}
+}
+
+func (a *app) describe(context.Context) ([]byte, error) {
+	return marshal(describeResponse()), nil
+}
+
+// segmentMenu is every Ready segment's menu.
+var segmentMenu = []source.Action{
+	{ID: "rename", Label: "Rename…", Input: source.InputText},
+	{ID: "edit-query", Label: "Edit Query…", Input: source.InputText},
+	{ID: "remove", Label: "Remove Segment", Input: source.InputNone, Destructive: true},
+}
+
+// The most stories a group reads, and the most Done shows.
+const (
+	groupMax = 100
+	doneShow = 25
+)
+
+func (a *app) sidebar(ctx context.Context) ([]byte, error) {
+	expand := slices.Clone(a.req.Expand)
+	slices.Sort(expand)
+	return a.cached("sidebar:"+strings.Join(expand, ","), func() (any, error) {
+		return a.buildSidebar(ctx, slices.Contains(expand, "done"))
+	})
+}
+
+// buildSidebar reads who the token is, then everything the tree needs in one
+// parallel round — workflows, teams and every group's search — then the
+// epics of any team-less story (for its badge, through the long cache), and
+// draws it.
+func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse, error) {
+	_, proj, err := a.settings()
+	if err != nil {
+		return sidebarResponse{}, err
+	}
+	// Shortcut's search takes `owner:me` without complaint and matches
+	// nothing, so every query goes out with the token's own mention name in
+	// its place. Segments keep `owner:me` as written, so a config stays
+	// portable between people.
+	me, err := a.sc.Me(ctx)
+	if err != nil {
+		return sidebarResponse{}, err
+	}
+	query := func(q string) string { return withTeam(withMe(q, me.MentionName), proj) }
+	var r refs
+	var doing, done []shortcut.Story
+	var doneTotal int
+	segs := make([][]shortcut.Story, len(proj.Segments))
+	fns := []func() error{
+		into(ctx, &r.workflows, a.sc.Workflows),
+		into(ctx, &r.groups, a.sc.Groups),
+		func() (err error) {
+			doing, _, err = a.sc.Search(ctx, query("owner:me is:started"), groupMax)
+			return err
+		},
+		func() (err error) {
+			// Closed, only the count is wanted: one result is the smallest
+			// page that still carries Shortcut's total.
+			n := 1
+			if doneOpen {
+				n = groupMax
+			}
+			done, doneTotal, err = a.sc.Search(ctx, query("owner:me is:done"), n)
+			return err
+		},
+	}
+	for i, s := range proj.Segments {
+		fns = append(fns, func() (err error) {
+			segs[i], _, err = a.sc.Search(ctx, query(s.Query+" !is:done"), groupMax)
+			return err
+		})
+	}
+	if err := parallel(fns...); err != nil {
+		return sidebarResponse{}, err
+	}
+	var epicIDs []int64
+	for _, st := range slices.Concat(append(segs, doing, done)...) {
+		if _, ok := r.group(st.GroupID); !ok {
+			epicIDs = append(epicIDs, st.EpicID)
+		}
+	}
+	r.epics = lookup(ctx, a, "epic", epicIDs, a.sc.Epic)
+
+	byPosition := func(x, y shortcut.Story) int { return compare(x.Position, y.Position) }
+
+	slices.SortStableFunc(doing, byPosition)
+	doingGroup := source.Group{ID: "doing", Label: "Doing", Count: count(len(doing))}
+	for _, st := range doing {
+		doingGroup.Containers = append(doingGroup.Containers, r.row(st))
+	}
+
+	ready := source.Group{ID: "ready", Label: "Ready", Children: []source.Group{}}
+	unique := map[int64]bool{}
+	for i, s := range proj.Segments {
+		g := source.Group{ID: s.GroupID(), Label: s.Name, Menu: segmentMenu}
+		stories := slices.DeleteFunc(segs[i], func(st shortcut.Story) bool {
+			return r.stateType(st.WorkflowStateID) != shortcut.StateUnstarted
+		})
+		slices.SortStableFunc(stories, byPosition)
+		for _, st := range stories {
+			g.Containers = append(g.Containers, r.row(st))
+			unique[st.ID] = true
+		}
+		g.Count = count(len(stories))
+		ready.Children = append(ready.Children, g)
+	}
+	ready.Count = count(len(unique))
+
+	doneGroup := source.Group{ID: "done", Label: "Done", Count: count(doneTotal), Lazy: true}
+	if doneOpen {
+		slices.SortStableFunc(done, func(x, y shortcut.Story) int { return y.CompletedAt.Compare(x.CompletedAt.Time) })
+		for _, st := range done[:min(doneShow, len(done))] {
+			doneGroup.Containers = append(doneGroup.Containers, r.row(st))
+		}
+	}
+	return sidebarResponse{Groups: []source.Group{doingGroup, ready, doneGroup}}, nil
+}
+
+func compare(x, y int64) int {
+	switch {
+	case x < y:
+		return -1
+	case x > y:
+		return 1
+	}
+	return 0
+}
+
+func count(n int) *int { return &n }
+
+func (a *app) container(ctx context.Context) ([]byte, error) {
+	id, err := storyID(a.req.ID)
+	if err != nil {
+		return nil, err
+	}
+	return a.cached("container:"+a.req.ID, func() (any, error) { return a.buildContainer(ctx, id) })
+}
+
+// buildContainer reads the story with the workspace's workflows, teams and
+// members in one parallel round, then its epic and iteration through the
+// long cache, and draws its detail.
+func (a *app) buildContainer(ctx context.Context, id int64) (source.ContainerDetail, error) {
+	var r refs
+	var st shortcut.Story
+	err := parallel(
+		func() (err error) { st, err = a.story(ctx, id); return err },
+		into(ctx, &r.workflows, a.sc.Workflows),
+		into(ctx, &r.groups, a.sc.Groups),
+		into(ctx, &r.members, a.sc.Members),
+	)
+	if err != nil {
+		return source.ContainerDetail{}, err
+	}
+	_ = parallel(
+		func() error { r.epics = lookup(ctx, a, "epic", []int64{st.EpicID}, a.sc.Epic); return nil },
+		func() error {
+			r.iterations = lookup(ctx, a, "iteration", []int64{st.IterationID}, a.sc.Iteration)
+			return nil
+		},
+	)
+	sid := "sc-" + strconv.FormatInt(st.ID, 10)
+	return source.ContainerDetail{
+		ID:          strconv.FormatInt(st.ID, 10),
+		Title:       st.Name,
+		ExternalURL: st.AppURL,
+		Facts:       r.facts(st, a.now),
+		Sections: []source.Section{
+			{ID: "story", Title: "Story", Kind: source.KindProse, Body: st.Description},
+			{ID: "comments", Title: "Comments", Kind: source.KindComments, Comments: r.comments(st, a.now),
+				Composer: &source.Action{ID: "comment", Label: "Comment", Input: source.InputText}},
+			{ID: "links", Title: "Links", Kind: source.KindLinks, Links: links(st)},
+		},
+		Menu:     cardMenu,
+		TaskNote: "Linked to " + sid + ". Merging moves the card to Done when it's the last open task.",
+	}, nil
+}
+
+// orDash is s, or "—" when there's nothing to show.
+func orDash(s string) string {
+	if s == "" {
+		return "—"
+	}
+	return s
+}
+
+// facts are the brief's list, in its order: id, team, state, type, epic,
+// labels, owner(s), requester, created, updated, iteration.
+func (r *refs) facts(st shortcut.Story, now time.Time) []source.Fact {
+	team := source.Fact{Label: "team", Value: "—"}
+	if g, ok := r.group(st.GroupID); ok {
+		team = source.Fact{Label: "team", Value: code(g.MentionName, g.Name) + " · " + g.Name, Color: teamColor(g)}
+	}
+	state, _, _ := r.state(st.WorkflowStateID)
+	epic, _ := r.epic(st.EpicID)
+	var labels []string
+	for _, l := range st.Labels {
+		labels = append(labels, l.Name)
+	}
+	var owners []string
+	for _, id := range st.OwnerIDs {
+		owners = append(owners, r.name(id))
+	}
+	ownerLabel, ownerValue := "owner", "unassigned"
+	if len(owners) > 0 {
+		ownerValue = strings.Join(owners, ", ")
+	}
+	if len(owners) > 1 {
+		ownerLabel = "owners"
+	}
+	requester := "—"
+	if st.RequestedByID != "" {
+		requester = r.name(st.RequestedByID)
+	}
+	return []source.Fact{
+		{Label: "id", Value: "sc-" + strconv.FormatInt(st.ID, 10)},
+		team,
+		{Label: "state", Value: orDash(state.Name)},
+		{Label: "type", Value: orDash(st.StoryType)},
+		{Label: "epic", Value: orDash(epic.Name)},
+		{Label: "labels", Value: orDash(strings.Join(labels, ", "))},
+		{Label: ownerLabel, Value: ownerValue},
+		{Label: "requester", Value: requester},
+		{Label: "created", Value: ago(now, st.CreatedAt.Time)},
+		{Label: "updated", Value: ago(now, st.UpdatedAt.Time)},
+		{Label: "iteration", Value: orDash(r.iteration(st.IterationID))},
+	}
+}
+
+// comments are the story's live comments, oldest first.
+func (r *refs) comments(st shortcut.Story, now time.Time) []source.Comment {
+	cs := slices.Clone(st.Comments)
+	slices.SortStableFunc(cs, func(x, y shortcut.Comment) int { return x.CreatedAt.Compare(y.CreatedAt.Time) })
+	out := []source.Comment{}
+	for _, c := range cs {
+		if c.Deleted {
+			continue
+		}
+		out = append(out, source.Comment{By: r.name(c.AuthorID), When: ago(now, c.CreatedAt.Time), Text: c.Text})
+	}
+	return out
+}
+
+// links are the story's pull requests (each once, however many branches
+// carry it), then its branches, then its story links, then its external
+// links.
+func links(st shortcut.Story) []source.Link {
+	out := []source.Link{}
+	seen := map[int64]bool{}
+	addPR := func(pr shortcut.PullRequest) {
+		if seen[pr.ID] {
+			return
+		}
+		seen[pr.ID] = true
+		state := "open"
+		switch {
+		case pr.Merged:
+			state = "merged"
+		case pr.Closed:
+			state = "closed"
+		}
+		out = append(out, source.Link{Label: "PR #" + strconv.FormatInt(pr.Number, 10), Text: pr.Title, State: state, URL: pr.URL})
+	}
+	for _, pr := range st.PullRequests {
+		addPR(pr)
+	}
+	for _, b := range st.Branches {
+		for _, pr := range b.PullRequests {
+			addPR(pr)
+		}
+	}
+	for _, b := range st.Branches {
+		if b.Deleted {
+			continue
+		}
+		state := "open"
+		if b.Merged {
+			state = "merged"
+		}
+		out = append(out, source.Link{Label: "Branch", Text: b.Name, State: state, URL: b.URL})
+	}
+	storyBase, _, _ := strings.Cut(st.AppURL, "/story/")
+	for _, l := range st.StoryLinks {
+		verb, other := l.Verb, l.ObjectID
+		if l.Type == "object" {
+			other = l.SubjectID
+			switch l.Verb {
+			case "blocks":
+				verb = "blocked by"
+			case "duplicates":
+				verb = "duplicated by"
+			}
+		}
+		u := ""
+		if storyBase != st.AppURL {
+			u = storyBase + "/story/" + strconv.FormatInt(other, 10)
+		}
+		out = append(out, source.Link{Label: verb, Text: "sc-" + strconv.FormatInt(other, 10), URL: u})
+	}
+	for _, u := range st.ExternalLinks {
+		text := strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+		out = append(out, source.Link{Label: "Link", Text: text, URL: u})
+	}
+	return out
+}
