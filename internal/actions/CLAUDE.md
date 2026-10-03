@@ -55,6 +55,11 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   written. A fresh launch (Todo, nothing logged yet) writes nothing: its own
   claim is the log's first word. The write's own failure is logged
   (`logging.Action`) and never fails the launch.
+- A non-fix launch of a slice with a `MilestoneID`, on a store answering
+  `store.ContainerReader` (only `store.Sourced`), fills
+  `PromptContext.Container` (`promptContainer`): title, URL, the prose
+  sections joined, the noun from `store.Describer` else `container`. A failed
+  read is logged and leaves it nil — the launch goes on.
 
 ## Approve / merge (`approve.go`, `merged.go`, `mergerefusal.go`, `landed.go`)
 

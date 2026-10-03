@@ -148,6 +148,12 @@ and the assignee group is hidden for local. `App.storeFor` opens a local
 project's `Local` directly (no `Mirror`), and assignee identity comes from
 `Config.AssigneeFor(project)`.
 
+A source project (`store.Project.Source` set) is the same file wrapped in
+`store.NewSourced` over `App.newSource(name)` (a test seam; a lookup failure
+is logged and opens over `source.Unavailable`, as `internal/cli` does), and
+its containers draw as milestones with no other change. `n` refuses on one
+with a toast — tasks are added from gnat or `nat slice-add --container`.
+
 ## Smaller subsystems
 
 `presence.go`/`activity.go`: the pulsing star is the live-session map refined

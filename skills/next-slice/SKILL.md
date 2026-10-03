@@ -48,7 +48,8 @@ slices in its milestone, and the project's conventions.
   the ones that are not — report what it said and stop. The plan is the user's:
   suggest they add to it on the board (`nat`) and rerun.
 
-Tell the user which slice you claimed, with its Notion URL.
+Tell the user which slice you claimed, with its URL (or its ID, where it has
+no URL).
 
 ## 2. Work in the slice's own worktree
 

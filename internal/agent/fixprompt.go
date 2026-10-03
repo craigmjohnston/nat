@@ -43,9 +43,9 @@ func fixPrompt(c PromptContext) string {
 
 	b.WriteString("## The slice and its pull request\n\n")
 	fmt.Fprintf(&b, "- Name: %s\n", c.Slice.Name)
-	fmt.Fprintf(&b, "- Notion page ID: %s\n", c.Slice.ID)
+	fmt.Fprintf(&b, "- Slice ID: %s\n", c.Slice.ID)
 	if c.Slice.URL != "" {
-		fmt.Fprintf(&b, "- Notion URL: %s\n", c.Slice.URL)
+		fmt.Fprintf(&b, "- Slice URL: %s\n", c.Slice.URL)
 	}
 	fmt.Fprintf(&b, "- Pull request: %s\n", c.Slice.PRURL)
 	fmt.Fprintf(&b, "- Working directory: %s\n", c.WorkingDir)

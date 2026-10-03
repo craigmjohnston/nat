@@ -253,6 +253,55 @@ func TestPromptNamesTheSlice(t *testing.T) {
 	}
 }
 
+// A source project's slice is told of the container it hangs off — under the
+// plugin's own noun, after the brief — as context it must not act on.
+func TestPromptCarriesTheContainer(t *testing.T) {
+	c := testContext()
+	c.Container = &PromptContainer{
+		Noun:        "card",
+		Title:       "Checkout times out on slow networks",
+		ExternalURL: "https://app.shortcut.com/x/story/4821",
+		Prose:       "Customers on 3G see a spinner forever.\n\nRepro: throttle to 3G.\n",
+	}
+	got := Prompt(c)
+	for _, want := range []string{
+		"\n## The card\n\nThis slice is one task of several on this card",
+		"the brief above is the work",
+		"no commenting on it, no closing it",
+		"Checkout times out on slow networks\nURL: https://app.shortcut.com/x/story/4821\n\nCustomers on 3G see a spinner forever.\n\nRepro: throttle to 3G.\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not say %q:\n%s", want, got)
+		}
+	}
+	if strings.Index(got, "## The card") < strings.Index(got, "## Brief") ||
+		strings.Index(got, "## The card") > strings.Index(got, "## Already in your context") {
+		t.Errorf("container section is not between the brief and the context section:\n%s", got)
+	}
+}
+
+// A container with no noun, URL or prose still gets its section, named
+// generically and carrying only its title.
+func TestPromptCarriesABareContainer(t *testing.T) {
+	c := testContext()
+	c.Container = &PromptContainer{Title: "Bare"}
+	got := Prompt(c)
+	if !strings.Contains(got, "\n## The container\n\n") || !strings.Contains(got, "the tracker in step.\n\nBare\n\n## Already") {
+		t.Errorf("bare container section is not as expected:\n%s", got)
+	}
+	if strings.Contains(got, "\nURL: ") {
+		t.Errorf("bare container names a URL it does not have:\n%s", got)
+	}
+}
+
+// Every project but a source one has no container, and no section for one.
+func TestPromptWithoutAContainer(t *testing.T) {
+	got := Prompt(testContext())
+	if strings.Contains(got, "## The container") || strings.Contains(got, "task of several") {
+		t.Errorf("prompt has a container section with no container:\n%s", got)
+	}
+}
+
 // The prompt carries the brief itself rather than pointing the agent at a
 // command that would print it: the launch reads it once, after the claim, and
 // writes it straight into the opening message.
