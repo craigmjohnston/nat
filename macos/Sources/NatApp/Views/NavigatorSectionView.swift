@@ -20,8 +20,8 @@ struct NavSectionView<Actions: View, Content: View>: View {
     /// The design's quiet meta beside the label, drawn only while folded — a
     /// source section's count.
     var meta: String?
-    /// A status beside the label, drawn open or folded in its own ink —
-    /// the PR section's Merged.
+    /// A status badge just after the label, drawn open or folded — the PR
+    /// section's Merged.
     var status: NavSectionStatus?
     let onHead: () -> Void
     var onFold: (() -> Void)?
@@ -55,16 +55,20 @@ struct NavSectionView<Actions: View, Content: View>: View {
                 .padding(.horizontal, -6)
                 .contentShape(Rectangle())
                 .onTapGesture { (onFold ?? onHead)() }
-            Text(label)
-                .font(.system(size: GnatMetrics.body))
-                .ink(.primary)
-                // A label longer than the column ("Visual changes") takes
-                // the room it needs rather than truncating.
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: 58, alignment: .leading)
-            if let status {
-                Text(status.label).monoXS(weight: .medium).ink(status.ink).lineLimit(1)
-            } else if let meta, !open {
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(.system(size: GnatMetrics.body))
+                    .ink(.primary)
+                    // A label longer than the column ("Visual changes") takes
+                    // the room it needs rather than truncating.
+                    .fixedSize(horizontal: true, vertical: false)
+                // The status, a badge just after the label.
+                if let status {
+                    Chip(status.label, tone: status.tone).fixedSize()
+                }
+            }
+            .frame(minWidth: 58, alignment: .leading)
+            if status == nil, let meta, !open {
                 Text(meta).monoXS().ink(.tertiary).lineLimit(1)
             }
             Spacer(minLength: 0)
@@ -91,7 +95,7 @@ extension NavSectionView where Actions == EmptyView {
 }
 
 extension NavSectionStatus {
-    var ink: InkRole {
+    var tone: Tone {
         switch self {
         case .merged: return .success
         }
