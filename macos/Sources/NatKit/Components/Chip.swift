@@ -27,23 +27,32 @@ public enum Tone: Sendable {
 /// shaded until it is legible, so the failure cannot be re-introduced by the
 /// next call site that assembles one.
 public struct Chip: View {
+    /// The capsule, or a smaller badge with a slight corner for a status
+    /// beside a label — a navigator section's Merged.
+    public enum Size: Sendable {
+        case regular, small
+    }
+
     let label: String
     let tone: Tone
+    let size: Size
     @Environment(\.ground) private var ground
 
-    public init(_ label: String, tone: Tone) {
+    public init(_ label: String, tone: Tone, size: Size = .regular) {
         self.label = label
         self.tone = tone
+        self.size = size
     }
 
     public var body: some View {
+        let small = size == .small
         Text(label)
-            .font(.system(size: Typo.subhead, weight: .semibold))
+            .font(.system(size: small ? Typo.caption : Typo.subhead, weight: small ? .medium : .semibold))
             .foregroundStyle(DesignTokens.chipInk(tone.chipTint, on: ground))
-            .padding(.horizontal, 10)
-            .frame(height: 22)
+            .padding(.horizontal, small ? 5 : 10)
+            .frame(height: small ? 17 : 22)
             .background(DesignTokens.chipWash(tone.chipTint, on: ground))
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: small ? 3 : 11))
     }
 }
 

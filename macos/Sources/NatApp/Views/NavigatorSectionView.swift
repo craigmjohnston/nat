@@ -64,7 +64,7 @@ struct NavSectionView<Actions: View, Content: View>: View {
                     .fixedSize(horizontal: true, vertical: false)
                 // The status, a badge just after the label.
                 if let status {
-                    Chip(status.label, tone: status.tone).fixedSize()
+                    Chip(status.label, tone: status.tone, size: .small).fixedSize()
                 }
             }
             .frame(minWidth: 58, alignment: .leading)
