@@ -311,6 +311,10 @@ type App struct {
 	prMerger  PRMerger
 	prState      map[string]domain.PRReadiness
 	prSettled    map[string]bool
+	// checksNudged is the slices whose live agent has been told its pull
+	// request's checks are failing, kept until a reading finds them failing no
+	// longer — see [App.nudgeFailingChecks].
+	checksNudged map[string]bool
 	worktreeGone map[string]bool
 	prReading    bool
 	// viewer is the agent terminal beside the board, or nil when the board has
@@ -522,6 +526,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.commentSaved(msg)
 	case commentsSentMsg:
 		return a.commentsSent(msg)
+	case checksNudgeMsg:
+		a.checksNudgeSent(msg)
+		return a, nil
 	case sliceBodyMsg:
 		return a.sliceBodyLoaded(msg)
 	case prMergedMsg:

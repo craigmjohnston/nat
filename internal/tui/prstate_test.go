@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
@@ -617,5 +618,117 @@ func TestReadinessOf(t *testing.T) {
 func TestDefaultPRReader(t *testing.T) {
 	if _, ok := defaultPRReader().(gh.CLI); !ok {
 		t.Errorf("defaultPRReader() = %T, want the gh CLI", defaultPRReader())
+	}
+}
+
+// checksNudgeApp is prStateApp with a live agent on the approved slice, whose
+// pull request GitHub reads with a failing check.
+func checksNudgeApp(t *testing.T) (*App, *fakePRReader, *fakeLauncher) {
+	app, reader := prStateApp(t)
+	reader.open[natRepo]["https://github.test/pr/1"] = gh.PRStatus{
+		Approved: true, Mergeable: true, Checks: gh.ChecksFailing}
+	live := map[string]string{approvedPR: "nat-ap"}
+	launcher := &fakeLauncher{live: live}
+	app.launcher = launcher
+	app.live = live
+	return app, reader, launcher
+}
+
+// A live agent whose pull request goes red is told so once, by name of the
+// pull request and the branch to push the fix to; a second red reading sends
+// nothing, and only a reading out of the red re-arms it.
+func TestALiveAgentIsNudgedOnceWhenItsChecksGoRed(t *testing.T) {
+	app, reader, launcher := checksNudgeApp(t)
+	p := prStatePlan()
+
+	runPRRead(t, app, landPlan(t, app, p))
+	if len(launcher.prompts) != 1 || launcher.prompts[0].session != "nat-ap" {
+		t.Fatalf("sends = %+v, want one prompt to the slice's own session", launcher.prompts)
+	}
+	want := agent.ChecksFailingPrompt("https://github.test/pr/1", agentBranch(sliceByID(t, p, approvedPR)))
+	if launcher.prompts[0].text != want {
+		t.Errorf("sent %q, want %q", launcher.prompts[0].text, want)
+	}
+
+	runPRRead(t, app, app.refreshPRStates())
+	if len(launcher.prompts) != 1 {
+		t.Fatalf("a second red reading sent %d prompts in all, want still 1", len(launcher.prompts))
+	}
+
+	reader.open[natRepo]["https://github.test/pr/1"] = gh.PRStatus{Approved: true, Mergeable: true, Checks: gh.ChecksPassing}
+	runPRRead(t, app, app.refreshPRStates())
+	if len(launcher.prompts) != 1 {
+		t.Fatalf("a green reading sent %d prompts in all, want still 1", len(launcher.prompts))
+	}
+
+	reader.open[natRepo]["https://github.test/pr/1"] = gh.PRStatus{Checks: gh.ChecksFailing}
+	runPRRead(t, app, app.refreshPRStates())
+	if len(launcher.prompts) != 2 {
+		t.Errorf("red again after green sent %d prompts in all, want 2", len(launcher.prompts))
+	}
+}
+
+// A slice with no live agent is not nudged, and not marked either: an agent
+// launched onto the red pull request later is told on the next reading.
+func TestNoLiveAgentNoNudge(t *testing.T) {
+	app, _, launcher := checksNudgeApp(t)
+	delete(app.live, approvedPR)
+
+	runPRRead(t, app, landPlan(t, app, prStatePlan()))
+	if len(launcher.prompts) != 0 {
+		t.Fatalf("sends = %+v, want nothing with no agent to send to", launcher.prompts)
+	}
+
+	app.live[approvedPR] = "nat-ap"
+	runPRRead(t, app, app.refreshPRStates())
+	if len(launcher.prompts) != 1 {
+		t.Errorf("sends = %+v, want one once an agent is live", launcher.prompts)
+	}
+}
+
+// A send that fails is logged and left unmarked, so the next reading that still
+// finds the checks failing tries again.
+func TestAFailedNudgeIsSentAgain(t *testing.T) {
+	app, _, launcher := checksNudgeApp(t)
+	launcher.sendErr = errors.New("no pane")
+
+	runPRRead(t, app, landPlan(t, app, prStatePlan()))
+	if app.checksNudged[approvedPR] {
+		t.Fatal("a failed nudge is still marked as sent")
+	}
+
+	launcher.sendErr = nil
+	runPRRead(t, app, app.refreshPRStates())
+	if len(launcher.prompts) != 2 {
+		t.Errorf("sent %d prompts in all, want the failed one and its retry", len(launcher.prompts))
+	}
+}
+
+// A reading that could not ask about a slice concludes nothing: the mark stays,
+// so the next red reading does not nudge again.
+func TestAnUnreadSliceKeepsItsNudge(t *testing.T) {
+	app, reader, launcher := checksNudgeApp(t)
+	runPRRead(t, app, landPlan(t, app, prStatePlan()))
+
+	reader.err = errors.New("offline")
+	runPRRead(t, app, app.refreshPRStates())
+	reader.err = nil
+	runPRRead(t, app, app.refreshPRStates())
+	if len(launcher.prompts) != 1 {
+		t.Errorf("sent %d prompts in all, want 1 across an unread reading", len(launcher.prompts))
+	}
+}
+
+// With no launcher, or no plan, there is nobody to nudge.
+func TestNudgeFailingChecksWithNothingToNudge(t *testing.T) {
+	app, _, _ := checksNudgeApp(t)
+	state := map[string]domain.PRReadiness{approvedPR: domain.PRChecksFailing}
+	if cmd := app.nudgeFailingChecks(state); cmd != nil {
+		t.Error("a nudge was started with no plan")
+	}
+	app.launcher = nil
+	app.project = &domain.Project{}
+	if cmd := app.nudgeFailingChecks(state); cmd != nil {
+		t.Error("a nudge was started with no launcher")
 	}
 }

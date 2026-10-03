@@ -89,6 +89,11 @@ directly; check each file, don't assume every one routes through `actions`.
   while the wizard, a form, a row prompt, or another load is in flight (would
   clobber what the user's mid-edit); **not** suspended by an open agent
   terminal — the plan behind the split stays live.
+- `prstate.go` also nudges a live agent whose PR reads `PRChecksFailing`
+  (`agent.ChecksFailingPrompt` via `SendPrompt`), edge-triggered on
+  `App.checksNudged`: marked as the send starts, unmarked on a failed send
+  or a reading out of the red; an unread slice keeps its mark; no live
+  session, no nudge and no mark.
 - `nudge.go`: stats the nudge marker every second (far shorter than the poll)
   and reloads on a moved mtime. The **first** reading is a baseline, not
   news. A nudge arriving **while a load is already in flight is left
