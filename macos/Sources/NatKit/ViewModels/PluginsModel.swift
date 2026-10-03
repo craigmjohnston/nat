@@ -25,6 +25,30 @@ public final class PluginsModel {
     /// The add field's text.
     public var newSource = ""
 
+    /// What is typed into each setup field, by `SetupKey` — held here only
+    /// until Save hands it to nat, then cleared.
+    public var setupValues: [SetupKey: String] = [:]
+
+    /// What the last Save of each setup field came to, drawn under it.
+    public private(set) var setupOutcomes: [SetupKey: SetupOutcome] = [:]
+
+    /// One plugin's one setup field.
+    public struct SetupKey: Hashable, Sendable {
+        public let plugin: String
+        public let field: String
+
+        public init(plugin: String, field: String) {
+            self.plugin = plugin
+            self.field = field
+        }
+    }
+
+    /// A Save's answer: the plugin's message, or the refusal.
+    public enum SetupOutcome: Equatable, Sendable {
+        case saved(String)
+        case refused(String)
+    }
+
     /// One button's command, as the spinner it shows is keyed.
     public enum Action: Hashable, Sendable {
         case install(source: String, name: String)
@@ -32,6 +56,7 @@ public final class PluginsModel {
         case uninstall(name: String)
         case addSource
         case removeSource(repo: String)
+        case setup(SetupKey)
     }
 
     @ObservationIgnored private let client: NatClientProtocol
@@ -101,6 +126,34 @@ public final class PluginsModel {
         await run(.removeSource(repo: repo), changesPlugins: false) {
             _ = try await self.client.pluginSourceRemove(repo: repo)
         }
+    }
+
+    /// Whether a setup field holds something worth saving.
+    public func canSave(_ key: SetupKey) -> Bool {
+        !(setupValues[key] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !running.contains(.setup(key))
+    }
+
+    /// Saves one setup field: the value to `nat source-setup` (on stdin —
+    /// `NatClient`'s business), the field cleared once the plugin took it,
+    /// and what it said, or why not, kept under the field rather than at the
+    /// top of the tab. The listing is read again either way, so a plugin
+    /// that now describes cleanly loses its warning.
+    public func saveSetup(plugin: String, field: String) async {
+        let key = SetupKey(plugin: plugin, field: field)
+        guard canSave(key) else { return }
+        let value = setupValues[key] ?? ""
+        running.insert(.setup(key))
+        setupOutcomes[key] = nil
+        do {
+            let result = try await client.sourceSetup(plugin: plugin, id: field, value: value)
+            setupValues[key] = ""
+            setupOutcomes[key] = .saved(result.message.isEmpty ? "Saved." : result.message)
+        } catch {
+            setupOutcomes[key] = .refused(Self.message(error))
+        }
+        await load()
+        running.remove(.setup(key))
     }
 
     /// One action: its spinner up while nat runs, its refusal kept, and the

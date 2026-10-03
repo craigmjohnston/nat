@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -49,8 +50,36 @@ func TestDescribe(t *testing.T) {
 	if got := actions(d.Menu); got != "refresh(none) new-segment(text)" {
 		t.Errorf("menu = %s", got)
 	}
+	if len(d.Setup) != 1 || d.Setup[0].ID != "token" || d.Setup[0].Label != "API token" || d.Setup[0].Input != source.InputSecret ||
+		d.Setup[0].Hint != "Shortcut ▸ Settings ▸ API Tokens" || d.Setup[0].Set == nil || !*d.Setup[0].Set {
+		t.Errorf("setup = %+v, want the token, set", d.Setup)
+	}
+	if !slices.Equal(h.tokens.asked, []string{"has"}) {
+		t.Errorf("asked the Keychain %v, want one presence check", h.tokens.asked)
+	}
 	if len(h.fake.Requests()) != 0 {
 		t.Error("describe called Shortcut")
+	}
+
+	// With no token anywhere — the lookup failing — describe still answers,
+	// the same but for set, so nat learns a token is wanted.
+	h.tokens.err, h.tokens.token = errors.New("not found"), ""
+	setOf := func() string {
+		t.Helper()
+		code, out, errs := h.run(`{"project":{"id":""}}`, "describe")
+		var d source.Describe
+		if code != 0 || json.Unmarshal([]byte(out), &d) != nil || len(d.Setup) != 1 || d.Setup[0].Set == nil {
+			t.Fatalf("describe: exit %d, %q, stderr %q", code, out, errs)
+		}
+		return strconv.FormatBool(*d.Setup[0].Set)
+	}
+	if got := setOf(); got != "false" {
+		t.Errorf("set with no token = %s", got)
+	}
+	// SHORTCUT_API_TOKEN counts as one.
+	h.vars["SHORTCUT_API_TOKEN"] = secret
+	if got := setOf(); got != "true" {
+		t.Errorf("set with SHORTCUT_API_TOKEN = %s", got)
 	}
 }
 

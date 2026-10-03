@@ -1,6 +1,6 @@
-// Package plugin is nat-source-shortcut itself: the five protocol methods
-// (describe, sidebar, container, action, event) over the Shortcut API, and
-// the two human subcommands (login, config) nat never calls.
+// Package plugin is nat-source-shortcut itself: the six protocol methods
+// (describe, sidebar, container, action, event, setup) over the Shortcut API,
+// and the two human subcommands (login, config) nat never calls.
 //
 // Run is the whole program; main only hands it the real process. Every
 // method reads one JSON request from stdin and writes one JSON response to
@@ -25,9 +25,10 @@ import (
 	"github.com/craigmjohnston/nat/plugins/shortcut/internal/shortcut"
 )
 
-// TokenMissing is the line every method fails with when there is no token.
-// nat shows it in gnat word for word, so it says how to fix it.
-const TokenMissing = "Shortcut token missing — run nat-source-shortcut login"
+// TokenMissing is the line every method but describe and setup fails with
+// when there is no token. nat shows it in gnat word for word — a source
+// project's sidebar error, say — so it says how to fix it.
+const TokenMissing = "Shortcut token missing — set it in gnat's Settings ▸ Sources or run nat-source-shortcut login"
 
 // errTokenMissing carries TokenMissing as an error. It is capitalised
 // because it is a sentence shown to a person as it stands, not wrapped.
@@ -46,10 +47,15 @@ var (
 const cacheTTL = 30 * time.Second
 
 // Tokens is where the Shortcut token lives between runs — the Keychain, in
-// production.
+// production. Store asks for the token on the terminal itself (login); Save
+// stores one handed in (setup), keeping it out of every argv; Has says
+// whether one is stored without reading it (describe), looked up exactly as
+// Token looks it up.
 type Tokens interface {
 	Token() (string, error)
 	Store(account string) error
+	Save(account, token string) error
+	Has() bool
 }
 
 // Env is everything Run reads from the world besides stdin.
@@ -61,7 +67,7 @@ type Env struct {
 	HTTP *http.Client
 }
 
-const usage = "usage: nat-source-shortcut <describe|sidebar|container|action|event> < request.json\n" +
+const usage = "usage: nat-source-shortcut <describe|sidebar|container|action|event|setup> < request.json\n" +
 	"       nat-source-shortcut login\n" +
 	"       nat-source-shortcut config <nat project id>"
 
@@ -73,10 +79,10 @@ const usage = "usage: nat-source-shortcut <describe|sidebar|container|action|eve
 type request struct {
 	Project   source.Project `json:"project"`
 	Expand    []string       `json:"expand"`    // sidebar
-	ID        string         `json:"id"`        // container
+	ID        string         `json:"id"`        // container, setup
 	Action    string         `json:"action"`    // action
 	Target    source.Target  `json:"target"`    // action
-	Input     string         `json:"input"`     // action
+	Input     string         `json:"input"`     // action, setup
 	Container string         `json:"container"` // event
 	Task      source.Task    `json:"task"`      // event
 	Event     string         `json:"event"`     // event
@@ -106,6 +112,7 @@ var methods = map[string]method{
 	"container": (*app).container,
 	"action":    (*app).action,
 	"event":     (*app).event,
+	"setup":     (*app).setup,
 }
 
 // Run runs the program for args (args[0] is the binary) and returns its exit
@@ -146,15 +153,19 @@ func call(name string, m method, stdin io.Reader, env Env) ([]byte, error) {
 	if err != nil || json.Unmarshal(b, &req) != nil {
 		return nil, errors.New("shortcut: request is not one JSON object")
 	}
-	// describe is sent an empty project by `nat source-list`; every other
-	// method is about one.
-	if name != "describe" && req.Project.ID == "" {
-		return nil, errors.New("shortcut: request has no project")
-	}
-	tok := env.Getenv("SHORTCUT_API_TOKEN")
-	if tok == "" {
-		if tok, err = env.Tokens.Token(); err != nil || tok == "" {
-			return nil, errTokenMissing
+	// describe and setup are sent an empty project — no project is in
+	// question — and need no token: describe is how nat learns a token is
+	// wanted at all, and setup is how one arrives. Every other method is about
+	// a project, and needs one.
+	tok := ""
+	if name != "describe" && name != "setup" {
+		if req.Project.ID == "" {
+			return nil, errors.New("shortcut: request has no project")
+		}
+		if tok = env.Getenv("SHORTCUT_API_TOKEN"); tok == "" {
+			if tok, err = env.Tokens.Token(); err != nil || tok == "" {
+				return nil, errTokenMissing
+			}
 		}
 	}
 	budget := callBudget
@@ -167,19 +178,34 @@ func call(name string, m method, stdin io.Reader, env Env) ([]byte, error) {
 }
 
 func newApp(env Env, req request, tok string) *app {
-	sc := shortcut.New(env.Getenv("SHORTCUT_API_URL"), tok)
-	if env.HTTP != nil {
-		sc.HTTP = env.HTTP
-	}
 	dirs := settings.Dirs{Getenv: env.Getenv}
 	return &app{
 		env:   env,
 		req:   req,
-		sc:    sc,
+		sc:    newClient(env, tok),
 		dirs:  dirs,
 		cache: cache.Cache{Dir: dirs.CacheDir(), TTL: cacheTTL, Now: env.Now},
 		now:   env.Now(),
 	}
+}
+
+// newClient is a Shortcut client for tok on the configured API, over the
+// HTTP override when there is one.
+func newClient(env Env, tok string) *shortcut.Client {
+	sc := shortcut.New(env.Getenv("SHORTCUT_API_URL"), tok)
+	if env.HTTP != nil {
+		sc.HTTP = env.HTTP
+	}
+	return sc
+}
+
+// account is the Keychain account the token is stored under: the user, else
+// "nat".
+func account(env Env) string {
+	if a := env.Getenv("USER"); a != "" {
+		return a
+	}
+	return "nat"
 }
 
 // oneLine is s cut at its first newline: nat shows only the first stderr
@@ -222,12 +248,8 @@ func (a *app) cached(key string, build func() (any, error)) ([]byte, error) {
 // login stores a token in the Keychain (security prompts for it itself) and
 // checks it against Shortcut.
 func login(stdout, stderr io.Writer, env Env) int {
-	account := env.Getenv("USER")
-	if account == "" {
-		account = "nat"
-	}
 	_, _ = fmt.Fprintln(stdout, "Paste a Shortcut API token (Shortcut ▸ Settings ▸ API Tokens) when asked; it goes straight into the Keychain.")
-	if err := env.Tokens.Store(account); err != nil {
+	if err := env.Tokens.Store(account(env)); err != nil {
 		_, _ = fmt.Fprintf(stderr, "shortcut: couldn't store the token in the Keychain: %v\n", err)
 		return 1
 	}
@@ -236,19 +258,45 @@ func login(stdout, stderr io.Writer, env Env) int {
 		_, _ = fmt.Fprintln(stderr, "shortcut: the token didn't reach the Keychain")
 		return 1
 	}
-	sc := shortcut.New(env.Getenv("SHORTCUT_API_URL"), tok)
-	if env.HTTP != nil {
-		sc.HTTP = env.HTTP
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), callBudget)
 	defer cancel()
-	me, err := sc.Me(ctx)
+	me, err := newClient(env, tok).Me(ctx)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "shortcut: token stored, but Shortcut refused it: %v\n", err)
 		return 1
 	}
 	_, _ = fmt.Fprintf(stdout, "Logged in to Shortcut workspace %q as %s (@%s).\n", me.Workspace2.URLSlug, me.Name, me.MentionName)
 	return 0
+}
+
+// tokenField is the one setup field: the API token, set from gnat's Settings
+// ▸ Sources.
+const tokenField = "token"
+
+// setup stores the token gnat's Settings handed in — in the Keychain, through
+// Tokens.Save, so it is in no argv — then checks it against Shortcut exactly
+// as login does: read it back, ask who it belongs to. The token is never in
+// the reply or an error line.
+func (a *app) setup(ctx context.Context) ([]byte, error) {
+	if a.req.ID != tokenField {
+		return nil, fmt.Errorf("shortcut: no setup field %q — the only one is %s", a.req.ID, tokenField)
+	}
+	tok := strings.TrimSpace(a.req.Input)
+	if tok == "" {
+		return nil, errors.New("shortcut: no token given")
+	}
+	if err := a.env.Tokens.Save(account(a.env), tok); err != nil {
+		return nil, fmt.Errorf("shortcut: couldn't store the token in the Keychain: %v", err)
+	}
+	stored, err := a.env.Tokens.Token()
+	if err != nil || stored == "" {
+		return nil, errors.New("shortcut: the token didn't reach the Keychain")
+	}
+	me, err := newClient(a.env, stored).Me(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("shortcut: token stored, but Shortcut refused it: %v", err)
+	}
+	return marshal(source.ActionResult{Message: fmt.Sprintf("Logged in to %s as %s", me.Workspace2.URLSlug, me.Name)}), nil
 }
 
 // showConfig prints one project's settings as JSON, defaults filled in.

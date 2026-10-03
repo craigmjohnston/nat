@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/craigmjohnston/nat/internal/logging"
 )
 
 // fakeRunner records the one call it was given and answers it from canned
@@ -205,6 +207,83 @@ func TestEventReportsAFailedCall(t *testing.T) {
 	f := &fakeRunner{err: &ExitError{Code: 3, Stderr: "down"}}
 	if err := NewWithRunner("sc", "/bin/nat-source-sc", f).Event(context.Background(), testProject, "c1", Task{}, EventMerged); err == nil {
 		t.Error("Event() = nil, want the plugin's refusal")
+	}
+}
+
+// TestDescribeDecodesSetupFields: set is carried as the plugin said it —
+// true, false, or absent (nil) — and the validator takes no view on it.
+func TestDescribeDecodesSetupFields(t *testing.T) {
+	f := &fakeRunner{out: `{"protocol":1,"tag":"SC","setup":[` +
+		`{"id":"token","label":"API token","input":"secret","hint":"h","set":true},` +
+		`{"id":"team","label":"Team","input":"text","set":false},` +
+		`{"id":"ws","label":"Workspace","input":"text"}]}`}
+	d, err := NewWithRunner("sc", "/bin/nat-source-sc", f).Describe(context.Background(), testProject)
+	if err != nil {
+		t.Fatalf("Describe() = %v", err)
+	}
+	var got []string
+	for _, s := range d.Setup {
+		switch {
+		case s.Set == nil:
+			got = append(got, s.ID+"=?")
+		case *s.Set:
+			got = append(got, s.ID+"=set")
+		default:
+			got = append(got, s.ID+"=unset")
+		}
+	}
+	if strings.Join(got, " ") != "token=set team=unset ws=?" || d.Setup[0].Hint != "h" {
+		t.Errorf("setup = %v", got)
+	}
+}
+
+func TestSetupSendsTheValueOnStdinAndDecodesTheMessage(t *testing.T) {
+	f := &fakeRunner{out: `{"message":"Logged in to scratch as Craig"}`}
+	msg, err := NewWithRunner("sc", "/bin/nat-source-sc", f).Setup(context.Background(), "token", "s3cret-value")
+	if err != nil || msg != "Logged in to scratch as Craig" {
+		t.Fatalf("Setup() = %q, %v", msg, err)
+	}
+	if f.name != "/bin/nat-source-sc" || f.dir != "" || !reflect.DeepEqual(f.args, []string{"setup"}) {
+		t.Errorf("ran %q in %q with %q, want the binary with [setup] alone", f.name, f.dir, f.args)
+	}
+	want := map[string]any{"project": map[string]any{"id": "", "name": "", "working_dir": ""}, "id": "token", "input": "s3cret-value"}
+	if got := f.request(t); !reflect.DeepEqual(got, want) {
+		t.Errorf("sent %v, want %v", got, want)
+	}
+}
+
+// TestSetupNeverLogsTheInput: a refused setup is logged by plugin, method and
+// id, and the value — a credential — reaches neither the log nor the error.
+func TestSetupNeverLogsTheInput(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", home)
+	path, err := logging.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeRunner{err: &ExitError{Code: 1, Stderr: "shortcut: Shortcut refused the token\n"}}
+	_, err = NewWithRunner("sc", "/bin/nat-source-sc", f).Setup(context.Background(), "token", "s3cret-value")
+	if cerr := logging.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	if err == nil || err.Error() != "nat-source-sc setup: shortcut: Shortcut refused the token" {
+		t.Errorf("Setup() = %v, want the plugin's line", err)
+	}
+	b, rerr := os.ReadFile(path)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	log := string(b)
+	if strings.Contains(log, "s3cret") || !strings.Contains(log, "method=setup") || !strings.Contains(log, "id=token") {
+		t.Errorf("log = %q, want method and id, never the input", log)
+	}
+}
+
+func TestSetupMalformedResponse(t *testing.T) {
+	_, err := NewWithRunner("sc", "/bin/nat-source-sc", &fakeRunner{out: "s3cret"}).Setup(context.Background(), "token", "s3cret")
+	if err == nil || err.Error() != "nat-source-sc setup: malformed response" {
+		t.Errorf("Setup() = %v, want a malformed-response error", err)
 	}
 }
 

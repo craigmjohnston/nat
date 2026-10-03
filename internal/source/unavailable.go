@@ -31,3 +31,6 @@ func (u Unavailable) Action(context.Context, Project, string, Target, string) (A
 
 // Event answers Err.
 func (u Unavailable) Event(context.Context, Project, string, Task, string) error { return u.Err }
+
+// Setup answers Err.
+func (u Unavailable) Setup(context.Context, string, string) (string, error) { return "", u.Err }

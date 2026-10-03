@@ -2,7 +2,7 @@
 
 A task-source plugin for nat that serves fixed data: three cards, grouped
 Doing / Ready (with two segments, *Mine* and *Board*) / Done (lazy, two
-cards once expanded). It implements all five methods of protocol v1 exactly
+cards once expanded). It implements every method of protocol v1 exactly
 as `docs/design/task-sources/README.md` specifies them, so it is both the
 manual end-to-end check for nat and gnat and a reference implementation to
 read before writing a real plugin (Shortcut, say).
@@ -72,6 +72,8 @@ echo "{$P,\"id\":\"zz\"}" | ./nat-source-demo container  # exit 1: demo: no card
   shows it; `refresh` answers "Refreshed"; `rename`, `owner`, `remove` and
   `follow` answer with a message and change nothing.
 - `event` — appends the event as one JSON line to the log and answers `{}`.
+- `setup` — refused with `demo: nothing to set up`: the demo needs no
+  credential, so its `describe` lists no setup fields.
 
 ## Where its state lives
 

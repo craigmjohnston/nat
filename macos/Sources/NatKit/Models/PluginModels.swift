@@ -1,10 +1,10 @@
 import Foundation
 
 // The plugin installer's answers — `nat plugin-list`, `plugin-install`,
-// `plugin-uninstall` and the two source edits — field for field as
-// `internal/plugins` and `internal/cli/plugins.go` write them. nat writes
-// every field and every list, so these decode strictly: a shape that has
-// drifted fails here rather than drawing as an empty tab.
+// `plugin-uninstall`, the two source edits and `source-setup` — field for
+// field as `internal/plugins` and `internal/cli` write them. nat writes every
+// field and every list, so these decode strictly: a shape that has drifted
+// fails here rather than drawing as an empty tab.
 
 /// `nat plugin-list --json`: every plugin source, every installed plugin and
 /// every plugin a source offers.
@@ -56,7 +56,9 @@ public enum PluginInstallKind: String, Codable, Equatable, Sendable {
 
 /// One installed plugin. `source`, `version` and `update` are a managed
 /// install's alone; `update` is the newer version its source offers, empty
-/// where there is none.
+/// where there is none. `setup` is what its describe asks to be set (empty
+/// where it asks nothing or would not describe), and `describeError` why it
+/// would not describe — the plugin's own stderr line where it wrote one.
 public struct InstalledPlugin: Codable, Equatable, Sendable, Identifiable {
     public let name: String
     public let path: String
@@ -64,12 +66,20 @@ public struct InstalledPlugin: Codable, Equatable, Sendable, Identifiable {
     public let source: String
     public let version: String
     public let update: String
+    public let setup: [PluginSetupField]
+    public let describeError: String
 
     public var id: String { name }
 
+    enum CodingKeys: String, CodingKey {
+        case name, path, kind, source, version, update, setup
+        case describeError = "describe_error"
+    }
+
     public init(
         name: String, path: String, kind: PluginInstallKind,
-        source: String = "", version: String = "", update: String = ""
+        source: String = "", version: String = "", update: String = "",
+        setup: [PluginSetupField] = [], describeError: String = ""
     ) {
         self.name = name
         self.path = path
@@ -77,6 +87,8 @@ public struct InstalledPlugin: Codable, Equatable, Sendable, Identifiable {
         self.source = source
         self.version = version
         self.update = update
+        self.setup = setup
+        self.describeError = describeError
     }
 
     /// What the row says in place of a version: the version nat installed,
@@ -95,6 +107,61 @@ public struct InstalledPlugin: Codable, Equatable, Sendable, Identifiable {
 
     /// Whether nat may take it away: only one in its own plugins directory.
     public var isUninstallable: Bool { kind != .path }
+}
+
+/// One thing a plugin needs set before it works — its describe's `setup`
+/// entry. gnat draws it and hands the value to `nat source-setup` on stdin;
+/// what the value means is the plugin's business alone.
+public struct PluginSetupField: Codable, Equatable, Sendable, Identifiable {
+    public let id: String
+    public let label: String
+    /// `secret` (drawn masked) or `text`.
+    public let input: String
+    /// Where to find the value, or empty.
+    public let hint: String
+    /// Whether the plugin holds a value for it now — a presence check on its
+    /// side — or nil where it does not say.
+    public let set: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, label, input, hint, set
+    }
+
+    public init(id: String, label: String, input: String, hint: String = "", set: Bool? = nil) {
+        self.id = id
+        self.label = label
+        self.input = input
+        self.hint = hint
+        self.set = set
+    }
+
+    /// `hint` and `set` are the fields the protocol lets a plugin leave out.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        label = try c.decode(String.self, forKey: .label)
+        input = try c.decode(String.self, forKey: .input)
+        hint = try c.decodeIfPresent(String.self, forKey: .hint) ?? ""
+        set = try c.decodeIfPresent(Bool.self, forKey: .set)
+    }
+
+    /// The same field, its `set` as given — what a plugin given a value
+    /// would describe it as.
+    public func with(set: Bool?) -> PluginSetupField {
+        PluginSetupField(id: id, label: label, input: input, hint: hint, set: set)
+    }
+
+    /// Whether the field is drawn masked.
+    public var isSecret: Bool { input == "secret" }
+}
+
+/// `nat source-setup --json`: what the plugin said of the value.
+public struct PluginSetupResult: Codable, Equatable, Sendable {
+    public let message: String
+
+    public init(message: String) {
+        self.message = message
+    }
 }
 
 /// One plugin a source offers, at that source's latest release.

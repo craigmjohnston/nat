@@ -19,7 +19,8 @@
 // Request and response bodies are never logged. A container's body is someone's
 // ticket — free text from another system, which may carry anything — and the
 // log file is not a place it was ever agreed to go. Only the method, the
-// plugin's name, the ids involved and an exit code are.
+// plugin's name, the ids involved and an exit code are. That matters most for
+// setup, whose input is a credential.
 package source
 
 import "context"
@@ -40,15 +41,30 @@ type Project struct {
 // Describe is what a plugin says about itself: who it is, how it is drawn,
 // and what its containers and tasks are called.
 type Describe struct {
-	Protocol      int      `json:"protocol"`
-	Name          string   `json:"name"`
-	Title         string   `json:"title"`
-	Tag           string   `json:"tag"`
-	IconSymbol    string   `json:"icon_symbol"`
-	IconSVG       string   `json:"icon_svg,omitempty"`
-	ContainerNoun string   `json:"container_noun"`
-	TaskNoun      string   `json:"task_noun"`
-	Menu          []Action `json:"menu,omitempty"`
+	Protocol      int          `json:"protocol"`
+	Name          string       `json:"name"`
+	Title         string       `json:"title"`
+	Tag           string       `json:"tag"`
+	IconSymbol    string       `json:"icon_symbol"`
+	IconSVG       string       `json:"icon_svg,omitempty"`
+	ContainerNoun string       `json:"container_noun"`
+	TaskNoun      string       `json:"task_noun"`
+	Menu          []Action     `json:"menu,omitempty"`
+	Setup         []SetupField `json:"setup,omitempty"`
+}
+
+// SetupField is one thing a plugin needs set before it works — a token, a
+// workspace — drawn by gnat as a field in Settings and sent back through a
+// setup request. nat relays it without understanding it: the value goes to
+// the plugin on stdin and nowhere else. Set, where the plugin says, is whether
+// it holds a value for the field now — a presence check, never the value —
+// and nil where it does not say.
+type SetupField struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Input string `json:"input"`
+	Hint  string `json:"hint,omitempty"`
+	Set   *bool  `json:"set,omitempty"`
 }
 
 // Group is one fold of the plugin's sidebar tree. A lazy group carries only
@@ -80,11 +96,13 @@ type Badge struct {
 	Title string `json:"title,omitempty"`
 }
 
-// The input an [Action] asks for before it runs.
+// The input an [Action] asks for before it runs. InputSecret is a
+// [SetupField]'s alone — drawn masked — and never valid on an action.
 const (
 	InputNone   = "none"
 	InputText   = "text"
 	InputChoice = "choice"
+	InputSecret = "secret"
 )
 
 // Action is a named thing the plugin can do, offered on a menu. Its ID is
@@ -194,4 +212,5 @@ type Client interface {
 	Container(ctx context.Context, p Project, id string) (ContainerDetail, error)
 	Action(ctx context.Context, p Project, action string, target Target, input string) (ActionResult, error)
 	Event(ctx context.Context, p Project, container string, task Task, event string) error
+	Setup(ctx context.Context, id, input string) (string, error)
 }

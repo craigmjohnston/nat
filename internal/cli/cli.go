@@ -245,8 +245,8 @@ Every command below that acts on a project requires --project, naming one of
 the config file's projects by its page ID; run one without it to be told the
 projects this machine tracks. There is no fallback to the project the board is
 on: that is the board's own, and the user moves it while an agent works. setup,
-paths, project-create, source-list and the plugin-* commands take no such flag:
-none acts on a project already tracked.
+paths, project-create, source-list, source-setup and the plugin-* commands take
+no such flag: none acts on a project already tracked.
 
 usage:
   nat                 open the board
@@ -373,12 +373,19 @@ usage:
                       run one of a source project's plugin actions, against a
                       group, a container or (neither) the source itself;
                       --input - reads the input from stdin
+  nat source-setup <plugin> --id ID [--json] < VALUE
+                      set one of a task-source plugin's setup fields (an API
+                      token, say) to the value read from stdin — never a
+                      flag, so it is in no argv; refused for a plugin not
+                      installed, an id its describe does not list, and an
+                      empty value
   nat plugin-list [--json]
                       list the plugin sources (nat's own repository first,
                       then the config's plugin_sources), the installed
-                      plugins with any update their source offers, and every
-                      plugin a source offers; a source that cannot be read is
-                      listed with its error
+                      plugins with any update their source offers, the setup
+                      fields each asks for and why one would not describe,
+                      and every plugin a source offers; a source that cannot
+                      be read is listed with its error
   nat plugin-install <name> [--source OWNER/REPO] [--version V] [--json]
                       download a task-source plugin from a source's release —
                       the named source, else the first that offers it; the
@@ -691,6 +698,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return containerShow(ctx, args[1:], env)
 	case "source-action":
 		return sourceAction(ctx, args[1:], env)
+	case "source-setup":
+		return sourceSetup(ctx, args[1:], env)
 	case "plugin-list":
 		return pluginList(ctx, args[1:], env)
 	case "plugin-install":

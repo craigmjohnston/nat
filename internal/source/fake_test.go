@@ -67,6 +67,21 @@ func TestFakeReturnsItsErrorsAndStillRecords(t *testing.T) {
 	}
 }
 
+func TestFakeSetupAnswersAndRecords(t *testing.T) {
+	ctx := context.Background()
+	f := &Fake{SetupMessage: "Logged in"}
+	if msg, err := f.Setup(ctx, "token", "s3cret"); err != nil || msg != "Logged in" {
+		t.Errorf("Setup() = %q, %v", msg, err)
+	}
+	f.SetupErr = errors.New("refused")
+	if _, err := f.Setup(ctx, "token", "bad"); err != f.SetupErr {
+		t.Errorf("Setup() = %v, want SetupErr", err)
+	}
+	if want := []SetupCall{{ID: "token", Input: "s3cret"}, {ID: "token", Input: "bad"}}; !reflect.DeepEqual(f.Setups, want) {
+		t.Errorf("recorded %+v, want %+v", f.Setups, want)
+	}
+}
+
 // TestFakeZeroValueAnswersAContainerItHasNoDetailFor: a nil Details map is
 // the zero detail, not a panic.
 func TestFakeZeroValueAnswersAContainerItHasNoDetailFor(t *testing.T) {

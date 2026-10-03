@@ -10,17 +10,26 @@ type Fake struct {
 	Groups         []Group
 	Details        map[string]ContainerDetail
 	ActionResult   ActionResult
+	SetupMessage   string
 
 	DescribeErr  error
 	SidebarErr   error
 	ContainerErr error
 	ActionErr    error
 	EventErr     error
+	SetupErr     error
 
 	Expands      [][]string
 	ContainerIDs []string
 	Actions      []ActionCall
 	Events       []EventCall
+	Setups       []SetupCall
+}
+
+// SetupCall is one setup request a [Fake] was sent.
+type SetupCall struct {
+	ID    string
+	Input string
 }
 
 // ActionCall is one action request a [Fake] was sent.
@@ -81,4 +90,13 @@ func (f *Fake) Action(_ context.Context, p Project, action string, target Target
 func (f *Fake) Event(_ context.Context, p Project, container string, task Task, event string) error {
 	f.Events = append(f.Events, EventCall{Project: p, Container: container, Task: task, Event: event})
 	return f.EventErr
+}
+
+// Setup records the call and returns SetupMessage, or SetupErr.
+func (f *Fake) Setup(_ context.Context, id, input string) (string, error) {
+	f.Setups = append(f.Setups, SetupCall{ID: id, Input: input})
+	if f.SetupErr != nil {
+		return "", f.SetupErr
+	}
+	return f.SetupMessage, nil
 }

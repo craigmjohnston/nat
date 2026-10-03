@@ -178,6 +178,21 @@ public final class NatClient: Sendable {
         return try decodeJSON(PluginSourceList.self, from: output)
     }
 
+    /// Set one of a plugin's setup fields — `nat source-setup`. The value is
+    /// often a credential, so it goes on stdin and nowhere else: never in
+    /// the arguments (which `ps` shows), and never in an error, which carries
+    /// only nat's first stderr line. Nothing here logs a request.
+    ///
+    /// - Returns: What the plugin said of it ("Logged in to …")
+    /// - Throws: NatError carrying the refusal (an unknown field, an empty
+    ///   value, a token the remote turned down)
+    public func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult {
+        let output = try await runNat(
+            arguments: ["source-setup", plugin, "--id", id, "--json"],
+            standardInput: Data(value.utf8))
+        return try decodeJSON(PluginSetupResult.self, from: output)
+    }
+
     /// Get paths to nat's configuration and runtime files.
     ///
     /// - Returns: NatPaths containing config path, log directory, and nudge file path

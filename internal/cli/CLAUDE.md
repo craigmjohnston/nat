@@ -4,14 +4,27 @@ The headless `nat` subcommands: what an agent runs against its own slice,
 what skills run to plan and queue work, and the macOS app's entire backend
 contract (`NatClient` shells out to `nat <command> --json`). Runs before the
 tmux check, with no TUI code in the path — a command prints to the terminal
-it was typed in and exits. `setup`, `project-create`, `source-list` and the
-`plugin-*` commands act on no already-tracked project.
+it was typed in and exits. `setup`, `project-create`, `source-list`,
+`source-setup` and the `plugin-*` commands act on no already-tracked project.
 
 `plugin-list`/`-install`/`-uninstall`/`-source-add`/`-source-remove` are thin:
 flags, `Env.Load`, then `internal/plugins` through `Env.NewPlugins` (a
 `*plugins.Manager`; tests point one at an httptest TLS server). The source
 edits need a config that exists and `Save` it; the rest read a missing
-config as no extra sources and no projects.
+config as no extra sources and no projects. `plugin-list` then describes
+each installed plugin through `Env.NewSource` (`describeInstalled`): its
+entry gains `setup` (always an array) and `describe_error` — the plugin's
+own first stderr line (`*source.ExitError`), else nat's error — so gnat
+draws a setup form and why a plugin is broken from one read. (`describe`
+needs no credential, so a missing token is not a describe failure: the
+Shortcut plugin's "token missing" shows up in a source project's
+`source.error`, not here.)
+
+`source-setup <plugin> --id <id>` reads the value from **stdin only** (all
+of it, one trailing `\n`/`\r\n` trimmed — never a flag, so a token is never
+in argv), after describing the plugin and refusing an id its `setup` list
+doesn't name; an empty value is refused too, all before `Client.Setup` is
+called. `--json` → `{"message"}`.
 
 ## `--project` pinning
 

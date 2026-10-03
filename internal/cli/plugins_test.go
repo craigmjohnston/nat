@@ -12,12 +12,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/plugins"
+	"github.com/craigmjohnston/nat/internal/source"
 )
 
 // pluginEnv is an Env whose plugin installer talks to a GitHub where nat's
@@ -48,6 +50,7 @@ func pluginEnv(t *testing.T, cfg config.Config, found bool) (Env, *bytes.Buffer,
 		Load:       func() (config.Config, bool, error) { return *state, found, nil },
 		Save:       func(c config.Config) error { *state = c; return nil },
 		NewPlugins: func() (*plugins.Manager, error) { return m, nil },
+		NewSource:  func(string) (source.Client, error) { return &source.Fake{DescribeResult: demoDescribe()}, nil },
 		Out:        &out,
 	}, &out, m, state
 }
@@ -109,12 +112,70 @@ func TestPluginInstallListUninstall(t *testing.T) {
 }
 
 func TestPluginListTextShowsAnUpdate(t *testing.T) {
-	got := pluginListText(plugins.Listing{Installed: []plugins.Installed{
-		{Name: "demo", Kind: plugins.KindManaged, Path: "/p", Source: "a/b", Version: "1", Update: "2"},
-		{Name: "hand", Kind: plugins.KindManual, Path: "/h"},
+	got := pluginListText(pluginListingJSON{Installed: []installedPluginJSON{
+		{Installed: plugins.Installed{Name: "demo", Kind: plugins.KindManaged, Path: "/p", Source: "a/b", Version: "1", Update: "2"}},
+		{Installed: plugins.Installed{Name: "hand", Kind: plugins.KindManual, Path: "/h"}},
 	}})
 	if !strings.Contains(got, "  demo\tmanaged\t/p\t1 from a/b\t(update: 2)\n  hand\tmanual\t/h\n") {
 		t.Errorf("text = %q", got)
+	}
+}
+
+// TestPluginListDescribesEachInstalled: every installed plugin carries its
+// describe's setup fields, or — where describe failed — none and the line it
+// failed with: the plugin's own stderr line, else nat's words.
+func TestPluginListDescribesEachInstalled(t *testing.T) {
+	env, out, m, _ := pluginEnv(t, config.Config{}, true)
+	for _, name := range []string{"broken", "missing", "shortcut"} {
+		dir := filepath.Join(m.ConfigDir, "plugins", name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "nat-source-"+name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	withSetup := demoDescribe()
+	set := true
+	withSetup.Setup = []source.SetupField{{ID: "token", Label: "API token", Input: source.InputSecret, Hint: "Settings", Set: &set}}
+	env.NewSource = func(name string) (source.Client, error) {
+		switch name {
+		case "broken":
+			return &source.Fake{DescribeErr: fmt.Errorf("nat-source-broken describe: %w",
+				&source.ExitError{Code: 1, Stderr: "Token missing — set it in Settings\nmore\n"})}, nil
+		case "missing":
+			return nil, errors.New("no task source plugin named \"missing\"")
+		}
+		return &source.Fake{DescribeResult: withSetup}, nil
+	}
+
+	var listed pluginListingJSON
+	if err := json.Unmarshal([]byte(runPlugin(t, env, out, "plugin-list", "--json")), &listed); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]installedPluginJSON{}
+	for _, p := range listed.Installed {
+		got[p.Name] = p
+	}
+	if p := got["broken"]; p.DescribeError != "Token missing — set it in Settings" || p.Setup == nil || len(p.Setup) != 0 {
+		t.Errorf("broken = %+v, want its stderr line and an empty setup list", p)
+	}
+	if p := got["missing"]; p.DescribeError != `no task source plugin named "missing"` {
+		t.Errorf("missing = %+v, want nat's own words", p)
+	}
+	if p := got["shortcut"]; p.DescribeError != "" || !reflect.DeepEqual(p.Setup, withSetup.Setup) {
+		t.Errorf("shortcut = %+v, want its setup fields", p)
+	}
+	if !strings.Contains(out.String(), `"setup": []`) || !strings.Contains(out.String(), `"describe_error": ""`) ||
+		!strings.Contains(out.String(), `"set": true`) {
+		t.Errorf("JSON leaves out an empty field: %s", out.String())
+	}
+
+	text := runPlugin(t, env, out, "plugin-list")
+	for _, want := range []string{"\terror: Token missing — set it in Settings\n", "\tsetup: token\n"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("plugin-list text missing %q:\n%s", want, text)
+		}
 	}
 }
 

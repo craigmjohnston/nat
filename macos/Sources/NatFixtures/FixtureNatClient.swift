@@ -56,6 +56,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// What `plugin-list` answers — the same listing after every install,
     /// since nothing here is installed.
     private let plugins: PluginListing
+    /// The setup fields `source-setup` has set, as `plugin/field`.
+    private let setUpFields = Box<Set<String>>([])
 
     /// Every write this client was asked to make, in order — a preview never
     /// looks, and a test asserting that a button reached the client does.
@@ -195,8 +197,27 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await answer(Fixtures.sourcePlugins)
     }
 
+    /// The listing, with every field `source-setup` has set reading `set`
+    /// from then on — as the plugin's describe would.
     public func pluginList() async throws -> PluginListing {
-        try await answer(plugins)
+        let done = setUpFields.get()
+        let installed = plugins.installed.map { p in
+            InstalledPlugin(
+                name: p.name, path: p.path, kind: p.kind, source: p.source, version: p.version, update: p.update,
+                setup: p.setup.map { done.contains("\(p.name)/\($0.id)") ? $0.with(set: true) : $0 },
+                describeError: p.describeError)
+        }
+        return try await answer(PluginListing(sources: plugins.sources, installed: installed, available: plugins.available))
+    }
+
+    /// Records the plugin and field only — never the value, which stands for
+    /// a token — and answers as the Shortcut plugin does.
+    public func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult {
+        try await record("source-setup \(plugin) --id \(id)")
+        var done = setUpFields.get()
+        done.insert("\(plugin)/\(id)")
+        setUpFields.set(done)
+        return PluginSetupResult(message: "Logged in to scratch as Craig Scratch")
     }
 
     public func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled {

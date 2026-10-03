@@ -3,6 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -23,9 +24,31 @@ type fakeTokens struct {
 	storeErr error
 	stored   []string
 	onStore  string // the token Store "saves"
+	saved    [][2]string
+	saveErr  error
+	lost     bool // Save "succeeds" but the token never lands
+	asked    []string
 }
 
 func (f *fakeTokens) Token() (string, error) { return f.token, f.err }
+
+// Has is a stored token — each ask recorded, so a test can see describe
+// asked rather than read.
+func (f *fakeTokens) Has() bool {
+	f.asked = append(f.asked, "has")
+	return f.token != "" && f.err == nil
+}
+
+func (f *fakeTokens) Save(account, token string) error {
+	f.saved = append(f.saved, [2]string{account, token})
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	if !f.lost {
+		f.token, f.err = token, nil
+	}
+	return nil
+}
 
 func (f *fakeTokens) Store(account string) error {
 	f.stored = append(f.stored, account)
@@ -190,7 +213,7 @@ func (errReader) Read([]byte) (int, error) { return 0, errors.New("broken pipe")
 func TestTokenMissing(t *testing.T) {
 	h := newHarness(t)
 	h.tokens.err = errors.New("not found")
-	for _, m := range []string{"describe", "sidebar", "container", "action", "event"} {
+	for _, m := range []string{"sidebar", "container", "action", "event"} {
 		code, out, errs := h.run(req(`"id":"4821"`), m)
 		if code != 1 || out != "" || errs != TokenMissing+"\n" {
 			t.Errorf("%s: exit %d, stdout %q, stderr %q", m, code, out, errs)
@@ -198,7 +221,7 @@ func TestTokenMissing(t *testing.T) {
 	}
 	h.tokens.err = nil
 	h.tokens.token = ""
-	if errs := h.fail("describe", ""); errs != TokenMissing {
+	if errs := h.fail("sidebar", `"expand":[]`); errs != TokenMissing {
 		t.Errorf("empty Keychain token: %q", errs)
 	}
 	if len(h.fake.Requests()) != 0 {
@@ -251,6 +274,60 @@ func TestLogin(t *testing.T) {
 	var out2, errb strings.Builder
 	if code := Run([]string{"x", "login"}, strings.NewReader(""), &out2, &errb, env); code != 1 {
 		t.Errorf("login with a refusing client: exit %d", code)
+	}
+}
+
+// setupReq is a setup request as nat sends one: an empty project, the field
+// and the value.
+func setupReq(id, input string) string {
+	return fmt.Sprintf(`{"project":{"id":"","name":"","working_dir":""},"id":%q,"input":%q}`, id, input)
+}
+
+func TestSetup(t *testing.T) {
+	h := newHarness(t)
+	h.tokens = &fakeTokens{err: errors.New("not found")}
+	code, out, errs := h.run(setupReq("token", " "+secret+"\n"), "setup")
+	if code != 0 || errs != "" || out != `{"message":"Logged in to scratch as Craig Scratch"}`+"\n" {
+		t.Errorf("setup: exit %d, stdout %q, stderr %q", code, out, errs)
+	}
+	if want := [][2]string{{"craig", secret}}; !slices.Equal(h.tokens.saved, want) {
+		t.Errorf("saved %v, want %v (trimmed, under USER)", h.tokens.saved, want)
+	}
+	if got := h.gets(); !slices.Equal(got, []string{"/member"}) {
+		t.Errorf("setup read %v, want /member alone", got)
+	}
+	// Once set, the other methods find it.
+	h.call("sidebar", `"expand":[]`)
+
+	h.vars["USER"] = ""
+	for _, c := range []struct {
+		name   string
+		tokens *fakeTokens
+		req    string
+		want   string
+		saved  [][2]string
+	}{
+		{"Shortcut refuses the token", &fakeTokens{}, setupReq("token", "wrong"),
+			"shortcut: token stored, but Shortcut refused it: shortcut: GET /member: 401 Unauthorized", [][2]string{{"nat", "wrong"}}},
+		{"the Keychain write fails", &fakeTokens{saveErr: errors.New("exit status 50")}, setupReq("token", secret),
+			"shortcut: couldn't store the token in the Keychain: exit status 50", [][2]string{{"nat", secret}}},
+		{"the token never lands", &fakeTokens{lost: true, err: errors.New("gone")}, setupReq("token", secret),
+			"shortcut: the token didn't reach the Keychain", [][2]string{{"nat", secret}}},
+		{"an unknown id", &fakeTokens{}, setupReq("workspace", secret),
+			`shortcut: no setup field "workspace" — the only one is token`, nil},
+		{"an empty input", &fakeTokens{}, setupReq("token", " \n"), "shortcut: no token given", nil},
+	} {
+		h.tokens = c.tokens
+		code, out, errs := h.run(c.req, "setup")
+		if code != 1 || out != "" || errs != c.want+"\n" {
+			t.Errorf("%s: exit %d, stdout %q, stderr %q", c.name, code, out, errs)
+		}
+		if strings.Contains(errs, secret) {
+			t.Errorf("%s: the token is on stderr: %q", c.name, errs)
+		}
+		if !slices.Equal(h.tokens.saved, c.saved) {
+			t.Errorf("%s: saved %v, want %v", c.name, h.tokens.saved, c.saved)
+		}
 	}
 }
 

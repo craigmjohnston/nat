@@ -41,7 +41,8 @@ any one package does it.
 - `internal/cli/` — the headless `nat` subcommands; the macOS app's whole
   backend contract, served by the `--json` command set (`info`, `status`,
   `slice-*`, `session-*`, `pr-*`, `milestone-*`, `plan-apply`, `config-*`,
-  `usage`, …; `nat help` lists them). See `internal/cli/CLAUDE.md`.
+  `source-*`, `plugin-*` — `source-setup` reading a plugin's token from stdin
+  only — `usage`, …; `nat help` lists them). See `internal/cli/CLAUDE.md`.
 - `internal/tui/` — the board. See `internal/tui/CLAUDE.md`.
 - `internal/logging/`, `internal/nudge/` — the log file and the
   write-marker file the board polls every second for near-instant refresh.
@@ -265,6 +266,13 @@ project uses the plugin** (naming them) and for one found only on PATH. nat's
 own repo is always the first source and **can't be removed**; a source that
 can't be read is its `error`, never "no plugins". Format and contract:
 `docs/design/task-sources/README.md`, "Installing plugins".
+
+**Plugin setup.** A plugin's credentials are its own; nat never stores one.
+A plugin declares what it needs as `describe`'s `setup` fields (`describe`
+must answer with no credential), gnat draws them under the plugin in
+Settings ▸ Sources, and `nat source-setup <plugin> --id <id>` relays the
+value to the plugin's `setup` method **on stdin, never argv** — and no log
+line, error or gnat request log carries it.
 
 **Plan order.** Read from the Slices data source's first view's own row
 order (`notion.PlanOrder`), never from `created_time` — Notion records that
