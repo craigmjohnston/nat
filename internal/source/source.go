@@ -56,12 +56,15 @@ type Describe struct {
 // SetupField is one thing a plugin needs set before it works — a token, a
 // workspace — drawn by gnat as a field in Settings and sent back through a
 // setup request. nat relays it without understanding it: the value goes to
-// the plugin on stdin and nowhere else.
+// the plugin on stdin and nowhere else. Set, where the plugin says, is whether
+// it holds a value for the field now — a presence check, never the value —
+// and nil where it does not say.
 type SetupField struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	Input string `json:"input"`
 	Hint  string `json:"hint,omitempty"`
+	Set   *bool  `json:"set,omitempty"`
 }
 
 // Group is one fold of the plugin's sidebar tree. A lazy group carries only

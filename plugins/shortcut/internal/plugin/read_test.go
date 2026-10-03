@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -49,20 +50,36 @@ func TestDescribe(t *testing.T) {
 	if got := actions(d.Menu); got != "refresh(none) new-segment(text)" {
 		t.Errorf("menu = %s", got)
 	}
-	want := []source.SetupField{{ID: "token", Label: "API token", Input: source.InputSecret, Hint: "Shortcut ▸ Settings ▸ API Tokens"}}
-	if !slices.Equal(d.Setup, want) {
-		t.Errorf("setup = %+v, want %+v", d.Setup, want)
+	if len(d.Setup) != 1 || d.Setup[0].ID != "token" || d.Setup[0].Label != "API token" || d.Setup[0].Input != source.InputSecret ||
+		d.Setup[0].Hint != "Shortcut ▸ Settings ▸ API Tokens" || d.Setup[0].Set == nil || !*d.Setup[0].Set {
+		t.Errorf("setup = %+v, want the token, set", d.Setup)
+	}
+	if !slices.Equal(h.tokens.asked, []string{"craig"}) {
+		t.Errorf("asked the Keychain after %v, want craig", h.tokens.asked)
 	}
 	if len(h.fake.Requests()) != 0 {
 		t.Error("describe called Shortcut")
 	}
 
-	// describe is static: with no token anywhere it answers the same, so nat
-	// can learn a token is wanted from a plugin that has none.
+	// With no token anywhere — the lookup failing — describe still answers,
+	// the same but for set, so nat learns a token is wanted.
 	h.tokens.err, h.tokens.token = errors.New("not found"), ""
-	code, again, errs := h.run(`{"project":{"id":""}}`, "describe")
-	if code != 0 || again != out {
-		t.Errorf("describe with no token: exit %d, %q, stderr %q", code, again, errs)
+	setOf := func() string {
+		t.Helper()
+		code, out, errs := h.run(`{"project":{"id":""}}`, "describe")
+		var d source.Describe
+		if code != 0 || json.Unmarshal([]byte(out), &d) != nil || len(d.Setup) != 1 || d.Setup[0].Set == nil {
+			t.Fatalf("describe: exit %d, %q, stderr %q", code, out, errs)
+		}
+		return strconv.FormatBool(*d.Setup[0].Set)
+	}
+	if got := setOf(); got != "false" {
+		t.Errorf("set with no token = %s", got)
+	}
+	// SHORTCUT_API_TOKEN counts as one.
+	h.vars["SHORTCUT_API_TOKEN"] = secret
+	if got := setOf(); got != "true" {
+		t.Errorf("set with SHORTCUT_API_TOKEN = %s", got)
 	}
 }
 

@@ -52,10 +52,13 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
   `nat-source-shortcut`). Without one every method but `describe` and
   `setup` fails with exactly `Shortcut token missing — set it in gnat's
   Settings ▸ Sources or run nat-source-shortcut login`
-  (`plugin.TokenMissing`). **`describe` is static** — no token, no project,
-  no request (`nat source-list` sends it an empty project) — and lists the
-  one setup field, `token` (secret, hinted "Shortcut ▸ Settings ▸ API
-  Tokens"), so gnat can ask for it.
+  (`plugin.TokenMissing`). **`describe` reads no credential** — no token, no
+  project, no request (`nat source-list` sends it an empty project) — and
+  lists the one setup field, `token` (secret, hinted "Shortcut ▸ Settings ▸
+  API Tokens"), so gnat can ask for it. Its `set` is presence alone:
+  `SHORTCUT_API_TOKEN`, else `Keychain.Has` (`security
+  find-generic-password -s … -a $USER`, **no `-w`**, output discarded); a
+  failed lookup is `false`, never an error.
 - **`setup`** takes only id `token` and a non-blank input (trimmed), stores
   it through `Tokens.Save` under `$USER` (else `nat`), then checks it
   exactly as `login` does — read back, `GET /member` — and answers `Logged

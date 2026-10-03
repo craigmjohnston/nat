@@ -194,7 +194,7 @@ Section   { id, title, kind: "prose" | "comments" | "links", body?, comments?: [
 Comment   { by, when, text }
 Link      { label, text, state?, url }
 Action    { id, label, input: "none" | "text" | "choice", options?: [string], destructive? }
-Setup     { id, label, input: "secret" | "text", hint? }
+Setup     { id, label, input: "secret" | "text", hint?, set? }
 ```
 
 - **Ids** are non-empty strings, opaque to nat. Ids beginning with `_` are
@@ -245,7 +245,7 @@ Response:
     { "id": "new-segment", "label": "New Segment…", "input": "text" }
   ],
   "setup": [
-    { "id": "token", "label": "API token", "input": "secret", "hint": "Shortcut ▸ Settings ▸ API Tokens" }
+    { "id": "token", "label": "API token", "input": "secret", "hint": "Shortcut ▸ Settings ▸ API Tokens", "set": false }
   ]
 }
 ```
@@ -274,6 +274,12 @@ Response:
   field and `hint` (optional) says where to find the value. A `describe`
   breaking any of these is refused. A plugin with nothing to set up omits
   it.
+- `set` (optional) says whether the plugin holds a value for the field
+  right now, so gnat can say "API token not set" or "API token set". It is
+  a **presence check only** — describe still reads no credential (Shortcut
+  asks the Keychain whether an item exists, without `-w`) — and a check
+  that fails reads as `false`, never as a failed `describe`. Absent means
+  the plugin doesn't say. nat passes it through and does not validate it.
 
 ### `sidebar`
 
@@ -864,7 +870,9 @@ a version that doesn't read that way is never newer.
   bar crumb is `<container title> / <task>`.
 - **Settings.** A **Sources** tab: each installed plugin's name, kind and
   version, its `describe_error` as a warning line, and its `setup` fields
-  beneath it (a secure field for `secret`, a text field for `text`, the
+  beneath it ("<label> not set" as a warning where `set` is false, a quiet
+  "<label> set" and a "Replace …" placeholder where it is true; a secure
+  field for `secret`, a text field for `text`, the
   hint as a caption, Save → `nat source-setup` with the value on stdin; the
   plugin's message or refusal inline, then `plugin-list` re-read).
 - **Gallery stories**: `sidebar-source`, `window-container`,

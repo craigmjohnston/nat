@@ -47,6 +47,22 @@ func TestToken(t *testing.T) {
 	}
 }
 
+// TestHas: a presence check, never a read — no -w in argv — and a failure
+// is simply no token.
+func TestHas(t *testing.T) {
+	r := &fakeRunner{out: "keychain: \"login.keychain-db\"\n"}
+	if !(Keychain{Run: r}).Has("craig") {
+		t.Error("Has = false for a stored item")
+	}
+	want := [][]string{{"security", "find-generic-password", "-s", "nat-source-shortcut", "-a", "craig"}}
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Errorf("calls = %v, want %v", r.calls, want)
+	}
+	if (Keychain{Run: &fakeRunner{err: errors.New("exit status 44")}}).Has("craig") {
+		t.Error("Has = true for a failed lookup")
+	}
+}
+
 func TestStore(t *testing.T) {
 	r := &fakeRunner{}
 	if err := (Keychain{Run: r}).Store("craig"); err != nil {

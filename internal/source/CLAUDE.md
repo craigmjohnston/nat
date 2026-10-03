@@ -30,7 +30,8 @@ plan itself is an ordinary `store.Local`, wrapped by `store.Sourced`.
   `id`.
 - **Validation** (`validate.go`) runs after decode: `Describe` →
   `ValidateDescribe` (tag `^[A-Z0-9]{1,3}$`, menu, `setup` fields: id
-  `^[a-z0-9-]+$` and unique, input `secret`|`text`), `Sidebar` →
+  `^[a-z0-9-]+$` and unique, input `secret`|`text`; `set` — `*bool`, nil
+  where the plugin doesn't say — is not checked), `Sidebar` →
   `ValidateGroups` (children *xor* containers, one level of children, unique
   group ids, no empty or `_`-prefixed group/container id — `_` is nat's, for
   `_unlisted` — and every menu), `Container` → `ValidateContainer` (menu and

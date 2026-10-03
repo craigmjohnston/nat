@@ -136,7 +136,8 @@ func TestPluginListDescribesEachInstalled(t *testing.T) {
 		}
 	}
 	withSetup := demoDescribe()
-	withSetup.Setup = []source.SetupField{{ID: "token", Label: "API token", Input: source.InputSecret, Hint: "Settings"}}
+	set := true
+	withSetup.Setup = []source.SetupField{{ID: "token", Label: "API token", Input: source.InputSecret, Hint: "Settings", Set: &set}}
 	env.NewSource = func(name string) (source.Client, error) {
 		switch name {
 		case "broken":
@@ -165,7 +166,8 @@ func TestPluginListDescribesEachInstalled(t *testing.T) {
 	if p := got["shortcut"]; p.DescribeError != "" || !reflect.DeepEqual(p.Setup, withSetup.Setup) {
 		t.Errorf("shortcut = %+v, want its setup fields", p)
 	}
-	if !strings.Contains(out.String(), `"setup": []`) || !strings.Contains(out.String(), `"describe_error": ""`) {
+	if !strings.Contains(out.String(), `"setup": []`) || !strings.Contains(out.String(), `"describe_error": ""`) ||
+		!strings.Contains(out.String(), `"set": true`) {
 		t.Errorf("JSON leaves out an empty field: %s", out.String())
 	}
 

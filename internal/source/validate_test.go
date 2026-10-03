@@ -23,7 +23,7 @@ func TestValidateDescribe(t *testing.T) {
 		{"a secret action", Describe{Tag: "SC", Menu: []Action{{ID: "tok", Input: InputSecret}}}, `the source menu: action "tok" asks for a secret`},
 		{"setup fields", Describe{Tag: "SC", Setup: []SetupField{
 			{ID: "token", Label: "API token", Input: InputSecret, Hint: "Settings"},
-			{ID: "work-space2", Label: "Workspace", Input: InputText},
+			{ID: "work-space2", Label: "Workspace", Input: InputText, Set: new(bool)},
 		}}, ""},
 		{"a setup id with upper case", Describe{Tag: "SC", Setup: []SetupField{{ID: "Token", Input: InputSecret}}}, `setup field id "Token" is not lower-case`},
 		{"an empty setup id", Describe{Tag: "SC", Setup: []SetupField{{ID: "", Input: InputSecret}}}, `setup field id ""`},

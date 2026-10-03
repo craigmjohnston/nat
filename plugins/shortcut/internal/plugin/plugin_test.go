@@ -27,9 +27,17 @@ type fakeTokens struct {
 	saved    [][2]string
 	saveErr  error
 	lost     bool // Save "succeeds" but the token never lands
+	asked    []string
 }
 
 func (f *fakeTokens) Token() (string, error) { return f.token, f.err }
+
+// Has is a stored token, asked after by account — recorded, so a test can
+// see describe asked rather than read.
+func (f *fakeTokens) Has(account string) bool {
+	f.asked = append(f.asked, account)
+	return f.token != "" && f.err == nil
+}
 
 func (f *fakeTokens) Save(account, token string) error {
 	f.saved = append(f.saved, [2]string{account, token})

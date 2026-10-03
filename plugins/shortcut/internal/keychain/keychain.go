@@ -50,6 +50,14 @@ func (k Keychain) Token() (string, error) {
 	return tok, nil
 }
 
+// Has says whether a token is stored under account, without reading it:
+// find-generic-password with no -w prints only the item's attributes, which
+// are discarded. Any failure — no item, no security — reads as none.
+func (k Keychain) Has(account string) bool {
+	_, err := k.Run.Output("security", "find-generic-password", "-s", Service, "-a", account)
+	return err == nil
+}
+
 // Store asks for a token on the terminal and saves it under account,
 // replacing any already there (-U).
 func (k Keychain) Store(account string) error {

@@ -210,6 +210,33 @@ func TestEventReportsAFailedCall(t *testing.T) {
 	}
 }
 
+// TestDescribeDecodesSetupFields: set is carried as the plugin said it —
+// true, false, or absent (nil) — and the validator takes no view on it.
+func TestDescribeDecodesSetupFields(t *testing.T) {
+	f := &fakeRunner{out: `{"protocol":1,"tag":"SC","setup":[` +
+		`{"id":"token","label":"API token","input":"secret","hint":"h","set":true},` +
+		`{"id":"team","label":"Team","input":"text","set":false},` +
+		`{"id":"ws","label":"Workspace","input":"text"}]}`}
+	d, err := NewWithRunner("sc", "/bin/nat-source-sc", f).Describe(context.Background(), testProject)
+	if err != nil {
+		t.Fatalf("Describe() = %v", err)
+	}
+	var got []string
+	for _, s := range d.Setup {
+		switch {
+		case s.Set == nil:
+			got = append(got, s.ID+"=?")
+		case *s.Set:
+			got = append(got, s.ID+"=set")
+		default:
+			got = append(got, s.ID+"=unset")
+		}
+	}
+	if strings.Join(got, " ") != "token=set team=unset ws=?" || d.Setup[0].Hint != "h" {
+		t.Errorf("setup = %v", got)
+	}
+}
+
 func TestSetupSendsTheValueOnStdinAndDecodesTheMessage(t *testing.T) {
 	f := &fakeRunner{out: `{"message":"Logged in to scratch as Craig"}`}
 	msg, err := NewWithRunner("sc", "/bin/nat-source-sc", f).Setup(context.Background(), "token", "s3cret-value")
