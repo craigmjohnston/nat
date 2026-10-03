@@ -169,7 +169,7 @@ struct ThreadEventCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    ThreadIcon(symbol: event.kind.symbol)
+                    ThreadIcon(symbol: event.kind.symbol, role: event.kind == .checksFailed ? .danger : .tertiary)
                     // An action and who did it are one line, in one face
                     // and ink: "Agent handed back".
                     Text(event.title)
@@ -289,6 +289,42 @@ struct NavFactMenu<Items: View>: View {
 }
 
 /// A one-line notice in a section body: a refusal, a warning, a stale read.
+/// The notice a pull request failing its checks puts at the head of the
+/// section the pane lands on (`checksNotice`): the checks by name, then the
+/// fix launch where there is one to make — none where the failure was already
+/// sent to the agent.
+struct ChecksNoticeView: View {
+    let notice: ChecksNotice
+    var isLaunching = false
+    var launchEnabled = true
+    let onLaunchFix: () -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "xmark.octagon")
+                .font(.system(size: 12, weight: .medium))
+                .ink(.danger)
+            Text(notice.text)
+                .font(.system(size: 13))
+                .ink(.danger)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+            if notice.action == .launchFix {
+                Button(action: onLaunchFix) {
+                    HeaderActionLabel(title: "Launch fix agent", systemImage: "arrow.right", isBusy: isLaunching)
+                }
+                .buttonStyle(GnatButtonStyle(primary: true))
+                .disabled(!launchEnabled)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .help(notice.checks.joined(separator: "\n"))
+    }
+}
+
 struct NavNotice: View {
     let text: String
     var role: InkRole = .danger

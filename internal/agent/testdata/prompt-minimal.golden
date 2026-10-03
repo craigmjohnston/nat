@@ -82,6 +82,16 @@ pull request from the board once they have reviewed it.
 If the work is not code — docs, research, written-up findings — produce
 the deliverable the brief asks for and link it in the summary below.
 
+## Reading CI
+
+The project's checks run on the pull request, once the slice is approved.
+If you are told they failed, read how they stand — each check, and each
+failed step's log — with:
+
+    nat slice-checks 3b738308-f654-8170-8c99-eccab4463d8f --log --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+
+That is the one way to read CI: never `gh`.
+
 ## Notes for later slices
 
 If this session finds out something a *later* slice needs to know — a

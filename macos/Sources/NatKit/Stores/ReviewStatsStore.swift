@@ -30,6 +30,13 @@ public final class ReviewStatsStore {
     /// project's whole finished history out of the ACTIVE section.
     public private(set) var prReadiness: [String: String] = [:]
 
+    /// The names of the checks each pull request read "checks failing" has
+    /// failed, by slice id — what the rail's marker and the pane's notice
+    /// name. Replaced with every reading that arrives, so a slice drops out
+    /// on the first one no longer failing; kept as it was by one that does
+    /// not arrive, as `prReadiness` is.
+    public private(set) var failingChecks: [String: [String]] = [:]
+
     private let client: NatClientProtocol
     private var branchBySlice: [String: String] = [:]
 
@@ -99,6 +106,11 @@ public final class ReviewStatsStore {
                 map[slice.sliceID] = slice.readiness
             }
         }
+        failingChecks = doc.slices.reduce(into: [:]) { map, slice in
+            if slice.readiness == PRStatusSlice.checksFailing {
+                map[slice.sliceID] = (slice.checks?.failing ?? []).map(\.name)
+            }
+        }
     }
 
     /// Clear everything, as if nothing had ever been fetched.
@@ -107,5 +119,6 @@ public final class ReviewStatsStore {
         fileCounts = [:]
         branchBySlice = [:]
         prReadiness = [:]
+        failingChecks = [:]
     }
 }

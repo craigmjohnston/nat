@@ -132,6 +132,34 @@ func TestOpenPRsChecksVerdict(t *testing.T) {
 	}
 }
 
+// TestOpenPRsFailingChecks names every failed check with its run URL, in the
+// rollup's order, whatever else is pending beside them — a run's detailsUrl, a
+// status context's targetUrl — and nothing for a pull request that is not red.
+func TestOpenPRsFailingChecks(t *testing.T) {
+	const out = `[{"url":"https://github.test/pr/1","statusCheckRollup":[` +
+		`{"__typename":"CheckRun","name":"lint","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.test/runs/1"},` +
+		`{"__typename":"CheckRun","name":"test","status":"IN_PROGRESS"},` +
+		`{"__typename":"StatusContext","context":"deploy","state":"ERROR","targetUrl":"https://ci.test/9"},` +
+		`{"__typename":"CheckRun","name":"vet","status":"COMPLETED","conclusion":"SUCCESS"}]},` +
+		`{"url":"https://github.test/pr/2","statusCheckRollup":[` +
+		`{"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"SUCCESS"}]}]`
+	open, err := NewWithRunner(&fakeRunner{out: out}).OpenPRs("/repos/nat")
+	if err != nil {
+		t.Fatalf("OpenPRs() = %v, want a listing", err)
+	}
+	red := open["https://github.test/pr/1"]
+	want := []Check{
+		{Name: "lint", State: "FAILURE", URL: "https://github.test/runs/1"},
+		{Name: "deploy", State: "ERROR", URL: "https://ci.test/9"},
+	}
+	if red.Checks != ChecksFailing || !reflect.DeepEqual(red.Failing, want) {
+		t.Errorf("red PR = %v %+v, want failing %+v", red.Checks, red.Failing, want)
+	}
+	if green := open["https://github.test/pr/2"]; green.Failing != nil {
+		t.Errorf("green PR Failing = %+v, want none", green.Failing)
+	}
+}
+
 // TestCheckOutcome is the one table of GitHub's check words: every finished
 // word, read whatever its case or spacing, and anything else — an unfinished
 // run, an empty state, a word GitHub adds later — as pending.

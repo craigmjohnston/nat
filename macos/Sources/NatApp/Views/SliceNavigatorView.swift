@@ -30,8 +30,13 @@ struct SliceNavigatorView: View {
     private var nav: NavigatorModel {
         NavigatorModel(
             slice: slice, agent: agent.map { AgentActivity($0.activity) },
-            fixLaunched: appModel.fixLaunched[slice.id] != nil,
             hasVisuals: !visuals.isEmpty)
+    }
+    /// The failing-checks notice, where the last PR reading has one.
+    private var notice: ChecksNotice? {
+        checksNotice(
+            slice: slice, failing: appModel.reviewStatsStore?.failingChecks[slice.id],
+            hasLiveAgent: agent != nil, events: detail.detail?.events)
     }
     private var detail: SliceDetailLoadState { appModel.sliceDetailStore(projectID: projectID).state(for: slice.id) }
     private var visuals: [VisualChange] { detail.detail?.visuals ?? [] }
@@ -322,8 +327,7 @@ struct SliceNavigatorView: View {
 
     private func state(of other: Slice) -> SliceDisplayState {
         displayState(
-            for: other, agent: appModel.activityStore?.agents[other.id].map { AgentActivity($0.activity) },
-            fixLaunched: appModel.fixLaunched[other.id] != nil)
+            for: other, agent: appModel.activityStore?.agents[other.id].map { AgentActivity($0.activity) })
     }
 
     private func milestoneName(of other: Slice) -> String {
@@ -342,7 +346,7 @@ struct SliceNavigatorView: View {
         if nav.showsLaunch {
             let enabled = appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch)
             Button(action: launch) {
-                HeaderActionLabel(title: "Launch", systemImage: "arrow.right", isBusy: isLaunching)
+                HeaderActionLabel(title: nav.launchIsFix ? "Launch fix agent" : "Launch", systemImage: "arrow.right", isBusy: isLaunching)
             }
             .buttonStyle(GnatHeaderButtonStyle(primary: nav.launchIsPrimary))
             .disabled(!enabled)
@@ -363,6 +367,7 @@ struct SliceNavigatorView: View {
             plan: plan, milestones: milestones)
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                if let notice { checksNoticeView(notice, nav) }
                 VStack(spacing: 6) {
                     briefCard
                     ForEach(Array(log.enumerated()), id: \.offset) { _, event in
@@ -401,7 +406,15 @@ struct SliceNavigatorView: View {
         if nav.state == .blocked {
             return .blocked(waitingOn: dependencies.filter { $0.status != "Done" }.map(\.name))
         }
+        if nav.launchIsFix { return .fix }
         return nav.state.isLaunched ? .relaunch : .launch
+    }
+
+    private func checksNoticeView(_ notice: ChecksNotice, _ nav: NavigatorModel) -> some View {
+        ChecksNoticeView(
+            notice: notice, isLaunching: isLaunching,
+            launchEnabled: appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch),
+            onLaunchFix: launch)
     }
 
     private func resetLaunchForm() {
@@ -545,8 +558,15 @@ struct SliceNavigatorView: View {
         store.startPolling()
     }
 
-    @ViewBuilder
     private var prBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let notice { checksNoticeView(notice, nav) }
+            prReading
+        }
+    }
+
+    @ViewBuilder
+    private var prReading: some View {
         if let pr = prStore.loadState.pr {
             PRSectionBody(
                 pr: pr,

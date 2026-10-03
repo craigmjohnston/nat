@@ -91,8 +91,11 @@ type sliceShowJSON struct {
 	DependsOn  []string `json:"depends_on,omitempty"`
 	Blocked    bool     `json:"blocked"`
 	HandedBack bool     `json:"handed_back"`
-	State      string   `json:"state,omitempty"`
-	Brief      string   `json:"brief"`
+	// Fixing says a fix is under way, read off the record — see
+	// [store.Fixing].
+	Fixing bool   `json:"fixing"`
+	State  string `json:"state,omitempty"`
+	Brief  string `json:"brief"`
 	// FollowUps are the follow-ups the slice's agent handed in that still
 	// await the user's decision, each by the index slice-triage takes.
 	FollowUps []followUpJSON `json:"followUps,omitempty"`
@@ -244,6 +247,7 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 		DependsOn:  s.DependsOn,
 		Blocked:    domain.Blocked(s, slicesByID),
 		HandedBack: s.HandedBack(),
+		Fixing:     store.Fixing(s, brief),
 		Brief:      brief,
 		Events:     taskEventsJSON(s, brief),
 		Container:  container,

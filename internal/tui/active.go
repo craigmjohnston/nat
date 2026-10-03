@@ -86,6 +86,14 @@ func (b *Board) SetPRState(state map[string]domain.PRReadiness) {
 	b.restoreCursor(was, wasSlice)
 }
 
+// SetFailingChecks records, per slice, the names of the checks its pull
+// request was last read failing — drawn beside the checks-failing state, so
+// the entry says which went red. It changes no row, only what one says, so it
+// costs no rebuild.
+func (b *Board) SetFailingChecks(failing map[string][]string) {
+	b.failingChecks = failing
+}
+
 // cursorRow is the row the cursor is on and, for an entry of the Active
 // section, the ID of the slice it draws. The row addresses the section by
 // position, and a position is exactly what a rebuild moves — the entries above
@@ -263,8 +271,12 @@ func (b Board) renderActive(i int) []string {
 	// The state line is indented under the name, past the dot's own cell, and
 	// that indent carries the fill like everything else on the line: a space
 	// drawn plain would cut a hole in a selected entry's highlight.
+	word := state.String()
+	if names := b.failingChecks[s.ID]; state == domain.SliceStateChecksFailing && len(names) > 0 {
+		word += ": " + strings.Join(names, ", ")
+	}
 	foot := wash(lipgloss.NewStyle(), fill).Render("  ") +
-		wash(st, fill).Render(state.String()) +
+		wash(st, fill).Render(word) +
 		wash(b.styles.Faint, fill).Render(" · "+b.groupTitleOf(s))
 	lines := []string{b.activeRow(fill, head), b.activeRow(fill, foot)}
 	// An entry is a row of the board like any other, so a confirmation or a

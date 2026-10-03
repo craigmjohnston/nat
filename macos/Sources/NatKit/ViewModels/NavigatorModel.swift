@@ -132,8 +132,8 @@ public struct NavigatorModel: Equatable, Sendable {
     /// changes section exists only then.
     public let hasVisuals: Bool
 
-    public init(slice: Slice, agent: AgentActivity?, fixLaunched: Bool, hasVisuals: Bool = false) {
-        self.state = displayState(for: slice, agent: agent, fixLaunched: fixLaunched)
+    public init(slice: Slice, agent: AgentActivity?, hasVisuals: Bool = false) {
+        self.state = displayState(for: slice, agent: agent)
         self.hasPR = !slice.pr.isEmpty
         self.hasBranch = slice.handedBack || !(slice.branch ?? "").isEmpty
         self.hasLiveAgent = agent != nil
@@ -201,6 +201,10 @@ public struct NavigatorModel: Equatable, Sendable {
     /// relaunch or a fix session offered on one already under way.
     public var launchIsPrimary: Bool { state == .todo }
 
+    /// Whether a launch would be a fix session: the slice sits at its pull
+    /// request, approved, with no fix under way — "Launch fix agent".
+    public var launchIsFix: Bool { state == .pr }
+
     /// The first section's label: "Task" while the slice is still to do, and
     /// "Task log" from the moment it is under way on — what the section has
     /// become by then is the record of what happened to it.
@@ -209,15 +213,16 @@ public struct NavigatorModel: Equatable, Sendable {
     }
 
     /// Whether the Thread header offers Launch: a slice not yet launched (a
-    /// blocked one drawn disabled, as the design draws it), and one being
-    /// worked whose agent is gone — a relaunch. A slice handed back, in
+    /// blocked one drawn disabled, as the design draws it), one being worked
+    /// or fixed whose agent is gone — a relaunch — and one approved and at
+    /// its pull request, where it is a fix launch. A slice handed back, in
     /// review or done carries no Launch here, as in the design; the slice's
     /// menu still offers whatever `LaunchPlan` allows.
     public var showsLaunch: Bool {
         guard !hasLiveAgent else { return false }
         switch state {
-        case .todo, .blocked, .working, .fixing: return true
-        case .waiting, .review, .pr, .done: return false
+        case .todo, .blocked, .working, .fixing, .pr: return true
+        case .waiting, .review, .done: return false
         }
     }
 
@@ -270,6 +275,8 @@ public enum ThreadEventKind: Equatable, Sendable {
     case released
     /// Launched again on the work so far.
     case relaunched
+    /// The pull request's checks failed with no agent live to be told.
+    case checksFailed
     /// Handed in as blocked.
     case blocked
     /// Follow-ups the agent proposed, and what became of each.
@@ -402,7 +409,7 @@ public func buildThreadEvents(
     plan: [Slice] = [], milestones: [Milestone] = []
 ) -> [ThreadEvent] {
     let state = displayState(
-        for: slice, agent: agent.map { AgentActivity($0.activity) }, fixLaunched: false)
+        for: slice, agent: agent.map { AgentActivity($0.activity) })
     // A released slice is back to do, and its history is still its own. Notes
     // alone are not history: one left on a slice never launched is read in its
     // brief, and opens no log of launches that never happened.
@@ -460,6 +467,11 @@ private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Mile
     case .handedBack:
         return ThreadEvent(.handedBack, who: "Agent", meta: "handed back", body: note)
     case .sentBack:
+        // One nat filed for a red pull request names where it came from in
+        // `by` (CI), where a review's own comments name nobody: they are yours.
+        if event.by.map({ !$0.isEmpty }) ?? false {
+            return ThreadEvent(.sentBack, who: "Checks failed", meta: "— sent to the agent", tone: .accent, body: note)
+        }
         return ThreadEvent(.sentBack, who: "You", meta: "sent back with comments", tone: .accent, body: note)
     case .released:
         guard let by = event.by.flatMap({ $0.isEmpty ? nil : $0 }) else {
@@ -468,6 +480,8 @@ private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Mile
         return ThreadEvent(.released, who: by, meta: "released to Todo")
     case .relaunched:
         return ThreadEvent(.relaunched, who: "Relaunched on the work so far")
+    case .checksFailed:
+        return ThreadEvent(.checksFailed, who: "Checks", meta: "failed", tone: .hot, body: note)
     case .blocked:
         return ThreadEvent(.blocked, who: "Agent", meta: "blocked", tone: .hot, body: note)
     case .summary:

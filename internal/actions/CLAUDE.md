@@ -10,7 +10,7 @@ longer exists; `internal/tui/{launch,approve,landed,worktrees}.go` are now
 thin — bubbletea messages, toasts, board redraws — over the functions here.
 
 For *why* any of these writes happen in the order they do, see root
-CLAUDE.md's Domain rules (claim-before-tmux, fix sessions write nothing,
+CLAUDE.md's Domain rules (claim-before-tmux, fix sessions claim nothing,
 release note-before-status, Done-means-merged, worktree-removed-only-on-merge,
 etc.) — this file is the mechanics, not a restatement of the rules.
 
@@ -35,7 +35,10 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   that's `start-slice`'s job when the agent's own session reaches it.
 - `Launch` is the whole flow in order: `PlaceAgent` (worktree), write the
   prompt file, claim (skipped when `PromptContext.Fix` is set — a fix session
-  claims nothing), start tmux. The claim runs **last** of what can fail before
+  claims nothing, gathers the review instead and files a `Relaunched`), start
+  tmux. `FixLaunch` is the one test for a fix launch (a PR recorded, In
+  progress or Done) and `PRStillOpen` its gh gate, run by the caller before
+  `Launch` — the board's `l` and `slice-launch` alike. The claim runs **last** of what can fail before
   tmux is asked for anything, so a worktree or prompt-file failure leaves the
   slice exactly where it was.
 - `PlaceAgent` resolves `AgentBranch` (the branch recorded at hand-back, or
@@ -71,6 +74,15 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   `PromptContext.Container` (`promptContainer`): title, URL, the prose
   sections joined, the noun from `store.Describer` else `container`. A failed
   read is logged and leaves it nil — the launch goes on.
+
+## CI failures (`checks.go`)
+
+- `NoticeFailingChecks` acts on a reading's red PRs (`nat pr-status`, the
+  TUI's `refreshPRStates`): identity is the set of failing run URLs (name
+  where none), compared with the latest `Checks failed`/`Sent back` event's
+  bullets (`sameFailure`). Live session → `agent.ChecksPrompt`, then
+  `RecordSentBack`; none (or no sender) → `RecordChecksFailed`. Send first;
+  an unreadable task log passes the slice over.
 
 ## Approve / merge (`approve.go`, `merged.go`, `mergerefusal.go`, `landed.go`)
 

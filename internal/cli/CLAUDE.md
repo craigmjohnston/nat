@@ -166,9 +166,11 @@ succeeds), `plan-apply`, `project-create`, `config-set`.
 Agent control (tmux only, no Notion read beyond the claim check):
 `slice-launch` (`actions.Launch`, same flow the board's `l` key and
 `start-slice`'s self-claim both use — a **third** way to get an agent
-running, the one the macOS app's launch button drives; accepts Todo or
-in-progress-with-no-live-session only, **never** a fix launch — Done is
-refused outright, unlike the board's `l`), `agent-interrupt` (Claude Code's
+running, the one the macOS app's launch button drives; accepts Todo,
+in-progress-with-no-live-session, and — as the board's `l` does — a fix
+launch on a slice with a PR recorded (`actions.FixLaunch`): no dependency
+check, `actions.PRStillOpen` before any worktree, review gathered, nothing
+claimed, `--json`'s `fix` true; Done with no PR is refused), `agent-interrupt` (Claude Code's
 interrupt key), `agent-kill` (`kill-session`; a session already gone is
 success, not failure), `agent-send` (paste-buffer delivery, `--text` or
 stdin — same mechanism `internal/agent.SendPrompt` uses for review
@@ -197,7 +199,7 @@ queued-follow-up line is `fromSlice` too. See root CLAUDE.md's Notes rule.
 
 `slice-show --json`'s `events` is the slice's whole task log: every
 `store.TaskEvent` its body carries (`handed_back`/`sent_back`/`relaunched`/
-`released`/`blocked`/`summary`/`follow_ups`/`note`), in body order, plus — read off
+`released`/`blocked`/`summary`/`follow_ups`/`note`/`checks_failed`), in body order, plus — read off
 the slice's properties rather than its body — an `approved` event where a
 pull request is recorded and a `merged` event where the slice is Done with a
 pull request or branch recorded. Always an array, never `omitempty`: the app
@@ -228,6 +230,16 @@ progress until the agent's next `complete-slice --branch` re-records it — the
 deterministic signal gnat's approve-over-comments flow waits on. The recorded
 PR description stays on the page for the eventual `slice-approve`.
 
+`slice-show --json` and `info --json` carry `fixing` per slice
+(`store.Fixing`; `info` reads a body only for In progress slices with a PR,
+an unreadable one concluding false).
+
+`slice-checks <slice> [--log] [--json]` (any status, a read only): the
+recorded PR's `gh.ViewPR` checks through `gh.Verdict`, one line per check;
+no PR says so and exits 0. `--log` adds, per failed GitHub Actions check,
+`gh run view --log-failed` cut to its last 200 lines; an external status has
+its URL alone, an unreadable log is logged and skipped.
+
 PR actions: `slice-approve` (`actions.OpenPR` + `actions.RecordPR`, the
 approve key's two-step write, headless), `pr-comment` (`gh pr comment
 --body-file -`, `--body` or stdin), `pr-reviewers` (`--add`/`--remove`
@@ -241,7 +253,9 @@ its own failure says so rather than pretending the merge never happened),
 `pr-status` (`prReadings` — the headless mirror of the board's
 `refreshPRStates`; writes `actions.ReopenUnmerged` for any Done-at-approve
 legacy row whose PR still reads open — see root CLAUDE.md's Domain rules on
-`StateOf`), `slice-status` (reads one page by ID directly, `--project` only
+`StateOf`; `--json` carries `checks` `{verdict, failing: [{name, url}]}` per
+PR the listing read, and the red ones go to `actions.NoticeFailingChecks`;
+a tmux that can't list live sessions concludes nothing), `slice-status` (reads one page by ID directly, `--project` only
 for credentials — no plan is read at all, so it is the one read that can
 never show a phantom state from a stale cached plan; built for the macOS
 app's session reaper, see `SessionReaping.swift`).

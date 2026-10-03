@@ -7,12 +7,12 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
-// fixContext is a launch on a slice whose work is already out: Done, with the
-// pull request it produced recorded on it and the worktree its branch is
-// checked out in still there.
+// fixContext is a launch on a slice whose work is already out: approved — in
+// progress, with the pull request it produced recorded on it — and the
+// worktree its branch is checked out in still there.
 func fixContext() PromptContext {
 	c := worktreeContext()
-	c.Slice.Status = domain.SliceDone
+	c.Slice.Status = domain.SliceClaimed
 	c.Slice.Branch = c.Branch
 	c.Slice.PRURL = "https://github.test/craig/nat/pull/12"
 	c.Fix = true
@@ -71,24 +71,27 @@ func TestFixPromptNamesTheFrontend(t *testing.T) {
 }
 
 // The pull request is the whole brief, and it moves while the session runs, so
-// the agent is told to read it from GitHub rather than handed a copy of what it
-// said at launch. Those two reads are the one place the standing prohibition on
-// gh is relaxed, and the prompt says what is still out of bounds in the same
-// breath.
+// the agent is told to read it again before it pushes: the comments with the
+// one `gh` read the standing prohibition is relaxed for, the checks with
+// `nat slice-checks` — never `gh pr checks` — and the prompt says what is still
+// out of bounds in the same breath.
 func TestFixPromptSendsTheAgentAtTheReview(t *testing.T) {
 	c := fixContext()
 	got := Prompt(c)
 	for _, want := range []string{
 		"- Pull request: " + c.Slice.PRURL,
 		"gh pr view " + c.Slice.PRURL + " --comments",
-		"gh pr checks " + c.Slice.PRURL,
+		"nat slice-checks " + c.Slice.ID + " --log --project " + c.ProjectID,
 		"answer the\ncomments left on the review, and fix whatever checks are failing",
-		"Those two reads are the only `gh` you may run.",
+		"That `gh pr view` is the only `gh` you may run.",
 		"Never open, merge, close\nor reopen a pull request",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "gh pr checks") {
+		t.Errorf("prompt names gh pr checks, which slice-checks replaces:\n%s", got)
 	}
 }
 
@@ -121,42 +124,55 @@ func TestFixPromptOmitsTheReviewSnapshotWhenNothingWasGathered(t *testing.T) {
 	}
 }
 
-// Nothing about the slice is this session's to move: it is Done, the account of
-// what was done is written, and the state the approve key left it in is what
-// the merge box is read against. The prompt names none of the commands that
-// would change it — a command an agent could copy is one it might run — and
-// says outright that the record stands.
-func TestFixPromptLeavesTheSliceAlone(t *testing.T) {
+// The launch already put the return to work on the record, so there is
+// nothing to claim, and nothing else the prompt names would move the slice
+// sideways: no start, no release, no blocking it.
+func TestFixPromptClaimsNothing(t *testing.T) {
 	got := Prompt(fixContext())
-	for _, want := range []string{
-		"nothing about the slice for you to claim, complete or record",
-		"Never change the slice on the tracker",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("prompt does not say %q:\n%s", want, got)
-		}
+	if want := "there is nothing\nto claim"; !strings.Contains(got, want) {
+		t.Errorf("prompt does not say %q:\n%s", want, got)
 	}
-	for _, unwanted := range []string{"start-slice", "complete-slice", "release-slice", "--branch", "--blocked"} {
+	for _, unwanted := range []string{"start-slice", "release-slice", "--blocked", "recorded as done"} {
 		if strings.Contains(got, unwanted) {
-			t.Errorf("prompt names %q, which would move a slice that is done", unwanted)
+			t.Errorf("prompt names %q, which a fix session has no business with", unwanted)
 		}
 	}
 }
 
-// The ending is a push and nothing else: the pull request is built from the
-// branch, so it picks up what the session commits by itself. There is nothing
-// to hand back and no second pull request to open.
-func TestFixPromptEndsInAPushToTheSameBranch(t *testing.T) {
+// The ending is a push to the same branch — the pull request is built from it
+// — then a hand-back naming that branch, the same complete-slice the slice
+// itself ended with, with no new pull request description.
+func TestFixPromptEndsInAHandBack(t *testing.T) {
 	c := fixContext()
 	got := Prompt(c)
 	for _, want := range []string{
 		"- Branch: " + c.Branch + " (the working directory is a worktree already on it)",
 		"push " + c.Branch + " again",
-		"no second pull request to open, and no branch of your own to\ncreate or switch to",
+		"no second pull request to open",
+		"nat complete-slice " + c.Slice.ID + " --project " + c.ProjectID + " \\\n        --branch " + c.Branch + " --summary",
+		"Leave `--pr-description` off",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
 		}
+	}
+	if i, j := strings.Index(got, "push "+c.Branch), strings.Index(got, "nat complete-slice"); i > j {
+		t.Errorf("prompt hands back before it pushes:\n%s", got)
+	}
+}
+
+// Launched from the app, a fix session hands in what it noticed but did not do
+// before its hand-back, as a slice session does; from the board it is told
+// nothing of follow-ups, since nothing there can triage them.
+func TestFixPromptFollowUps(t *testing.T) {
+	c := fixContext()
+	c.Frontend = FrontendGnat
+	if got := Prompt(c); !strings.Contains(got, "nat slice-followups "+c.Slice.ID+" --project "+c.ProjectID) {
+		t.Errorf("gnat fix prompt does not hand follow-ups in:\n%s", got)
+	}
+	c.Frontend = FrontendTUI
+	if got := Prompt(c); strings.Contains(got, "slice-followups") {
+		t.Errorf("tui fix prompt names slice-followups:\n%s", got)
 	}
 }
 
@@ -172,8 +188,10 @@ func TestFixPromptWithoutAWorktreeNamesNoBranch(t *testing.T) {
 	if strings.Contains(got, "- Branch:") {
 		t.Errorf("prompt names a branch for a session that has none:\n%s", got)
 	}
-	if want := "push the branch the pull\nrequest is built from"; !strings.Contains(got, want) {
-		t.Errorf("prompt does not say %q:\n%s", want, got)
+	for _, want := range []string{"push the branch the pull\nrequest is built from", "--branch <branch>"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not say %q:\n%s", want, got)
+		}
 	}
 }
 

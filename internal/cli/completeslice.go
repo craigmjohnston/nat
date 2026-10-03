@@ -304,7 +304,12 @@ func notOursError(s domain.Slice, assignee, action string) error {
 // The branch is the one just handed back rather than the one read back off the
 // page: what was written is known here, and a page Notion echoes is a read of
 // the same thing at best.
+//
+// A branch handed back on a slice whose pull request is already recorded is a
+// fix session's ending: the slice goes back to that pull request rather than
+// to a review that opens one.
 func outcomeMarkdown(s domain.Slice, blocked bool, branch, assignee string) string {
+	fixed := branch != "" && !blocked && s.PRURL != ""
 	if branch == "" {
 		branch = s.Branch
 	}
@@ -315,6 +320,9 @@ func outcomeMarkdown(s domain.Slice, blocked bool, branch, assignee string) stri
 	switch {
 	case blocked:
 		fmt.Fprintf(&b, "Still in progress, held by %s. The note is on the slice page.\n\n", assignee)
+	case fixed:
+		fmt.Fprintf(&b, "Handed back to its pull request, still held by %s. "+
+			"The summary is on the slice page, and the pull request carries what was pushed.\n\n", assignee)
 	case handedBack:
 		fmt.Fprintf(&b, "Handed back for review, still held by %s. "+
 			"The summary is on the slice page, and approving it on the board is what opens the pull request.\n\n",

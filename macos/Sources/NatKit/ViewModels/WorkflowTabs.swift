@@ -95,8 +95,7 @@ public struct WorkflowTabState: Equatable {
 /// landing tab comes from the stage; reachability keeps its fact-based rules.
 public func buildWorkflowTabState(
     for slice: Slice,
-    hasLiveAgent: Bool,
-    fixLaunched: Bool = false
+    hasLiveAgent: Bool
 ) -> WorkflowTabState {
     let allTabs = WorkflowTab.allCases
 
@@ -118,7 +117,7 @@ public func buildWorkflowTabState(
         reachable.insert(.pr)
     }
 
-    let workflowStage = stage(for: slice, agent: nil, fixLaunched: fixLaunched)
+    let workflowStage = stage(for: slice, agent: nil)
     let defaultTab = workflowStage.tab(for: slice)
 
     return WorkflowTabState(tabs: allTabs, reachable: reachable, defaultTab: defaultTab)

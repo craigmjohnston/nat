@@ -26,11 +26,9 @@ type Launcher interface {
 }
 
 // PRReviewReader is what a fix launch needs of gh to gather the review's
-// state at launch time: the exact two reads its own prompt already permits
-// the agent to run again itself. Narrower than gh.CLI, the way every other
-// seam here is. A caller that never launches a fix session — headless
-// slice-launch, which refuses a Done slice outright — has nothing to drive
-// it with and passes nil; [Launch] never calls it outside c.Fix.
+// state at launch time: its comments and its checks. Narrower than gh.CLI,
+// the way every other seam here is. A caller with none passes nil, and the
+// prompt goes without the snapshot; [Launch] never calls it outside c.Fix.
 type PRReviewReader interface {
 	ReviewComments(dir, ref string) (string, error)
 	Checks(dir, ref string) (string, error)
@@ -97,13 +95,13 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 	if c.Branch != "" && (c.Fix || agent.Resuming(c)) {
 		c.GitBase, c.GitLog, c.GitDiffStat = gitSnapshot(r, c.WorkingDir, c.Branch)
 	}
-	// A fix session claims nothing and reads no brief: the slice is Done, its
-	// record of what happened is written, and the work in flight is the pull
-	// request rather than the slice. Moving it back into progress would take
-	// it out of the state the approve flow left it in for a session that
-	// changes none of what that flow recorded, and [agent.Prompt] sends such a
-	// session at the fix prompt instead, which is handed the review gathered
-	// below rather than told to read it live.
+	// A fix session claims nothing and reads no brief: the slice already
+	// carries its pull request, so it is everything a claim would make it, and
+	// the work in flight is that pull request's review rather than the slice.
+	// [agent.Prompt] sends such a session at the fix prompt instead, which is
+	// handed the review gathered below rather than told to read it live. What
+	// it does write is the one line that says a fix is under way — see the
+	// Relaunched below.
 	if !c.Fix {
 		if err := ClaimSlice(ctx, st, c.Slice, assigneeID); err != nil {
 			return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
@@ -136,6 +134,14 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 		c.Container = promptContainer(ctx, st, c.Slice)
 	} else {
 		c.ReviewComments, c.ReviewChecks = reviewSnapshot(viewer, c.WorkingDir, c.Slice.PRURL)
+		// A fix session is a return to work, and the record says so: a
+		// Relaunched after the approval is what store.Fixing reads the slice
+		// as being fixed off, until the session's own hand-back follows it.
+		// As for any relaunch, a failed write is logged and never fails the
+		// launch.
+		if err := st.RecordRelaunch(ctx, c.Slice.ID); err != nil {
+			logging.Action("could not record a fix launch", "slice", c.Slice.ID, "err", err)
+		}
 	}
 	session := agent.SessionName(c.Slice.ID)
 	file, err := agent.WritePromptFile(session, agent.Prompt(c))
@@ -226,10 +232,9 @@ func gitSnapshot(r Repo, dir, branch string) (base, log, diffStat string) {
 	return base, log, diffStat
 }
 
-// reviewSnapshot is a fix launch's read of the pull request's review: the
-// exact two commands [fixPrompt] tells the agent it may run itself. A nil
-// viewer (nothing headless ever launches a fix session with one) or a read
-// that fails is logged and left empty, the same posture [gitSnapshot] keeps.
+// reviewSnapshot is a fix launch's read of the pull request's review: its
+// comments and its checks. A nil viewer, or a read that fails, is logged and
+// left empty, the same posture [gitSnapshot] keeps.
 func reviewSnapshot(viewer PRReviewReader, dir, prURL string) (comments, checks string) {
 	if viewer == nil {
 		return "", ""

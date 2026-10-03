@@ -35,6 +35,16 @@ func (n *Notion) RecordSentBack(ctx context.Context, id, comments string) error 
 	return nil
 }
 
+// RecordChecksFailed files the checks a pull request failed on the slice page
+// under a heading of their own, stamped, in one append.
+func (n *Notion) RecordChecksFailed(ctx context.Context, id, checks string) error {
+	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.ChecksFailedHeading, stamped(clockOr(n.Clock), checks))); err != nil {
+		return err
+	}
+	logging.Action("slice checks failed", "slice", id)
+	return nil
+}
+
 // RecordNote files a note on the slice page under a heading of its own, its
 // stamp the first paragraph and its provenance the second, in one append.
 func (n *Notion) RecordNote(ctx context.Context, id, from, text string) error {
@@ -65,6 +75,16 @@ func (l *Local) RecordSentBack(ctx context.Context, id, comments string) error {
 	return nil
 }
 
+// RecordChecksFailed appends the failed checks to the slice's body, in the
+// markdown Notion would render the same section to.
+func (l *Local) RecordChecksFailed(ctx context.Context, id, checks string) error {
+	if err := l.appendToBody(ctx, id, "record the slice's failed checks", notion.ChecksFailedHeading, stamped(clockOr(l.Clock), checks)); err != nil {
+		return err
+	}
+	logging.Action("slice checks failed", "slice", id)
+	return nil
+}
+
 // RecordNote appends the note to the slice's body, in the markdown Notion
 // would render the same section to.
 func (l *Local) RecordNote(ctx context.Context, id, from, text string) error {
@@ -91,6 +111,16 @@ func (m *Mirrored) RecordSentBack(ctx context.Context, id, comments string) erro
 		return err
 	}
 	m.push(ctx, id, func() error { return m.remote.RecordSentBack(ctx, id, comments) })
+	return nil
+}
+
+// RecordChecksFailed files the failed checks locally, then pushes them to the
+// workspace.
+func (m *Mirrored) RecordChecksFailed(ctx context.Context, id, checks string) error {
+	if err := m.local.RecordChecksFailed(ctx, id, checks); err != nil {
+		return err
+	}
+	m.push(ctx, id, func() error { return m.remote.RecordChecksFailed(ctx, id, checks) })
 	return nil
 }
 

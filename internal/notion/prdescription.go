@@ -34,6 +34,12 @@ const (
 	RelaunchedHeading = "Relaunched"
 )
 
+// ChecksFailedHeading is the heading a failing reading of a slice's pull
+// request files the failed checks under, where no agent was live to be told
+// (actions.NoticeFailingChecks). Matched as PRDescriptionHeading is, and read
+// back by store.TaskEvents.
+const ChecksFailedHeading = "Checks failed"
+
 // NoteHeading is the heading `slice-note` files a note under: a paragraph of
 // provenance nat composed, then the note as it was given. Matched as
 // PRDescriptionHeading is, and read back by store.TaskEvents.

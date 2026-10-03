@@ -5,20 +5,30 @@ import (
 	"testing"
 )
 
-// The nudge names the pull request, the two gh reads it relaxes the ban for,
-// and the branch a fix is pushed to — and nothing that would let the agent
-// touch the pull request itself.
-func TestChecksFailingPrompt(t *testing.T) {
-	got := ChecksFailingPrompt("https://github.test/pr/7", "slice/red")
+// The nudge names the pull request, each failed check with its run URL (a
+// check with none by name alone), the pinned slice-checks read, the branch a
+// fix is pushed to and the complete-slice hand-back it ends in — and no `gh`.
+func TestChecksPrompt(t *testing.T) {
+	got := ChecksPrompt(ChecksContext{
+		SliceID: "s1", ProjectID: testProjectID, PRURL: "https://github.test/pr/7", Branch: "slice/red",
+		Failing: []FailedCheck{{Name: "test", URL: "https://github.test/runs/1"}, {Name: "deploy"}},
+	})
 	for _, want := range []string{
 		"checks on your pull request are failing: https://github.test/pr/7",
-		"gh pr checks https://github.test/pr/7",
-		"gh pr view https://github.test/pr/7",
-		"push\nslice/red again",
-		"Never open, merge, close or reopen a pull request.",
+		"- test: https://github.test/runs/1\n",
+		"- deploy\n",
+		"nat slice-checks s1 --log --project " + testProjectID,
+		"push slice/red",
+		"nat complete-slice s1 --branch slice/red --summary '<what you fixed>' --project " + testProjectID,
+		"Never run `gh`",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt does not say %q:\n%s", want, got)
+		}
+	}
+	for _, cmd := range natCommands(got) {
+		if !strings.Contains(cmd, "--project "+testProjectID) {
+			t.Errorf("the checks prompt runs %q without naming the project", cmd)
 		}
 	}
 }

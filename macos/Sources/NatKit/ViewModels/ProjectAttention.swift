@@ -65,8 +65,8 @@ public struct ProjectAttention: Equatable, Sendable {
 /// attributes none to this project.
 ///
 /// What counts towards the pill is a thing needing the user *now*: an agent
-/// waiting for input, a slice handed back for review, and a pull request
-/// ready to merge. Counted per slice rather than per fact, so a handed-back
+/// waiting for input, a slice handed back for review, a pull request ready to
+/// merge, and one whose checks are failing (at the PR stage or under a fix). Counted per slice rather than per fact, so a handed-back
 /// slice whose agent is also waiting is one thing to attend to and not two;
 /// a waiting planning agent is one more, being nobody's slice.
 ///
@@ -83,15 +83,14 @@ public func projectAttention(
     liveAgents: [String: AgentActivity],
     planningAgent: AgentActivity? = nil,
     prReadiness: [String: String] = [:],
-    sessions: [Session] = [],
-    fixLaunched: Set<String> = []
+    sessions: [Session] = []
 ) -> ProjectAttention {
     // Only a slice the ACTIVE section would draw may contribute an agent:
     // a tmux session can outlive the slice it was launched on — an idle
     // Claude Code left in the pane of a Done slice whose pull request has
     // merged — and the rail refuses exactly that. One rule for both, so the
     // dot and the section can never disagree about what is in flight.
-    let inFlight = inFlightSliceIDs(slices: slices, fixLaunched: fixLaunched)
+    let inFlight = inFlightSliceIDs(slices: slices)
     let agents = liveAgents.filter { inFlight.contains($0.key) }
     let waiting = agents.filter { $0.value == .waiting }.keys
     let planningWaiting = planningAgent == .waiting
@@ -114,8 +113,10 @@ public func projectAttention(
     var pending = Set(
         slices
             .filter {
-                let stage = stage(for: $0, agent: nil, fixLaunched: fixLaunched.contains($0.id))
-                return stage == .review || (stage == .pr && prReadiness[$0.id] == PRStatusSlice.readyToMerge)
+                let stage = stage(for: $0, agent: nil)
+                let reading = prReadiness[$0.id]
+                return stage == .review || (stage == .pr && reading == PRStatusSlice.readyToMerge)
+                    || ((stage == .pr || stage == .fixing) && reading == PRStatusSlice.checksFailing)
             }
             .map(\.id)
     )

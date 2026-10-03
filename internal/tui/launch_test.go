@@ -1360,11 +1360,12 @@ func fixApp(t *testing.T, state string) (*App, *fakeLauncher, *fakePRViewer, *fa
 // its pull request is built from.
 const fixBranch = "slice/domain-model"
 
-// A Done slice whose pull request is still open is launchable: the work is out
-// but not in, and the review on it is exactly what an agent is for. The session
-// is placed back in the worktree its own branch is checked out in, briefed on
-// the pull request rather than on the slice, and the slice itself is left
-// exactly as the approve key left it — Done, with nothing claimed.
+// A slice whose pull request is still open is launchable: the work is out but
+// not in, and the review on it is exactly what an agent is for. The session is
+// placed back in the worktree its own branch is checked out in, briefed on the
+// pull request rather than on the slice, told to hand it back when the fix is
+// in, and the slice's properties are left exactly as they were — nothing
+// claimed.
 func TestAppLaunchStartsAFixAgentOnAnOpenPullRequest(t *testing.T) {
 	app, launcher, viewer, trees, workdir := fixApp(t, "OPEN")
 
@@ -1396,7 +1397,7 @@ func TestAppLaunchStartsAFixAgentOnAnOpenPullRequest(t *testing.T) {
 		"- Pull request: https://example.test/pr/1",
 		"- Branch: " + fixBranch,
 		"gh pr view https://example.test/pr/1 --comments",
-		"Never change the slice on the tracker",
+		"nat complete-slice s3 --project " + testProjectID + " \\\n        --branch " + fixBranch,
 	} {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("prompt does not say %q:\n%s", want, prompt)
@@ -1449,6 +1450,32 @@ func TestAppLaunchRefusesAFixAgentOnAPullRequestThatIsNotOpen(t *testing.T) {
 				t.Error("a refused launch should leave nothing in flight")
 			}
 		})
+	}
+}
+
+// An approved slice — in progress, its pull request recorded — is a fix launch
+// too: approve no longer writes Done, so this is where every slice under review
+// sits, and l on it is the same fix session a Done one gets.
+func TestAppLaunchStartsAFixAgentOnAnApprovedSlice(t *testing.T) {
+	app, launcher, viewer, _, _ := fixApp(t, "OPEN")
+	app.project.Slices[2].Status = domain.SliceClaimed
+	app.board.SetProject(app.project)
+	cursorOn(t, app, "s3")
+
+	launch(t, app)
+
+	if len(launcher.launches) != 1 || len(viewer.made) != 1 {
+		t.Fatalf("launches = %+v after %d gh reads, want the one fix session, gated", launcher.launches, len(viewer.made))
+	}
+	if got := app.client.(*fakeNotion).updated; len(got) != 0 {
+		t.Errorf("writes = %+v, want nothing claimed", got)
+	}
+	prompt, err := os.ReadFile(launcher.launches[0].promptFile)
+	if err != nil {
+		t.Fatalf("read the prompt: %v", err)
+	}
+	if !strings.Contains(string(prompt), "working the review of one already-published") {
+		t.Errorf("prompt is not the fix prompt:\n%s", prompt)
 	}
 }
 

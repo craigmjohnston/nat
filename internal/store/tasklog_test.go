@@ -273,3 +273,59 @@ func TestMirroredRecordNoteCarriesTheLocalFailureUp(t *testing.T) {
 		t.Error("RecordNote on a slice not in the plan: want an error")
 	}
 }
+
+func TestNotionRecordChecksFailedWritesOneAppend(t *testing.T) {
+	api := &fakeAPI{}
+	if err := Over(api).RecordChecksFailed(context.Background(), "s5", "- test: https://ci.test/1"); err != nil {
+		t.Fatalf("RecordChecksFailed() error = %v", err)
+	}
+	if len(api.appended) != 1 {
+		t.Fatalf("appends = %d, want one", len(api.appended))
+	}
+	got, _ := json.Marshal(api.appended[0])
+	if !strings.Contains(string(got), `"content":"Checks failed"`) {
+		t.Errorf("blocks = %s, want a Checks failed heading", got)
+	}
+}
+
+func TestNotionRecordChecksFailedCarriesTheFailureUp(t *testing.T) {
+	api := &fakeAPI{appendBlocks: func(string, []map[string]any) ([]notion.Block, error) { return nil, errBoom }}
+	if err := Over(api).RecordChecksFailed(context.Background(), "s5", "x"); !errors.Is(err, errBoom) {
+		t.Errorf("RecordChecksFailed err = %v, want the append's failure", err)
+	}
+}
+
+func TestLocalRecordChecksFailedAppendsTheSection(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	if err := l.RecordChecksFailed(context.Background(), "writes", "- test: https://ci.test/1"); err != nil {
+		t.Fatalf("RecordChecksFailed: %v", err)
+	}
+	body, _ := l.Body(context.Background(), "writes")
+	events := TaskEvents(body)
+	if len(events) == 0 || events[len(events)-1].Kind != ChecksFailedKind ||
+		events[len(events)-1].Note != "- test: https://ci.test/1" {
+		t.Errorf("events = %+v, want a checks_failed event naming the check", events)
+	}
+	if err := l.RecordChecksFailed(context.Background(), "ghost", "x"); err == nil {
+		t.Error("RecordChecksFailed on a slice not in the plan: want an error")
+	}
+}
+
+func TestMirroredRecordChecksFailedGoesLocallyThenPushes(t *testing.T) {
+	api := &fakeAPI{}
+	m, l := mirroredPlan(t, api)
+	ctx := context.Background()
+	if err := m.RecordChecksFailed(ctx, "writes", "- test"); err != nil {
+		t.Fatalf("RecordChecksFailed: %v", err)
+	}
+	if len(api.appended) != 1 {
+		t.Errorf("appends = %d, want it pushed", len(api.appended))
+	}
+	if body, _ := l.Body(ctx, "writes"); !strings.Contains(body, "### Checks failed") {
+		t.Errorf("local body = %q, want the Checks failed section filed", body)
+	}
+	if err := m.RecordChecksFailed(ctx, "ghost", "x"); err == nil {
+		t.Error("RecordChecksFailed on a slice not in the plan: want an error")
+	}
+}

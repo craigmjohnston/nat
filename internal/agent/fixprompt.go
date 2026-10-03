@@ -5,36 +5,33 @@ import (
 	"strings"
 )
 
-// fixPrompt is the opening message for a session launched on a slice that is
-// already Done: the work it produced became a pull request, that pull request
-// is still open, and what is left of the slice is the review on it — comments
-// to answer and checks to get green.
+// fixPrompt is the opening message for a session launched on a slice whose
+// work is already out: it was handed back and approved, the pull request that
+// produced is still open, and what is left of the slice is the review on it —
+// comments to answer and checks to get green.
 //
-// It is a prompt of its own rather than a branch of [Prompt] because almost
-// none of the slice contract applies. There is nothing to claim: `start-slice`
-// refuses a Done slice, and so does every other command that would move one, so
-// the prompt names none of them and tells the agent the record stands. There is
-// nothing to hand back either: the pull request is built from the branch, so a
-// push to it is the whole of the ending, and the board's merge key is what the
-// work lands with.
+// It is a prompt of its own rather than a branch of [Prompt] because most of
+// the slice contract does not apply. There is nothing to claim: the slice is
+// already everything a claim would make it, and the launch has put the return
+// to work on its record (a Relaunched) already. The brief is not the slice page
+// but the review. What does apply is the ending: the fix is pushed to the same
+// branch — the pull request is built from it and picks the push up by itself —
+// and then handed back with `complete-slice --branch`, exactly as the slice
+// itself was, which is what tells the record the fix is in and puts the slice
+// back at its pull request.
 //
-// The brief is the review rather than the slice page: `gh pr view --comments`
-// and `gh pr checks`, read once at launch and carried straight into the
-// prompt, the same as the slice's own brief is for an ordinary launch. This
-// used to read the two live instead, on the theory that the review moves
-// while the session runs and a launch-time copy would already be stale — but
-// a snapshot taken seconds before the agent's own first read of the same two
-// commands is exactly as fresh, and the prompt still tells the agent to run
-// them again itself before it pushes, so nothing that moved in those few
-// seconds goes uncaught. Those two reads are the one place the ordinary
-// prohibition on `gh` is relaxed: opening, merging and closing a pull
-// request are still the user's alone.
+// The review comes from `gh pr view --comments`, read once at launch and
+// carried straight into the prompt, the same as the slice's own brief is for an
+// ordinary launch; the checks the launch read with it come the same way. The
+// agent is told to read both again before it pushes — the comments with that
+// one `gh` read, the one place the standing prohibition on `gh` is relaxed,
+// and the checks with `nat slice-checks`, the way every agent reads CI.
+// Opening, merging and closing a pull request are still the user's alone.
 //
 // Everything the two prompts do share is shared for the same reasons as ever:
 // the working directory and the branch, so the session and the board never
-// disagree about where the work is, and --project on the one `nat` command
-// there is, since a session outlives the board's idea of which project is
-// active.
+// disagree about where the work is, and --project on every `nat` command,
+// since a session outlives the board's idea of which project is active.
 func fixPrompt(c PromptContext) string {
 	var b strings.Builder
 
@@ -57,11 +54,11 @@ func fixPrompt(c PromptContext) string {
 	}
 
 	b.WriteString("\n## What is already true\n\n")
-	b.WriteString("The slice is recorded as done and its pull request is open. The work was\n")
-	b.WriteString("written, reviewed and published; none of that changes here, and there is\n")
-	b.WriteString("nothing about the slice for you to claim, complete or record. Leave the\n")
-	b.WriteString("tracker exactly as you found it: the account of what was done is written\n")
-	b.WriteString("and it stands.\n")
+	b.WriteString("The slice's work was written, handed back and approved, and its pull\n")
+	b.WriteString("request is open. This session takes it back up to answer the review: the\n")
+	b.WriteString("launch has already put that on the slice's record, so there is nothing\n")
+	b.WriteString("to claim. When the fix is in you hand the slice back, as below, and it\n")
+	b.WriteString("returns to its pull request for the user to review again.\n")
 
 	b.WriteString("\n## Your job\n\n")
 	b.WriteString("Get that pull request to a state where it can be merged: answer the\n")
@@ -72,13 +69,14 @@ func fixPrompt(c PromptContext) string {
 			fmt.Fprintf(&b, "`gh pr view %s --comments`:\n\n```\n%s\n```\n\n", c.Slice.PRURL, c.ReviewComments)
 		}
 		if c.ReviewChecks != "" {
-			fmt.Fprintf(&b, "`gh pr checks %s`:\n\n```\n%s\n```\n\n", c.Slice.PRURL, c.ReviewChecks)
+			fmt.Fprintf(&b, "The pull request's checks:\n\n```\n%s\n```\n\n", c.ReviewChecks)
 		}
 	}
-	b.WriteString("Re-check before you push, since either can have moved since launch:\n\n")
+	b.WriteString("Re-check before you push, since either can have moved since launch — the\n")
+	b.WriteString("checks with each failed step's log:\n\n")
 	fmt.Fprintf(&b, "    gh pr view %s --comments\n", c.Slice.PRURL)
-	fmt.Fprintf(&b, "    gh pr checks %s\n\n", c.Slice.PRURL)
-	b.WriteString("Those two reads are the only `gh` you may run. Never open, merge, close\n")
+	fmt.Fprintf(&b, "    nat slice-checks %s --log --project %s\n\n", c.Slice.ID, c.ProjectID)
+	b.WriteString("That `gh pr view` is the only `gh` you may run. Never open, merge, close\n")
 	if c.Frontend == FrontendGnat {
 		b.WriteString("or reopen a pull request: merging this one is a button in the app's PR\n")
 		b.WriteString("tab, pressed once they are satisfied with what you did.\n\n")
@@ -101,9 +99,9 @@ func fixPrompt(c PromptContext) string {
 	b.WriteString("The project's conventions, which is what the rest of the review will\n")
 	b.WriteString("be measured against:\n\n")
 	fmt.Fprintf(&b, "    nat info --project %s\n\n", c.ProjectID)
-	b.WriteString("That and the two commands below, `slice-note` and `slice-visuals`, are\n")
-	b.WriteString("the only `nat` commands this session has any business running, and each\n")
-	b.WriteString("names the project the way every other one does:\n\n")
+	b.WriteString("That and the commands named in this prompt are the only `nat` commands\n")
+	b.WriteString("this session has any business running, and each names the project the\n")
+	b.WriteString("way every other one does:\n\n")
 	fmt.Fprintf(&b, "    --project %s\n\n", c.ProjectID)
 	b.WriteString("A command given no project is refused: there is nothing for it to fall\n")
 	b.WriteString("back to, and in particular not the project the user's board is on,\n")
@@ -115,30 +113,32 @@ func fixPrompt(c PromptContext) string {
 	b.WriteString("\n## Finish\n\n")
 	if c.Branch != "" {
 		fmt.Fprintf(&b, "Commit in the working directory above and push %s again — the\n", c.Branch)
-		b.WriteString("same branch, which is the one the pull request is built from. It picks\n")
-		b.WriteString("up what you push by itself, so that is the whole of the ending: nothing\n")
-		b.WriteString("to record, no second pull request to open, and no branch of your own to\n")
-		b.WriteString("create or switch to.\n\n")
+		b.WriteString("same branch, which is the one the pull request is built from and picks\n")
+		b.WriteString("up what you push by itself. There is no second pull request to open, and\n")
+		b.WriteString("no branch of your own to create or switch to.\n\n")
 	} else {
 		b.WriteString("Commit in the working directory above and push the branch the pull\n")
-		b.WriteString("request is built from. It picks up what you push by itself, so that is\n")
-		b.WriteString("the whole of the ending: nothing to record, no second pull request to\n")
-		b.WriteString("open, and no branch of your own to create or switch to.\n\n")
+		b.WriteString("request is built from, which picks up what you push by itself. There is\n")
+		b.WriteString("no second pull request to open, and no branch of your own to create or\n")
+		b.WriteString("switch to.\n\n")
 	}
-	// A fix session's slice is Done, which slice-visuals takes from its own
-	// holder only where a pull request is recorded — which is what makes it a
-	// fix session at all.
-	b.WriteString(visualsPassage(c, "before you report back"))
-	b.WriteString("Then say what you changed and what is still outstanding, so the user can\n")
-	b.WriteString("read the review's state off your last message.\n")
+	b.WriteString(followUpsPassage(c))
+	b.WriteString(visualsPassage(c, "before `complete-slice`"))
+	b.WriteString("Then hand the slice back, naming the branch you pushed:\n\n")
+	fmt.Fprintf(&b, "    nat complete-slice %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	fmt.Fprintf(&b, "        --branch %s --summary '- <what you fixed>\\n- <what is still outstanding>'\n\n", branchArg(c))
+	b.WriteString("That files your summary as the hand-back and puts the slice back at its\n")
+	b.WriteString("pull request. Leave `--pr-description` off: the pull request is open\n")
+	b.WriteString("already, with its description. Make no unverifiable claims in the\n")
+	b.WriteString("summary: say only what you actually checked.\n")
 
 	b.WriteString("\n## Guardrails\n\n")
 	b.WriteString("- One pull request per session. Never pick up another slice when this\n")
 	b.WriteString("  one is done.\n")
-	b.WriteString("- Never change the slice on the tracker beyond handing in renders of your\n")
-	b.WriteString("  fixes: it is done, and its record of what happened is not yours to\n")
-	b.WriteString("  rewrite. A note goes on a later slice, never on this one.\n")
-	b.WriteString("- `gh pr view` and `gh pr checks` are the only `gh` you may run.\n")
+	b.WriteString("- The `nat` commands are the only way to record anything about the slice.\n")
+	fmt.Fprintf(&b, "- Every one of them carries `--project %s`.\n", c.ProjectID)
+	b.WriteString("- `gh pr view --comments` is the only `gh` you may run; CI is read with\n")
+	b.WriteString("  the `slice-checks` command above.\n")
 	b.WriteString("- Never open, merge, close or reopen a pull request, and never push to\n")
 	b.WriteString("  the main branch.\n")
 

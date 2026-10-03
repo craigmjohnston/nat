@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -29,7 +30,30 @@ type fakePRReader struct {
 	view    map[string]gh.PR
 	viewErr error
 	viewed  []string
+
+	// logs answers FailedLog by job (or run, where no job is named), logErr
+	// fails it, logged records what was asked for.
+	logs   map[string]string
+	logErr error
+	logged []string
+	// comments answers ReviewComments, the review a fix launch gathers.
+	comments string
 }
+
+func (f *fakePRReader) FailedLog(dir, run, job string) (string, error) {
+	key := job
+	if key == "" {
+		key = run
+	}
+	f.logged = append(f.logged, key)
+	if f.logErr != nil {
+		return "", f.logErr
+	}
+	return f.logs[key], nil
+}
+
+func (f *fakePRReader) ReviewComments(dir, ref string) (string, error) { return f.comments, nil }
+func (f *fakePRReader) Checks(dir, ref string) (string, error)         { return "", nil }
 
 func (f *fakePRReader) OpenPRs(dir string) (map[string]gh.PRStatus, error) {
 	f.dirs = append(f.dirs, dir)
@@ -136,7 +160,8 @@ func TestPRStatusJSON(t *testing.T) {
 		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
 	}
 	want := prStatusDoc{Slices: []prStatusSliceJSON{
-		{SliceID: "s1", Name: "Awaiting review", PR: "https://github.test/craig/nat/pull/1", Readiness: "awaiting review"},
+		{SliceID: "s1", Name: "Awaiting review", PR: "https://github.test/craig/nat/pull/1", Readiness: "awaiting review",
+			Checks: &prChecksJSON{Verdict: "none", Failing: []prCheckJSON{}}},
 	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("json = %+v\nwant %+v", got, want)
@@ -514,3 +539,110 @@ func TestWorthReadingPRAndReadinessOf(t *testing.T) {
 
 func (f *fakePRReader) EditReviewers(dir, ref string, add, remove []string) error { return nil }
 func (f *fakePRReader) Collaborators(dir string) ([]string, error)                { return nil, nil }
+
+// redStatusEnv is a plan with one approved slice whose pull request reads red
+// — one failing run — another reading green and one pending, with the tmux the
+// test hands it.
+func redStatusEnv(t *testing.T, runner *agentTestRunner) (Env, *fakeAPI, interface{ String() string }) {
+	t.Helper()
+	api := &fakeAPI{
+		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1")},
+		pages: map[string][]notion.Page{
+			"slices-ds": {
+				slicePageForStatus("s1", "Red", notion.SliceInProgress, "M1", "https://github.test/craig/nat/pull/1"),
+				slicePageForStatus("s2", "Green", notion.SliceInProgress, "M1", "https://github.test/craig/nat/pull/2"),
+				slicePageForStatus("s3", "Pending", notion.SliceInProgress, "M1", "https://github.test/craig/nat/pull/3"),
+			},
+		},
+	}
+	env, out := testEnv(testConfig(t), api)
+	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
+		"/tmp/nat": {
+			"https://github.test/craig/nat/pull/1": {Checks: gh.ChecksFailing, Failing: []gh.Check{
+				{Name: "test", State: "FAILURE", URL: "https://github.test/craig/nat/actions/runs/9/job/1"}}},
+			"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true, Checks: gh.ChecksPassing},
+			"https://github.test/craig/nat/pull/3": {Checks: gh.ChecksPending},
+		},
+	}}
+	env.NewGH = func() GH { return reader }
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+	return env, api, out
+}
+
+// A red pull request reads as checks failing, naming the check and its run URL;
+// green and pending read as they always did, with their verdicts.
+func TestPRStatusJSONReportsFailingChecks(t *testing.T) {
+	env, _, out := redStatusEnv(t, &agentTestRunner{liveSessions: map[string]string{}})
+	if err := Run(context.Background(), []string{"pr-status", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr-status --json: %v", err)
+	}
+	var got prStatusDoc
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	want := []prStatusSliceJSON{
+		{SliceID: "s1", Name: "Red", PR: "https://github.test/craig/nat/pull/1", Readiness: "checks failing",
+			Checks: &prChecksJSON{Verdict: "failing", Failing: []prCheckJSON{
+				{Name: "test", URL: "https://github.test/craig/nat/actions/runs/9/job/1"}}}},
+		{SliceID: "s2", Name: "Green", PR: "https://github.test/craig/nat/pull/2", Readiness: "ready to merge",
+			Checks: &prChecksJSON{Verdict: "passing", Failing: []prCheckJSON{}}},
+		{SliceID: "s3", Name: "Pending", PR: "https://github.test/craig/nat/pull/3", Readiness: "awaiting review",
+			Checks: &prChecksJSON{Verdict: "pending", Failing: []prCheckJSON{}}},
+	}
+	if !reflect.DeepEqual(got.Slices, want) {
+		t.Errorf("json = %+v\nwant %+v", got.Slices, want)
+	}
+}
+
+// With no agent live the red slice gets a Checks failed on its record and
+// nothing is typed anywhere; the markdown names the failing check.
+func TestPRStatusRecordsFailingChecksWithNoAgent(t *testing.T) {
+	runner := &agentTestRunner{liveSessions: map[string]string{}}
+	env, api, out := redStatusEnv(t, runner)
+	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr-status: %v", err)
+	}
+	if len(api.appends) != 1 || api.appends[0].id != "s1" {
+		t.Fatalf("appends = %+v, want one on s1", api.appends)
+	}
+	if b, _ := json.Marshal(api.appends[0].children); !strings.Contains(string(b), "Checks failed") {
+		t.Errorf("appended %s, want a Checks failed section", b)
+	}
+	if len(runner.sends) != 0 {
+		t.Errorf("sent %d prompts, want none with no agent live", len(runner.sends))
+	}
+	if !strings.Contains(out.String(), "failing: test https://github.test/craig/nat/actions/runs/9/job/1") {
+		t.Errorf("output does not name the failing check:\n%s", out.String())
+	}
+}
+
+// With an agent live it is told once, and a Sent back goes on the record.
+func TestPRStatusNudgesALiveAgent(t *testing.T) {
+	runner := &agentTestRunner{liveSessions: map[string]string{"s1": "nat-s1"}}
+	env, api, _ := redStatusEnv(t, runner)
+	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr-status: %v", err)
+	}
+	if len(runner.sends) != 1 || runner.sends[0].session != "nat-s1" ||
+		!strings.Contains(runner.sends[0].prompt, "nat slice-checks s1 --log --project project-1") {
+		t.Fatalf("sends = %+v, want one checks prompt to nat-s1", runner.sends)
+	}
+	if len(api.appends) != 1 {
+		t.Fatalf("appends = %d, want one Sent back", len(api.appends))
+	}
+	if b, _ := json.Marshal(api.appends[0].children); !strings.Contains(string(b), "Sent back") {
+		t.Errorf("appended %s, want one Sent back", b)
+	}
+}
+
+// A tmux that cannot say what is live concludes nothing: no prompt, no record.
+func TestPRStatusLeavesFailingChecksWhenTmuxIsUnread(t *testing.T) {
+	runner := &agentTestRunner{liveFatalErr: "tmux broke"}
+	env, api, _ := redStatusEnv(t, runner)
+	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr-status: %v", err)
+	}
+	if len(api.appends) != 0 || len(runner.sends) != 0 {
+		t.Errorf("appends %d, sends %d, want nothing", len(api.appends), len(runner.sends))
+	}
+}

@@ -50,8 +50,8 @@ public enum SliceDisplayState: String, CaseIterable, Equatable, Sendable {
 /// A slice's display state. `agent` is the live map's reading, which turns a
 /// working (or fixing) slice into a waiting one and nothing else: a session
 /// outlives hand-back and approve, so it never moves a slice's stage.
-public func displayState(for slice: Slice, agent: AgentActivity?, fixLaunched: Bool) -> SliceDisplayState {
-    switch stage(for: slice, agent: agent, fixLaunched: fixLaunched) {
+public func displayState(for slice: Slice, agent: AgentActivity?) -> SliceDisplayState {
+    switch stage(for: slice, agent: agent) {
     case .todo: return slice.blocked ? .blocked : .todo
     case .working: return agent == .waiting ? .waiting : .working
     case .fixing: return agent == .waiting ? .waiting : .fixing
@@ -412,12 +412,16 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     public let title: String
     public let state: SliceDisplayState
     public let live: Bool
+    /// The checks a slice's pull request was last read failing, by name —
+    /// what the row's danger marker names. Empty for every other row.
+    public let failingChecks: [String]
 
     public var id: String { "\(kind):\(targetID)" }
 
     public init(
         kind: SidebarActiveKind, targetID: String, projectID: String, projectName: String,
-        projectTag: String? = nil, title: String, state: SliceDisplayState, live: Bool
+        projectTag: String? = nil, title: String, state: SliceDisplayState, live: Bool,
+        failingChecks: [String] = []
     ) {
         self.kind = kind
         self.targetID = targetID
@@ -427,6 +431,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
         self.title = title
         self.state = state
         self.live = live
+        self.failingChecks = failingChecks
     }
 }
 
@@ -550,7 +555,7 @@ public func buildSidebarModel(
     planningAgents: [String: AgentActivity] = [:],
     pinnedWorkshops: Set<String> = [],
     launchingWorkshop: String? = nil,
-    fixLaunched: Set<String> = []
+    failingChecks: [String: [String]] = [:]
 ) -> SidebarModel {
     var active: [SidebarActiveRow] = []
     var built: [SidebarProject] = []
@@ -598,14 +603,19 @@ public func buildSidebarModel(
                 let agent = liveAgents[slice.id]
                 return SidebarSliceRow(
                     sliceID: slice.id, projectID: project.id, title: slice.name,
-                    state: displayState(for: slice, agent: agent, fixLaunched: fixLaunched.contains(slice.id)),
+                    state: displayState(for: slice, agent: agent),
                     live: agent != nil)
             }
+            // A pull request read failing its checks is marked on the row it
+            // already has: at the PR stage, or under a fix.
+            let atPR = Set(plan.slices.filter { [.pr, .fixing].contains(stage(for: $0, agent: nil)) }.map(\.id))
             for row in rows where row.state.isInFlight {
                 if row.state.needsYou { needsYou += 1 }
+                let red = atPR.contains(row.sliceID)
                 active.append(SidebarActiveRow(
                     kind: .slice, targetID: row.sliceID, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
-                    title: row.title, state: row.state, live: row.live))
+                    title: row.title, state: row.state, live: row.live,
+                    failingChecks: red ? failingChecks[row.sliceID] ?? [] : []))
             }
 
             // A source project's tasks are drawn under the plugin's own tree,

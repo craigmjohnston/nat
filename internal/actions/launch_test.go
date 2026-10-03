@@ -476,21 +476,40 @@ func TestLaunchRecordsARelaunchForANoteBesideAHandBack(t *testing.T) {
 	}
 }
 
-// A fix launch claims nothing at all, so it never reaches the relaunch write
-// either — see claim-less fix launches in TestLaunchGathersTheReviewForAFixLaunch.
-func TestLaunchNeverRecordsARelaunchForAFixLaunch(t *testing.T) {
-	client := &fakeClient{}
-	_, err := Launch(context.Background(), &fakeLauncher{}, &fakeWorktrees{}, &fakeRepo{base: "origin/main"},
-		client.store(), &fakeReviewer{}, "u1",
+// A fix launch claims nothing, but it is a return to work, and files one
+// Relaunched to say so — the line store.Fixing reads it off — whether the
+// slice is approved and in progress or Done under the old rule. A failed write
+// is logged and the agent is started regardless.
+func TestLaunchRecordsARelaunchForAFixLaunch(t *testing.T) {
+	for _, status := range []domain.SliceStatus{domain.SliceClaimed, domain.SliceDone} {
+		client := &fakeClient{}
+		l := &fakeLauncher{}
+		_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"},
+			client.store(), &fakeReviewer{}, "u1",
+			agent.PromptContext{
+				Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: status, PRURL: "https://example/pr/1"},
+				WorkingDir: t.TempDir(), Fix: true,
+			}, config.AgentModel{})
+		if err != nil || len(l.launches) != 1 {
+			t.Fatalf("%s: Launch() = %v, launches %+v, want it to go through", status, err, l.launches)
+		}
+		if len(client.appended) != 1 || client.appended[0] != "s5" {
+			t.Errorf("%s: appended = %v, want the Relaunched note filed on the slice", status, client.appended)
+		}
+		if len(client.updated) != 0 {
+			t.Errorf("%s: updated = %v, want nothing claimed", status, client.updated)
+		}
+	}
+
+	l := &fakeLauncher{}
+	client := &fakeClient{appendBlocks: func(string, []map[string]any) ([]notion.Block, error) { return nil, errors.New("notion: 500") }}
+	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), nil, "u1",
 		agent.PromptContext{
-			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceDone, PRURL: "https://example/pr/1"},
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed, PRURL: "https://example/pr/1"},
 			WorkingDir: t.TempDir(), Fix: true,
 		}, config.AgentModel{})
-	if err != nil {
-		t.Fatalf("Launch() = %v, want it to go through", err)
-	}
-	if len(client.appended) != 0 {
-		t.Errorf("appended = %v, want a fix launch to write nothing", client.appended)
+	if err != nil || res.Session == "" {
+		t.Errorf("Launch() = %+v, %v, want the agent started despite the failed note", res, err)
 	}
 }
 

@@ -3,11 +3,11 @@ import XCTest
 
 final class WorkflowStageTests: XCTestCase {
     private func slice(
-        status: String, branch: String?, handedBack: Bool, pr: String, id: String = "s-1"
+        status: String, branch: String?, handedBack: Bool, pr: String, id: String = "s-1", fixing: Bool = false
     ) -> Slice {
         Slice(
             id: id, name: "Task", status: status, milestoneID: "m-1", assignee: "", pr: pr, url: "",
-            branch: branch, blocked: false, handedBack: handedBack
+            branch: branch, blocked: false, handedBack: handedBack, fixing: fixing
         )
     }
 
@@ -23,7 +23,7 @@ final class WorkflowStageTests: XCTestCase {
         }
     }
 
-    /// Every combination of status, branch, PR, live agent and fix mark: the
+    /// Every combination of status, branch, PR, live agent and nat's fixing: the
     /// stage, and the tab it lands on. A live agent must change nothing.
     func testEveryCombinationOfFactsHasTheTabsStage() {
         var count = 0
@@ -37,10 +37,10 @@ final class WorkflowStageTests: XCTestCase {
                             let handedBack = status == "In progress" && hasBranch && !hasPR
                             let s = slice(
                                 status: status, branch: hasBranch ? "slice/x" : nil,
-                                handedBack: handedBack, pr: hasPR ? "https://pr/1" : ""
+                                handedBack: handedBack, pr: hasPR ? "https://pr/1" : "", fixing: mark
                             )
                             let want = expected(status: status, handedBack: handedBack, pr: hasPR, mark: mark)
-                            let got = stage(for: s, agent: agent, fixLaunched: mark)
+                            let got = stage(for: s, agent: agent)
                             XCTAssertEqual(got, want, "\(status) branch:\(hasBranch) pr:\(hasPR) \(String(describing: agent)) mark:\(mark)")
 
                             let tab: WorkflowTab
@@ -53,7 +53,7 @@ final class WorkflowStageTests: XCTestCase {
                             }
                             XCTAssertEqual(got.tab(for: s), tab)
                             XCTAssertEqual(
-                                buildWorkflowTabState(for: s, hasLiveAgent: agent != nil, fixLaunched: mark).defaultTab,
+                                buildWorkflowTabState(for: s, hasLiveAgent: agent != nil).defaultTab,
                                 tab
                             )
                             count += 1
@@ -78,39 +78,39 @@ final class WorkflowStageTests: XCTestCase {
 
     func testAcceptanceScenarios() {
         let handedBack = slice(status: "In progress", branch: "b", handedBack: true, pr: "")
-        XCTAssertEqual(stage(for: handedBack, agent: .waiting, fixLaunched: false).tab(for: handedBack), .diff)
+        XCTAssertEqual(stage(for: handedBack, agent: .waiting).tab(for: handedBack), .diff)
 
         let approved = slice(status: "In progress", branch: "b", handedBack: false, pr: "https://pr/1")
-        XCTAssertEqual(stage(for: approved, agent: .working, fixLaunched: false).tab(for: approved), .pr)
+        XCTAssertEqual(stage(for: approved, agent: .working).tab(for: approved), .pr)
 
-        let done = slice(status: "Done", branch: "b", handedBack: false, pr: "https://pr/1")
-        XCTAssertEqual(stage(for: done, agent: .working, fixLaunched: true).tab(for: done), .pr)
+        let done = slice(status: "Done", branch: "b", handedBack: false, pr: "https://pr/1", fixing: true)
+        XCTAssertEqual(stage(for: done, agent: .working).tab(for: done), .pr)
 
         // Reworked: Branch cleared, so back to working, then review again.
         let reworked = slice(status: "In progress", branch: nil, handedBack: false, pr: "")
-        XCTAssertEqual(stage(for: reworked, agent: .working, fixLaunched: false).tab(for: reworked), .agent)
-        XCTAssertEqual(stage(for: handedBack, agent: .working, fixLaunched: false).tab(for: handedBack), .diff)
+        XCTAssertEqual(stage(for: reworked, agent: .working).tab(for: reworked), .agent)
+        XCTAssertEqual(stage(for: handedBack, agent: .working).tab(for: handedBack), .diff)
     }
 
     func testRailAgreesWithTheStage() {
-        let fixing = slice(status: "In progress", branch: nil, handedBack: false, pr: "https://pr/1")
-        XCTAssertTrue(isActiveSlice(fixing, fixLaunched: true))
-        XCTAssertFalse(isReviewSlice(fixing, fixLaunched: true))
-        XCTAssertTrue(isReviewSlice(fixing))
-        XCTAssertFalse(isActiveSlice(fixing))
-        XCTAssertEqual(inFlightSliceIDs(slices: [fixing], fixLaunched: ["s-1"]), ["s-1"])
+        let fixing = slice(status: "In progress", branch: nil, handedBack: false, pr: "https://pr/1", fixing: true)
+        let approved = slice(status: "In progress", branch: nil, handedBack: false, pr: "https://pr/1")
+        XCTAssertTrue(isActiveSlice(fixing))
+        XCTAssertFalse(isReviewSlice(fixing))
+        XCTAssertTrue(isReviewSlice(approved))
+        XCTAssertFalse(isActiveSlice(approved))
+        XCTAssertEqual(inFlightSliceIDs(slices: [fixing]), ["s-1"])
 
         let info = ProjectInfo(
             project: Project(id: "p", name: "P", conventions: ""),
             milestones: [Milestone(id: "m-1", name: "M1", order: 1, status: "Active")],
             slices: [fixing]
         )
-        let entries = buildRailModel(
-            from: info, liveAgents: ["s-1": .waiting], fixLaunched: ["s-1"]
-        ).active
+        let entries = buildRailModel(from: info, liveAgents: ["s-1": .waiting]).active
         XCTAssertEqual(entries.map(\.displayState), ["Waiting for input"])
+        let approvedInfo = ProjectInfo(project: info.project, milestones: info.milestones, slices: [approved])
         XCTAssertEqual(
-            buildRailModel(from: info, liveAgents: ["s-1": .waiting]).active.map(\.displayState),
+            buildRailModel(from: approvedInfo, liveAgents: ["s-1": .waiting]).active.map(\.displayState),
             ["Needs review"]
         )
     }
@@ -119,55 +119,44 @@ final class WorkflowStageTests: XCTestCase {
         let handedBack = slice(status: "In progress", branch: "b", handedBack: true, pr: "")
         let attention = projectAttention(slices: [handedBack], liveAgents: ["s-1": .waiting])
         XCTAssertEqual(attention.count, 1)
-        let fixing = slice(status: "In progress", branch: nil, handedBack: false, pr: "https://pr/1")
+        let fixing = slice(status: "In progress", branch: nil, handedBack: false, pr: "https://pr/1", fixing: true)
         XCTAssertEqual(
             projectAttention(
-                slices: [fixing], liveAgents: [:], prReadiness: ["s-1": PRStatusSlice.readyToMerge],
-                fixLaunched: ["s-1"]
+                slices: [fixing], liveAgents: [:], prReadiness: ["s-1": PRStatusSlice.readyToMerge]
             ).count,
             0
         )
     }
-}
 
-final class FixLaunchedTests: XCTestCase {
-    @MainActor
-    func testMarkClearsOnlyAfterTheSessionWasSeenAndThenIsGone() {
-        let model = AppModel()
-        model.markFixLaunched(sliceID: "s-1")
-        XCTAssertEqual(model.fixLaunchedSliceIDs, ["s-1"])
-
-        model.settleFixLaunched(liveSliceIDs: [])
-        XCTAssertEqual(model.fixLaunchedSliceIDs, ["s-1"], "no session yet: launch has not shown up in tmux")
-
-        model.settleFixLaunched(liveSliceIDs: ["s-1", "other"])
-        XCTAssertEqual(model.fixLaunchedSliceIDs, ["s-1"])
-
-        model.settleFixLaunched(liveSliceIDs: ["other"])
-        XCTAssertTrue(model.fixLaunchedSliceIDs.isEmpty)
+    /// A pull request read failing its checks counts once, at the PR stage or
+    /// under a fix — waiting agent and all — and not on a slice anywhere else.
+    func testAttentionCountsFailingChecksOnce() {
+        let red = ["s-1": PRStatusSlice.checksFailing]
+        let approved = slice(status: "In progress", branch: nil, handedBack: false, pr: "https://pr/1")
+        let fixing = slice(status: "In progress", branch: nil, handedBack: false, pr: "https://pr/1", fixing: true)
+        let done = slice(status: "Done", branch: nil, handedBack: false, pr: "https://pr/1")
+        XCTAssertEqual(projectAttention(slices: [approved], liveAgents: [:], prReadiness: red).count, 1)
+        XCTAssertEqual(projectAttention(slices: [approved], liveAgents: [:], prReadiness: red).role, .review)
+        XCTAssertEqual(projectAttention(slices: [fixing], liveAgents: ["s-1": .waiting], prReadiness: red).count, 1)
+        XCTAssertEqual(projectAttention(slices: [done], liveAgents: [:], prReadiness: red).count, 0)
     }
 
-    @MainActor
-    func testActivityPollDrivesTheClearing() async {
-        let client = MockActivityClient(response: .agents([]))
-        let config = NatProjectConfig(projects: [
-            "proj-1": ProjectConfig(name: "proj-1", slicesDSID: "ds", workingDir: "/path")
-        ])
-        let model = AppModel(
-            configReader: MockConfigReader(response: .success(config)),
-            planCache: NullTestPlanCache(),
-            pollIntervalSeconds: 3600,
-            pathsProvider: { NatPaths(config: "/fake/config.json", logDir: "/fake", nudge: "/fake/nudge") },
-            clientFactory: { client },
-            activityStoreFactory: { ActivityStore(client: client) }
-        )
-        await model.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
-        model.markFixLaunched(sliceID: "s-1")
-        model.settleFixLaunched(liveSliceIDs: ["s-1"])
-        model.activityStore?.kick()
-        for _ in 0..<100 where !model.fixLaunchedSliceIDs.isEmpty {
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
-        XCTAssertTrue(model.fixLaunchedSliceIDs.isEmpty)
+    /// A fix launch: an approved slice with no live agent launches whatever
+    /// its dependencies say; a live agent still refuses.
+    func testLaunchPlanAdmitsAFixLaunch() {
+        let approved = Slice(
+            id: "s-1", name: "T", status: "In progress", milestoneID: "m", assignee: "", pr: "https://pr/1", url: "",
+            dependsOn: ["s-0"], blocked: true, handedBack: false)
+        let plan = LaunchPlan(for: approved, hasLiveAgent: false)
+        XCTAssertTrue(plan.canLaunch)
+        XCTAssertTrue(plan.isFix)
+        XCTAssertNil(plan.blockedBy)
+        XCTAssertFalse(LaunchPlan(for: approved, hasLiveAgent: true).canLaunch)
+        let blocked = Slice(
+            id: "s-2", name: "T", status: "Todo", milestoneID: "m", assignee: "", pr: "", url: "",
+            dependsOn: ["s-0"], blocked: true, handedBack: false)
+        XCTAssertFalse(LaunchPlan(for: blocked, hasLiveAgent: false).canLaunch)
+        XCTAssertFalse(LaunchPlan(for: blocked, hasLiveAgent: false).isFix)
     }
+
 }

@@ -91,13 +91,14 @@ enum AppStories {
     /// with the live readings the fixtures carry, waiting for those readings
     /// to land so the slice is drawn in the state it is a story about.
     private static func slicePane(
-        _ sliceID: String, agents: [AgentStatus] = Fixtures.agentStatuses, fixing: Bool = false,
+        _ sliceID: String, agents: [AgentStatus] = Fixtures.agentStatuses, plan: ProjectInfo = Fixtures.projectInfo,
+        prStatus: PRStatusDoc = Fixtures.prStatusDoc, pr: PRDetail = Fixtures.prGreen,
         details: [String: SliceDetail] = Fixtures.sliceDetails, focus: NavigatorFocus? = nil,
         configure: @MainActor (AppModel) async -> Void = { _ in }
     ) async -> some View {
         let appModel = await Fixtures.startedAppModel(
-            client: FixtureNatClient(agents: agents, details: details), config: Fixtures.twoProjectConfig)
-        if fixing { appModel.markFixLaunched(sliceID: sliceID) }
+            client: FixtureNatClient(plan: plan, agents: agents, pr: pr, details: details, prStatus: prStatus),
+            config: Fixtures.twoProjectConfig)
         appModel.selectedSliceID = sliceID
         for _ in 0..<50 where !agents.isEmpty && appModel.activityStore?.agents.isEmpty != false {
             try? await Task.sleep(nanoseconds: 20_000_000)
@@ -513,13 +514,60 @@ enum AppStories {
 
         Story(
             name: "window-fixing",
-            summary: "An approved slice with a fix session on it: Thread and the terminal, as working.",
+            summary: "An approved slice with a fix session on it, read off the record: Thread and the terminal, its Active row fixing and pulsing.",
             size: window
         ) {
-            await slicePane(Fixtures.approveSliceID, agents: Fixtures.agentStatuses + [
-                AgentStatus(sliceID: Fixtures.approveSliceID,
-                            session: TmuxSession.name(forSlicePageID: Fixtures.approveSliceID), activity: .working)
-            ], fixing: true)
+            await slicePane(Fixtures.approveSliceID, agents: Fixtures.fixAgentStatuses, plan: Fixtures.fixingProjectInfo)
+        },
+
+        Story(
+            name: "window-pr-fix-launch",
+            summary: "An approved slice with no agent on it: its Task log ends on the Fix card offering Launch fix agent, and the header offers it too.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], focus: NavigatorFocus(open: [.thread], main: .pr))
+        },
+
+        Story(
+            name: "window-pr-checks-failing",
+            summary: "An approved slice whose pull request reads checks failing, no agent on it: the notice names the check and offers Launch fix agent.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusChecksFailing, pr: Fixtures.prFailingChecks,
+                details: Fixtures.checksFailedSliceDetails)
+        },
+
+        Story(
+            name: "window-pr-checks-agent-told",
+            summary: "The same red pull request with its fix agent live and the nudge on record: the notice says the failing check was sent to the agent to fix, with no button; the task log card reads Checks failed — sent to the agent.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: Fixtures.fixAgentStatuses, plan: Fixtures.fixingProjectInfo,
+                prStatus: Fixtures.prStatusChecksFailing, pr: Fixtures.prFailingChecks, details: Fixtures.checksNudgedSliceDetails)
+        },
+
+        Story(
+            name: "window-task-log-checks-failed",
+            summary: "An approved slice's Task log with a Checks failed entry: its own glyph in danger, the failed check and its run.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusChecksFailing, pr: Fixtures.prFailingChecks,
+                details: Fixtures.checksFailedSliceDetails, focus: NavigatorFocus(open: [.thread], main: .pr))
+        },
+
+        Story(
+            name: "sidebar-checks-failing",
+            summary: "The sidebar with the approved slice's pull request read checks failing: a danger mark on its Active row, the check named under the pointer.",
+            size: sidebar
+        ) {
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(prStatus: Fixtures.prStatusChecksFailing), config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.approveSliceID
+            return SidebarView(appModel: appModel).environment(\.pulsesPaused, true)
         },
 
         Story(

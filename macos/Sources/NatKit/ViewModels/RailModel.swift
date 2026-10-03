@@ -330,8 +330,8 @@ public func sessionIsDone(_ session: Session, liveAgents: [String: AgentActivity
 /// Notion's status is the one source of lifecycle truth, `domain.StateOf`'s
 /// gate mirrored by `stage(for:)` — even while its pull request still reads
 /// open; that window is the un-done rule's to close, not this function's.
-public func isReviewSlice(_ slice: Slice, fixLaunched: Bool = false) -> Bool {
-    switch stage(for: slice, agent: nil, fixLaunched: fixLaunched) {
+public func isReviewSlice(_ slice: Slice) -> Bool {
+    switch stage(for: slice, agent: nil) {
     case .review, .pr: return true
     case .todo, .working, .fixing, .done: return false
     }
@@ -340,8 +340,8 @@ public func isReviewSlice(_ slice: Slice, fixLaunched: Bool = false) -> Bool {
 /// Whether the ACTIVE section's working half would hold this slice: its stage
 /// is working, or fixing (a fix agent on an approved slice). It is never "has
 /// a live tmux session" — a session can outlive the slice it was launched on.
-public func isActiveSlice(_ slice: Slice, fixLaunched: Bool = false) -> Bool {
-    switch stage(for: slice, agent: nil, fixLaunched: fixLaunched) {
+public func isActiveSlice(_ slice: Slice) -> Bool {
+    switch stage(for: slice, agent: nil) {
     case .working, .fixing: return true
     case .todo, .review, .pr, .done: return false
     }
@@ -351,12 +351,11 @@ public func isActiveSlice(_ slice: Slice, fixLaunched: Bool = false) -> Bool {
 /// above. One rule, shared by the rail that draws the section and by
 /// `projectAttention`, which may only read a live agent whose slice is in it
 /// — so the tab's dot and the rail can never disagree about what is in
-/// flight. `fixLaunched` is `AppModel`'s mark, by slice ID.
-public func inFlightSliceIDs(slices: [Slice], fixLaunched: Set<String> = []) -> Set<String> {
+/// flight.
+public func inFlightSliceIDs(slices: [Slice]) -> Set<String> {
     var ids = Set<String>()
     for slice in slices {
-        let marked = fixLaunched.contains(slice.id)
-        if isReviewSlice(slice, fixLaunched: marked) || isActiveSlice(slice, fixLaunched: marked) {
+        if isReviewSlice(slice) || isActiveSlice(slice) {
             ids.insert(slice.id)
         }
     }
@@ -387,7 +386,6 @@ public func buildRailModel(
     agentStarts: [String: Date] = [:],
     workshop: ActiveEntry? = nil,
     sessions: [Session] = [],
-    fixLaunched: Set<String> = [],
     followUpCounts: [String: Int] = [:],
     now: Date = Date()
 ) -> RailModel {
@@ -401,14 +399,14 @@ public func buildRailModel(
     // is the gh reading's own words when one has been taken, and absent
     // otherwise, which is also what keeps every Done slice a project ever
     // finished out of the section.
-    let reviewSlices = slices.filter { isReviewSlice($0, fixLaunched: fixLaunched.contains($0.id)) }
+    let reviewSlices = slices.filter { isReviewSlice($0) }
 
     // A milestone's name off its ID, for the session rows' second lines.
     let milestoneNames: [String: String] = milestones.reduce(into: [:]) { $0[$1.id] = $1.name }
 
     // The working half of the section — `isActiveSlice`'s rule. What a live
     // agent refines is the label alone, in `activeDisplay` below.
-    let activeSlices = slices.filter { isActiveSlice($0, fixLaunched: fixLaunched.contains($0.id)) }
+    let activeSlices = slices.filter { isActiveSlice($0) }
 
     // The review entries. A handed-back slice's meta is its diff tally; a
     // slice here for its open pull request has no branch stats to show, and
@@ -506,7 +504,7 @@ public func buildRailModel(
 
     // The slices already drawn in a session section — never repeated inside
     // a TODO folder, so a slice is one row of the rail and not two.
-    let inFlightIDs = inFlightSliceIDs(slices: slices, fixLaunched: fixLaunched)
+    let inFlightIDs = inFlightSliceIDs(slices: slices)
 
     let sortedMilestones = milestones.sorted { $0.order < $1.order }
 

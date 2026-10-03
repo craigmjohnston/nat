@@ -31,9 +31,15 @@ running agent's state.
 
 - `Prompt(c PromptContext)` writes a fresh session's brief; `PromptContext.Fix`
   routes to `fixPrompt` instead — the one launch that is not a fresh
-  session's work (a Done slice with an open PR; see root CLAUDE.md's `l`
-  domain rule). `resuming(c)` says whether the prompt should tell the agent
-  it's continuing rather than starting.
+  session's work (a slice with an open PR recorded; see root CLAUDE.md's
+  Fix sessions rule). It ends in a hand-back (`complete-slice --branch`)
+  like the slice prompt, and shares its `followUpsPassage` (gnat only).
+  `resuming(c)` says whether the prompt should tell the agent it's
+  continuing rather than starting.
+- `nat slice-checks` is how every agent reads CI: `checksPassage` in the
+  slice prompt, the fix prompt's re-check, and `ChecksPrompt` (the nudge
+  `actions.NoticeFailingChecks` sends). The fix prompt's one `gh` is
+  `gh pr view --comments`; no template names `gh pr checks`.
 - **Every** `nat` command in every template — slice, fix, planning
   (`PlanPrompt`) — pins `--project <ID>`
   (`PromptContext.ProjectID`). A `ProjectConfig` cannot supply this itself —

@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -60,7 +61,7 @@ func info(ctx context.Context, args []string, env Env) error {
 		if ss, ok := st.(sourceStore); ok {
 			src = sourceInfo(ctx, ss, project, p, expand)
 		}
-		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject, src)
+		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject, src, fixingSlices(ctx, st, p.Slices))
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
@@ -146,13 +147,17 @@ type sliceJSON struct {
 	DependsOn   []string `json:"depends_on,omitempty"`
 	Blocked     bool     `json:"blocked"`
 	HandedBack  bool     `json:"handed_back"`
-	State       string   `json:"state,omitempty"`
+	// Fixing says a fix is under way, read off the record — see
+	// [store.Fixing]. Only info sets it; container-show leaves it false.
+	Fixing bool   `json:"fixing"`
+	State  string `json:"state,omitempty"`
 }
 
 // writeInfoJSON encodes the project as JSON, indented: it is read by people as
 // often as by programs, and a stream nobody can skim is a poor default.
 // scratch says p is the scratch project, whose unfiledMilestone is marked.
-func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool, src *sourceInfoJSON) error {
+// fixing names the slices a fix is under way on — see [fixingSlices].
+func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool, src *sourceInfoJSON, fixing map[string]bool) error {
 	doc := infoJSON{
 		Project:    projectJSON{ID: p.ID, Name: p.Name, Conventions: conventions},
 		Milestones: make([]milestoneJSON, 0, len(p.Milestones)),
@@ -168,7 +173,9 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch 
 
 	slicesByID := domain.SlicesByID(p.Slices)
 	for _, s := range p.Slices {
-		doc.Slices = append(doc.Slices, sliceJSONOf(s, slicesByID))
+		sj := sliceJSONOf(s, slicesByID)
+		sj.Fixing = fixing[s.ID]
+		doc.Slices = append(doc.Slices, sj)
 	}
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
@@ -192,6 +199,26 @@ func sliceJSONOf(s domain.Slice, slicesByID map[string]domain.Slice) sliceJSON {
 		sj.State = state.String()
 	}
 	return sj
+}
+
+// fixingSlices reads which slices a fix is under way on ([store.Fixing]).
+// Only an approved slice — in progress, a pull request recorded — can be, so
+// only those few have their task log read; a body that cannot be read is
+// logged and concludes nothing, the slice read as not fixing.
+func fixingSlices(ctx context.Context, st store.Store, slices []domain.Slice) map[string]bool {
+	fixing := map[string]bool{}
+	for _, s := range slices {
+		if s.Status != domain.SliceClaimed || s.PRURL == "" {
+			continue
+		}
+		body, err := st.Body(ctx, s.ID)
+		if err != nil {
+			logging.Action("could not read a slice's task log for whether it is being fixed", "slice", s.ID, "err", err)
+			continue
+		}
+		fixing[s.ID] = store.Fixing(s, body)
+	}
+	return fixing
 }
 
 // infoMarkdown renders the project as markdown — see [domain.PlanMarkdown],
