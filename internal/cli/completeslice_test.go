@@ -875,6 +875,47 @@ Handed back for review, still held by Craig Johnston. The summary is on the slic
 	}
 }
 
+// A fix session's ending: the slice is approved — its pull request recorded —
+// and its agent hands the same branch back. That is accepted: the summary goes
+// on as a Handed back, the branch is rewritten with the same name, the status
+// and the pull request are left alone, and the report says the slice is back
+// at its pull request rather than Done or waiting on one to open.
+func TestCompleteSliceHandsBackAFixOnAnApprovedSlice(t *testing.T) {
+	const branch, pr = "slice/render-the-board", "https://github.test/craig/nat/pull/7"
+	page := heldSlice(sliceID, "Render the board", notion.SliceInProgress, "u1", "Craig Johnston")
+	page.Properties[notion.PropPR] = notion.NewURL(pr)
+	page.Properties[notion.PropBranch] = notion.NewRichText(branch)
+	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {page}}}
+	env, out := completeEnv(t, api)
+
+	err := Run(context.Background(), []string{
+		"complete-slice", sliceID, "--branch", branch, "--summary", "Fixed the failing test.", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("complete-slice: %v", err)
+	}
+	want := []string{"heading_3: Handed back", "paragraph: Fixed the failing test."}
+	if len(api.appends) != 1 || !equalLines(blockTexts(t, api.appends[0].children), want) {
+		t.Errorf("appends = %+v, want %v", api.appends, want)
+	}
+	if len(api.updates) != 1 {
+		t.Fatalf("updates = %+v, want exactly one", api.updates)
+	}
+	props := api.updates[0].props
+	if spans := props[notion.PropBranch].RichText; len(spans) != 1 || spans[0].Text == nil || spans[0].Text.Content != branch {
+		t.Errorf("branch = %+v, want the same branch rewritten", spans)
+	}
+	for _, untouched := range []string{notion.PropStatus, notion.PropPR} {
+		if _, wrote := props[untouched]; wrote {
+			t.Errorf("props = %+v, want %s left alone", props, untouched)
+		}
+	}
+	if !strings.Contains(out.String(), "Handed back to its pull request, still held by Craig Johnston.") ||
+		strings.Contains(out.String(), "Done.") {
+		t.Errorf("output =\n%s\nwant it back at its pull request", out.String())
+	}
+}
+
 // A hand-back may say what the pull request should be opened with, and that
 // goes on the page under a heading of its own, beside the summary of what was
 // done: the board reads it back off the page whenever the user gets round to

@@ -35,10 +35,15 @@ const prListLimit = "100"
 // GitHub can merge it as it stands, and how its checks stand. Both false is a
 // pull request with a review still to come — and equally the zero value, which
 // is what a read that never happened comes back as.
+//
+// Failing is every check the rollup has failed, in the order gh listed them —
+// empty unless Checks is [ChecksFailing]. Its run URLs are what tells one red
+// reading from the next: a re-push that fails again fails in a new run.
 type PRStatus struct {
 	Approved  bool
 	Mergeable bool
 	Checks    ChecksVerdict
+	Failing   []Check
 }
 
 // ChecksVerdict is a pull request's whole status check rollup said as one word.
@@ -123,22 +128,39 @@ func (c Check) Outcome() CheckOutcome {
 	return checkOutcomes[strings.ToUpper(strings.TrimSpace(c.State))]
 }
 
-// checksVerdictOf rolls a pull request's checks into one verdict: any failure
-// fails the lot, then any check unfinished leaves it pending.
-func checksVerdictOf(rollup []ghRoll) ChecksVerdict {
-	if len(rollup) == 0 {
-		return ChecksNone
+// checksVerdictOf rolls a pull request's rollup into one verdict — see
+// [Verdict], which it is for the entries as [Check]s.
+func checksVerdictOf(rollup []ghRoll) (ChecksVerdict, []Check) {
+	checks := make([]Check, len(rollup))
+	for i, entry := range rollup {
+		checks[i] = entry.check()
+	}
+	return Verdict(checks)
+}
+
+// Verdict rolls a pull request's checks into one verdict: any failure fails
+// the lot, then any check unfinished leaves it pending. The checks that failed
+// come back with it, every one of them, in the order they were given. It is
+// the one roll-up, so the board's listing and a single pull request's view —
+// `nat slice-checks` reads [PR.Checks] through it — can never disagree.
+func Verdict(checks []Check) (ChecksVerdict, []Check) {
+	if len(checks) == 0 {
+		return ChecksNone, nil
 	}
 	verdict := ChecksPassing
-	for _, entry := range rollup {
-		switch entry.check().Outcome() {
+	var failing []Check
+	for _, check := range checks {
+		switch check.Outcome() {
 		case CheckFailing:
-			return ChecksFailing
+			verdict = ChecksFailing
+			failing = append(failing, check)
 		case CheckPending:
-			verdict = ChecksPending
+			if verdict != ChecksFailing {
+				verdict = ChecksPending
+			}
 		}
 	}
-	return verdict
+	return verdict, failing
 }
 
 // OpenPRs is every pull request the repository at dir currently has open, keyed
@@ -175,10 +197,12 @@ func (c CLI) OpenPRs(dir string) (map[string]PRStatus, error) {
 	}
 	open := make(map[string]PRStatus, len(list))
 	for _, pr := range list {
+		checks, failing := checksVerdictOf(pr.Rollup)
 		open[NormaliseURL(pr.URL)] = PRStatus{
 			Approved:  pr.ReviewDecision == reviewApproved,
 			Mergeable: pr.Mergeable == stateMergeable,
-			Checks:    checksVerdictOf(pr.Rollup),
+			Checks:    checks,
+			Failing:   failing,
 		}
 	}
 	return open, nil

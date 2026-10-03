@@ -53,6 +53,9 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// What `slice-show` answers, by slice — `Fixtures.sliceDetails` unless a
     /// story wants another reading of one (a slice with follow-ups pending).
     private let details: [String: SliceDetail]
+    /// What `pr-status` answers — `Fixtures.prStatusDoc` unless a story
+    /// reads another.
+    private let prStatusDoc: PRStatusDoc
     /// What `plugin-list` answers — the same listing after every install,
     /// since nothing here is installed.
     private let plugins: PluginListing
@@ -88,8 +91,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         sessions: [Session] = Fixtures.sessions,
         details: [String: SliceDetail] = Fixtures.sliceDetails,
         plugins: PluginListing = Fixtures.pluginListing,
-        sources: [SourcePlugin] = Fixtures.sourcePlugins
+        sources: [SourcePlugin] = Fixtures.sourcePlugins,
+        prStatus: PRStatusDoc = Fixtures.prStatusDoc
     ) {
+        self.prStatusDoc = prStatus
         self.plugins = plugins
         self.sources = sources
         self.behaviour = behaviour
@@ -295,7 +300,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func prStatus(projectID: String) async throws -> PRStatusDoc {
-        try await answer(Fixtures.prStatusDoc)
+        try await answer(prStatusDoc)
     }
 
     public func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {

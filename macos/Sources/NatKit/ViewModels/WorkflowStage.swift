@@ -10,13 +10,15 @@ import Foundation
 /// | todo    | plan, or release      | launch                | Brief                  |
 /// | working | launch, or send-back  | hand-back             | Agent                  |
 /// | review  | hand-back             | send-back, approve    | Diff                   |
-/// | pr      | approve               | fix launch, merge     | PR                     |
-/// | fixing  | fix launch            | fix session ends      | Agent                  |
+/// | pr      | approve, fix hand-back| fix launch, send-back, merge | PR              |
+/// | fixing  | fix launch, send-back | hand-back             | Agent                  |
 /// | done    | merge                 | never                 | PR, or Brief with no PR |
 ///
 /// A live session never moves a slice backwards on its own: it outlives
 /// hand-back and approve, so "a session exists" says nothing about the stage.
-/// `fixing` is entered only by its mark (`AppModel.fixLaunched`).
+/// `fixing` is read off the record (`Slice.fixing`, nat's `store.Fixing`):
+/// entered by a Relaunched or a Sent back after approval — a fix launch, a
+/// checks nudge — and left by the hand-back that follows.
 public enum WorkflowStage: String, CaseIterable, Equatable, Sendable {
     case todo
     case working
@@ -41,23 +43,24 @@ public enum WorkflowStage: String, CaseIterable, Equatable, Sendable {
     }
 }
 
-/// The stage of a slice, from the plan's own facts and the one app-local mark.
+/// The stage of a slice, from the plan's own facts.
 ///
 /// Notion's status is the only source of lifecycle truth, so Done is read off
 /// it alone and never re-derived from a PR reading. In progress is told apart
-/// by what the slice records: a PR means approved (`fixing` if `fixLaunched`),
+/// by what the slice records: a PR means approved (`fixing` where nat reads a
+/// fix under way),
 /// a hand-back means review, anything else is working — which is also what a
 /// sent-back slice reads as, `slice-rework` having cleared its branch.
 ///
 /// `agent` is taken so the callers pass what they hold, and deliberately never
 /// read: a live session moves nothing.
-public func stage(for slice: Slice, agent: AgentActivity?, fixLaunched: Bool) -> WorkflowStage {
+public func stage(for slice: Slice, agent: AgentActivity?) -> WorkflowStage {
     _ = agent
     switch slice.status {
     case "Done":
         return .done
     case "In progress":
-        if !slice.pr.isEmpty { return fixLaunched ? .fixing : .pr }
+        if !slice.pr.isEmpty { return slice.fixing ? .fixing : .pr }
         return slice.handedBack ? .review : .working
     default:
         return .todo

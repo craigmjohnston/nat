@@ -2,12 +2,12 @@ package tui
 
 import (
 	"context"
+	"maps"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/actions"
-	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -40,8 +40,12 @@ func defaultPRReader() PRReader { return gh.New() }
 // A slice in none of them is one gh could not be asked about, which the board
 // reads as a review still to come on work in flight and as nothing at all on
 // work that is finished — exactly what each said before there was any reading.
+//
+// failing names, for each slice read with a failed check, the checks that
+// failed — what the Active panel says beside the state.
 type prStateMsg struct {
 	state    map[string]domain.PRReadiness
+	failing  map[string][]string
 	settled  []string
 	marked   []string
 	reopened []string
@@ -103,8 +107,12 @@ func (a *App) refreshPRStates() tea.Cmd {
 	}
 	a.prReading = true
 	reader, viewer := a.prReader, a.prViewer
+	// The live sessions are copied here, on the event loop, since the reading
+	// runs off it and the board's own map is the loop's to change.
+	sender, live, projectID := a.checksSender(), maps.Clone(a.live), a.cfg.ActiveProjectID
 	return func() tea.Msg {
-		msg := prStateMsg{state: map[string]domain.PRReadiness{}}
+		msg := prStateMsg{state: map[string]domain.PRReadiness{}, failing: map[string][]string{}}
+		var red []actions.FailingChecks
 		for _, dir := range dirs {
 			open, err := reader.OpenPRs(dir)
 			if err != nil {
@@ -139,6 +147,12 @@ func (a *App) refreshPRStates() tea.Cmd {
 					continue
 				}
 				msg.state[s.ID] = readinessOf(status)
+				if msg.state[s.ID] == domain.PRChecksFailing {
+					red = append(red, actions.FailingChecks{Slice: s, Failing: status.Failing})
+					for _, c := range status.Failing {
+						msg.failing[s.ID] = append(msg.failing[s.ID], c.Name)
+					}
+				}
 				if s.Status == domain.SliceDone {
 					// A Done slice whose pull request reads open is Notion's
 					// word disagreeing with the work: Done was written at
@@ -155,8 +169,22 @@ func (a *App) refreshPRStates() tea.Cmd {
 				}
 			}
 		}
+		// What the reading found red is told to the agent on it, or put on the
+		// record where there is none — once per failure, see
+		// [actions.NoticeFailingChecks], the same function `nat pr-status` runs.
+		actions.NoticeFailingChecks(context.Background(), st, sender, live, projectID, red)
 		return msg
 	}
+}
+
+// checksSender is the launcher as what a nudge types through, or nil on a
+// board with no launcher — where every red reading is recorded rather than
+// told, since there is no session the board could reach.
+func (a *App) checksSender() actions.PromptSender {
+	if a.launcher == nil {
+		return nil
+	}
+	return a.launcher
 }
 
 // worthReading reports whether a slice has a pull request that anything might
@@ -207,10 +235,11 @@ func (a *App) prStateRead(msg prStateMsg) tea.Cmd {
 		a.prSettled[id] = true
 	}
 	a.board.SetPRState(a.prState)
+	a.board.SetFailingChecks(msg.failing)
 	// The board's rows are drawn into a viewport and cached there, so a reading
 	// that is not synced never reaches the screen.
 	a.syncBoard()
-	cmds := []tea.Cmd{a.removeLanded(msg.settled), a.nudgeFailingChecks(msg.state)}
+	cmds := []tea.Cmd{a.removeLanded(msg.settled)}
 	// A slice the reading marked Done, or reopened to In progress, changed
 	// under the plan's copy of it, and the row should say so without waiting
 	// for a poll.
@@ -221,74 +250,4 @@ func (a *App) prStateRead(msg prStateMsg) tea.Cmd {
 		cmds = append(cmds, a.refreshSlice(id))
 	}
 	return tea.Batch(cmds...)
-}
-
-// checksNudgeMsg reports one nudge typed at a live agent's pane: the slice it
-// was about, the session it went to, and the failure that stopped it.
-type checksNudgeMsg struct {
-	sliceID, session string
-	err              error
-}
-
-// nudgeFailingChecks tells each live agent whose slice's pull request the
-// reading found failing its checks, in one prompt (see
-// [agent.ChecksFailingPrompt]), and re-arms every slice the reading found
-// failing no longer.
-//
-// It is edge-triggered, the way [App.prSettled] remembers a landing: a slice
-// is nudged once as its checks go red and not again until a reading has seen
-// them out of the red, so a board polling every thirty seconds never nags, and
-// an agent mid-turn simply finds the prompt queued. A slice the reading left
-// out — gh could not be asked — is neither nudged nor re-armed, since a
-// reading that failed concludes nothing. A slice with no live agent is not
-// nudged either, and not marked: the board's own checks-failing state is what
-// tells the user, and an agent launched onto it later is told on the next
-// reading.
-//
-// The mark goes on as the send is started rather than as it lands, so a
-// second reading arriving first sends nothing twice; a send that fails takes
-// it off again — see [App.checksNudgeSent].
-func (a *App) nudgeFailingChecks(state map[string]domain.PRReadiness) tea.Cmd {
-	if a.launcher == nil || a.project == nil {
-		return nil
-	}
-	launcher := a.launcher
-	var cmds []tea.Cmd
-	for _, s := range a.project.Slices {
-		readiness, read := state[s.ID]
-		if !read {
-			continue
-		}
-		if readiness != domain.PRChecksFailing {
-			delete(a.checksNudged, s.ID)
-			continue
-		}
-		session := a.live[s.ID]
-		if session == "" || a.checksNudged[s.ID] {
-			continue
-		}
-		if a.checksNudged == nil {
-			a.checksNudged = map[string]bool{}
-		}
-		a.checksNudged[s.ID] = true
-		id, prompt := s.ID, agent.ChecksFailingPrompt(s.PRURL, agentBranch(s))
-		cmds = append(cmds, func() tea.Msg {
-			return checksNudgeMsg{sliceID: id, session: session, err: launcher.SendPrompt(session, prompt)}
-		})
-	}
-	return tea.Batch(cmds...)
-}
-
-// checksNudgeSent logs how a nudge went. One that failed is unmarked, so the
-// next reading that still finds the checks failing tries again; nothing is
-// toasted either way, since the board is already drawing the failing checks.
-func (a *App) checksNudgeSent(msg checksNudgeMsg) {
-	if msg.err != nil {
-		delete(a.checksNudged, msg.sliceID)
-		logging.Action("could not tell an agent its pull request's checks are failing",
-			"slice", msg.sliceID, "session", msg.session, "error", msg.err)
-		return
-	}
-	logging.Action("told an agent its pull request's checks are failing",
-		"slice", msg.sliceID, "session", msg.session)
 }

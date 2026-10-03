@@ -5,13 +5,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
 // TaskEvent is one entry of a slice's task log, read back off its body by
 // [TaskEvents] in the order it was written. Kind is one of: "handed_back",
 // "sent_back", "relaunched", "released", "blocked", "summary", "follow_ups",
-// "note".
+// "note", "checks_failed".
 // `nat slice-show --json` adds two more of its own, read off the slice's
 // properties rather than its body — see its own doc comment.
 type TaskEvent struct {
@@ -111,8 +112,8 @@ func releasedBy(line string) (string, time.Time, bool) {
 }
 
 // TaskEvents reads a slice's whole task log off its body, top to bottom: one
-// event per Handed back, Sent back, Relaunched, Blocked, Summary, Note and
-// Follow-ups section, plus one for every Released-back-to-Todo paragraph,
+// event per Handed back, Sent back, Relaunched, Checks failed, Blocked,
+// Summary, Note and Follow-ups section, plus one for every Released-back-to-Todo paragraph,
 // wherever in a section it falls. Every other heading — PR description,
 // Visual changes, a brief's own — is not an event and simply ends whatever
 // section came before it.
@@ -248,6 +249,10 @@ func TaskEvents(body string) []TaskEvent {
 			closeCurrent()
 			in, level, curKind, curLines = otherSection, h, relaunchedKind, nil
 			continue
+		case h > 0 && strings.EqualFold(text, notion.ChecksFailedHeading):
+			closeCurrent()
+			in, level, curKind, curLines = otherSection, h, ChecksFailedKind, nil
+			continue
 		case h > 0 && strings.EqualFold(text, notion.NoteHeading):
 			closeCurrent()
 			in, level, curKind, curLines = otherSection, h, noteKind, nil
@@ -318,7 +323,37 @@ const (
 	releasedKind   = "released"
 	followUpsKind  = "follow_ups"
 	noteKind       = "note"
+	// ChecksFailedKind and SentBackKind are exported, unlike the rest,
+	// because actions.NoticeFailingChecks reads them back to tell a failure
+	// already on the record from news.
+	ChecksFailedKind = "checks_failed"
+	SentBackKind     = sentBackKind
 )
+
+// Fixing reports whether a slice is under a fix: in progress, a pull request
+// recorded — approved, so the work is out — and the latest event of its task
+// log, read off body, a return to work (a Relaunched, which a fix launch
+// files, or a Sent back, which a review's comments or a failing reading's
+// nudge does). A Handed back after it is the fix in, and the slice back at the
+// pull request; any other event, or none, is the same.
+//
+// It is read off the record alone, so every reader — `nat info`, `slice-show`
+// and the app after a restart — agrees on it without a live session or any
+// memory of who launched what.
+func Fixing(s domain.Slice, body string) bool {
+	if s.Status != domain.SliceClaimed || s.PRURL == "" {
+		return false
+	}
+	events := TaskEvents(body)
+	if len(events) == 0 {
+		return false
+	}
+	switch events[len(events)-1].Kind {
+	case relaunchedKind, sentBackKind:
+		return true
+	}
+	return false
+}
 
 // notePrefix opens the provenance paragraph `slice-note` writes first in a
 // Note section.

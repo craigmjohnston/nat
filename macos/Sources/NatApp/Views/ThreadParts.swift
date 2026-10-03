@@ -39,6 +39,7 @@ extension ThreadEventKind {
         case .sentBack: return "arrow.uturn.forward.circle"
         case .released: return "arrow.down.to.line.circle"
         case .relaunched: return "arrow.clockwise.circle"
+        case .checksFailed: return "xmark.octagon"
         case .blocked: return "exclamationmark.octagon"
         case .followUps: return "lightbulb"
         case .note: return "note.text"
@@ -77,6 +78,9 @@ struct LaunchCard: View {
         case launch
         /// A slice under way whose agent is gone.
         case relaunch
+        /// An approved slice at its pull request: a fix agent, sent at the
+        /// review on the same branch.
+        case fix
         /// The dependencies still unfinished, by name.
         case blocked(waitingOn: [String])
     }
@@ -97,16 +101,24 @@ struct LaunchCard: View {
         return false
     }
 
+    private var actionTitle: String {
+        switch mode {
+        case .relaunch: return "Relaunch"
+        case .fix: return "Launch fix agent"
+        case .launch, .blocked: return "Launch"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 6) {
                 ThreadIcon(symbol: blocked ? "lock" : "play.circle")
-                Text(blocked ? "Blocked" : mode == .relaunch ? "Relaunch" : "Launch")
+                Text(blocked ? "Blocked" : mode == .relaunch ? "Relaunch" : mode == .fix ? "Fix" : "Launch")
                     .font(.system(size: GnatMetrics.body, weight: .medium))
                     .ink(blocked ? .tertiary : .secondary)
                 Spacer(minLength: 0)
                 Button(action: onLaunch) {
-                    HeaderActionLabel(title: mode == .relaunch ? "Relaunch" : "Launch", systemImage: "arrow.right", isBusy: isBusy)
+                    HeaderActionLabel(title: actionTitle, systemImage: "arrow.right", isBusy: isBusy)
                 }
                 .buttonStyle(GnatButtonStyle(primary: !blocked))
                 .disabled(!enabled || blocked)
@@ -180,6 +192,9 @@ struct LaunchCard: View {
                 .ink(.secondary)
         case .relaunch:
             Text("No agent is running on this task. Relaunch to start a new agent on its branch that carries on from the work so far.")
+                .ink(.secondary)
+        case .fix:
+            Text("The pull request is open. Launch a fix agent on its branch to answer the review and get the checks green; it hands back when the fix is pushed.")
                 .ink(.secondary)
         case .blocked(let names):
             let waiting = names.isEmpty ? Text("its dependencies") : names.enumerated().reduce(Text("")) { text, entry in

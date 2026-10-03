@@ -300,7 +300,6 @@ struct WindowShellView: View {
         selectedSlice.map { slice in
             NavigatorModel(
                 slice: slice, agent: appModel.activityStore?.agents[slice.id].map { AgentActivity($0.activity) },
-                fixLaunched: appModel.fixLaunched[slice.id] != nil,
                 hasVisuals: !(appModel.sliceDetailStore(projectID: appModel.projectStore?.projectID ?? "")
                     .state(for: slice.id).detail?.visuals.isEmpty ?? true))
         }

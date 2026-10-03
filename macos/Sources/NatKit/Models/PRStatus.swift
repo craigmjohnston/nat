@@ -22,17 +22,21 @@ public struct PRStatusSlice: Codable, Equatable, Sendable {
     public let name: String
     public let pr: String
     public let readiness: String
+    /// How the pull request's checks stand — present for every open pull
+    /// request the listing read, nil otherwise.
+    public let checks: PRStatusChecks?
 
     enum CodingKeys: String, CodingKey {
         case sliceID = "slice_id"
-        case name, pr, readiness
+        case name, pr, readiness, checks
     }
 
-    public init(sliceID: String, name: String, pr: String, readiness: String) {
+    public init(sliceID: String, name: String, pr: String, readiness: String, checks: PRStatusChecks? = nil) {
         self.sliceID = sliceID
         self.name = name
         self.pr = pr
         self.readiness = readiness
+        self.checks = checks
     }
 
     /// `domain.PRReadiness`'s affirmative words, said once here rather
@@ -46,5 +50,37 @@ public struct PRStatusSlice: Codable, Equatable, Sendable {
     public var isOpen: Bool {
         readiness == Self.awaitingReview || readiness == Self.readyToMerge
             || readiness == Self.checksFailing
+    }
+}
+
+/// One open pull request's checks, as `nat pr-status` reads them: the
+/// verdict — "passing", "failing", "pending" or "none" — and every check
+/// that failed, by name and run URL.
+public struct PRStatusChecks: Codable, Equatable, Sendable {
+    public let verdict: String
+    public let failing: [PRStatusCheck]
+
+    public init(verdict: String, failing: [PRStatusCheck] = []) {
+        self.verdict = verdict
+        self.failing = failing
+    }
+
+    enum CodingKeys: String, CodingKey { case verdict, failing }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        verdict = try c.decode(String.self, forKey: .verdict)
+        failing = try c.decodeIfPresent([PRStatusCheck].self, forKey: .failing) ?? []
+    }
+}
+
+/// One failed check: its name and where its run can be read.
+public struct PRStatusCheck: Codable, Equatable, Sendable {
+    public let name: String
+    public let url: String
+
+    public init(name: String, url: String) {
+        self.name = name
+        self.url = url
     }
 }

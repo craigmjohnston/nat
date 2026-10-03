@@ -102,6 +102,11 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
     public let dependsOn: [String]?
     public let blocked: Bool
     public let handedBack: Bool
+    /// A fix is under way: approved, and its latest task-log event a return
+    /// to work (a Relaunched or a Sent back) — read off the record by nat
+    /// (`store.Fixing`), so a restart mid-fix still reads it. False where nat
+    /// does not say.
+    public let fixing: Bool
     public let state: SliceState?
 
     enum CodingKeys: String, CodingKey {
@@ -117,6 +122,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         case dependsOn = "depends_on"
         case blocked
         case handedBack = "handed_back"
+        case fixing
         case state
     }
 
@@ -133,6 +139,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         dependsOn: [String]? = nil,
         blocked: Bool,
         handedBack: Bool,
+        fixing: Bool = false,
         state: SliceState? = nil
     ) {
         self.id = id
@@ -147,7 +154,26 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         self.dependsOn = dependsOn
         self.blocked = blocked
         self.handedBack = handedBack
+        self.fixing = fixing
         self.state = state
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        status = try c.decode(String.self, forKey: .status)
+        milestoneID = try c.decode(String.self, forKey: .milestoneID)
+        assignee = try c.decode(String.self, forKey: .assignee)
+        pr = try c.decode(String.self, forKey: .pr)
+        url = try c.decode(String.self, forKey: .url)
+        branch = try c.decodeIfPresent(String.self, forKey: .branch)
+        repo = try c.decodeIfPresent(String.self, forKey: .repo)
+        dependsOn = try c.decodeIfPresent([String].self, forKey: .dependsOn)
+        blocked = try c.decode(Bool.self, forKey: .blocked)
+        handedBack = try c.decode(Bool.self, forKey: .handedBack)
+        fixing = try c.decodeIfPresent(Bool.self, forKey: .fixing) ?? false
+        state = try c.decodeIfPresent(SliceState.self, forKey: .state)
     }
 }
 

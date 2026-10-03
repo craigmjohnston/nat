@@ -159,6 +159,16 @@ might not be.
 - **If the work is not code** (docs, research, written-up findings): produce
   the deliverable the brief asks for and link it in the summary below.
 
+The project's checks run on the pull request, once the slice is approved. If
+you are told they failed, read how they stand — each check, and each failed
+step's log — with:
+
+```
+nat slice-checks <slice> --log --project <project>
+```
+
+That is the one way to read CI: never `gh`.
+
 If this session finds out something a *later* slice needs to know — a
 constraint, a seam that moved, an assumption in another slice's brief that is
 no longer true — leave a note on that slice, named by its name, from your own:

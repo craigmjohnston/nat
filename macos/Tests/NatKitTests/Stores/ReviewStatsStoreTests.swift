@@ -286,6 +286,42 @@ final class ReviewStatsStoreTests: XCTestCase {
         XCTAssertEqual(store.prReadiness["s-1"], "awaiting review")
     }
 
+    /// The failing checks are named per red pull request, replaced by every
+    /// reading that arrives — gone on the first one no longer red — and kept
+    /// by one that does not arrive.
+    @MainActor
+    func testFailingChecksFollowTheReading() async {
+        let client = MockReviewStatsClient()
+        client.prStatusDoc = PRStatusDoc(slices: [
+            .init(sliceID: "s-red", name: "A", pr: "url", readiness: "checks failing",
+                  checks: PRStatusChecks(verdict: "failing", failing: [
+                    PRStatusCheck(name: "test", url: "https://ci/1"), PRStatusCheck(name: "lint", url: "https://ci/2"),
+                  ])),
+            .init(sliceID: "s-green", name: "B", pr: "url", readiness: "ready to merge",
+                  checks: PRStatusChecks(verdict: "passing")),
+        ])
+        let store = ReviewStatsStore(client: client)
+        await store.updatePRStatus(projectID: "proj-1")
+        XCTAssertEqual(store.failingChecks, ["s-red": ["test", "lint"]])
+
+        client.prStatusDoc = nil
+        await store.updatePRStatus(projectID: "proj-1")
+        XCTAssertEqual(store.failingChecks, ["s-red": ["test", "lint"]], "a reading that failed changes nothing")
+
+        client.prStatusDoc = PRStatusDoc(slices: [
+            .init(sliceID: "s-red", name: "A", pr: "url", readiness: "awaiting review",
+                  checks: PRStatusChecks(verdict: "pending")),
+        ])
+        await store.updatePRStatus(projectID: "proj-1")
+        XCTAssertTrue(store.failingChecks.isEmpty)
+
+        client.prStatusDoc = PRStatusDoc(slices: [.init(sliceID: "s-red", name: "A", pr: "url", readiness: "checks failing")])
+        await store.updatePRStatus(projectID: "proj-1")
+        XCTAssertEqual(store.failingChecks, ["s-red": []])
+        store.clear()
+        XCTAssertTrue(store.failingChecks.isEmpty)
+    }
+
     @MainActor
     func testClearDropsTheReadinessReading() async {
         let client = MockReviewStatsClient()

@@ -913,3 +913,7 @@ func TestSessionDiffRefusesWithNoRepository(t *testing.T) {
 
 func (f *fakeSessionGH) EditReviewers(dir, ref string, add, remove []string) error { return nil }
 func (f *fakeSessionGH) Collaborators(dir string) ([]string, error)                { return nil, nil }
+
+func (f *fakeSessionGH) FailedLog(dir, run, job string) (string, error)      { return "", nil }
+func (f *fakeSessionGH) ReviewComments(dir, ref string) (string, error)       { return "", nil }
+func (f *fakeSessionGH) Checks(dir, ref string) (string, error)               { return "", nil }

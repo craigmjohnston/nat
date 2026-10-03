@@ -72,8 +72,27 @@ phase (`NavigatorModel`), the sidebar's dots (`displayState(for:)`) and
 Go's `domain.StateOf` (Notion's status is the one source of lifecycle truth,
 so a Done slice is never in-flight even with `nat pr-status` still reporting
 its PR open) — change `internal/domain/state.go` and the stage together. A
-live session never moves the stage; `fixing` comes only from
-`AppModel.fixLaunched`.
+live session never moves the stage. `fixing` is read off the record
+(`Slice.fixing`, nat's `store.Fixing` on `info --json`): entered by a
+Relaunched or Sent back after approval (a fix launch, a checks nudge), left
+by the hand-back that follows — so a restart mid-fix still shows it, and no
+in-memory mark exists. A `fixing` slice with no live agent draws like a
+working one with none: relaunchable, not pulsing.
+
+**Fix launch and failing checks.** `LaunchPlan` admits an approved slice (In
+progress, PR recorded) with no live agent whatever its dependencies
+(`isFix`); `NavigatorModel.launchIsFix` (the `pr` state) makes the Thread's
+Launch and `LaunchCard` say "Launch fix agent", through the ordinary
+`nat slice-launch` and its one-shot optimistic advance to the terminal.
+`ReviewStatsStore.failingChecks` (from `pr-status`'s `checks`, replaced
+each reading, kept on a failed one) drives the Active row's danger marker
+(`SidebarActiveRow.failingChecks`, pr/fixing stage only) and
+`checksNotice` — the notice atop the Thread and PR bodies: Launch fix agent
+with no agent, "the agent has been told" when the latest recorded event is
+the nudge's Sent back. `projectAttention` counts a red pr/fixing slice once.
+Stories: `window-pr-fix-launch`, `window-fixing`, `sidebar-checks-failing`,
+`window-pr-checks-failing`, `window-pr-checks-agent-told`,
+`window-task-log-checks-failed`.
 
 ## The workshop and its proposal
 

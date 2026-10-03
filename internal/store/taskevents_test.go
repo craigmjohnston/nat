@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/craigmjohnston/nat/internal/domain"
 )
 
 func TestTaskEventsNone(t *testing.T) {
@@ -367,5 +369,33 @@ func TestTaskEventsNoteFirstParagraphOverLines(t *testing.T) {
 	want := []TaskEvent{{Kind: "note", Note: "From here on\nthe schema is v6."}}
 	if got := TaskEvents(body); !reflect.DeepEqual(got, want) {
 		t.Errorf("TaskEvents() = %#v, want %#v", got, want)
+	}
+}
+
+// TestFixing reads a fix under way off the record: an approved slice in
+// progress whose latest event is a Relaunched or a Sent back, and not once a
+// hand-back follows — nor for a slice with no pull request, or not in progress.
+func TestFixing(t *testing.T) {
+	approved := domain.Slice{Status: domain.SliceClaimed, PRURL: "https://github.test/pr/1"}
+	const handed = "### Handed back\n\nDone.\n"
+	const relaunched = handed + "\n### Relaunched\n\nRelaunched to pick up the work so far.\n"
+	tests := []struct {
+		name  string
+		slice domain.Slice
+		body  string
+		want  bool
+	}{
+		{"relaunched after approve", approved, relaunched, true},
+		{"sent back after approve", approved, handed + "\n### Sent back\n\nFix the test.\n", true},
+		{"handed back after the fix", approved, relaunched + "\n### Handed back\n\nFixed.\n", false},
+		{"checks failed with nobody on it", approved, handed + "\n### Checks failed\n\n- test\n", false},
+		{"nothing on the record", approved, "", false},
+		{"no pull request", domain.Slice{Status: domain.SliceClaimed}, relaunched, false},
+		{"done", domain.Slice{Status: domain.SliceDone, PRURL: "u"}, relaunched, false},
+	}
+	for _, tt := range tests {
+		if got := Fixing(tt.slice, tt.body); got != tt.want {
+			t.Errorf("%s: Fixing = %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }

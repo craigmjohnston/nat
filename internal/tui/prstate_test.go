@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -8,7 +9,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
@@ -622,113 +622,95 @@ func TestDefaultPRReader(t *testing.T) {
 }
 
 // checksNudgeApp is prStateApp with a live agent on the approved slice, whose
-// pull request GitHub reads with a failing check.
-func checksNudgeApp(t *testing.T) (*App, *fakePRReader, *fakeLauncher) {
+// pull request GitHub reads with a failing check, run by an Actions job.
+func checksNudgeApp(t *testing.T) (*App, *fakePRReader, *fakeLauncher, *fakeNotion) {
 	app, reader := prStateApp(t)
 	reader.open[natRepo]["https://github.test/pr/1"] = gh.PRStatus{
-		Approved: true, Mergeable: true, Checks: gh.ChecksFailing}
+		Approved: true, Mergeable: true, Checks: gh.ChecksFailing,
+		Failing: []gh.Check{{Name: "test", State: "FAILURE", URL: "https://github.test/actions/runs/9/job/1"}}}
 	live := map[string]string{approvedPR: "nat-ap"}
 	launcher := &fakeLauncher{live: live}
 	app.launcher = launcher
 	app.live = live
-	return app, reader, launcher
+	return app, reader, launcher, app.client.(*fakeNotion)
 }
 
-// A live agent whose pull request goes red is told so once, by name of the
-// pull request and the branch to push the fix to; a second red reading sends
-// nothing, and only a reading out of the red re-arms it.
-func TestALiveAgentIsNudgedOnceWhenItsChecksGoRed(t *testing.T) {
-	app, reader, launcher := checksNudgeApp(t)
-	p := prStatePlan()
+// appendedHeadings is the heading of every section the store appended, in
+// order.
+func appendedHeadings(f *fakeNotion) []string {
+	var out []string
+	for _, call := range f.appended {
+		b, _ := json.Marshal(call.children)
+		for _, h := range []string{"Sent back", "Checks failed"} {
+			if strings.Contains(string(b), `"content":"`+h+`"`) {
+				out = append(out, call.pageID+": "+h)
+			}
+		}
+	}
+	return out
+}
 
-	runPRRead(t, app, landPlan(t, app, p))
+// A live agent whose pull request goes red is told so through the shared
+// notice — one prompt naming the check and the slice-checks read — and a Sent
+// back goes on its record; the Active panel names the check beside the state.
+func TestALiveAgentIsToldWhenItsChecksGoRed(t *testing.T) {
+	app, _, launcher, client := checksNudgeApp(t)
+
+	runPRRead(t, app, landPlan(t, app, prStatePlan()))
 	if len(launcher.prompts) != 1 || launcher.prompts[0].session != "nat-ap" {
 		t.Fatalf("sends = %+v, want one prompt to the slice's own session", launcher.prompts)
 	}
-	want := agent.ChecksFailingPrompt("https://github.test/pr/1", agentBranch(sliceByID(t, p, approvedPR)))
-	if launcher.prompts[0].text != want {
-		t.Errorf("sent %q, want %q", launcher.prompts[0].text, want)
+	for _, want := range []string{"- test: https://github.test/actions/runs/9/job/1",
+		"nat slice-checks " + approvedPR + " --log --project " + testProjectID} {
+		if !strings.Contains(launcher.prompts[0].text, want) {
+			t.Errorf("prompt does not say %q:\n%s", want, launcher.prompts[0].text)
+		}
 	}
-
-	runPRRead(t, app, app.refreshPRStates())
-	if len(launcher.prompts) != 1 {
-		t.Fatalf("a second red reading sent %d prompts in all, want still 1", len(launcher.prompts))
+	if got := appendedHeadings(client); !reflect.DeepEqual(got, []string{approvedPR + ": Sent back"}) {
+		t.Errorf("appended %v, want one Sent back on the slice", got)
 	}
-
-	reader.open[natRepo]["https://github.test/pr/1"] = gh.PRStatus{Approved: true, Mergeable: true, Checks: gh.ChecksPassing}
-	runPRRead(t, app, app.refreshPRStates())
-	if len(launcher.prompts) != 1 {
-		t.Fatalf("a green reading sent %d prompts in all, want still 1", len(launcher.prompts))
-	}
-
-	reader.open[natRepo]["https://github.test/pr/1"] = gh.PRStatus{Checks: gh.ChecksFailing}
-	runPRRead(t, app, app.refreshPRStates())
-	if len(launcher.prompts) != 2 {
-		t.Errorf("red again after green sent %d prompts in all, want 2", len(launcher.prompts))
+	if got := app.board.failingChecks[approvedPR]; !reflect.DeepEqual(got, []string{"test"}) {
+		t.Errorf("failing checks on the board = %v, want [test]", got)
 	}
 }
 
-// A slice with no live agent is not nudged, and not marked either: an agent
-// launched onto the red pull request later is told on the next reading.
-func TestNoLiveAgentNoNudge(t *testing.T) {
-	app, _, launcher := checksNudgeApp(t)
+// With no agent live, a red reading files Checks failed and types nothing.
+func TestARedReadingWithNoAgentIsRecorded(t *testing.T) {
+	app, _, launcher, client := checksNudgeApp(t)
 	delete(app.live, approvedPR)
 
 	runPRRead(t, app, landPlan(t, app, prStatePlan()))
 	if len(launcher.prompts) != 0 {
 		t.Fatalf("sends = %+v, want nothing with no agent to send to", launcher.prompts)
 	}
-
-	app.live[approvedPR] = "nat-ap"
-	runPRRead(t, app, app.refreshPRStates())
-	if len(launcher.prompts) != 1 {
-		t.Errorf("sends = %+v, want one once an agent is live", launcher.prompts)
+	if got := appendedHeadings(client); !reflect.DeepEqual(got, []string{approvedPR + ": Checks failed"}) {
+		t.Errorf("appended %v, want one Checks failed on the slice", got)
 	}
 }
 
-// A send that fails is logged and left unmarked, so the next reading that still
-// finds the checks failing tries again.
-func TestAFailedNudgeIsSentAgain(t *testing.T) {
-	app, _, launcher := checksNudgeApp(t)
-	launcher.sendErr = errors.New("no pane")
-
-	runPRRead(t, app, landPlan(t, app, prStatePlan()))
-	if app.checksNudged[approvedPR] {
-		t.Fatal("a failed nudge is still marked as sent")
-	}
-
-	launcher.sendErr = nil
-	runPRRead(t, app, app.refreshPRStates())
-	if len(launcher.prompts) != 2 {
-		t.Errorf("sent %d prompts in all, want the failed one and its retry", len(launcher.prompts))
-	}
-}
-
-// A reading that could not ask about a slice concludes nothing: the mark stays,
-// so the next red reading does not nudge again.
-func TestAnUnreadSliceKeepsItsNudge(t *testing.T) {
-	app, reader, launcher := checksNudgeApp(t)
-	runPRRead(t, app, landPlan(t, app, prStatePlan()))
-
-	reader.err = errors.New("offline")
-	runPRRead(t, app, app.refreshPRStates())
-	reader.err = nil
-	runPRRead(t, app, app.refreshPRStates())
-	if len(launcher.prompts) != 1 {
-		t.Errorf("sent %d prompts in all, want 1 across an unread reading", len(launcher.prompts))
-	}
-}
-
-// With no launcher, or no plan, there is nobody to nudge.
-func TestNudgeFailingChecksWithNothingToNudge(t *testing.T) {
-	app, _, _ := checksNudgeApp(t)
-	state := map[string]domain.PRReadiness{approvedPR: domain.PRChecksFailing}
-	if cmd := app.nudgeFailingChecks(state); cmd != nil {
-		t.Error("a nudge was started with no plan")
+// A board with no launcher has no session to reach, so it records.
+func TestChecksSenderWithNoLauncher(t *testing.T) {
+	app, _, _, _ := checksNudgeApp(t)
+	if app.checksSender() == nil {
+		t.Error("a board with a launcher has no sender")
 	}
 	app.launcher = nil
-	app.project = &domain.Project{}
-	if cmd := app.nudgeFailingChecks(state); cmd != nil {
-		t.Error("a nudge was started with no launcher")
+	if app.checksSender() != nil {
+		t.Error("a board with no launcher has a sender")
 	}
+}
+
+// The Active panel names the failing check beside the state, in the danger
+// colour the state is drawn in.
+func TestActivePanelNamesTheFailingChecks(t *testing.T) {
+	b := NewBoard(DefaultStyles())
+	p := domain.NewProject(testProjectID, "tracker",
+		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect),
+		[]domain.Slice{{ID: approvedPR, Name: "Approved", Status: domain.SliceClaimed, StatusName: "In progress",
+			MilestoneID: "M1: Review", PRURL: "https://github.test/pr/1"}})
+	b.SetProject(&p)
+	b.SetWidth(60)
+	b.SetPRState(map[string]domain.PRReadiness{approvedPR: domain.PRChecksFailing})
+	b.SetFailingChecks(map[string][]string{approvedPR: {"test", "lint"}})
+	golden(t, "board-active-checks-failing", strings.Join(b.renderActive(0), "\n"))
 }

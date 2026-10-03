@@ -809,6 +809,14 @@ struct SidebarView: View {
         HStack(spacing: 6) {
             ActiveIdentityLabel(tag: row.projectTag, state: row.state, live: row.live, title: row.title)
             Spacer(minLength: 0)
+            if !row.failingChecks.isEmpty {
+                // The pull request was last read failing its checks: a
+                // danger mark, the checks by name under the pointer.
+                Image(systemName: "xmark.octagon.fill")
+                    .font(.system(size: 10, weight: .medium))
+                    .ink(.danger)
+                    .help("Checks failing: \(row.failingChecks.joined(separator: ", "))")
+            }
             if row.kind == .workshop {
                 Button { closeWorkshopRow(row) } label: {
                     Image(systemName: "xmark")

@@ -31,8 +31,8 @@ write and subprocess — see `internal/actions/CLAUDE.md` for the mechanics
 (claim-before-tmux ordering, `PlaceAgent`, `OpenPR`/`RecordPR`,
 `SettleMerged`/`ReopenUnmerged`, `RemoveWorktree`). What's left here is
 TUI-only: the launch form, the launch/approve prompts anchored to a row,
-`prStillOpen` (the fix-launch gh gate — stays here since `PRViewer` is the
-board's own seam, not `actions`'), toasts, the after-write refetch.
+toasts, the after-write refetch. The fix-launch discriminator and its gh gate
+are `actions.FixLaunch`/`actions.PRStillOpen`, shared with `slice-launch`.
 **`release.go` was *not* extracted** — still calls `store.Over(client)`
 directly; check each file, don't assume every one routes through `actions`.
 
@@ -89,11 +89,11 @@ directly; check each file, don't assume every one routes through `actions`.
   while the wizard, a form, a row prompt, or another load is in flight (would
   clobber what the user's mid-edit); **not** suspended by an open agent
   terminal — the plan behind the split stays live.
-- `prstate.go` also nudges a live agent whose PR reads `PRChecksFailing`
-  (`agent.ChecksFailingPrompt` via `SendPrompt`), edge-triggered on
-  `App.checksNudged`: marked as the send starts, unmarked on a failed send
-  or a reading out of the red; an unread slice keeps its mark; no live
-  session, no nudge and no mark.
+- `prstate.go` hands every slice a reading finds `PRChecksFailing` to
+  `actions.NoticeFailingChecks` (the same call `nat pr-status` makes): a
+  live agent is sent `agent.ChecksPrompt` and a `Sent back` filed, else a
+  `Checks failed` is filed — once per set of failing run URLs, read back off
+  the task log, so nothing is held in memory.
 - `nudge.go`: stats the nudge marker every second (far shorter than the poll)
   and reloads on a moved mtime. The **first** reading is a baseline, not
   news. A nudge arriving **while a load is already in flight is left

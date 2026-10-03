@@ -712,7 +712,7 @@ func TestPromptFlagsAWorktreesOverrideByItsCheckout(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // merely says "the `nat` commands" is not read as one.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|release-slice|milestone-add|slice-add|slice-depends|plan-apply|plan-propose|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|plan-propose|project-create)\b`)
 
 // natCommands are the invocations a prompt names: each from the command word to
 // the end of its line, and on through the lines a trailing backslash continues
@@ -732,6 +732,27 @@ func natCommands(text string) []string {
 		cmds = append(cmds, cmd)
 	}
 	return cmds
+}
+
+// Every slice prompt, whatever launched it, names slice-checks as the one way
+// to read CI, and no `gh` read at all.
+func TestSlicePromptReadsCIWithSliceChecks(t *testing.T) {
+	for _, f := range []Frontend{FrontendTUI, FrontendGnat, ""} {
+		c := testContext()
+		c.Frontend = f
+		got := Prompt(c)
+		for _, want := range []string{
+			"    nat slice-checks " + c.Slice.ID + " --log --project " + testProjectID + "\n",
+			"That is the one way to read CI: never `gh`.",
+		} {
+			if !strings.Contains(got, want) {
+				t.Errorf("the %q slice prompt does not say %q", f, want)
+			}
+		}
+		if regexp.MustCompile(`\bgh pr\b`).MatchString(got) {
+			t.Errorf("the %q slice prompt names a gh read", f)
+		}
+	}
 }
 
 // Only the app can triage follow-ups, so only a slice agent it launched is
@@ -782,11 +803,10 @@ func TestEverySlicePromptHandsInVisualChanges(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(Prompt(testContext()), "images in before `complete-slice`") {
-		t.Error("the slice prompt does not hand the images in before complete-slice")
-	}
-	if !strings.Contains(Prompt(fixContext()), "images in before you report back") {
-		t.Error("the fix prompt does not hand the images in before reporting back")
+	for name, c := range map[string]PromptContext{"slice": testContext(), "fix": fixContext()} {
+		if !strings.Contains(Prompt(c), "images in before `complete-slice`") {
+			t.Errorf("the %s prompt does not hand the images in before complete-slice", name)
+		}
 	}
 }
 

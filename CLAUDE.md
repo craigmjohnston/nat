@@ -96,17 +96,34 @@ untouched. Refused on a slice with a live agent.
 session (a relaunch — placed back on `agentBranch`, told it's continuing).
 A slice with a live agent is refused outright, whatever its status.
 
-**Fix sessions** — a Done slice with a PR still open is launchable too
-(`fixLaunch`): the review is unfinished work. This is the one launch that
-**writes nothing at all** — no claim, since the slice is already everything
-a claim would make it. Before any worktree is cut, `prStillOpen` asks gh
-directly whether that PR is still open (a merged/closed/unreadable PR each
-refuse the launch with a toast, and — unlike everywhere else the app reads
-gh — an unread PR here refuses too, since the cost of being wrong is an
-agent sent at a review that's already over). Dependencies are not checked.
-`agent.fixPrompt` is what such a session is told, and it's the one place the
-standing ban on agents running `gh` is relaxed — for exactly `gh pr view
---comments` and `gh pr checks`.
+**Fix sessions** — a slice with a PR recorded (approved and In progress, or
+Done under the old rule) whose PR is still open is launchable too
+(`actions.FixLaunch`, the one discriminator the board's `l` and `nat
+slice-launch` both ask): the review is unfinished work. It **claims
+nothing** — the slice is already everything a claim would make it — and
+writes one thing: a `Relaunched` (a failure logged, never fatal), which is
+what puts the return to work on the record. Before any worktree is cut,
+`actions.PRStillOpen` asks gh directly whether that PR is still open (a
+merged/closed/unreadable PR each refuse the launch, and — unlike everywhere
+else the app reads gh — an unread PR here refuses too, since the cost of
+being wrong is an agent sent at a review that's already over). Dependencies
+are not checked. `agent.fixPrompt` is what such a session is told; it ends
+in a hand-back (`complete-slice --branch`, the same branch, status left
+alone), and it's the one place the standing ban on agents running `gh` is
+relaxed — for exactly `gh pr view --comments`. **`fixing`** is read off the
+record (`store.Fixing`): In progress, PR recorded, and the latest task-log
+event a `Relaunched` or `Sent back`; the hand-back that follows ends it.
+`info --json` and `slice-show --json` carry it per slice.
+
+**CI failures.** Every agent reads CI with `nat slice-checks <slice> [--log]`
+(slice prompt, fix prompt, `/next-slice`), never `gh`. After every PR
+listing, `nat pr-status` and the TUI's `refreshPRStates` hand each slice
+reading `PRChecksFailing` to `actions.NoticeFailingChecks`: a failure is the
+set of its failing checks' run URLs, news only where the latest `Checks
+failed`/`Sent back` names a different set. A live session is sent
+`agent.ChecksPrompt` then a `Sent back` is filed (Branch left alone); with
+none, a `Checks failed` is filed. Send before record: a failed send writes
+nothing, so the next reading retries.
 
 **tmux is the user's.** Every agent nat launches runs on the user's own tmux
 server, beside every other agent, so every prompt and `/next-slice` carry a
@@ -156,9 +173,11 @@ every template and every skill for it.
 **Task log.** A slice's history is read off its body, in order, by
 `store.TaskEvents`: each `Handed back`, `Sent back` (`slice-rework
 --comments`, filed before the branch is cleared, as hand-back files before
-its property), `Relaunched` (written by a non-fix `actions.Launch` of a slice
-already under way or with history — `store.HasHistory`: notes alone are not
-history; a failure is logged, never fatal),
+its property; or a checks nudge, which clears nothing), `Checks failed`
+(`checks_failed`, a red reading with no live agent), `Relaunched` (written
+by a fix launch, and by a non-fix `actions.Launch` of a slice already under
+way or with history — `store.HasHistory`: notes alone are not history; a
+failure is logged, never fatal),
 `Blocked`, `Summary`, `Note` (a `note` event, `by` its provenance), released
 line and `Follow-ups` section, each proposal
 decided by a later `Follow-ups triaged`. Every one of those sections opens

@@ -4,11 +4,11 @@ import XCTest
 final class SidebarModelTests: XCTestCase {
     private func slice(
         _ id: String, status: String = "Todo", milestone: String = "M1", branch: String? = nil,
-        handedBack: Bool = false, pr: String = "", blocked: Bool = false
+        handedBack: Bool = false, pr: String = "", blocked: Bool = false, fixing: Bool = false
     ) -> Slice {
         Slice(
             id: id, name: "Slice \(id)", status: status, milestoneID: milestone, assignee: "", pr: pr, url: "",
-            branch: branch, blocked: blocked, handedBack: handedBack)
+            branch: branch, blocked: blocked, handedBack: handedBack, fixing: fixing)
     }
 
     private func plan(_ slices: [Slice], milestones: [String] = ["M1", "M2"]) -> ProjectInfo {
@@ -25,18 +25,18 @@ final class SidebarModelTests: XCTestCase {
     // MARK: - Display state
 
     func testEveryStageReadsAsItsDisplayState() {
-        XCTAssertEqual(displayState(for: slice("a"), agent: nil, fixLaunched: false), .todo)
-        XCTAssertEqual(displayState(for: slice("a", blocked: true), agent: nil, fixLaunched: false), .blocked)
-        XCTAssertEqual(displayState(for: slice("a", status: "In progress"), agent: nil, fixLaunched: false), .working)
-        XCTAssertEqual(displayState(for: slice("a", status: "In progress"), agent: .working, fixLaunched: false), .working)
-        XCTAssertEqual(displayState(for: slice("a", status: "In progress"), agent: .waiting, fixLaunched: false), .waiting)
+        XCTAssertEqual(displayState(for: slice("a"), agent: nil), .todo)
+        XCTAssertEqual(displayState(for: slice("a", blocked: true), agent: nil), .blocked)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress"), agent: nil), .working)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress"), agent: .working), .working)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress"), agent: .waiting), .waiting)
         XCTAssertEqual(
-            displayState(for: slice("a", status: "In progress", branch: "b", handedBack: true), agent: .waiting, fixLaunched: false),
+            displayState(for: slice("a", status: "In progress", branch: "b", handedBack: true), agent: .waiting),
             .review, "a live session never moves a handed-back slice")
-        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1"), agent: nil, fixLaunched: false), .pr)
-        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1"), agent: .working, fixLaunched: true), .fixing)
-        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1"), agent: .waiting, fixLaunched: true), .waiting)
-        XCTAssertEqual(displayState(for: slice("a", status: "Done", pr: "https://x/pull/1"), agent: .working, fixLaunched: false), .done)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1"), agent: nil), .pr)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1", fixing: true), agent: .working), .fixing)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1", fixing: true), agent: .waiting), .waiting)
+        XCTAssertEqual(displayState(for: slice("a", status: "Done", pr: "https://x/pull/1"), agent: .working), .done)
     }
 
     func testTheStatesFlagsAreTheDesigns() {

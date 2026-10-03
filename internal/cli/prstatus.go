@@ -60,6 +60,9 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 	slices := plan.Project.Slices
 
 	readings, marked := prReadings(ctx, st, env.NewGH(), slices, project)
+	if noticeFailing(ctx, st, env.NewTmux(), projectID, slices, readings) {
+		marked = true
+	}
 	if marked {
 		env.nudged()
 	}
@@ -71,12 +74,48 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// prReading is one slice's pull request as pr-status reports it.
+// prReading is one slice's pull request as pr-status reports it. Checks is
+// how its checks stand, set only for an open pull request the listing read.
 type prReading struct {
 	SliceID   string
 	SliceName string
 	PR        string
 	Readiness domain.PRReadiness
+	Checks    *gh.PRStatus
+}
+
+// liveReader is what pr-status needs of tmux: which slices have a session.
+type liveReader interface {
+	actions.PromptSender
+	LiveSlices() (map[string]string, error)
+}
+
+// noticeFailing hands every red pull request the readings found to
+// [actions.NoticeFailingChecks] — the same function the board runs after its
+// own reading — and reports whether it wrote anything. A tmux that cannot say
+// which sessions are live concludes nothing: no agent is told and nothing is
+// recorded as though none were there, and the next reading asks again.
+func noticeFailing(ctx context.Context, st store.Store, tmux liveReader, projectID string,
+	slices []domain.Slice, readings []prReading) bool {
+	byID := make(map[string]domain.Slice, len(slices))
+	for _, s := range slices {
+		byID[s.ID] = s
+	}
+	var failing []actions.FailingChecks
+	for _, r := range readings {
+		if r.Readiness == domain.PRChecksFailing {
+			failing = append(failing, actions.FailingChecks{Slice: byID[r.SliceID], Failing: r.Checks.Failing})
+		}
+	}
+	if len(failing) == 0 {
+		return false
+	}
+	live, err := tmux.LiveSlices()
+	if err != nil {
+		logging.Action("left failing pull requests unnoticed: live sessions unread", "error", err)
+		return false
+	}
+	return actions.NoticeFailingChecks(ctx, st, tmux, live, projectID, failing)
 }
 
 // worthReadingPR reports whether a slice has a pull request that anything
@@ -141,7 +180,7 @@ func prReadings(ctx context.Context, st store.Store, ghClient GH, slices []domai
 	}
 
 	marked := false
-	state := map[string]domain.PRReadiness{}
+	state := map[string]gh.PRStatus{}
 	for _, dir := range dirs {
 		open, err := ghClient.OpenPRs(dir)
 		if err != nil {
@@ -150,7 +189,7 @@ func prReadings(ctx context.Context, st store.Store, ghClient GH, slices []domai
 		}
 		for _, s := range reads[dir] {
 			if status, still := open[gh.NormaliseURL(s.PRURL)]; still {
-				state[s.ID] = readinessOf(status)
+				state[s.ID] = status
 				if s.Status == domain.SliceDone {
 					if err := actions.ReopenUnmerged(ctx, st, s); err != nil {
 						logging.Action("left a Done slice with an open pull request unreopened", "slice", s.ID, "error", err)
@@ -177,7 +216,11 @@ func prReadings(ctx context.Context, st store.Store, ghClient GH, slices []domai
 		if !worthReadingPR(s) {
 			continue
 		}
-		out = append(out, prReading{SliceID: s.ID, SliceName: s.Name, PR: s.PRURL, Readiness: state[s.ID]})
+		r := prReading{SliceID: s.ID, SliceName: s.Name, PR: s.PRURL}
+		if status, read := state[s.ID]; read {
+			r.Readiness, r.Checks = readinessOf(status), &status
+		}
+		out = append(out, r)
 	}
 	return out, marked
 }
@@ -189,10 +232,23 @@ type prStatusDoc struct {
 }
 
 type prStatusSliceJSON struct {
-	SliceID   string `json:"slice_id"`
-	Name      string `json:"name"`
-	PR        string `json:"pr"`
-	Readiness string `json:"readiness"`
+	SliceID   string        `json:"slice_id"`
+	Name      string        `json:"name"`
+	PR        string        `json:"pr"`
+	Readiness string        `json:"readiness"`
+	Checks    *prChecksJSON `json:"checks,omitempty"`
+}
+
+// prChecksJSON is how an open pull request's checks stand: the verdict in
+// [gh.ChecksVerdict]'s words, and every failed check by name and run URL.
+type prChecksJSON struct {
+	Verdict string        `json:"verdict"`
+	Failing []prCheckJSON `json:"failing"`
+}
+
+type prCheckJSON struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
 }
 
 // prStatusJSON maps the readings onto the structured form, in
@@ -201,9 +257,15 @@ type prStatusSliceJSON struct {
 func prStatusJSON(readings []prReading) prStatusDoc {
 	doc := prStatusDoc{Slices: make([]prStatusSliceJSON, 0, len(readings))}
 	for _, r := range readings {
-		doc.Slices = append(doc.Slices, prStatusSliceJSON{
-			SliceID: r.SliceID, Name: r.SliceName, PR: r.PR, Readiness: r.Readiness.String(),
-		})
+		entry := prStatusSliceJSON{SliceID: r.SliceID, Name: r.SliceName, PR: r.PR, Readiness: r.Readiness.String()}
+		if r.Checks != nil {
+			checks := &prChecksJSON{Verdict: r.Checks.Checks.String(), Failing: []prCheckJSON{}}
+			for _, c := range r.Checks.Failing {
+				checks.Failing = append(checks.Failing, prCheckJSON{Name: c.Name, URL: c.URL})
+			}
+			entry.Checks = checks
+		}
+		doc.Slices = append(doc.Slices, entry)
 	}
 	return doc
 }
@@ -216,6 +278,11 @@ func prStatusMarkdown(readings []prReading) string {
 	}
 	for _, r := range readings {
 		out += fmt.Sprintf("- %s — %s — %s\n", r.SliceName, r.Readiness, r.PR)
+		if r.Checks != nil {
+			for _, c := range r.Checks.Failing {
+				out += fmt.Sprintf("  - failing: %s %s\n", c.Name, c.URL)
+			}
+		}
 	}
 	return out
 }

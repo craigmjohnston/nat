@@ -139,6 +139,9 @@ public struct TaskLogEvent: Codable, Equatable, Sendable {
         case followUps = "follow_ups"
         /// A note left on the brief with `nat slice-note`.
         case note
+        /// The pull request's checks failed with no agent live to be told:
+        /// the note names each failed check and its run URL.
+        case checksFailed = "checks_failed"
         case approved
         case merged
     }

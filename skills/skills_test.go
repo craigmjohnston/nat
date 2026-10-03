@@ -250,7 +250,7 @@ func TestQueueProjectSendsTheUserToTheSwitchPicker(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // describes what a command does is not read as a call to it.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-visuals|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-visuals|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
 
 // fencedNatCommands are the `nat` invocations inside a skill's fenced code
 // blocks: the lines an agent copies and runs, as against the backticked prose
@@ -438,5 +438,19 @@ func TestNextSliceCarriesTheNoteCommand(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "nat slice-note '<slice name>' --from <slice> --project <project>") {
 		t.Error("the next-slice skill does not carry the note command")
+	}
+}
+
+// /next-slice tells its agent to read CI with slice-checks, and never gh, as
+// the slice prompt does.
+func TestNextSliceReadsCIWithSliceChecks(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the skill: %v", err)
+	}
+	for _, want := range []string{"nat slice-checks <slice> --log --project <project>", "That is the one way to read CI: never `gh`."} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("the next-slice skill does not say %q", want)
+		}
 	}
 }

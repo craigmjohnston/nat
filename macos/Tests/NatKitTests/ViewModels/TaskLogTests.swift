@@ -253,11 +253,11 @@ final class TaskLogTests: XCTestCase {
     // MARK: - The label
 
     func testTheSectionIsTheTaskUntilItIsUnderWay() {
-        let todo = NavigatorModel(slice: slice(status: "Todo"), agent: nil, fixLaunched: false)
+        let todo = NavigatorModel(slice: slice(status: "Todo"), agent: nil)
         XCTAssertEqual(todo.threadLabel, "Task")
-        let working = NavigatorModel(slice: slice(status: "In progress"), agent: .working, fixLaunched: false)
+        let working = NavigatorModel(slice: slice(status: "In progress"), agent: .working)
         XCTAssertEqual(working.threadLabel, "Task log")
-        let done = NavigatorModel(slice: slice(status: "Done", branch: "b", pr: prURL), agent: nil, fixLaunched: false)
+        let done = NavigatorModel(slice: slice(status: "Done", branch: "b", pr: prURL), agent: nil)
         XCTAssertEqual(done.threadLabel, "Task log")
     }
 

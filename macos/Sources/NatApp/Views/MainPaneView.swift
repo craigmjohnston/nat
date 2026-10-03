@@ -201,8 +201,7 @@ struct SliceMainPane: View {
 
     private var nav: NavigatorModel {
         NavigatorModel(
-            slice: slice, agent: appModel.activityStore?.agents[slice.id].map { AgentActivity($0.activity) },
-            fixLaunched: appModel.fixLaunched[slice.id] != nil)
+            slice: slice, agent: appModel.activityStore?.agents[slice.id].map { AgentActivity($0.activity) })
     }
 
     var body: some View {

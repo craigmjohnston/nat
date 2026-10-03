@@ -58,7 +58,9 @@ func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
 // GH is everything the pull request commands need of the GitHub CLI:
 // [actions.PRCreator] for slice-approve, [PRViewer] for pr-view, [PRMerger]
 // for pr-merge, [PRReader] for pr-status, [PRCommenter] for pr-comment and
-// [PRReviewerEditor] for pr-reviewers. One gh.CLI answers all of them, and a headless command names whichever of them it
+// [PRReviewerEditor] for pr-reviewers, [RunLogReader] for slice-checks --log
+// and [actions.PRReviewReader] for a fix launch's review snapshot. One gh.CLI
+// answers all of them, and a headless command names whichever of them it
 // actually calls, the way [GitCLI] combines git's two seams for the same
 // reason.
 type GH interface {
@@ -69,6 +71,8 @@ type GH interface {
 	PRCommenter
 	PRHeadLister
 	PRReviewerEditor
+	RunLogReader
+	actions.PRReviewReader
 }
 
 // NewGHFunc builds the GitHub CLI driver the pull request commands run
@@ -519,6 +523,11 @@ usage:
                       --milestone where the name is filed under more than one),
                       URL or ID. nat writes where it came from — the --from
                       slice by name and milestone, else you
+  nat slice-checks <slice> [--log] [--json] --project ID
+                      how the checks on a slice's pull request stand: one
+                      verdict, then each check's name, state and run URL;
+                      --log adds each failed GitHub Actions check's failed
+                      steps' log, its last 200 lines
   nat slice-rework <slice> [--comments TEXT] --project ID
                       take a handed-back slice back out of review: its branch is
                       cleared and nothing else, so it reads as in progress until
@@ -688,6 +697,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceRepoCmd(ctx, args[1:], env)
 	case "slice-note":
 		return sliceNote(ctx, args[1:], env)
+	case "slice-checks":
+		return sliceChecks(ctx, args[1:], env)
 	case "release-slice":
 		return releaseSlice(ctx, args[1:], env)
 	case "pr-view":

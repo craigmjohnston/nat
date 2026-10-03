@@ -689,3 +689,7 @@ func TestSliceDiffRefusesCommitsAndCommitTogether(t *testing.T) {
 
 func (f *fakePRBase) EditReviewers(dir, ref string, add, remove []string) error { return nil }
 func (f *fakePRBase) Collaborators(dir string) ([]string, error)                { return nil, nil }
+
+func (f *fakePRBase) FailedLog(dir, run, job string) (string, error)      { return "", nil }
+func (f *fakePRBase) ReviewComments(dir, ref string) (string, error)       { return "", nil }
+func (f *fakePRBase) Checks(dir, ref string) (string, error)               { return "", nil }

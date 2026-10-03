@@ -4,11 +4,11 @@ import XCTest
 final class NavigatorModelTests: XCTestCase {
     private func slice(
         status: String = "Todo", branch: String? = nil, handedBack: Bool = false, pr: String = "",
-        blocked: Bool = false
+        blocked: Bool = false, fixing: Bool = false
     ) -> Slice {
         Slice(
             id: "s", name: "Slice", status: status, milestoneID: "M1", assignee: "", pr: pr, url: "",
-            branch: branch, blocked: blocked, handedBack: handedBack)
+            branch: branch, blocked: blocked, handedBack: handedBack, fixing: fixing)
     }
 
     private let prURL = "https://github.com/o/r/pull/40"
@@ -23,13 +23,13 @@ final class NavigatorModelTests: XCTestCase {
             (slice(status: "In progress"), .waiting, false, .thread, .terminal),
             (slice(status: "In progress", branch: "b", handedBack: true), nil, false, .changes, .diff),
             (slice(status: "In progress", branch: "b", pr: prURL), nil, false, .pr, .pr),
-            (slice(status: "In progress", branch: "b", pr: prURL), .working, true, .thread, .terminal),
+            (slice(status: "In progress", branch: "b", pr: prURL, fixing: true), .working, true, .thread, .terminal),
             (slice(status: "Done", branch: "b", pr: prURL), nil, false, .pr, .pr),
             (slice(status: "Done"), nil, false, .thread, .empty),
             (slice(status: "Done", branch: "b"), nil, false, .thread, .diff),
         ]
-        for (index, (s, agent, fixing, phase, main)) in cases.enumerated() {
-            let model = NavigatorModel(slice: s, agent: agent, fixLaunched: fixing)
+        for (index, (s, agent, _, phase, main)) in cases.enumerated() {
+            let model = NavigatorModel(slice: s, agent: agent)
             XCTAssertEqual(model.phase, phase, "case \(index)")
             XCTAssertEqual(model.defaultOpen, [phase], "case \(index)")
             XCTAssertEqual(model.defaultMain, main, "case \(index)")
@@ -37,14 +37,14 @@ final class NavigatorModelTests: XCTestCase {
     }
 
     func testSectionsAreLiveOnTheFactsTheyRead() {
-        let todo = NavigatorModel(slice: slice(), agent: nil, fixLaunched: false)
+        let todo = NavigatorModel(slice: slice(), agent: nil)
         XCTAssertTrue(todo.isLive(.thread), "it opens on the brief")
         XCTAssertFalse(todo.isLive(.changes))
         XCTAssertFalse(todo.isLive(.pr))
         XCTAssertFalse(todo.agentAvailable)
         XCTAssertFalse(todo.diffAvailable)
 
-        let approved = NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil, fixLaunched: false)
+        let approved = NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil)
         XCTAssertTrue(approved.isLive(.changes))
         XCTAssertTrue(approved.isLive(.pr))
         XCTAssertTrue(approved.agentAvailable)
@@ -52,30 +52,30 @@ final class NavigatorModelTests: XCTestCase {
     }
 
     func testEachSectionPutsUpItsOwnMainView() {
-        let todo = NavigatorModel(slice: slice(), agent: nil, fixLaunched: false)
+        let todo = NavigatorModel(slice: slice(), agent: nil)
         XCTAssertEqual(NavigatorSection.allCases.map { todo.mainMode(for: $0) }, [nil, nil, nil, nil])
 
-        let approved = NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil, fixLaunched: false)
+        let approved = NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil)
         XCTAssertEqual(NavigatorSection.allCases.map { approved.mainMode(for: $0) }, [.terminal, .diff, nil, .pr])
 
         let shown = NavigatorModel(
-            slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil, fixLaunched: false, hasVisuals: true)
+            slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil, hasVisuals: true)
         XCTAssertEqual(NavigatorSection.allCases.map { shown.mainMode(for: $0) }, [.terminal, .diff, .visuals, .pr])
     }
 
     func testVisualChangesAreLiveOnlyWithImagesAndSendOnlyToALiveAgent() {
-        let none = NavigatorModel(slice: slice(status: "In progress"), agent: .working, fixLaunched: false)
+        let none = NavigatorModel(slice: slice(status: "In progress"), agent: .working)
         XCTAssertFalse(none.isLive(.visuals))
         XCTAssertFalse(none.showsVisualActions)
 
         let handedIn = NavigatorModel(
-            slice: slice(status: "In progress", branch: "b", handedBack: true), agent: nil, fixLaunched: false, hasVisuals: true)
+            slice: slice(status: "In progress", branch: "b", handedBack: true), agent: nil, hasVisuals: true)
         XCTAssertTrue(handedIn.isLive(.visuals))
         XCTAssertFalse(handedIn.showsVisualActions, "no agent to send to")
         XCTAssertEqual(handedIn.phase, .changes, "images move neither the phase")
         XCTAssertEqual(handedIn.defaultMain, .diff, "nor the default view")
 
-        let live = NavigatorModel(slice: slice(status: "In progress"), agent: .waiting, fixLaunched: false, hasVisuals: true)
+        let live = NavigatorModel(slice: slice(status: "In progress"), agent: .waiting, hasVisuals: true)
         XCTAssertTrue(live.showsVisualActions)
     }
 
@@ -126,24 +126,24 @@ final class NavigatorModelTests: XCTestCase {
 
     func testTheVisualChangesTabShowsOnlyWithImagesBetweenChangesAndPR() {
         let reviewed = slice(status: "In progress", branch: "b", pr: prURL)
-        XCTAssertEqual(NavigatorModel(slice: reviewed, agent: nil, fixLaunched: false).tabs,
+        XCTAssertEqual(NavigatorModel(slice: reviewed, agent: nil).tabs,
                        [.terminal, .changes, .pr])
-        XCTAssertEqual(NavigatorModel(slice: reviewed, agent: nil, fixLaunched: false, hasVisuals: true).tabs,
+        XCTAssertEqual(NavigatorModel(slice: reviewed, agent: nil, hasVisuals: true).tabs,
                        [.terminal, .changes, .visuals, .pr])
-        XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress"), agent: .working, fixLaunched: false,
+        XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress"), agent: .working,
                                       hasVisuals: true).tabs, [.terminal, .visuals])
-        XCTAssertEqual(NavigatorModel(slice: slice(), agent: nil, fixLaunched: false, hasVisuals: true).tabs,
+        XCTAssertEqual(NavigatorModel(slice: slice(), agent: nil, hasVisuals: true).tabs,
                        [.visuals], "images handed in on a slice with no agent or branch")
     }
 
     func testASlicesTabsAreTheSectionsThatPutAViewUp() {
-        XCTAssertEqual(NavigatorModel(slice: slice(), agent: nil, fixLaunched: false).tabs, [])
-        XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress"), agent: .working, fixLaunched: false).tabs,
+        XCTAssertEqual(NavigatorModel(slice: slice(), agent: nil).tabs, [])
+        XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress"), agent: .working).tabs,
                        [.terminal])
         XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress", branch: "b", handedBack: true),
-                                      agent: nil, fixLaunched: false).tabs, [.terminal, .changes])
+                                      agent: nil).tabs, [.terminal, .changes])
         XCTAssertEqual(NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL),
-                                      agent: nil, fixLaunched: false).tabs, [.terminal, .changes, .pr])
+                                      agent: nil).tabs, [.terminal, .changes, .pr])
     }
 
     func testASessionsTabsWaitForAPRBeforeShowingOne() {
@@ -154,64 +154,71 @@ final class NavigatorModelTests: XCTestCase {
     // MARK: - Header actions
 
     func testLaunchIsOfferedBeforeLaunchAndToRelaunchAWorkingSlice() {
-        let todo = NavigatorModel(slice: slice(), agent: nil, fixLaunched: false)
+        let todo = NavigatorModel(slice: slice(), agent: nil)
         XCTAssertTrue(todo.showsLaunch)
         XCTAssertTrue(todo.canLaunch)
         XCTAssertTrue(todo.launchIsPrimary)
 
-        let blocked = NavigatorModel(slice: slice(blocked: true), agent: nil, fixLaunched: false)
+        let blocked = NavigatorModel(slice: slice(blocked: true), agent: nil)
         XCTAssertTrue(blocked.showsLaunch, "drawn disabled, as the design draws it")
         XCTAssertFalse(blocked.canLaunch)
         XCTAssertFalse(blocked.launchIsPrimary)
 
-        let stalled = NavigatorModel(slice: slice(status: "In progress"), agent: nil, fixLaunched: false)
+        let stalled = NavigatorModel(slice: slice(status: "In progress"), agent: nil)
         XCTAssertTrue(stalled.showsLaunch)
         XCTAssertFalse(stalled.launchIsPrimary)
 
-        let fixing = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil, fixLaunched: true)
+        let fixing = NavigatorModel(slice: slice(status: "In progress", pr: prURL, fixing: true), agent: nil)
         XCTAssertTrue(fixing.showsLaunch)
+        XCTAssertFalse(fixing.launchIsFix, "a fix already under way relaunches")
 
-        let live = NavigatorModel(slice: slice(status: "In progress"), agent: .working, fixLaunched: false)
+        // Approved, at its pull request with nobody on it: a fix launch.
+        let approved = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil)
+        XCTAssertTrue(approved.showsLaunch)
+        XCTAssertTrue(approved.canLaunch)
+        XCTAssertTrue(approved.launchIsFix)
+        XCTAssertFalse(NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: .working).showsLaunch)
+
+        let live = NavigatorModel(slice: slice(status: "In progress"), agent: .working)
         XCTAssertFalse(live.showsLaunch)
 
         for handed in [
             slice(status: "In progress", branch: "b", handedBack: true),
-            slice(status: "In progress", pr: prURL),
             slice(status: "Done", pr: prURL),
         ] {
-            XCTAssertFalse(NavigatorModel(slice: handed, agent: nil, fixLaunched: false).showsLaunch)
+            XCTAssertFalse(NavigatorModel(slice: handed, agent: nil).showsLaunch)
         }
         XCTAssertFalse(
-            NavigatorModel(slice: slice(status: "In progress"), agent: .waiting, fixLaunched: false).showsLaunch)
+            NavigatorModel(slice: slice(status: "In progress"), agent: .waiting).showsLaunch)
     }
 
     func testReviewActionsAndMergeFollowTheState() {
-        let review = NavigatorModel(slice: slice(status: "In progress", branch: "b", handedBack: true), agent: nil, fixLaunched: false)
+        let review = NavigatorModel(slice: slice(status: "In progress", branch: "b", handedBack: true), agent: nil)
         XCTAssertTrue(review.showsReviewActions)
         XCTAssertFalse(review.showsMerge)
 
-        let approved = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil, fixLaunched: false)
+        let approved = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil)
         XCTAssertFalse(approved.showsReviewActions)
         XCTAssertTrue(approved.showsMerge)
 
-        let done = NavigatorModel(slice: slice(status: "Done", pr: prURL), agent: nil, fixLaunched: false)
+        let done = NavigatorModel(slice: slice(status: "Done", pr: prURL), agent: nil)
         XCTAssertFalse(done.showsMerge)
     }
 
     func testThePRHeaderSaysMergedOnlyOnceTheSliceIsDoneWithAPR() {
-        let merged = NavigatorModel(slice: slice(status: "Done", pr: prURL), agent: nil, fixLaunched: false)
+        let merged = NavigatorModel(slice: slice(status: "Done", pr: prURL), agent: nil)
         XCTAssertEqual(merged.prStatus, .merged)
         XCTAssertEqual(merged.prStatus?.label, "Merged")
 
         // A fix session on an approved slice is fixing, not done, and so
         // not merged.
-        let fixing = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: .working, fixLaunched: true)
+        let fixing = NavigatorModel(slice: slice(status: "In progress", pr: prURL, fixing: true), agent: .working)
         XCTAssertNil(fixing.prStatus)
 
-        let approved = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil, fixLaunched: false)
+        let approved = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil)
         XCTAssertNil(approved.prStatus)
 
-        let closed = NavigatorModel(slice: slice(status: "Done"), agent: nil, fixLaunched: false)
+        let closed = NavigatorModel(slice: slice(status: "Done"), agent: nil)
         XCTAssertNil(closed.prStatus)
     }
 

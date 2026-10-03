@@ -12,23 +12,24 @@ slice of the "notion-agent-tracker" project.
 
 ## What is already true
 
-The slice is recorded as done and its pull request is open. The work was
-written, reviewed and published; none of that changes here, and there is
-nothing about the slice for you to claim, complete or record. Leave the
-tracker exactly as you found it: the account of what was done is written
-and it stands.
+The slice's work was written, handed back and approved, and its pull
+request is open. This session takes it back up to answer the review: the
+launch has already put that on the slice's record, so there is nothing
+to claim. When the fix is in you hand the slice back, as below, and it
+returns to its pull request for the user to review again.
 
 ## Your job
 
 Get that pull request to a state where it can be merged: answer the
 comments left on the review, and fix whatever checks are failing.
 
-Re-check before you push, since either can have moved since launch:
+Re-check before you push, since either can have moved since launch — the
+checks with each failed step's log:
 
     gh pr view https://github.test/craig/nat/pull/12 --comments
-    gh pr checks https://github.test/craig/nat/pull/12
+    nat slice-checks 3b738308-f654-8170-8c99-eccab4463d8f --log --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
-Those two reads are the only `gh` you may run. Never open, merge, close
+That `gh pr view` is the only `gh` you may run. Never open, merge, close
 or reopen a pull request: merging this one is a key on the user's board,
 pressed once they are satisfied with what you did.
 
@@ -49,9 +50,9 @@ be measured against:
 
     nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
-That and the two commands below, `slice-note` and `slice-visuals`, are
-the only `nat` commands this session has any business running, and each
-names the project the way every other one does:
+That and the commands named in this prompt are the only `nat` commands
+this session has any business running, and each names the project the
+way every other one does:
 
     --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
@@ -99,15 +100,14 @@ does not isolate you: `$TMUX` wins while it is set.
 ## Finish
 
 Commit in the working directory above and push slice/tmux-integration-agent-prompt-template again — the
-same branch, which is the one the pull request is built from. It picks
-up what you push by itself, so that is the whole of the ending: nothing
-to record, no second pull request to open, and no branch of your own to
-create or switch to.
+same branch, which is the one the pull request is built from and picks
+up what you push by itself. There is no second pull request to open, and
+no branch of your own to create or switch to.
 
 If what you changed is visible — a pane, a page, a rendered component —
 and the project already has a cheap or usual way to render it (a gallery
 story, a screenshot script, a storybook), render the result and hand the
-images in before you report back:
+images in before `complete-slice`:
 
     nat slice-visuals 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
         --visual '<what it shows, one line>
@@ -118,16 +118,23 @@ hand-in replaces an earlier one. Do not build a way to render when the
 project has none — go on without images instead. The user reviews them
 in the app; their comments, if any, arrive here as a message.
 
-Then say what you changed and what is still outstanding, so the user can
-read the review's state off your last message.
+Then hand the slice back, naming the branch you pushed:
+
+    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+        --branch slice/tmux-integration-agent-prompt-template --summary '- <what you fixed>\n- <what is still outstanding>'
+
+That files your summary as the hand-back and puts the slice back at its
+pull request. Leave `--pr-description` off: the pull request is open
+already, with its description. Make no unverifiable claims in the
+summary: say only what you actually checked.
 
 ## Guardrails
 
 - One pull request per session. Never pick up another slice when this
   one is done.
-- Never change the slice on the tracker beyond handing in renders of your
-  fixes: it is done, and its record of what happened is not yours to
-  rewrite. A note goes on a later slice, never on this one.
-- `gh pr view` and `gh pr checks` are the only `gh` you may run.
+- The `nat` commands are the only way to record anything about the slice.
+- Every one of them carries `--project 3b738308-f654-8117-9f2e-c3b0a9b7f001`.
+- `gh pr view --comments` is the only `gh` you may run; CI is read with
+  the `slice-checks` command above.
 - Never open, merge, close or reopen a pull request, and never push to
   the main branch.

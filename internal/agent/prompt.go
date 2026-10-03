@@ -24,9 +24,9 @@ import (
 // and the ID is the key it is filed under.
 //
 // Fix says the session is not working the slice but the review of the pull
-// request it already produced: the slice is Done, that pull request is still
-// open, and the agent is being sent at the comments and the failing checks on
-// it. It is the launch's own word rather than something read back off the
+// request it already produced: the slice has a pull request recorded, that
+// pull request is still open, and the agent is being sent at the comments and
+// the failing checks on it. It is the launch's own word rather than something read back off the
 // slice, since it is the launch that established the pull request is open —
 // see [fixPrompt].
 //
@@ -67,8 +67,9 @@ import (
 //
 // ReviewComments and ReviewChecks are a fix launch's read of the pull
 // request's review, taken the same way: `gh pr view <url> --comments` and
-// `gh pr checks <url>`, the exact two reads [fixPrompt] tells the agent it
-// may run again itself. Each is independently left empty on a failed read,
+// `gh pr checks <url>` — the first the one `gh` read [fixPrompt] lets the
+// agent run again itself, the second re-read with `nat slice-checks`, the way
+// every agent reads CI. Each is independently left empty on a failed read,
 // the project's usual reads-conclude-nothing posture — a launch never fails
 // over missing context.
 //
@@ -262,9 +263,9 @@ func gitSnapshotSection(c PromptContext) string {
 // commands an agent runs of its own accord are the ones no template can spell
 // out.
 // A session sent at an open pull request rather than at the slice is told
-// something else entirely — see [fixPrompt] — so it is dispatched here rather
-// than woven through the sections below: nothing about claiming, working or
-// handing back a slice applies to work that has already been published.
+// something else — see [fixPrompt] — so it is dispatched here rather than
+// woven through the sections below: its brief is the review rather than the
+// slice, and nothing about claiming one applies to work already published.
 func Prompt(c PromptContext) string {
 	if c.Fix {
 		return fixPrompt(c)
@@ -389,30 +390,13 @@ func Prompt(c PromptContext) string {
 	}
 	b.WriteString("If the work is not code — docs, research, written-up findings — produce\n")
 	b.WriteString("the deliverable the brief asks for and link it in the summary below.\n")
+	b.WriteString(checksPassage(c))
 	b.WriteString(notesPassage(c))
 	b.WriteString(namingPassage)
 	b.WriteString(tmuxPassage)
 
 	b.WriteString("\n## Finish\n\n")
-	// Only the app has anywhere to triage follow-ups, so only an agent it
-	// launched is told to hand them in and wait; one launched from the board
-	// would wait on a decision nothing there can make.
-	if c.Frontend == FrontendGnat {
-		b.WriteString("Work you noticed but did not do — a bug beside your change, a test gap\n")
-		b.WriteString("in code you didn't touch, a refactor the brief didn't ask for — is not\n")
-		b.WriteString("yours to do and not yours to lose. When the gate is green, before\n")
-		b.WriteString("`complete-slice`, hand each one in and **stop**:\n\n")
-		fmt.Fprintf(&b, "    nat slice-followups %s --project %s \\\n", c.Slice.ID, c.ProjectID)
-		b.WriteString("        --follow-up '<title line>\n\n<the change: which file or function, what it does instead, and why>\nDone when: <how anyone checks it is finished>'\n\n")
-		b.WriteString(followUpBriefPassage)
-		b.WriteString("`--follow-up` repeats, one per follow-up. The user decides in the app —\n")
-		b.WriteString("queue it as a slice, fold it into this one, or drop it — and the decision\n")
-		b.WriteString("arrives here as a message naming what to fold in. Do that, then hand back\n")
-		b.WriteString("as below. `complete-slice` refuses while the decision is outstanding.\n")
-		b.WriteString("Never widen your branch to include a follow-up on your own, and never\n")
-		b.WriteString("write them into the summary or the brief instead. No follow-ups: hand\n")
-		b.WriteString("back straight away.\n\n")
-	}
+	b.WriteString(followUpsPassage(c))
 	b.WriteString(visualsPassage(c, "before `complete-slice`"))
 	b.WriteString("On completion, record the outcome:\n\n")
 	fmt.Fprintf(&b, "    nat complete-slice %s --project %s \\\n", c.Slice.ID, c.ProjectID)
@@ -655,6 +639,48 @@ func notesPassage(c PromptContext) string {
 	b.WriteString("that slice's brief, with where it came from written by nat, so whoever\n")
 	b.WriteString("works it next reads it as part of the brief. A note is never work to be\n")
 	b.WriteString("done — that is a follow-up, not a note — and never goes on a Done slice.\n")
+	return b.String()
+}
+
+// followUpsPassage tells an agent — a fresh one or a fix session — to hand in
+// the work it noticed but did not do, and stop, before `complete-slice`. Only
+// the app has anywhere to triage follow-ups, so only an agent it launched is
+// told to hand them in and wait; one launched from the board would wait on a
+// decision nothing there can make, and is told nothing.
+func followUpsPassage(c PromptContext) string {
+	if c.Frontend != FrontendGnat {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Work you noticed but did not do — a bug beside your change, a test gap\n")
+	b.WriteString("in code you didn't touch, a refactor the brief didn't ask for — is not\n")
+	b.WriteString("yours to do and not yours to lose. When the gate is green, before\n")
+	b.WriteString("`complete-slice`, hand each one in and **stop**:\n\n")
+	fmt.Fprintf(&b, "    nat slice-followups %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	b.WriteString("        --follow-up '<title line>\n\n<the change: which file or function, what it does instead, and why>\nDone when: <how anyone checks it is finished>'\n\n")
+	b.WriteString(followUpBriefPassage)
+	b.WriteString("`--follow-up` repeats, one per follow-up. The user decides in the app —\n")
+	b.WriteString("queue it as a slice, fold it into this one, or drop it — and the decision\n")
+	b.WriteString("arrives here as a message naming what to fold in. Do that, then hand back\n")
+	b.WriteString("as below. `complete-slice` refuses while the decision is outstanding.\n")
+	b.WriteString("Never widen your branch to include a follow-up on your own, and never\n")
+	b.WriteString("write them into the summary or the brief instead. No follow-ups: hand\n")
+	b.WriteString("back straight away.\n\n")
+	return b.String()
+}
+
+// checksPassage tells a slice agent how to read CI: the project's checks run
+// on the pull request once the slice is approved, and `nat slice-checks` is
+// the one way an agent reads them — never `gh`. skills/next-slice/SKILL.md
+// says the same in its own words.
+func checksPassage(c PromptContext) string {
+	var b strings.Builder
+	b.WriteString("\n## Reading CI\n\n")
+	b.WriteString("The project's checks run on the pull request, once the slice is approved.\n")
+	b.WriteString("If you are told they failed, read how they stand — each check, and each\n")
+	b.WriteString("failed step's log — with:\n\n")
+	fmt.Fprintf(&b, "    nat slice-checks %s --log --project %s\n\n", c.Slice.ID, c.ProjectID)
+	b.WriteString("That is the one way to read CI: never `gh`.\n")
 	return b.String()
 }
 

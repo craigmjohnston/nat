@@ -167,6 +167,11 @@ func (s *Sourced) RecordNote(ctx context.Context, id, from, text string) error {
 	return s.local.RecordNote(ctx, id, from, text)
 }
 
+// RecordChecksFailed files a pull request's failed checks in the file.
+func (s *Sourced) RecordChecksFailed(ctx context.Context, id, checks string) error {
+	return s.local.RecordChecksFailed(ctx, id, checks)
+}
+
 // RecordRelaunch files a relaunch line in the file.
 func (s *Sourced) RecordRelaunch(ctx context.Context, id string) error {
 	return s.local.RecordRelaunch(ctx, id)

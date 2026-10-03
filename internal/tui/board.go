@@ -258,6 +258,10 @@ type Board struct {
 	// review still to come while the slice is in flight, and nothing at all once
 	// it is Done; see [Board.state].
 	prState map[string]domain.PRReadiness
+	// failingChecks names, for each slice whose pull request was last read
+	// with a failed check, the checks that failed — what the Active panel says
+	// beside the state.
+	failingChecks map[string][]string
 
 	// confirmText is the inline confirmation anchored to the row the cursor is
 	// on, drawn from its right edge in confirmSev's colour; empty when there is
