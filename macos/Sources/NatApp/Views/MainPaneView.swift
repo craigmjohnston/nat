@@ -185,7 +185,7 @@ struct ContinuousDiffView: View {
     }
 }
 
-/// A slice's main pane, under its titlebar segment: its terminal, its
+/// A slice's main pane, under the titlebar band: its terminal, its
 /// branch's diff, its pull request's conversation, or the note.
 struct SliceMainPane: View {
     @Bindable var appModel: AppModel
@@ -193,8 +193,6 @@ struct SliceMainPane: View {
     @Binding var mode: MainPaneMode
     let review: DiffReview
     let visualReview: VisualReview
-    var tabs: [MainPaneTab] = []
-    var onTab: (MainPaneTab) -> Void = { _ in }
 
     private var visuals: [VisualChange] {
         appModel.sliceDetailStore(projectID: appModel.projectStore?.projectID ?? "")
@@ -209,7 +207,6 @@ struct SliceMainPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            titlebar
             switch mode {
             case .terminal:
                 if appModel.sliceActions.advance(for: slice.id)?.to == .agent {
@@ -236,34 +233,6 @@ struct SliceMainPane: View {
         .surface(.window)
     }
 
-    /// The tabs, then at the trailing edge: the agent's model, effort and
-    /// context over its terminal; the diff's commit switcher; the pull
-    /// request's Open in GitHub; or nothing.
-    private var titlebar: some View {
-        MainPaneTitlebar(tabs: tabs, selected: mode, onTab: onTab) {
-            switch mode {
-            case .terminal, .empty:
-                AgentModelHeading(agent: appModel.activityStore?.agents[slice.id])
-            case .diff:
-                let store = review.store(appModel)
-                DiffCommitsMenu(
-                    commits: store.commits,
-                    selectedCommit: store.selectedCommit,
-                    onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
-                    bottomPadding: 0)
-                    .fixedSize()
-            case .visuals:
-                // Nothing: zoom lives in each image's own header, and there
-                // is no one image a pane-wide control would mean.
-                EmptyView()
-            case .pr:
-                PROpenInGitHubButton(
-                    store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
-                    expectedNumber: pullRequestNumber(slice.pr))
-            }
-        }
-    }
-
     @ViewBuilder
     private var diffPane: some View {
         let store = review.store(appModel)
@@ -284,6 +253,39 @@ struct SliceMainPane: View {
         } else {
             QuietLoadingView(label: "Reading the branch")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+/// What a slice's main pane stands at the titlebar band's trailing edge,
+/// right of its tabs: the agent's model, effort and context over its terminal; the
+/// diff's commit switcher; the pull request's Open in GitHub; or nothing.
+struct SliceTitlebarTrailing: View {
+    @Bindable var appModel: AppModel
+    let slice: Slice
+    let mode: MainPaneMode
+    let review: DiffReview
+
+    var body: some View {
+        switch mode {
+        case .terminal, .empty:
+            AgentModelHeading(agent: appModel.activityStore?.agents[slice.id])
+        case .diff:
+            let store = review.store(appModel)
+            DiffCommitsMenu(
+                commits: store.commits,
+                selectedCommit: store.selectedCommit,
+                onSelectCommit: { sha in Task { await store.selectCommit(sha) } },
+                bottomPadding: 0)
+                .fixedSize()
+        case .visuals:
+            // Nothing: zoom lives in each image's own header, and there
+            // is no one image a pane-wide control would mean.
+            EmptyView()
+        case .pr:
+            PROpenInGitHubButton(
+                store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
+                expectedNumber: pullRequestNumber(slice.pr))
         }
     }
 }

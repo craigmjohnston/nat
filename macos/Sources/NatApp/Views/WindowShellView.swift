@@ -4,8 +4,9 @@ import NatKit
 import NatFixtures
 
 /// The window, as the gnat design lays it out: the sidebar, the navigator
-/// and the main pane side by side over the status bar, each carrying its own
-/// segment of the 32pt titlebar band.
+/// and the main pane side by side over the status bar — the sidebar under
+/// its own segment of the 32pt titlebar band, the navigator and main pane
+/// under one band between them (`TitlebarBand`).
 ///
 /// What the navigator has open and what the main pane shows belong to the
 /// selection, so they are held here, between the two: each starts at the
@@ -107,33 +108,26 @@ struct WindowShellView: View {
 
     // MARK: - The titlebar
 
-    /// The navigator's segment of the titlebar: the selection named as its
-    /// Active row names it — state dot, project tag, title — the whole of it
-    /// opening the tree picker on it.
-    private var navigatorTitlebar: some View {
-        GnatTitlebar {
+    /// The band over the navigator and the main pane: the selection named
+    /// as its Active row names it — state dot, project tag, title — the
+    /// whole of it opening the tree picker on it, then the main pane's tabs
+    /// with what the pane stands at the trailing edge (`trailing`) beside
+    /// them.
+    private func titlebar<Trailing: View>(@ViewBuilder trailing: () -> Trailing) -> some View {
+        let trailing = trailing()
+        return TitlebarBand(
+            navigatorWidth: liveNavigatorWidth ?? navigatorWidth, tabs: tabs, selected: main.wrappedValue,
+            onTab: showTab
+        ) {
             let title = crumbs.title
             if !title.isEmpty {
                 crumbButton(.title) {
-                    HStack(spacing: 5) {
-                        if let identity = titlebarIdentity {
-                            ActiveIdentityLabel(
-                                tag: identity.tag, state: identity.state, live: identity.live, title: identity.title,
-                                size: GnatMetrics.titlebarText, titleInk: .primary)
-                        } else {
-                            Text(title).ink(.primary)
-                        }
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .ink(.tertiary)
-                    }
-                    .font(.system(size: GnatMetrics.titlebarText))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                    TitlebarIdentityLabel(identity: titlebarIdentity, title: title)
                 }
             }
+        } trailing: {
+            trailing
         }
-        .rule(.separator, edges: [.trailing], width: 1)
     }
 
     /// The titlebar's tag, dot and title for a selected slice, workshop or
@@ -153,9 +147,9 @@ struct WindowShellView: View {
         return nil
     }
 
-    /// The main pane's tabs — each pane draws its own titlebar segment, with
-    /// its actions — one per view the navigator's sections can put up, for a
-    /// slice or a session; none otherwise.
+    /// The main pane's tabs, beside the band's trailing items — one per view the
+    /// navigator's sections can put up, for a slice or a session; none
+    /// otherwise.
     private var tabs: [MainPaneTab] {
         if let navigatorModel { return navigatorModel.tabs }
         if let session = selectedSession { return MainPaneTab.forSession(hasPRs: !session.prs.isEmpty) }
@@ -377,13 +371,16 @@ struct WindowShellView: View {
                 WorkshopNavigatorView(appModel: appModel, projectName: projectName)
             } main: {
                 WorkshopMainPane(appModel: appModel)
+            } trailing: {
+                WorkshopTitlebarTrailing(appModel: appModel)
             }
         } else if let session = selectedSession {
             columns {
                 SessionNavigatorView(appModel: appModel, session: session, open: open, main: main, review: review)
             } main: {
-                SessionMainPane(
-                    appModel: appModel, session: session, mode: main, review: review, tabs: tabs, onTab: showTab)
+                SessionMainPane(appModel: appModel, session: session, mode: main, review: review)
+            } trailing: {
+                SessionTitlebarTrailing(appModel: appModel, session: session, mode: main.wrappedValue)
             }
         } else if let slice = selectedSlice {
             columns {
@@ -392,8 +389,9 @@ struct WindowShellView: View {
                     visualReview: visualReview, model: $launchModel, effort: $launchEffort)
             } main: {
                 SliceMainPane(
-                    appModel: appModel, slice: slice, mode: main, review: review, visualReview: visualReview,
-                    tabs: tabs, onTab: showTab)
+                    appModel: appModel, slice: slice, mode: main, review: review, visualReview: visualReview)
+            } trailing: {
+                SliceTitlebarTrailing(appModel: appModel, slice: slice, mode: main.wrappedValue, review: review)
             }
             .task(id: slice.id) {
                 await appModel.sliceDetailStore(projectID: appModel.projectStore?.projectID ?? "")
@@ -426,7 +424,6 @@ struct WindowShellView: View {
                 }
             } main: {
                 VStack(spacing: 0) {
-                    MainPaneTitlebar()
                     if let accepted = appModel.acceptedPlanShown {
                         MainPaneNote(text: ProposalText.acceptedTitle + "\n"
                             + ProposalText.acceptedSubtitle(milestones: accepted.milestones, slices: accepted.slices))
@@ -435,28 +432,33 @@ struct WindowShellView: View {
                     }
                 }
                 .surface(.window)
+            } trailing: {
+                EmptyView()
             }
         }
     }
 
-    private func columns<Navigator: View, Main: View>(
-        @ViewBuilder navigator: () -> Navigator, @ViewBuilder main: () -> Main
+    /// The navigator and the main pane side by side under their one
+    /// titlebar band, the drag handle between them below it.
+    private func columns<Navigator: View, Main: View, Trailing: View>(
+        @ViewBuilder navigator: () -> Navigator, @ViewBuilder main: () -> Main,
+        @ViewBuilder trailing: () -> Trailing
     ) -> some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                navigatorTitlebar
+        VStack(spacing: 0) {
+            titlebar(trailing: trailing)
+            HStack(spacing: 0) {
                 navigator()
+                    .frame(width: liveNavigatorWidth ?? navigatorWidth)
+                    .zIndex(1)
+                main()
+                    .frame(maxWidth: .infinity)
+                    .overlay(alignment: .leading) {
+                        PaneResizeHandle(
+                            width: navigatorWidth, liveWidth: $liveNavigatorWidth, onCommit: { navigatorWidth = $0 },
+                            minWidth: 260, maxWidth: 520, edge: .trailing)
+                            .offset(x: -4.5)
+                    }
             }
-            .frame(width: liveNavigatorWidth ?? navigatorWidth)
-            .zIndex(1)
-            main()
-                .frame(maxWidth: .infinity)
-                .overlay(alignment: .leading) {
-                    PaneResizeHandle(
-                        width: navigatorWidth, liveWidth: $liveNavigatorWidth, onCommit: { navigatorWidth = $0 },
-                        minWidth: 260, maxWidth: 520, edge: .trailing)
-                        .offset(x: -4.5)
-                }
         }
     }
 }

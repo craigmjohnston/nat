@@ -121,24 +121,30 @@ view up in the main pane — Thread the terminal, Changes the diff, PR the
 description and conversation (the PR section keeps checks and review) — and
 folds it again when that view is already up; the chevron only folds
 (`NavigatorFocus`). Folded bodies stay built, so unfolding reloads nothing.
-The main pane has no heading band: its titlebar segment
-(`MainPaneTitlebar`) carries its tabs, then at the trailing edge the live
-agent's model, effort and context (the status bar carries none of these)
-or the view's actions and selects (the diff's commit switcher, Open in
-GitHub); the PR's title heads the PR view's own body. The Thread ends, while the slice can be launched, on a
+The main pane has no heading band: the titlebar band over it and the
+navigator (`TitlebarBand`) carries its tabs, then at the trailing edge the live
+agent's model, effort and context, kept small with the long form as a tooltip
+(the status bar carries none of these), or the view's actions and selects (the
+diff's commit switcher, Open in GitHub) — each pane hands these up as a
+`*TitlebarTrailing` view; the PR's title heads the PR view's own body. The Thread ends, while the slice can be launched, on a
 ghost `LaunchCard` (greyed and hatched when blocked); its prose items cut
 short as the brief does (`Excerpt`). View ▸ Hide done items
 (`showsDoneItems`) drops done slices, ended sessions and the Done folder from
 the sidebar. `AppModel` keeps its one *active* project —
 every per-project reading is keyed by it — and the sidebar selects across
 projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
-only what nat reports (`buildThreadEvents`). The titlebar is segmented, each
-column carrying its own: the sidebar's holds Settings and the `+` (anything
-the sidebar makes, its project asked for by submenu), the navigator's the
-selection as its Active row names it (`ActiveIdentityLabel`: dot, project tag,
-title, read through `AppModel.titlebarIdentity`), the main pane's the `MainPaneTab`s — Zed-style, full
-height and square, one per section that would put its view up
-(`NavigatorModel.tabs`, `MainPaneTab.forSession`); a tab is
+only what nat reports (`buildThreadEvents`). The titlebar is two bands:
+the sidebar's holds Settings and the `+` (anything the sidebar makes, its
+project asked for by submenu); one band over the navigator and main pane, no
+rule at the split, holds the selection as its Active row names it
+(`TitlebarIdentityLabel` over `ActiveIdentityLabel`: dot, project tag, title,
+read through `AppModel.titlebarIdentity`) from the navigator's inset, free to
+run past the navigator's width and ellipsize, then the `MainPaneTab`s and the
+trailing items at the right — Zed-style tabs, full height and square, one per
+section that would put its view up (`NavigatorModel.tabs`,
+`MainPaneTab.forSession`). The tabs and trailing items live only in the main
+pane's part of the band (`TitlebarBandLayout`), cut at their leading edge
+rather than crossing the split; a tab is
 `NavigatorFocus.showing`, which opens and never folds. The selection's name, and a slice's
 project and milestone crumbs in the status bar, each open `CrumbTreePicker`
 (projects → milestones → slices, `CrumbTree`) on themselves; with nothing

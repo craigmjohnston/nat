@@ -3,9 +3,11 @@ import Foundation
 /// Context use at or above this percent renders in the warning tint.
 public let contextWarningThreshold = 80.0
 
-/// What the terminal's heading draws for its agent:
-/// "Sonnet 5 / high" (`label`) and "context 42% (84k tokens)" (`context`),
-/// each independently absent when `nat` had no value for it — never a zero.
+/// What the titlebar band draws for its agent, kept small since it stands
+/// beside the tabs: the model and effort apart ("Sonnet 5", "high"), and the
+/// context as its bare percent ("42%") — each independently absent when
+/// `nat` had no value for it, never a zero. `detail` is the long form for
+/// the readout's tooltip: "Sonnet 5 / high · context 42% (84k tokens)".
 public struct AgentReadout: Equatable {
     public struct Context: Equatable {
         public let text: String
@@ -17,12 +19,16 @@ public struct AgentReadout: Equatable {
         }
     }
 
-    public let label: String?
+    public let model: String?
+    public let effort: String?
     public let context: Context?
+    public let detail: String
 
-    public init(label: String?, context: Context?) {
-        self.label = label
+    public init(model: String?, effort: String?, context: Context?, detail: String) {
+        self.model = model
+        self.effort = effort
         self.context = context
+        self.detail = detail
     }
 }
 
@@ -30,14 +36,19 @@ public struct AgentReadout: Equatable {
 /// placeholder — with no agent or nothing known about it yet.
 public func buildAgentReadout(from agent: AgentStatus?) -> AgentReadout? {
     guard let agent else { return nil }
-    let label = modelEffortLabel(model: agent.model ?? "", effort: agent.effort ?? "")
-    let context = agent.contextPercent.map { percent in
-        let tokens = agent.contextTokens.map { " (\(formatTokenCount($0)) tokens)" } ?? ""
-        return AgentReadout.Context(
-            text: "context \(Int(percent.rounded()))%\(tokens)", warning: percent >= contextWarningThreshold)
+    let model = agent.model.flatMap { $0.isEmpty ? nil : $0 }
+    let effort = agent.effort.flatMap { $0.isEmpty ? nil : $0 }
+    let percent = agent.contextPercent.map { Int($0.rounded()) }
+    let context = agent.contextPercent.map { value in
+        AgentReadout.Context(text: "\(Int(value.rounded()))%", warning: value >= contextWarningThreshold)
     }
-    guard label != nil || context != nil else { return nil }
-    return AgentReadout(label: label, context: context)
+    guard model != nil || effort != nil || context != nil else { return nil }
+    let tokens = agent.contextTokens.map { " (\(formatTokenCount($0)) tokens)" } ?? ""
+    let detail = [
+        modelEffortLabel(model: model ?? "", effort: effort ?? ""),
+        percent.map { "context \($0)%\(tokens)" },
+    ].compactMap { $0 }.joined(separator: " \u{00B7} ")
+    return AgentReadout(model: model, effort: effort, context: context, detail: detail)
 }
 
 /// A model and effort as the heading writes them, "Sonnet 5 / high" — a

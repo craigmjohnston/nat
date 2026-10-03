@@ -170,31 +170,17 @@ struct SessionNavigatorView: View {
     }
 }
 
-/// An ad hoc session's main pane, under its titlebar segment: its agent's terminal,
+/// An ad hoc session's main pane, under the titlebar band: its agent's terminal,
 /// its branch's diff, or its picked pull request's conversation.
 struct SessionMainPane: View {
     @Bindable var appModel: AppModel
     let session: Session
     @Binding var mode: MainPaneMode
     let review: DiffReview
-    var tabs: [MainPaneTab] = []
-    var onTab: (MainPaneTab) -> Void = { _ in }
 
     var body: some View {
         let store = appModel.sessionDiffStore(projectID: appModel.projectStore?.projectID ?? "")
         VStack(spacing: 0) {
-            MainPaneTitlebar(tabs: tabs, selected: mode, onTab: onTab) {
-                switch mode {
-                case .terminal, .empty, .visuals:
-                    AgentModelHeading(agent: appModel.activityStore?.agents[session.tag])
-                case .pr:
-                    PROpenInGitHubButton(
-                        store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
-                        expectedNumber: selectedPRNumber)
-                case .diff:
-                    EmptyView()
-                }
-            }
             switch mode {
             case .terminal, .empty, .visuals:
                 AgentTerminalPane(
@@ -223,11 +209,36 @@ struct SessionMainPane: View {
         .surface(.window)
     }
 
-    /// The number of the pull request the PR section's picker has chosen.
-    private var selectedPRNumber: Int? {
-        let url = appModel.selectedPickerID(.pullRequest, sessionID: session.id, among: session.prs.map(\.url))
-        return session.prs.first { $0.url == url }?.number
+    private var selectedPRNumber: Int? { sessionSelectedPRNumber(appModel, session) }
+}
+
+/// What an ad hoc session's main pane stands at the titlebar band's
+/// trailing edge, right of its tabs: its agent's readout, or its picked pull request's Open in
+/// GitHub; nothing over its diff.
+struct SessionTitlebarTrailing: View {
+    @Bindable var appModel: AppModel
+    let session: Session
+    let mode: MainPaneMode
+
+    var body: some View {
+        switch mode {
+        case .terminal, .empty, .visuals:
+            AgentModelHeading(agent: appModel.activityStore?.agents[session.tag])
+        case .pr:
+            PROpenInGitHubButton(
+                store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
+                expectedNumber: sessionSelectedPRNumber(appModel, session))
+        case .diff:
+            EmptyView()
+        }
     }
+}
+
+/// The number of the pull request a session's PR section's picker has chosen.
+@MainActor
+private func sessionSelectedPRNumber(_ appModel: AppModel, _ session: Session) -> Int? {
+    let url = appModel.selectedPickerID(.pullRequest, sessionID: session.id, among: session.prs.map(\.url))
+    return session.prs.first { $0.url == url }?.number
 }
 
 // MARK: - The workshop
@@ -391,29 +402,40 @@ struct WorkshopNavigatorView: View {
 
 /// The workshop's main pane, with no tabs: before launch, the brief editor,
 /// the whole height of the pane; from launch on, the planning agent's
-/// terminal under its model heading.
+/// terminal, under the titlebar band.
 struct WorkshopMainPane: View {
     @Bindable var appModel: AppModel
 
     var body: some View {
         VStack(spacing: 0) {
             if workshopLaunched(appModel) {
-                MainPaneTitlebar { AgentModelHeading(agent: appModel.planningAgent) }
                 AgentTerminalPane(
                     agent: appModel.planningAgent,
                     emptyText: appModel.workshopLaunching ? "Starting the workshop session\u{2026}" : nil,
                     focusRequest: appModel.terminalFocusRequest,
                     sessionExists: { appModel.planningAgent != nil })
             } else {
-                MainPaneTitlebar {
-                    Text("\u{2318}\u{21A9} to launch").monoXS().ink(.tertiary)
-                }
                 WorkshopBriefEditor(text: $appModel.workshopDraft) {
                     Task { await appModel.launchWorkshop(request: appModel.workshopDraft) }
                 }
             }
         }
         .surface(.window)
+    }
+}
+
+/// What the workshop's main pane stands at the titlebar band's trailing
+/// edge, with no tabs: the planning agent's readout from launch on, the
+/// launch shortcut before.
+struct WorkshopTitlebarTrailing: View {
+    @Bindable var appModel: AppModel
+
+    var body: some View {
+        if workshopLaunched(appModel) {
+            AgentModelHeading(agent: appModel.planningAgent)
+        } else {
+            Text("\u{2318}\u{21A9} to launch").monoXS().ink(.tertiary)
+        }
     }
 }
 

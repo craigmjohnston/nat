@@ -132,6 +132,33 @@ enum AppStories {
 
     /// The fixture plan with a dozen more slices in flight — what a sidebar
     /// with more running than fits looks like.
+    /// A titlebar band story's width: a 330pt navigator beside a 730pt
+    /// main pane, the window less its sidebar.
+    private static let bandWidth = GnatMetrics.navigatorWidth + 730
+
+    private static let longBandTitle =
+        "Rework the navigator and main pane titlebars into one band, tabs right-aligned, the title ellipsizing into the gap"
+
+    private static let bandAgent = AgentStatus(
+        sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
+        model: "Sonnet 5", effort: "high", contextPercent: 42, contextTokens: 84_120)
+
+    /// The titlebar band as the shell lays it out over a 330pt navigator:
+    /// the selection, then the tabs with `trailing` at the trailing edge
+    /// beside them.
+    private static func band<Trailing: View>(
+        tabs: [MainPaneTab], selected: MainPaneMode?, title: String, state: SliceDisplayState = .working,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        let trailing = trailing()
+        return TitlebarBand(navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs, selected: selected) {
+            TitlebarIdentityLabel(
+                identity: TitlebarIdentity(tag: "GNA", state: state, live: true, title: title), title: title)
+        } trailing: {
+            trailing
+        }
+    }
+
     private static let crowdedPlan = ProjectInfo(
         project: Fixtures.project,
         milestones: Fixtures.milestones,
@@ -906,10 +933,11 @@ enum AppStories {
 
         Story(
             name: "terminal-heading-readout",
-            summary: "The main pane\u{2019}s titlebar over a live agent: its tabs, and the agent\u{2019}s model, effort and context percent at the trailing edge.",
-            size: CGSize(width: 730, height: GnatMetrics.titlebarHeight)
+            summary: "The titlebar band over a live agent: the selection at the navigator\u{2019}s inset, no rule "
+                + "at the split, the agent\u{2019}s minimal model, effort and context at the trailing edge, the tabs just left of them.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
-            MainPaneTitlebar(tabs: [.terminal, .changes], selected: .terminal) {
+            band(tabs: [.terminal, .changes], selected: .terminal, title: "Draw the box") {
                 AgentModelHeading(agent: AgentStatus(
                     sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
                     model: "Sonnet 5", effort: "high", contextPercent: 42, contextTokens: 84_120))
@@ -919,12 +947,57 @@ enum AppStories {
         Story(
             name: "terminal-heading-readout-high-context",
             summary: "Context at 91%: the percent switches to the warning tint.",
-            size: CGSize(width: 730, height: GnatMetrics.titlebarHeight)
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
-            MainPaneTitlebar(tabs: [.terminal], selected: .terminal) {
+            band(tabs: [.terminal], selected: .terminal, title: "Draw the box") {
                 AgentModelHeading(agent: AgentStatus(
                     sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
                     model: "Sonnet 5", effort: "high", contextPercent: 91, contextTokens: 182_300))
+            }
+        },
+
+        Story(
+            name: "titlebar-band-long-title",
+            summary: "A long task name runs on past the navigator\u{2019}s width into the gap, the tabs and readout "
+                + "still at the right and never left of the split.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, title: longBandTitle) {
+                AgentModelHeading(agent: bandAgent)
+            }
+        },
+
+        Story(
+            name: "titlebar-band-long-title-narrow",
+            summary: "The same band in a narrower window: the title alone gives way, ending in an ellipsis with "
+                + "the chevron beside it.",
+            size: CGSize(width: 760, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, title: longBandTitle) {
+                AgentModelHeading(agent: bandAgent)
+            }
+        },
+
+        Story(
+            name: "titlebar-band-workshop",
+            summary: "The workshop\u{2019}s band: no tabs, the planning agent\u{2019}s readout at the trailing edge.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [], selected: nil, title: "Workshop", state: .working) {
+                AgentModelHeading(agent: bandAgent)
+            }
+        },
+
+        Story(
+            name: "titlebar-band-session",
+            summary: "An ad hoc session\u{2019}s band: its own tabs, the agent\u{2019}s readout right of them.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: MainPaneTab.forSession(hasPRs: true), selected: .terminal,
+                title: "Session \u{00B7} tidy the release notes", state: .working
+            ) {
+                AgentModelHeading(agent: bandAgent)
             }
         },
 
