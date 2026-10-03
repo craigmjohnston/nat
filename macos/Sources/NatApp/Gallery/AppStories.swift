@@ -181,19 +181,36 @@ enum AppStories {
         model: "Sonnet 5", effort: "high", contextPercent: 42, contextTokens: 84_120)
 
     /// The titlebar band as the shell lays it out over a 330pt navigator:
-    /// the selection, then the tabs with `trailing` at the trailing edge
-    /// beside them.
-    private static func band<Trailing: View>(
-        tabs: [MainPaneTab], selected: MainPaneMode?, title: String, state: SliceDisplayState = .working,
-        @ViewBuilder trailing: () -> Trailing
+    /// the breadcrumb, its last crumb a live `GNA` selection (or `identity`),
+    /// then the tabs at the trailing edge.
+    private static func band(
+        tabs: [MainPaneTab], selected: MainPaneMode?, crumbs: TitlebarCrumbs, state: SliceDisplayState = .working,
+        identity: TitlebarIdentity? = nil
     ) -> some View {
-        let trailing = trailing()
-        return TitlebarBand(navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs, selected: selected) {
-            TitlebarIdentityLabel(
-                identity: TitlebarIdentity(tag: "GNA", state: state, live: true, title: title), title: title)
-        } trailing: {
-            trailing
+        TitlebarBand(navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs, selected: selected) {
+            TitlebarBreadcrumb(
+                crumbs: crumbs,
+                identity: identity ?? TitlebarIdentity(tag: "GNA", state: state, live: true, title: crumbs.title),
+                openPicker: .constant(nil)
+            ) { _ in EmptyView() }
         }
+    }
+
+    /// A slice's crumbs in the fixture project, under M2.
+    private static func sliceCrumbs(_ title: String) -> TitlebarCrumbs {
+        TitlebarCrumbs(project: Fixtures.project.name, parent: "M2: Review flow", title: title)
+    }
+
+    /// The handed-back slice's Changes section body alone, at the
+    /// navigator's width, its branch and commits read.
+    private static func changesSection() async -> some View {
+        let appModel = await Fixtures.startedAppModel(
+            client: FixtureNatClient(agents: []), config: Fixtures.twoProjectConfig)
+        let slice = Fixtures.slice(Fixtures.mergeBoxSliceID)
+        appModel.selectedSliceID = slice.id
+        await appModel.diffStore(projectID: Fixtures.projectID).fetch(projectID: Fixtures.projectID, sliceRef: slice.id)
+        return ChangesSectionBody(appModel: appModel, review: DiffReview(), slice: slice, reviewing: true) {}
+            .surface(.window)
     }
 
     private static let crowdedPlan = ProjectInfo(
@@ -1044,77 +1061,123 @@ enum AppStories {
                 .surface(.window)
         },
 
-        // MARK: - The status bar
-
-        // MARK: - The terminal's heading
+        // MARK: - The titlebar band
 
         Story(
-            name: "terminal-heading-readout",
-            summary: "The titlebar band over a live agent: the selection at the navigator\u{2019}s inset, no rule "
-                + "at the split, the agent\u{2019}s minimal model, effort and context at the trailing edge, the tabs just left of them.",
+            name: "titlebar-band-slice",
+            summary: "The titlebar band over a slice: the breadcrumb at the navigator\u{2019}s inset \u{2014} project, "
+                + "milestone, then the slice\u{2019}s dot and title with no project tag, the project crumb naming it "
+                + "already \u{2014} no rule at the split, the tabs at the trailing edge and nothing beside them.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
-            band(tabs: [.terminal, .changes], selected: .terminal, title: "Draw the box") {
-                AgentModelHeading(agent: AgentStatus(
-                    sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
-                    model: "Sonnet 5", effort: "high", contextPercent: 42, contextTokens: 84_120))
-            }
-        },
-
-        Story(
-            name: "terminal-heading-readout-high-context",
-            summary: "Context at 91%: the percent switches to the warning tint.",
-            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
-        ) {
-            band(tabs: [.terminal], selected: .terminal, title: "Draw the box") {
-                AgentModelHeading(agent: AgentStatus(
-                    sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
-                    model: "Sonnet 5", effort: "high", contextPercent: 91, contextTokens: 182_300))
-            }
+            band(tabs: [.terminal, .changes, .pr], selected: .terminal, crumbs: sliceCrumbs("Draw the box"))
         },
 
         Story(
             name: "titlebar-band-long-title",
-            summary: "A long task name runs on past the navigator\u{2019}s width into the gap, the tabs and readout "
-                + "still at the right and never left of the split.",
+            summary: "A long task name runs on past the navigator\u{2019}s width into the gap, the tabs still at "
+                + "the right and never left of the split.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
-            band(tabs: [.terminal, .changes, .pr], selected: .diff, title: longBandTitle) {
-                AgentModelHeading(agent: bandAgent)
-            }
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(longBandTitle))
         },
 
         Story(
             name: "titlebar-band-long-title-narrow",
-            summary: "The same band in a narrower window: the title alone gives way, ending in an ellipsis with "
-                + "the chevron beside it.",
+            summary: "The same band in a narrower window: the last crumb\u{2019}s title gives way first, ending in "
+                + "an ellipsis with the chevron beside it.",
             size: CGSize(width: 760, height: GnatMetrics.titlebarHeight)
         ) {
-            band(tabs: [.terminal, .changes, .pr], selected: .diff, title: longBandTitle) {
-                AgentModelHeading(agent: bandAgent)
-            }
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(longBandTitle))
         },
 
         Story(
             name: "titlebar-band-workshop",
-            summary: "The workshop\u{2019}s band: no tabs, the planning agent\u{2019}s readout at the trailing edge.",
+            summary: "The workshop\u{2019}s band: the project\u{2019}s name then Workshop, no tag, and no tabs.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
-            band(tabs: [], selected: nil, title: "Workshop", state: .working) {
+            band(
+                tabs: [], selected: nil,
+                crumbs: TitlebarCrumbs(parent: Fixtures.project.name, parentKind: .project, title: workshopRowTitle))
+        },
+
+        Story(
+            name: "titlebar-band-session",
+            summary: "An ad hoc session\u{2019}s band: the project\u{2019}s name then the session, and its own tabs.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: MainPaneTab.forSession(hasPRs: true), selected: .terminal,
+                crumbs: TitlebarCrumbs(
+                    parent: Fixtures.project.name, parentKind: .project,
+                    title: "\(sessionRowTitle) \u{00B7} tidy the release notes"))
+        },
+
+        Story(
+            name: "titlebar-band-source-task",
+            summary: "A source task\u{2019}s band: its container crumb with the card mark, then the task \u{2014} "
+                + "tag kept, no project crumb before it.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes], selected: .terminal,
+                crumbs: TitlebarCrumbs(parent: "Billing export", parentKind: .container, title: "Add the CSV column"),
+                identity: TitlebarIdentity(tag: "SC", state: .working, live: true, title: "Add the CSV column"))
+        },
+
+        Story(
+            name: "titlebar-band-container",
+            summary: "A container\u{2019}s band: the project crumb, then the source\u{2019}s icon and the "
+                + "container\u{2019}s title, no tag; no tabs and no trailing items.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [], selected: nil,
+                crumbs: TitlebarCrumbs(project: Fixtures.project.name, title: "Billing export"),
+                identity: .container(title: "Billing export", tag: "SC", icon: SourceIcon(symbol: "rectangle.stack")))
+        },
+
+        // MARK: - The Changes section
+
+        Story(
+            name: "changes-section-commits",
+            summary: "The Changes section\u{2019}s body on a review: the commit switcher in a row above the file "
+                + "list it filters, then the files with their viewed boxes and tallies.",
+            size: CGSize(width: GnatMetrics.navigatorWidth, height: 260)
+        ) {
+            await changesSection()
+        },
+
+        // MARK: - The status bar
+
+        Story(
+            name: "status-bar-agent-readout",
+            summary: "The status bar with the selection\u{2019}s agent live: the usage windows at the leading edge, "
+                + "the agent\u{2019}s model, effort and context in small mono at the trailing edge, no breadcrumb.",
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses, usage: Fixtures.usageReading))
+            ) {
                 AgentModelHeading(agent: bandAgent)
             }
         },
 
         Story(
-            name: "titlebar-band-session",
-            summary: "An ad hoc session\u{2019}s band: its own tabs, the agent\u{2019}s readout right of them.",
-            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+            name: "status-bar-agent-readout-high-context",
+            summary: "The same readout at 91% context: the percent switches to the warning tint.",
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
         ) {
-            band(
-                tabs: MainPaneTab.forSession(hasPRs: true), selected: .terminal,
-                title: "Session \u{00B7} tidy the release notes", state: .working
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses, usage: Fixtures.usageReading))
             ) {
-                AgentModelHeading(agent: bandAgent)
+                AgentModelHeading(agent: AgentStatus(
+                    sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
+                    model: "Sonnet 5", effort: "high", contextPercent: 91, contextTokens: 182_300))
             }
         },
 

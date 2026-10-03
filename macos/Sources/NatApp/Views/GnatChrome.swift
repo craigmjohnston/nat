@@ -403,6 +403,34 @@ struct HeaderActionLabel: View {
     }
 }
 
+/// A navigator section head's secondary action that opens a page elsewhere
+/// (Open in GitHub, Open in <source>): titled where the head has the room,
+/// its glyph alone where it does not, so it never pushes the head past the
+/// column's width. `help` is its tooltip either way.
+struct HeaderLinkButton: View {
+    let title: String
+    let systemImage: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            button { HeaderActionLabel(title: title, systemImage: systemImage) }
+            button {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .accessibilityLabel(title)
+            }
+        }
+    }
+
+    private func button<Label: View>(@ViewBuilder label: () -> Label) -> some View {
+        Button(action: action, label: label)
+            .buttonStyle(GnatHeaderButtonStyle())
+            .help(help)
+    }
+}
+
 /// The glyphs gnat draws itself for a header action.
 enum HeaderGlyph {
     /// git's merge, as GitHub draws it: two commits on one line, and a third

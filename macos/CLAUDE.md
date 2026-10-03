@@ -142,11 +142,16 @@ description and conversation (the PR section keeps checks and review) — and
 folds it again when that view is already up; the chevron only folds
 (`NavigatorFocus`). Folded bodies stay built, so unfolding reloads nothing.
 The main pane has no heading band: the titlebar band over it and the
-navigator (`TitlebarBand`) carries its tabs, then at the trailing edge the live
-agent's model, effort and context, kept small with the long form as a tooltip
-(the status bar carries none of these), or the view's actions and selects (the
-diff's commit switcher, Open in GitHub) — each pane hands these up as a
-`*TitlebarTrailing` view; the PR's title heads the PR view's own body. The Thread ends, while the slice can be launched, on a
+navigator (`TitlebarBand`) carries the breadcrumb and its tabs and nothing
+else. The live agent's model, effort and context — a slice's, a session's,
+the planning agent's; none for a container — are the status bar's trailing
+item (`AgentModelHeading`, small mono, the long form as a tooltip). A view's
+actions live in the navigator section whose view they act on: the diff's
+commit switcher (`DiffCommitsMenu`) a row atop the Changes body, Open in
+GitHub in the PR head before Merge, a container's Open in <source> in its
+Story head before New task (both `HeaderLinkButton`, glyph-only where the head
+has no room); the workshop's launch shortcut is in the brief editor's
+placeholder. The PR's title heads the PR view's own body. The Thread ends, while the slice can be launched, on a
 ghost `LaunchCard` (greyed and hatched when blocked); its prose items cut
 short as the brief does (`Excerpt`). View ▸ Hide done items
 (`showsDoneItems`) drops done slices, ended sessions and the Done folder from
@@ -156,19 +161,23 @@ projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
 only what nat reports (`buildThreadEvents`). The titlebar is two bands:
 the sidebar's holds Settings and the `+` (anything the sidebar makes, its
 project asked for by submenu); one band over the navigator and main pane, no
-rule at the split, holds the selection as its Active row names it
-(`TitlebarIdentityLabel` over `ActiveIdentityLabel`: dot, project tag, title,
-read through `AppModel.titlebarIdentity`) from the navigator's inset, free to
-run past the navigator's width and ellipsize, then the `MainPaneTab`s and the
-trailing items at the right — Zed-style tabs, full height and square, one per
-section that would put its view up (`NavigatorModel.tabs`,
-`MainPaneTab.forSession`). The tabs and trailing items live only in the main
-pane's part of the band (`TitlebarBandLayout`), cut at their leading edge
-rather than crossing the split; a tab is
-`NavigatorFocus.showing`, which opens and never folds. The selection's name, and a slice's
-project and milestone crumbs in the status bar, each open `CrumbTreePicker`
+rule at the split, holds the breadcrumb (`TitlebarBreadcrumb`) from the
+navigator's inset — project, milestone or container (or a workshop's or
+session's project name), each followed by a quiet slash, then the selection
+as its Active row names it (`TitlebarIdentityLabel` over
+`ActiveIdentityLabel`: dot, project tag, title, read through
+`AppModel.titlebarIdentity`; the tag dropped where a crumb before it names
+the project, `TitlebarIdentity.lastCrumb`) — free to run past the
+navigator's width and ellipsize at its tail, then the `MainPaneTab`s at the
+right — Zed-style tabs, full height and square, one per section that would
+put its view up (`NavigatorModel.tabs`, `MainPaneTab.forSession`). The tabs
+live only in the main pane's part of the band (`TitlebarBandLayout`), cut at
+their leading edge rather than crossing the split; a tab is
+`NavigatorFocus.showing`, which opens and never folds. The project, milestone
+and container crumbs and the selection's own each open `CrumbTreePicker`
 (projects → milestones → slices, `CrumbTree`) on themselves; with nothing
-selected there is no breadcrumb. The Thread is labelled "Task" until the
+selected there is no breadcrumb. Stories: `titlebar-band-*`,
+`status-bar-agent-readout*`, `changes-section-commits`. The Thread is labelled "Task" until the
 slice is under way and "Task log" after, and draws `slice-show`'s `events`
 in order — hand-backs, send-backs (`slice-rework --comments`), releases,
 relaunches, follow-ups (triaged ones as a record, pending ones as the triage
@@ -184,7 +193,7 @@ publish the actions they already own, nil where their control is disabled.
 **Visual changes** is a fourth navigator section, between Changes and PR,
 **absent** unless `slice-show`'s `visuals` is non-empty (the images an agent
 handed in with `nat slice-visuals`), and so is its titlebar tab
-(`MainPaneTab.visuals`; no trailing actions, zoom being per image).
+(`MainPaneTab.visuals`; no pane-wide actions, zoom being per image).
 `VisualStore` (one per project,
 `AppModel.visualStore`) and `VisualReview` (the shell's) mirror `DiffStore`/
 `DiffReview`: images loaded by URI through a swappable `loader` (local paths
@@ -221,7 +230,7 @@ project and, like the PR screen, keeps a stale reading on a failed re-read.
 facts and tasks, then comments/links; unknown kinds skipped) and
 `ContainerFocus` what is open and what `ContainerPane` shows. A task under a
 container shows the container and its `facts` in place of the milestone,
-the PR section its `task_note`, and the status bar `<container> / <task>`;
+the PR section its `task_note`, and the breadcrumb `<container> / <task>`;
 `CrumbTree` has a group → container level for source projects.
 `DesignTokens.wireTint`/`wireBadge` are the one place a plugin's `#rrggbb`
 becomes a `Color` (as a hue through the palette's rules). Stories:

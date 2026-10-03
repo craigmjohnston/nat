@@ -88,6 +88,7 @@ struct SliceNavigatorView: View {
                     label: "PR", open: open.contains(.pr), selected: main == .pr,
                     onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
+                    PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
                     if nav.showsMerge { mergeAction }
                 } content: {
                     prBody

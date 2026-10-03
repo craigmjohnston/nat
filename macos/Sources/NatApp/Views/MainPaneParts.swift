@@ -4,21 +4,21 @@ import NatKit
 
 /// The one titlebar band over the navigator and the main pane — neither has
 /// a heading band of its own, and no rule divides the band where the two
-/// columns meet. The selection's identity starts at the navigator's leading
-/// inset and may run on past its width; the live agent's readout or the
-/// view's own actions stand at the band's trailing edge, the main pane's
-/// tabs (`MainPaneTab`) just left of them. The tabs and those items live in
-/// the main pane's part of the band alone (`TitlebarBandLayout`): a title
-/// with no room left ellipsizes, and a main pane narrower than the run cuts
-/// the run at its leading edge rather than letting it cross the split.
-struct TitlebarBand<Identity: View, Trailing: View>: View {
+/// columns meet. It holds two things: the selection's breadcrumb
+/// (`TitlebarBreadcrumb`), from the navigator's leading inset and free to run
+/// on past its width, and the main pane's tabs (`MainPaneTab`) against the
+/// band's trailing edge. The tabs live in the main pane's part of the band
+/// alone (`TitlebarBandLayout`): a breadcrumb with no room left ellipsizes,
+/// and a main pane narrower than the tabs cuts them at their leading edge
+/// rather than letting them cross the split. The agent's readout is the
+/// status bar's; the views' actions are their navigator sections'.
+struct TitlebarBand<Identity: View>: View {
     /// The navigator's width: the band's main-pane part is what is left.
     let navigatorWidth: Double
     var tabs: [MainPaneTab] = []
     var selected: MainPaneMode?
     var onTab: (MainPaneTab) -> Void = { _ in }
     @ViewBuilder var identity: () -> Identity
-    @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
         GnatTitlebar(leading: 0, trailing: 0, rule: false) {
@@ -26,19 +26,9 @@ struct TitlebarBand<Identity: View, Trailing: View>: View {
                 identity()
                     .padding(.horizontal, 10)
                 HStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        ForEach(tabs, id: \.self) { tab in
-                            MainPaneTabButton(title: tab.label, selected: tab.mode == selected) { onTab(tab) }
-                        }
+                    ForEach(tabs, id: \.self) { tab in
+                        MainPaneTabButton(title: tab.label, selected: tab.mode == selected) { onTab(tab) }
                     }
-                    // Each tab's line is on its leading edge; this closes
-                    // the run off from the readout beside it.
-                    .overlay(alignment: .trailing) {
-                        if !tabs.isEmpty {
-                            DesignTokens.rule(.separator, on: .header).frame(width: 1)
-                        }
-                    }
-                    TrailingItemsStack { trailing() }
                 }
                 .fixedSize(horizontal: true, vertical: false)
                 // Exactly the room the band gives it, the run against its
@@ -56,46 +46,16 @@ struct TitlebarBand<Identity: View, Trailing: View>: View {
     }
 }
 
-extension TitlebarBand where Identity == EmptyView, Trailing == EmptyView {
+extension TitlebarBand where Identity == EmptyView {
     init(navigatorWidth: Double) {
-        self.init(navigatorWidth: navigatorWidth, identity: { EmptyView() }, trailing: { EmptyView() })
-    }
-}
-
-/// The band's trailing items in a row, 8pt apart and inset 12pt either
-/// side — or nothing at all where none draws anything (a readout with no
-/// reading yet), so the tabs then stand flush against the band's edge.
-private struct TrailingItemsStack: Layout {
-    static let spacing: CGFloat = 8
-    static let inset: CGFloat = 12
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let sizes = shownSizes(subviews, height: proposal.height)
-        guard !sizes.isEmpty else { return CGSize(width: 0, height: proposal.height ?? 0) }
-        let width = sizes.reduce(0) { $0 + $1.width } + Self.spacing * CGFloat(sizes.count - 1) + Self.inset * 2
-        return CGSize(width: width, height: proposal.height ?? sizes.map(\.height).max() ?? 0)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX + Self.inset
-        for subview in subviews {
-            let size = subview.sizeThatFits(ProposedViewSize(width: nil, height: bounds.height))
-            guard size.width > 0 else { continue }
-            subview.place(
-                at: CGPoint(x: x, y: bounds.midY), anchor: .leading,
-                proposal: ProposedViewSize(width: size.width, height: bounds.height))
-            x += size.width + Self.spacing
-        }
-    }
-
-    private func shownSizes(_ subviews: Subviews, height: CGFloat?) -> [CGSize] {
-        subviews.map { $0.sizeThatFits(ProposedViewSize(width: nil, height: height)) }.filter { $0.width > 0 }
+        self.init(navigatorWidth: navigatorWidth, identity: { EmptyView() })
     }
 }
 
 /// The band's two parts laid out as `TitlebarBandLayout` places them: the
-/// identity from the leading edge, offered the room up to the run; the run
-/// offered what of the main pane's part it takes, against the trailing edge.
+/// breadcrumb from the leading edge, offered the room up to the tabs; the
+/// tabs offered what of the main pane's part they take, against the trailing
+/// edge.
 private struct TitlebarBandStack: Layout {
     let navigatorWidth: Double
 
@@ -116,10 +76,130 @@ private struct TitlebarBandStack: Layout {
     }
 }
 
-/// The selection as the titlebar band names it — its Active row's dot,
-/// project tag and title, or the bare title where it has none — and the
-/// chevron that says it opens the tree picker. As room runs out the title
-/// alone gives way, ending in an ellipsis with the chevron still beside it.
+/// Which crumb of the breadcrumb a tree picker is open on.
+enum CrumbPickerOrigin { case project, milestone, title }
+
+/// The words of the titlebar's breadcrumb (`TitlebarBreadcrumb`).
+struct TitlebarCrumbs: Equatable {
+    /// The project crumb, which opens the picker on the project.
+    var project: String?
+    /// The crumb between the project and the selection: a milestone, a
+    /// source task's container, or — for a workshop or a session — the
+    /// project's own name.
+    var parent: String?
+    var parentKind: ParentKind = .milestone
+    /// The selection's own name; empty with nothing selected, and then
+    /// there is no breadcrumb at all.
+    var title: String
+
+    enum ParentKind: Equatable {
+        /// A milestone, which opens the picker on itself.
+        case milestone
+        /// A source task's container, which opens the picker on itself.
+        case container
+        /// The project's name, standing where a milestone would — a
+        /// workshop's, a session's: no picker.
+        case project
+    }
+
+    /// Whether a crumb before the last one names the project.
+    var namesProject: Bool { project != nil || parentKind == .project }
+
+    static let none = TitlebarCrumbs(title: "")
+}
+
+/// Where the selection sits, as the titlebar band reads it left to right: a
+/// project crumb, a milestone or container crumb (or what stands for one),
+/// each followed by a quiet slash, then the selection itself — the last
+/// crumb, drawn as `TitlebarIdentityLabel` draws it, with the project's tag
+/// dropped where a crumb before it names the project already.
+///
+/// Every crumb that opens the tree picker (`CrumbTreePicker`, `picker`)
+/// opens it on itself; `openPicker` is which one is open. Moving between
+/// selections slides the crumbs rather than snapping them: each part keeps
+/// its place in the row, so a name that changes width pushes its neighbours
+/// along while the words cross-fade, and a part that comes or goes fades. As
+/// room runs out the last crumb's title gives way first, ending in an
+/// ellipsis with its chevron still beside it.
+struct TitlebarBreadcrumb<Picker: View>: View {
+    let crumbs: TitlebarCrumbs
+    let identity: TitlebarIdentity?
+    @Binding var openPicker: CrumbPickerOrigin?
+    @ViewBuilder var picker: (CrumbPickerOrigin) -> Picker
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let project = crumbs.project {
+                HStack(spacing: 10) {
+                    crumbButton(.project) { Text(project).ink(.secondary) }
+                    Text("/").ink(.quaternary)
+                }
+                .transition(.opacity)
+            }
+            if let parent = crumbs.parent {
+                HStack(spacing: 10) {
+                    switch crumbs.parentKind {
+                    case .milestone, .container:
+                        crumbButton(.milestone) {
+                            HStack(spacing: 7) {
+                                if crumbs.parentKind == .container {
+                                    // A source task's container: the sidebar's card mark.
+                                    Image(systemName: SourceGlyph.container)
+                                        .font(.system(size: 10))
+                                        .ink(.tertiary)
+                                } else {
+                                    // The sidebar's own milestone mark, open.
+                                    FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
+                                }
+                                Text(parent).ink(.secondary)
+                            }
+                        }
+                    case .project:
+                        Text(parent).ink(.secondary)
+                    }
+                    Text("/").ink(.quaternary)
+                }
+                .transition(.opacity)
+            }
+            if !crumbs.title.isEmpty {
+                crumbButton(.title) {
+                    TitlebarIdentityLabel(
+                        identity: identity?.lastCrumb(afterProjectCrumb: crumbs.namesProject), title: crumbs.title)
+                }
+                .layoutPriority(-1)
+            }
+        }
+        .contentTransition(.interpolate)
+        .font(.system(size: GnatMetrics.titlebarText))
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .animation(Motion.breadcrumb, value: crumbs)
+    }
+
+    /// A crumb that opens the tree picker on itself.
+    private func crumbButton<Label: View>(_ origin: CrumbPickerOrigin, @ViewBuilder label: () -> Label) -> some View {
+        Button { openPicker = origin } label: {
+            label()
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .hoverWash(cornerRadius: 5)
+                .padding(.horizontal, -5)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: Binding(
+            get: { openPicker == origin }, set: { if !$0 { openPicker = nil } }
+        ), arrowEdge: .top) {
+            picker(origin)
+        }
+    }
+}
+
+/// The selection as the titlebar band's last crumb names it — its Active
+/// row's dot, project tag and title, or the bare title where it has none —
+/// and the chevron that says it opens the tree picker. As room runs out the
+/// title alone gives way, ending in an ellipsis with the chevron still
+/// beside it.
 struct TitlebarIdentityLabel: View {
     let identity: TitlebarIdentity?
     let title: String
@@ -150,8 +230,8 @@ struct TitlebarIdentityLabel: View {
     }
 }
 
-/// The agent readout, at the titlebar band's trailing edge beside the tabs,
-/// kept small: the live agent's model, its effort quieter, then its context
+/// The agent readout, at the status bar's trailing edge, kept small and in
+/// mono: the selection's live agent's model, its effort quieter, then its context
 /// use as a bare percent as its own statusline reports it — in the warning
 /// tint once it runs high — or nothing. The long form is its tooltip.
 struct AgentModelHeading: View {
@@ -175,8 +255,8 @@ struct AgentModelHeading: View {
     }
 }
 
-/// The PR view's action, at the titlebar band's trailing edge: Open in GitHub, once
-/// the right pull request is read (`expectedNumber`, as
+/// The PR section head's secondary action, before Merge: Open in GitHub,
+/// once the right pull request is read (`expectedNumber`, as
 /// `PRConversationPane` checks it).
 struct PROpenInGitHubButton: View {
     let store: PRStore
@@ -184,15 +264,11 @@ struct PROpenInGitHubButton: View {
 
     var body: some View {
         if let pr = store.loadState.pr, expectedNumber == nil || pr.number == expectedNumber {
-            Button {
+            HeaderLinkButton(
+                title: "Open in GitHub", systemImage: "arrow.up.right.square", help: "Open the pull request on GitHub"
+            ) {
                 if let url = URL(string: pr.url) { NSWorkspace.shared.open(url) }
-            } label: {
-                HeaderActionLabel(title: "Open in GitHub", systemImage: "arrow.up.right.square")
             }
-            .buttonStyle(GnatHeaderButtonStyle())
-            .help("Open the pull request on GitHub")
-            // Flush with the band's edge, as a navigator header's actions are.
-            .padding(.trailing, -12)
         }
     }
 }

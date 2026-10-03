@@ -5,6 +5,38 @@ import XCTest
 
 private struct PRTestError: Error {}
 
+/// Holds a fake `prView` open until the test opens it, and tells the test
+/// when a read has reached it — so a test asserts on the store's state while
+/// a read is genuinely in flight, with no sleep racing the read's start.
+private actor ReadGate {
+    private var entered = false
+    private var enterWaiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+    private var held: [CheckedContinuation<Void, Never>] = []
+
+    /// The read's side: say it has begun, then wait for the gate to open.
+    func pass() async {
+        entered = true
+        enterWaiters.forEach { $0.resume() }
+        enterWaiters = []
+        guard !isOpen else { return }
+        await withCheckedContinuation { held.append($0) }
+    }
+
+    /// The test's side: returns once a read has reached the gate.
+    func waitForRead() async {
+        guard !entered else { return }
+        await withCheckedContinuation { enterWaiters.append($0) }
+    }
+
+    /// Lets every held read, and every later one, through.
+    func open() {
+        isOpen = true
+        held.forEach { $0.resume() }
+        held = []
+    }
+}
+
 private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
     enum Response {
         case success(PRDetail)
@@ -14,10 +46,8 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
     private var response: Response
     private(set) var viewCallCount = 0
     private(set) var lastSliceRef: String?
-    /// Holds `prView` open until this many nanoseconds have passed, so a
-    /// test can assert on the store's state while a read is genuinely still
-    /// in flight rather than racing a call that already returned.
-    var viewDelayNanoseconds: UInt64 = 0
+    /// Holds `prView` at this gate until the test opens it (`ReadGate`).
+    var viewGate: ReadGate?
 
     private(set) var mergeCalls: [(projectID: String, sliceRef: String)] = []
     var mergeError: Error?
@@ -66,9 +96,7 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
         viewCallCount += 1
         lastSliceRef = sliceRef
-        if viewDelayNanoseconds > 0 {
-            try? await Task.sleep(nanoseconds: viewDelayNanoseconds)
-        }
+        if let viewGate { await viewGate.pass() }
         switch response {
         case .success(let pr): return pr
         case .failure: throw PRTestError()
@@ -121,6 +149,17 @@ final class PRStoreTests: XCTestCase {
             author: pr.author, baseRefName: pr.baseRefName, headRefName: pr.headRefName, url: pr.url,
             reviewDecision: pr.reviewDecision, mergeable: pr.mergeable, mergeStateStatus: pr.mergeStateStatus)
         return pr
+    }
+
+    /// Waits until `condition` holds, or five seconds pass — for a poll or
+    /// background read the test cannot await directly. A slow runner only
+    /// makes this take longer; the assertions after it say whether it held.
+    @MainActor
+    private func waitUntil(_ condition: () -> Bool) async {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !condition(), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(2))
+        }
     }
 
     // MARK: - Fetch / refresh
@@ -234,14 +273,16 @@ final class PRStoreTests: XCTestCase {
         let store = PRStore(client: client)
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
 
-        client.viewDelayNanoseconds = 50_000_000
+        let gate = ReadGate()
+        client.viewGate = gate
         let task = Task { await store.fetch(projectID: "proj-1", sliceRef: "slice-2") }
-        try? await Task.sleep(nanoseconds: 10_000_000)
+        await gate.waitForRead()
 
         // slice-2 has never been cached, so it is right for this to blank
         // while it reads — the point is that it does not show slice-1's
         // pull request mislabeled as slice-2's while doing so.
         XCTAssertNil(store.loadState.pr)
+        await gate.open()
         await task.value
     }
 
@@ -273,14 +314,16 @@ final class PRStoreTests: XCTestCase {
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
 
         client.setResponse(.success(mergedPR()))
-        client.viewDelayNanoseconds = 50_000_000
+        let gate = ReadGate()
+        client.viewGate = gate
         let task = Task { try? await store.merge() }
-        try? await Task.sleep(nanoseconds: 10_000_000)
+        await gate.waitForRead()
 
         // Still mid-merge's own background re-read — the pull request that
         // was showing before the merge should still be there, not blanked
         // out from under the user while the fresh reading is in flight.
         XCTAssertNotNil(store.loadState.pr)
+        await gate.open()
         await task.value
     }
 
@@ -330,13 +373,15 @@ final class PRStoreTests: XCTestCase {
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
         XCTAssertFalse(store.isRefreshing)
 
-        client.viewDelayNanoseconds = 50_000_000
+        let gate = ReadGate()
+        client.viewGate = gate
         let task = Task { await store.refresh() }
-        try? await Task.sleep(nanoseconds: 10_000_000)
+        await gate.waitForRead()
 
         XCTAssertTrue(store.isRefreshing)
         XCTAssertNotNil(store.loadState.pr, "a refresh never blanks the reading it is replacing")
         XCTAssertFalse(store.loadState.isLoading)
+        await gate.open()
         await task.value
 
         XCTAssertFalse(store.isRefreshing)
@@ -347,14 +392,16 @@ final class PRStoreTests: XCTestCase {
     @MainActor
     func testAFirstReadIsLoadingRatherThanRefreshing() async {
         let client = MockPRClient(response: .success(openPR()))
-        client.viewDelayNanoseconds = 50_000_000
+        let gate = ReadGate()
+        client.viewGate = gate
         let store = PRStore(client: client)
 
         let task = Task { await store.fetch(projectID: "proj-1", sliceRef: "slice-1") }
-        try? await Task.sleep(nanoseconds: 10_000_000)
+        await gate.waitForRead()
 
         XCTAssertTrue(store.loadState.isLoading)
         XCTAssertFalse(store.isRefreshing)
+        await gate.open()
         await task.value
     }
 
@@ -451,8 +498,7 @@ final class PRStoreTests: XCTestCase {
         client.setResponse(.success(mergedPR()))
         store.startPolling()
 
-        // Give the poll loop a few intervals to run and settle.
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        await waitUntil { client.viewCallCount >= 2 && !store.shouldPoll }
 
         XCTAssertGreaterThanOrEqual(client.viewCallCount, 2)
         XCTAssertFalse(store.shouldPoll)
@@ -482,7 +528,7 @@ final class PRStoreTests: XCTestCase {
 
         client.setResponse(.success(openPR(checks: [PRCheck(name: "lint", state: "IN_PROGRESS", link: "")])))
         store.startPolling()
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        await waitUntil { store.loadState.pr?.checks.count == 1 }
 
         XCTAssertEqual(store.loadState.pr?.checks.count, 1)
         XCTAssertTrue(store.shouldPoll, "still open, so still worth watching")
@@ -501,7 +547,7 @@ final class PRStoreTests: XCTestCase {
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
         XCTAssertEqual(store.loadState.pr?.checks.count, 0, "the cached reading shows instantly")
 
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        await waitUntil { store.loadState.pr?.checks.count == 1 }
         XCTAssertEqual(client.viewCallCount, 3)
         XCTAssertEqual(store.loadState.pr?.checks.count, 1, "the background read replaces the stale one")
     }

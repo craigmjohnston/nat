@@ -33,10 +33,9 @@ struct WindowShellView: View {
     @State private var containerFocusOverride: ContainerFocus?
     /// The container the navigator's New task asked for a task on.
     @State private var newTaskContainer: String?
-    /// Which crumb's tree picker is open: the project's or the milestone's.
+    /// Which crumb's tree picker is open: the project's, the milestone's or
+    /// the selection's own.
     @State private var crumbPicker: CrumbPickerOrigin?
-
-    private enum CrumbPickerOrigin { case project, milestone, title }
 
     /// The gallery's seam: a story seeds the sidebar folds it is a story
     /// about.
@@ -101,7 +100,7 @@ struct WindowShellView: View {
             }
             .frame(maxHeight: .infinity)
 
-            StatusBarView(appModel: appModel) { breadcrumb }
+            StatusBarView(appModel: appModel) { AgentModelHeading(agent: selectionAgent) }
         }
         .onAppear {
             if let focus {
@@ -133,31 +132,35 @@ struct WindowShellView: View {
 
     // MARK: - The titlebar
 
-    /// The band over the navigator and the main pane: the selection named
-    /// as its Active row names it — state dot, project tag, title — the
-    /// whole of it opening the tree picker on it, then the main pane's tabs
-    /// with what the pane stands at the trailing edge (`trailing`) beside
-    /// them.
-    private func titlebar<Trailing: View>(@ViewBuilder trailing: () -> Trailing) -> some View {
-        let trailing = trailing()
-        return TitlebarBand(
+    /// The band over the navigator and the main pane: where the selection
+    /// sits (`TitlebarBreadcrumb`) — its last crumb named as its Active row
+    /// names it, state dot and title — each crumb opening the tree picker on
+    /// itself, then the main pane's tabs.
+    private var titlebar: some View {
+        TitlebarBand(
             navigatorWidth: liveNavigatorWidth ?? navigatorWidth, tabs: tabs, selected: main.wrappedValue,
             onTab: showTab
         ) {
-            let title = crumbs.title
-            if !title.isEmpty {
-                crumbButton(.title) {
-                    TitlebarIdentityLabel(identity: titlebarIdentity, title: title)
-                }
+            TitlebarBreadcrumb(crumbs: crumbs, identity: titlebarIdentity, openPicker: $crumbPicker) { origin in
+                crumbTreePicker(openingOn: origin)
             }
-        } trailing: {
-            trailing
         }
     }
 
-    /// The titlebar's tag, dot and title for a selected slice, workshop or
-    /// session; nil with nothing selected and on the Untitled starter, whose
-    /// segment stays as it is.
+    /// The agent the selection has, for the status bar's readout: a slice's,
+    /// an ad hoc session's, the planning agent on the workshop; none for a
+    /// container or with nothing selected.
+    private var selectionAgent: AgentStatus? {
+        if appModel.activeTabIsUntitled && !appModel.untitledWorkshopVisible { return nil }
+        if appModel.workshopSelected || appModel.untitledWorkshopVisible { return appModel.planningAgent }
+        if let session = selectedSession { return appModel.activityStore?.agents[session.tag] }
+        if let slice = selectedSlice { return appModel.activityStore?.agents[slice.id] }
+        return nil
+    }
+
+    /// The breadcrumb's last crumb's tag, dot and title for a selected slice,
+    /// workshop or session; nil with nothing selected and on the Untitled
+    /// starter, whose segment stays as it is.
     private var titlebarIdentity: TitlebarIdentity? {
         if appModel.activeTabIsUntitled && !appModel.untitledWorkshopVisible { return nil }
         if appModel.workshopSelected || appModel.untitledWorkshopVisible {
@@ -178,7 +181,7 @@ struct WindowShellView: View {
         return nil
     }
 
-    /// The main pane's tabs, beside the band's trailing items — one per view the
+    /// The main pane's tabs, at the band's trailing edge — one per view the
     /// navigator's sections can put up, for a slice or a session; none
     /// otherwise.
     private var tabs: [MainPaneTab] {
@@ -194,86 +197,6 @@ struct WindowShellView: View {
     }
 
     // MARK: - The breadcrumb
-
-    /// Where the selection sits, at the status bar's trailing edge, read
-    /// left to right: a slice's project, its
-    /// milestone (or what stands for one), each followed by a quiet slash,
-    /// then the selection itself.
-    ///
-    /// Moving between selections slides the crumbs rather than snapping
-    /// them: each part keeps its place in the row, so a name that changes
-    /// width pushes its neighbours along while the words cross-fade, and a
-    /// part that comes or goes fades.
-    ///
-    /// A slice's project and milestone crumbs each open the tree picker
-    /// (`CrumbTreePicker`) on themselves.
-    private var breadcrumb: some View {
-        let crumbs = crumbs
-        return HStack(spacing: 10) {
-            if let project = crumbs.project {
-                HStack(spacing: 10) {
-                    crumbButton(.project) { Text(project).ink(.secondary) }
-                    Text("/").ink(.quaternary)
-                }
-                .transition(.opacity)
-            }
-            if let parent = crumbs.parent {
-                HStack(spacing: 10) {
-                    if crumbs.parentIsMilestone {
-                        crumbButton(.milestone) {
-                            HStack(spacing: 7) {
-                                if sliceContainerID != nil {
-                                    // A source task's container: the sidebar's card mark.
-                                    Image(systemName: SourceGlyph.container)
-                                        .font(.system(size: 10))
-                                        .ink(.tertiary)
-                                } else {
-                                    // The sidebar's own milestone mark, open.
-                                    FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
-                                }
-                                Text(parent).ink(.secondary)
-                            }
-                        }
-                    } else {
-                        Text(parent).ink(.secondary)
-                    }
-                    Text("/").ink(.quaternary)
-                }
-                .transition(.opacity)
-            }
-            HStack(spacing: 10) {
-                if let dot = crumbs.dot {
-                    StateDot(state: dot.state, live: dot.live)
-                        .padding(.trailing, -3)
-                        .transition(.opacity)
-                }
-                Text(crumbs.title).ink(.secondary)
-            }
-        }
-        .contentTransition(.interpolate)
-        .font(.system(size: GnatMetrics.xs))
-        .lineLimit(1)
-        .truncationMode(.tail)
-        .animation(Motion.breadcrumb, value: [crumbs.project ?? "", crumbs.parent ?? "", crumbs.title])
-    }
-
-    /// A crumb that opens the tree picker on itself.
-    private func crumbButton<Label: View>(_ origin: CrumbPickerOrigin, @ViewBuilder label: () -> Label) -> some View {
-        Button { crumbPicker = origin } label: {
-            label()
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .hoverWash(cornerRadius: 5)
-                .padding(.horizontal, -5)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: Binding(
-            get: { crumbPicker == origin }, set: { if !$0 { crumbPicker = nil } }
-        ), arrowEdge: .top) {
-            crumbTreePicker(openingOn: origin)
-        }
-    }
 
     private func crumbTreePicker(openingOn origin: CrumbPickerOrigin) -> some View {
         let projectID = appModel.activeProjectID ?? ""
@@ -304,36 +227,36 @@ struct WindowShellView: View {
         return milestone.unfiled ? nil : milestone.name
     }
 
-    private var crumbs: (
-        project: String?, parent: String?, parentIsMilestone: Bool,
-        dot: (state: SliceDisplayState, live: Bool)?, title: String
-    ) {
+    /// Where the selection sits, read left to right: a slice's project and
+    /// milestone, a source task's container, a workshop's or session's
+    /// project, a container's project — then the selection itself.
+    private var crumbs: TitlebarCrumbs {
         if appModel.activeTabIsUntitled && !appModel.untitledWorkshopVisible {
-            return (nil, nil, false, nil, projectName)
+            return TitlebarCrumbs(title: projectName)
         }
         if appModel.workshopSelected || appModel.untitledWorkshopVisible {
-            return (nil, projectName, false, nil, workshopRowTitle)
+            return TitlebarCrumbs(parent: projectName, parentKind: .project, title: workshopRowTitle)
         }
         if let session = selectedSession {
-            return (nil, projectName, false, nil, "\(sessionRowTitle) · \(session.label)")
+            return TitlebarCrumbs(
+                parent: projectName, parentKind: .project, title: "\(sessionRowTitle) · \(session.label)")
         }
-        if let slice = selectedSlice, let navigatorModel {
-            let dot = (navigatorModel.state, appModel.activityStore?.agents[slice.id] != nil)
+        if let slice = selectedSlice {
             // A source task reads `<container> / <task>`: its container
             // stands where a project and milestone would.
             if let containerID = sliceContainerID {
                 let title = appModel.containerTitle(containerID, inProject: appModel.activeProjectID ?? "")
-                return (nil, title, true, dot, slice.name)
+                return TitlebarCrumbs(parent: title, parentKind: .container, title: slice.name)
             }
-            let milestone = milestoneName(of: slice)
-            return (projectName, milestone, milestone != nil, dot, slice.name)
+            return TitlebarCrumbs(project: projectName, parent: milestoneName(of: slice), title: slice.name)
         }
         if let containerID = appModel.selectedContainerID {
-            return (projectName, nil, false, nil,
-                    appModel.containerTitle(containerID, inProject: appModel.activeProjectID ?? ""))
+            return TitlebarCrumbs(
+                project: projectName,
+                title: appModel.containerTitle(containerID, inProject: appModel.activeProjectID ?? ""))
         }
         // Nothing selected: no breadcrumb at all.
-        return (nil, nil, false, nil, "")
+        return .none
     }
 
     // MARK: - The selection
@@ -447,16 +370,12 @@ struct WindowShellView: View {
                 WorkshopNavigatorView(appModel: appModel, projectName: projectName)
             } main: {
                 WorkshopMainPane(appModel: appModel)
-            } trailing: {
-                WorkshopTitlebarTrailing(appModel: appModel)
             }
         } else if let session = selectedSession {
             columns {
                 SessionNavigatorView(appModel: appModel, session: session, open: open, main: main, review: review)
             } main: {
                 SessionMainPane(appModel: appModel, session: session, mode: main, review: review)
-            } trailing: {
-                SessionTitlebarTrailing(appModel: appModel, session: session, mode: main.wrappedValue)
             }
         } else if let slice = selectedSlice {
             columns {
@@ -466,8 +385,6 @@ struct WindowShellView: View {
             } main: {
                 SliceMainPane(
                     appModel: appModel, slice: slice, mode: main, review: review, visualReview: visualReview)
-            } trailing: {
-                SliceTitlebarTrailing(appModel: appModel, slice: slice, mode: main.wrappedValue, review: review)
             }
             .task(id: slice.id) {
                 await appModel.sliceDetailStore(projectID: appModel.projectStore?.projectID ?? "")
@@ -486,8 +403,6 @@ struct WindowShellView: View {
                 ContainerPane(
                     appModel: appModel, containerID: containerID,
                     mode: containerFocusBinding(containerID).wrappedValue.main)
-            } trailing: {
-                ContainerTitlebarTrailing(appModel: appModel, containerID: containerID)
             }
             .task(id: containerID) {
                 await appModel.containerStore(projectID: appModel.activeProjectID ?? "").fetch(containerID: containerID)
@@ -523,20 +438,17 @@ struct WindowShellView: View {
                     }
                 }
                 .surface(.window)
-            } trailing: {
-                EmptyView()
             }
         }
     }
 
     /// The navigator and the main pane side by side under their one
     /// titlebar band, the drag handle between them below it.
-    private func columns<Navigator: View, Main: View, Trailing: View>(
-        @ViewBuilder navigator: () -> Navigator, @ViewBuilder main: () -> Main,
-        @ViewBuilder trailing: () -> Trailing
+    private func columns<Navigator: View, Main: View>(
+        @ViewBuilder navigator: () -> Navigator, @ViewBuilder main: () -> Main
     ) -> some View {
         VStack(spacing: 0) {
-            titlebar(trailing: trailing)
+            titlebar
             HStack(spacing: 0) {
                 navigator()
                     .frame(width: liveNavigatorWidth ?? navigatorWidth)
