@@ -214,7 +214,7 @@ func (e *Exec) invalid(method string, p Project, err error) error {
 
 // Sidebar asks for the plugin's sidebar tree, with the lazy groups named in
 // expand filled in.
-func (e *Exec) Sidebar(ctx context.Context, p Project, expand []string) ([]Group, error) {
+func (e *Exec) Sidebar(ctx context.Context, p Project, expand []string) (Sidebar, error) {
 	if expand == nil {
 		expand = []string{}
 	}
@@ -222,16 +222,14 @@ func (e *Exec) Sidebar(ctx context.Context, p Project, expand []string) ([]Group
 		Project Project  `json:"project"`
 		Expand  []string `json:"expand"`
 	}{p, expand}
-	var resp struct {
-		Groups []Group `json:"groups"`
-	}
+	var resp Sidebar
 	if err := e.call(ctx, e.runner, "sidebar", p, req, &resp, "expand", expand); err != nil {
-		return nil, err
+		return Sidebar{}, err
 	}
-	if err := ValidateGroups(resp.Groups); err != nil {
-		return nil, e.invalid("sidebar", p, err)
+	if err := ValidateSidebar(resp); err != nil {
+		return Sidebar{}, e.invalid("sidebar", p, err)
 	}
-	return resp.Groups, nil
+	return resp, nil
 }
 
 // Container asks for one container's detail.

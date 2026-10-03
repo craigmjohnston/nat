@@ -509,6 +509,10 @@ usage:
                       for the user to review in the app: each value's first
                       line what it shows, the next the image's path or URI. A
                       later hand-in replaces an earlier one; nothing waits on it
+  nat slice-repo <slice> --repo PATH [--json] --project ID
+                      record the repository a Todo slice, or one you claimed,
+                      is worked in — what a source project's agent does once
+                      it has worked out which repository its card is about
   nat slice-note <slice> --note TEXT|- [--from SLICE] [--milestone NAME] --project ID
                       append a note to a Todo or in-progress slice's brief, for
                       whoever works it later: the slice named by name (with
@@ -680,6 +684,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceTriage(ctx, args[1:], env)
 	case "slice-visuals":
 		return sliceVisuals(ctx, args[1:], env)
+	case "slice-repo":
+		return sliceRepoCmd(ctx, args[1:], env)
 	case "slice-note":
 		return sliceNote(ctx, args[1:], env)
 	case "release-slice":

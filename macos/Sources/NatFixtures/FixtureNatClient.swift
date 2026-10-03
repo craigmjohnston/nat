@@ -56,6 +56,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// What `plugin-list` answers — the same listing after every install,
     /// since nothing here is installed.
     private let plugins: PluginListing
+    /// What `source-list` answers.
+    private let sources: [SourcePlugin]
     /// The setup fields `source-setup` has set, as `plugin/field`.
     private let setUpFields = Box<Set<String>>([])
 
@@ -85,9 +87,11 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         usage: UsageReading = Fixtures.usageReading,
         sessions: [Session] = Fixtures.sessions,
         details: [String: SliceDetail] = Fixtures.sliceDetails,
-        plugins: PluginListing = Fixtures.pluginListing
+        plugins: PluginListing = Fixtures.pluginListing,
+        sources: [SourcePlugin] = Fixtures.sourcePlugins
     ) {
         self.plugins = plugins
+        self.sources = sources
         self.behaviour = behaviour
         self.plan = plan
         self.otherPlans = otherPlans
@@ -194,7 +198,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func sourceList() async throws -> [SourcePlugin] {
-        try await answer(Fixtures.sourcePlugins)
+        try await answer(sources)
     }
 
     /// The listing, with every field `source-setup` has set reading `set`
@@ -218,6 +222,13 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         done.insert("\(plugin)/\(id)")
         setUpFields.set(done)
         return PluginSetupResult(message: "Logged in to scratch as Craig Scratch")
+    }
+
+    /// Records the project made — a connected plugin's section, here — and
+    /// answers with an id of its own.
+    public func projectCreate(name: String, repo: String?, description: String?, source: String?) async throws -> CreatedProject {
+        try await record("project-create \(name)" + (source.map { " --source \($0)" } ?? ""))
+        return CreatedProject(id: "f1x8500c-0000-4000-8000-\(source ?? "project")", name: name, source: source)
     }
 
     public func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled {

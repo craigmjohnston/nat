@@ -48,6 +48,15 @@ func validateSetup(fields []SetupField) error {
 	return nil
 }
 
+// ValidateSidebar refuses a sidebar response nat could not draw: its tree, by
+// [ValidateGroups], and its header menu, as any menu.
+func ValidateSidebar(s Sidebar) error {
+	if err := ValidateGroups(s.Groups); err != nil {
+		return err
+	}
+	return validateActions("the sidebar menu", s.Menu)
+}
+
 // ValidateGroups refuses a sidebar tree that breaks the protocol's shape: a
 // group with both children and containers, children nested more than one
 // level, a group id used twice, an empty id or one starting with `_` (nat's
@@ -129,7 +138,8 @@ func validateID(kind, id string) error {
 
 // validateActions refuses a choice action with no options to choose from, and
 // a secret one — a secret is a setup field's input alone, since an action's
-// input is drawn unmasked and may be passed as a flag.
+// input is drawn unmasked and may be passed as a flag — and a filter action
+// nat could not draw (validateFilter).
 func validateActions(where string, actions []Action) error {
 	for _, a := range actions {
 		if a.Input == InputChoice && len(a.Options) == 0 {
@@ -137,6 +147,51 @@ func validateActions(where string, actions []Action) error {
 		}
 		if a.Input == InputSecret {
 			return fmt.Errorf("%s: action %q asks for a secret, which only a setup field may", where, a.ID)
+		}
+		if a.Input == InputFilter {
+			if err := validateFilter(a.Fields); err != nil {
+				return fmt.Errorf("%s: filter action %q: %w", where, a.ID, err)
+			}
+		}
+	}
+	return nil
+}
+
+// validateFilter refuses a filter with no fields, a field id empty or used
+// twice, an option id empty or used twice within its field, a selection
+// naming an option the field does not offer — the editor draws the selection
+// from the options, so one it cannot find would be lost on the next save —
+// and more than one selected in a field that is not multi.
+func validateFilter(fields []FilterField) error {
+	if len(fields) == 0 {
+		return fmt.Errorf("has no fields")
+	}
+	seen := map[string]bool{}
+	for _, f := range fields {
+		if f.ID == "" {
+			return fmt.Errorf("a field has no id")
+		}
+		if seen[f.ID] {
+			return fmt.Errorf("field id %q is used more than once", f.ID)
+		}
+		seen[f.ID] = true
+		options := map[string]bool{}
+		for _, o := range f.Options {
+			if o.ID == "" {
+				return fmt.Errorf("field %q: an option has no id", f.ID)
+			}
+			if options[o.ID] {
+				return fmt.Errorf("field %q: option id %q is used more than once", f.ID, o.ID)
+			}
+			options[o.ID] = true
+		}
+		if !f.Multi && len(f.Value) > 1 {
+			return fmt.Errorf("field %q selects %d options but is not multi", f.ID, len(f.Value))
+		}
+		for _, v := range f.Value {
+			if !options[v] {
+				return fmt.Errorf("field %q selects %q, which it does not offer", f.ID, v)
+			}
 		}
 	}
 	return nil

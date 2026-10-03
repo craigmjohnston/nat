@@ -17,7 +17,9 @@ var _ Client = Unavailable{}
 func (u Unavailable) Describe(context.Context, Project) (Describe, error) { return Describe{}, u.Err }
 
 // Sidebar answers Err.
-func (u Unavailable) Sidebar(context.Context, Project, []string) ([]Group, error) { return nil, u.Err }
+func (u Unavailable) Sidebar(context.Context, Project, []string) (Sidebar, error) {
+	return Sidebar{}, u.Err
+}
 
 // Container answers Err.
 func (u Unavailable) Container(context.Context, Project, string) (ContainerDetail, error) {

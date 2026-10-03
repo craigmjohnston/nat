@@ -53,20 +53,37 @@ func TestReads(t *testing.T) {
 	if err != nil || e.Name != "Native app parity" || e.GroupID != fakeshortcut.TeamBoard {
 		t.Errorf("Epic = %+v, %v", e, err)
 	}
+	ps, err := c.Projects(ctx)
+	if err != nil || len(ps) != 3 || ps[0].Abbreviation != "MOB" || ps[0].Color != "#E5732A" || !ps[2].Archived {
+		t.Errorf("Projects = %+v, %v", ps, err)
+	}
+	es, err := c.Epics(ctx)
+	if err != nil || len(es) != 2 || es[0].Name != "Native app parity" || !es[1].Archived {
+		t.Errorf("Epics = %+v, %v", es, err)
+	}
+	ls, err := c.Labels(ctx)
+	if err != nil || len(ls) != 3 || ls[0].Color != "#d64545" || !ls[2].Archived {
+		t.Errorf("Labels = %+v, %v", ls, err)
+	}
 	it, err := c.Iteration(ctx, fakeshortcut.IterationSprint41)
 	if err != nil || it.Name != "Sprint 41" {
 		t.Errorf("Iteration = %+v, %v", it, err)
 	}
 	st, err := c.Story(ctx, fakeshortcut.StoryDoing)
-	if err != nil || st.Name != "Improve diff review ergonomics" || *st.Estimate != 3 || len(st.Comments) != 3 ||
+	if err != nil || st.Name != "Improve diff review ergonomics" || *st.Estimate != 3 || len(st.Comments) != 3 || st.ProjectID != fakeshortcut.ProjectMobile ||
 		!st.CreatedAt.Equal(fakeshortcut.SeedNow.Add(-15*24*time.Hour)) {
 		t.Errorf("Story = %+v, %v", st, err)
 	}
 	var paths []string
 	for _, r := range fake.Requests() {
-		paths = append(paths, r.Method+" "+r.Path)
+		path := r.Method + " " + r.Path
+		if q := r.Query.Encode(); q != "" {
+			path += "?" + q
+		}
+		paths = append(paths, path)
 	}
-	want := "GET /member,GET /members,GET /workflows,GET /groups,GET /epics/10,GET /iterations/41,GET /stories/4821"
+	want := "GET /member,GET /members,GET /workflows,GET /groups,GET /epics/10,GET /projects," +
+		"GET /epics?includes_description=false,GET /labels?slim=true,GET /iterations/41,GET /stories/4821"
 	if got := strings.Join(paths, ","); got != want {
 		t.Errorf("requests = %s", got)
 	}

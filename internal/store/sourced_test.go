@@ -78,6 +78,37 @@ func TestSourcedAddSliceFilesTheContainerAndTellsThePlugin(t *testing.T) {
 	}
 }
 
+// A new task with no repository of its own starts from the one its card's
+// latest task was worked in; one under another card, or given its own, does
+// not.
+func TestSourcedAddSliceDefaultsTheRepoFromItsCard(t *testing.T) {
+	ctx := context.Background()
+	s, l, f := newSourced(t)
+	first := addTask(t, s, f, "First")
+	if first.Repo != "" {
+		t.Fatalf("first task's repo = %q, want none to start from", first.Repo)
+	}
+	if err := s.SetSliceRepo(ctx, first.ID, "/src/app"); err != nil {
+		t.Fatal(err)
+	}
+	if got := addTask(t, s, f, "Second"); got.Repo != "/src/app" {
+		t.Errorf("second task's repo = %q, want the card's", got.Repo)
+	}
+	own, err := s.AddSlice(ctx, Project{ID: "proj"}, NewSlice{Title: "Own", Milestone: card, Repo: "/src/other"})
+	if err != nil || own.Repo != "/src/other" {
+		t.Errorf("a task given its own repo = %+v, %v", own, err)
+	}
+	other, err := s.AddSlice(ctx, Project{ID: "proj"}, NewSlice{Title: "Elsewhere", Milestone: domain.Milestone{ID: "sc-2", Name: "Other card"}})
+	if err != nil || other.Repo != "" {
+		t.Errorf("a task on another card = %+v, %v, want no repo", other, err)
+	}
+	// A plan that cannot be read concludes nothing: the task is filed with none.
+	write(t, l, `DROP TABLE project`)
+	if got, err := s.AddSlice(ctx, Project{ID: "proj"}, NewSlice{Title: "Blind", Milestone: card}); err != nil || got.Repo != "" {
+		t.Errorf("with the plan unreadable = %+v, %v, want the task filed with no repo", got, err)
+	}
+}
+
 func TestSourcedAddSliceRefusesATaskUnderNoContainer(t *testing.T) {
 	s, _, f := newSourced(t)
 	_, err := s.AddSlice(context.Background(), Project{}, NewSlice{Title: "Loose"})
@@ -308,6 +339,16 @@ func TestSourcedDelegatesTheRestToTheFile(t *testing.T) {
 	if err := s.SetSliceBrief(ctx, sl.ID, "brief\n\n### PR description\n\nthe PR"); err != nil {
 		t.Error(err)
 	}
+	var _ RepoSetter = s
+	if err := s.SetSliceRepo(ctx, sl.ID, "/src/app"); err != nil {
+		t.Error(err)
+	}
+	if got, _, err := s.Slice(ctx, sl.ID); err != nil || got.Repo != "/src/app" || got.Name != "Task" {
+		t.Errorf("after SetSliceRepo = %+v, %v, want only the repo changed", got, err)
+	}
+	if err := s.SetSliceRepo(ctx, "nope", "/src/app"); err == nil {
+		t.Error("SetSliceRepo on no such slice: want an error")
+	}
 	if body, err := s.Body(ctx, sl.ID); err != nil || !strings.HasPrefix(body, "brief") {
 		t.Errorf("Body = %q, %v", body, err)
 	}
@@ -373,7 +414,7 @@ func TestSourcedAnswersThePluginsOwnQuestions(t *testing.T) {
 	if d, err := st.(Describer).Describe(ctx); err != nil || d.Name != "shortcut" {
 		t.Errorf("Describe = %+v, %v", d, err)
 	}
-	if g, err := st.(SidebarReader).Sidebar(ctx, []string{"done"}); err != nil || len(g) != 1 ||
+	if g, err := st.(SidebarReader).Sidebar(ctx, []string{"done"}); err != nil || len(g.Groups) != 1 ||
 		!reflect.DeepEqual(f.Expands, [][]string{{"done"}}) {
 		t.Errorf("Sidebar = %+v, %v (expands %v)", g, err, f.Expands)
 	}

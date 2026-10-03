@@ -595,6 +595,64 @@ func TestLaunchReadsNoContainerForAFixOrAnUnfiledSlice(t *testing.T) {
 	}
 }
 
+// A source project's task with no repository — the project has no working
+// directory and the task none of its own — is launched with no worktree cut
+// and no git read, in the home directory, its prompt sending the agent to find
+// the repository; the claim is written as for any launch.
+func TestLaunchesATaskWithNoRepositoryInTheHomeDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	st := &describingStore{sourcedStore: sourcedFake(), describe: source.Describe{ContainerNoun: "card"}}
+	l, w, r := &fakeLauncher{}, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}
+	c := agent.PromptContext{
+		Slice:   domain.Slice{ID: "s5", Name: "Info view", MilestoneID: "c1", Branch: "slice/info-view"},
+		Project: config.ProjectConfig{Name: "Shortcut", Backend: config.BackendSource}, ProjectID: "p1",
+	}
+	res, err := Launch(context.Background(), l, w, r, st, nil, "u1", c, config.AgentModel{})
+	if err != nil || res.Session == "" {
+		t.Fatalf("Launch() = %+v, %v, want a session", res, err)
+	}
+	if len(w.looks) != 0 || len(w.creates) != 0 || len(r.fetches) != 0 || r.loggedFor != "" {
+		t.Errorf("worktrees looked %v, cut %v, fetched %v, logged %q: want git untouched", w.looks, w.creates, r.fetches, r.loggedFor)
+	}
+	if len(l.launches) != 1 || l.launches[0].workdir != home {
+		t.Fatalf("launches = %+v, want one in %s", l.launches, home)
+	}
+	if !res.Context.RepoUnknown || res.Context.Branch != "" || res.Context.WorkingDir != home || res.Toast != "" {
+		t.Errorf("context = %+v, toast %q", res.Context, res.Toast)
+	}
+	prompt, err := os.ReadFile(l.launches[0].promptFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(prompt), "## First, find the repository") || !strings.Contains(string(prompt), "nat slice-repo s5 --project p1") {
+		t.Errorf("prompt does not send the agent to find the repository:\n%s", prompt)
+	}
+
+	// No home directory to start in is an error, before anything is written.
+	t.Setenv("HOME", "")
+	l2 := &fakeLauncher{}
+	if _, err := Launch(context.Background(), l2, w, r, st, nil, "u1", c, config.AgentModel{}); err == nil || len(l2.launches) != 0 {
+		t.Errorf("Launch() with no home = %v, launches %+v, want an error and nothing started", err, l2.launches)
+	}
+}
+
+func TestRepoUnknownAndLaunchDir(t *testing.T) {
+	src := config.ProjectConfig{Backend: config.BackendSource}
+	if !RepoUnknown(" ", src) || RepoUnknown("/x", src) || RepoUnknown("", config.ProjectConfig{}) {
+		t.Error("RepoUnknown: want only a source project with no directory")
+	}
+	if err := LaunchDir("", src); err != nil {
+		t.Errorf("LaunchDir(source, none) = %v, want it let through", err)
+	}
+	if err := LaunchDir("", config.ProjectConfig{}); err == nil {
+		t.Error("LaunchDir(notion, none) = nil, want ExistingDir's refusal")
+	}
+	if err := LaunchDir(t.TempDir(), src); err != nil {
+		t.Errorf("LaunchDir(source, dir) = %v", err)
+	}
+}
+
 func TestWorkdirFor(t *testing.T) {
 	project := config.ProjectConfig{WorkingDir: "/Users/craig/Projects/tracker"}
 	tests := []struct {
@@ -611,6 +669,16 @@ func TestWorkdirFor(t *testing.T) {
 				t.Errorf("WorkdirFor = %q, want %q", got, tt.want)
 			}
 		})
+	}
+	// A source project has no directory: a task's recorded repository is the
+	// whole answer — what relaunch, approve and merge all read — and one with
+	// none is nothing ([RepoUnknown]).
+	src := config.ProjectConfig{Backend: config.BackendSource}
+	if got := WorkdirFor(domain.Slice{Repo: "/src/app"}, src); got != "/src/app" {
+		t.Errorf("WorkdirFor(source, repo) = %q", got)
+	}
+	if got := WorkdirFor(domain.Slice{}, src); got != "" || !RepoUnknown(got, src) {
+		t.Errorf("WorkdirFor(source, none) = %q, want nothing", got)
 	}
 }
 

@@ -66,11 +66,23 @@ type Group struct {
 	Archived bool   `json:"archived"`
 }
 
-// Epic is GET /epics/{id}, cut to what a badge or fact needs.
+// Project is one entry of GET /projects — the story's project, whose
+// abbreviation and colour are a story's badge.
+type Project struct {
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	Abbreviation string `json:"abbreviation"`
+	Color        string `json:"color"`
+	Archived     bool   `json:"archived"`
+}
+
+// Epic is GET /epics/{id}, and one entry of the slim list (GET /epics with
+// includes_description=false), cut to what a badge, fact or filter needs.
 type Epic struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	GroupID string `json:"group_id"`
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	GroupID  string `json:"group_id"`
+	Archived bool   `json:"archived"`
 }
 
 // Iteration is GET /iterations/{id}.
@@ -79,11 +91,12 @@ type Iteration struct {
 	Name string `json:"name"`
 }
 
-// Label is a label as a story carries it.
+// Label is a label as a story carries it, and one entry of GET /labels.
 type Label struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Color    string `json:"color"`
+	Archived bool   `json:"archived"`
 }
 
 // Story is GET /stories/{id}, and (with the detail-only fields empty) one
@@ -98,6 +111,7 @@ type Story struct {
 	WorkflowStateID int64    `json:"workflow_state_id"`
 	Estimate        *int64   `json:"estimate"`
 	EpicID          int64    `json:"epic_id"`
+	ProjectID       int64    `json:"project_id"`
 	GroupID         string   `json:"group_id"`
 	IterationID     int64    `json:"iteration_id"`
 	OwnerIDs        []string `json:"owner_ids"`

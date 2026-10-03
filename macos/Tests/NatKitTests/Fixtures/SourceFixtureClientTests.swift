@@ -10,9 +10,10 @@ final class SourceFixtureClientTests: XCTestCase {
         let folded = try await client.info(projectID: Fixtures.sourceProjectID)
         let source = try XCTUnwrap(folded.source)
         XCTAssertEqual(source.tag, "DM")
-        XCTAssertEqual(source.groups.map(\.id), ["doing", "ready", "done"])
+        XCTAssertEqual(source.groups.map(\.id), ["doing", "ready/mine", "ready/board", "done"])
         XCTAssertEqual(source.group(withID: "done")?.containers, [])
-        XCTAssertEqual(source.group(withID: "seg-mine")?.menu.map(\.input), [.text, .choice, .none])
+        XCTAssertEqual(source.group(withID: "ready/mine")?.menu.map(\.input), [.text, .filter, .none])
+        XCTAssertEqual(source.menu.map(\.input), [.none, .text, .filter], "the header's own filter")
         // The card listed under both segments is one container.
         XCTAssertEqual(source.allContainers.map(\.id), [
             Fixtures.sourceCardID, Fixtures.sourceSecondCardID, Fixtures.sourceMineCardID, Fixtures.sourceBoardCardID,

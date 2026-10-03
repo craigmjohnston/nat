@@ -57,6 +57,7 @@ public protocol NatClientProtocol: Sendable {
     func pluginSourceRemove(repo: String) async throws -> PluginSourceList
     func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult
     func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult
+    func projectCreate(name: String, repo: String?, description: String?, source: String?) async throws -> CreatedProject
 }
 
 extension NatClientProtocol {
@@ -127,6 +128,12 @@ extension NatClientProtocol {
 
     public func planAccept(projectID: String) async throws -> PlanAccepted {
         throw NatError.commandFailed("plan-accept --project: not supported by this client")
+    }
+
+    /// Making a project — what connecting a plugin does for its section:
+    /// same reasoning, only `NatClient` and the fixture client implement it.
+    public func projectCreate(name: String, repo: String?, description: String?, source: String?) async throws -> CreatedProject {
+        throw NatError.commandFailed("project-create: not supported by this client")
     }
 
     /// Mirroring a local project into Notion: same reasoning, only `NatClient`

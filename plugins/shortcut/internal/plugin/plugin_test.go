@@ -68,6 +68,10 @@ type harness struct {
 	tokens *fakeTokens
 	now    time.Time
 	dir    string
+	// spawned is every detached start asked for, args joined; spawnErr what
+	// each answers.
+	spawned  []string
+	spawnErr error
 }
 
 const project = `"project":{"id":"p1","name":"Work","working_dir":"/tmp"}`
@@ -99,7 +103,21 @@ func (h *harness) env() Env {
 		Getenv: func(k string) string { return h.vars[k] },
 		Now:    func() time.Time { return h.now },
 		Tokens: h.tokens,
+		Spawn: func(args ...string) error {
+			h.spawned = append(h.spawned, strings.Join(args, " "))
+			return h.spawnErr
+		},
 	}
+}
+
+// warmEpics runs the warm-up a sidebar would have started, as its detached
+// child would, and forgets the requests it made.
+func (h *harness) warmEpics() {
+	h.t.Helper()
+	if code, out, errs := h.run("", "warm"); code != 0 || out != "" || errs != "" {
+		h.t.Fatalf("warm: exit %d, stdout %q, stderr %q", code, out, errs)
+	}
+	h.fake.Reset()
 }
 
 // run runs the binary with args and stdin, returning exit code, stdout and
@@ -335,15 +353,15 @@ func TestConfigCommand(t *testing.T) {
 	h := newHarness(t)
 	code, out, _ := h.run("", "config", "p1")
 	var p settings.Project
-	if code != 0 || json.Unmarshal([]byte(out), &p) != nil || len(p.Segments) != 1 || p.Segments[0].Query != "owner:me" {
+	if code != 0 || json.Unmarshal([]byte(out), &p) != nil || len(p.Segments) != 1 || p.Segments[0].Name != "Ready" {
 		t.Errorf("config default: exit %d, %q", code, out)
 	}
 	if _, err := os.Stat(filepath.Join(h.dir, "config", "nat-source-shortcut", "config.json")); err == nil {
 		t.Error("config wrote a file just by printing")
 	}
-	h.writeConfig(settings.Project{Team: "board", Segments: []settings.Segment{{ID: "b", Name: "Bugs", Query: "type:bug"}}})
+	h.writeConfig(settings.Project{Filter: settings.Filter{Team: "board"}, Segments: []settings.Segment{{ID: "b", Name: "Bugs", Filter: settings.Filter{Labels: []string{"bug"}}}}})
 	_, out, _ = h.run("", "config", "p1")
-	if !strings.Contains(out, `"team": "board"`) || !strings.Contains(out, `"query": "type:bug"`) {
+	if !strings.Contains(out, `"team": "board"`) || !strings.Contains(out, `"labels": [`) || strings.Count(out, `"filter"`) != 2 {
 		t.Errorf("config = %s", out)
 	}
 	h.corruptConfig()

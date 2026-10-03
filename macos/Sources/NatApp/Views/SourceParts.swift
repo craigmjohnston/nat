@@ -122,13 +122,15 @@ struct SourceFactRows: View {
 
 /// A source's own actions as menu items: a plain action runs on the click, a
 /// `text` one asks for its line first (`onText`), a `choice` one is a
-/// submenu of its options, a destructive one is drawn as one and confirmed
+/// submenu of its options, a `filter` one opens the filter editor
+/// (`onFilter`), a destructive one is drawn as one and confirmed
 /// (`onConfirm`). An input kind this build does not know is left out.
 struct SourceActionItems: View {
     let actions: [SourceAction]
     let onRun: (SourceAction, String?) -> Void
     let onText: (SourceAction) -> Void
     let onConfirm: (SourceAction) -> Void
+    var onFilter: (SourceAction) -> Void = { _ in }
 
     var body: some View {
         ForEach(actions) { action in
@@ -147,6 +149,8 @@ struct SourceActionItems: View {
                         Button(option) { onRun(action, option) }
                     }
                 }
+            case .filter:
+                Button(action.label.hasSuffix("\u{2026}") ? action.label : action.label + "\u{2026}") { onFilter(action) }
             case .unknown:
                 EmptyView()
             }
@@ -190,5 +194,113 @@ struct SourceActionTextSheet: View {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         onRun(trimmed)
+    }
+}
+
+/// The filter editor a `filter` action opens, anchored to the row whose menu
+/// it came from: one row per field — a single choice as a pop-up menu with
+/// "Any" first (naming what it falls through to, where a wider filter sets
+/// the field), several as a menu of checkmarks — then Cancel and Apply. A
+/// field whose options are still loading says so and is the only one held:
+/// the editor reads the tree once more (`onReread`) and draws what comes
+/// back, keeping what was picked meanwhile. Apply hands the choices to
+/// `onApply` as the action's input.
+struct SourceFilterPopover: View {
+    /// The action as the tree now has it — re-read while open, so a loading
+    /// field fills in.
+    let action: SourceAction
+    let onCancel: () -> Void
+    let onApply: (String) -> Void
+    var onReread: () async -> Void = {}
+
+    @State private var draft: SourceFilterDraft
+
+    init(
+        action: SourceAction, onCancel: @escaping () -> Void, onApply: @escaping (String) -> Void,
+        onReread: @escaping () async -> Void = {}
+    ) {
+        self.action = action
+        self.onCancel = onCancel
+        self.onApply = onApply
+        self.onReread = onReread
+        _draft = State(initialValue: SourceFilterDraft(action: action))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(action.label.trimmingCharacters(in: CharacterSet(charactersIn: "\u{2026}.")))
+                .font(.system(size: Typo.headline, weight: .semibold))
+                .ink(.primary)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                ForEach(action.fields) { field in
+                    GridRow {
+                        Text(field.label)
+                            .font(.system(size: GnatMetrics.body))
+                            .ink(.secondary)
+                            .gridColumnAlignment(.trailing)
+                        control(field)
+                            .frame(width: 200, alignment: .leading)
+                    }
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .buttonStyle(SecondaryButtonStyle())
+                    .keyboardShortcut(.cancelAction)
+                Button("Apply") { onApply(draft.input(for: action)) }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!draft.differs(from: action))
+            }
+        }
+        .padding(16)
+        .fixedSize()
+        .task {
+            // Once, and only for a field still loading: the plugin is filling
+            // it in the background, and a second look is all it needs.
+            guard SourceFilterDraft.isLoading(action) else { return }
+            try? await Task.sleep(for: .seconds(2))
+            await onReread()
+        }
+    }
+
+    @ViewBuilder
+    private func control(_ field: SourceFilterField) -> some View {
+        if field.loading && field.options.isEmpty {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Loading\u{2026}")
+                    .font(.system(size: GnatMetrics.body))
+                    .ink(.tertiary)
+            }
+            // A pop-up's height, so the rows stay put as it fills in.
+            .frame(minHeight: 22)
+        } else if field.multi {
+            Menu {
+                ForEach(field.options) { option in
+                    Toggle(option.label, isOn: Binding(
+                        get: { draft.isChosen(option.id, in: field) },
+                        set: { _ in draft.toggle(option.id, in: field) }))
+                }
+            } label: {
+                Text(draft.summary(field)).lineLimit(1)
+            }
+            .menuStyle(.button)
+            .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Picker(field.label, selection: Binding(
+                get: { draft.choice(field) ?? "" },
+                set: { draft.choose($0.isEmpty ? nil : $0, in: field) }
+            )) {
+                Text(SourceFilterDraft.anyLabel(field)).tag("")
+                Divider()
+                ForEach(field.options) { option in
+                    Text(option.label).tag(option.id)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+        }
     }
 }

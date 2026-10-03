@@ -13,8 +13,9 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
   stdio, exit, env, the Keychain) are package variables `main_test.go`
   swaps, as nat's own `main.go` does.
 - `internal/plugin/` — the program: the six methods (`describe`, `sidebar`,
-  `container`, `action`, `event`, `setup`) and the human subcommands (`login`,
-  `config <project id>`). `read.go` is the two reads, `write.go` actions and
+  `container`, `action`, `event`, `setup`), the human subcommands (`login`,
+  `config <project id>`) and `warm`, the sidebar's own detached epic fetch
+  (`warm.go`). `read.go` is the two reads, `write.go` actions and
   events, `refs.go` the workspace reference data and every formatting rule.
 - The wire types are nat's own `internal/source` (`Describe`, `Group`,
   `ContainerDetail`, `Task`, …), and tests hold every `describe`, `sidebar`
@@ -74,19 +75,47 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
 - **`owner:me` never reaches Shortcut.** The live search accepts it and
   matches nothing, so every query goes out with each whole `owner:me` term
   (any case, `!`/`-` kept) rewritten to `owner:<mention_name>` from
-  `GET /member` (`withMe`). Stored and default segment queries keep
-  `owner:me`, so a config stays portable. The fake mirrors the live API:
-  `owner:me` matches nothing there either.
+  `GET /member` (`withMe`). The fake mirrors the live API: `owner:me`
+  matches nothing there either.
+- **The sidebar.** Doing (`owner:me is:started`), then each segment as a
+  top-level group (`ready/<id>`, unstarted stories), then Done — `owner:me
+  is:done completed:<Monday>..*`, this week from Monday in `a.now`'s own
+  time (`weekStart`), lazy with a count. Every query is one `refs.search`:
+  the filter's terms — `team:<mention>`, `project:<id>`, `epic:"<name>"`
+  (the search takes an epic's title; the id is looked up, the id itself
+  where it can't be), `label:"<name>"` each — then the group's own. Doing and
+  Done use the section filter (`settings.Project.Filter`); a segment uses
+  `merged(section, segment)` — each field the segment sets replaces the
+  section's, labels as a whole. The response's top-level `menu` is the
+  header's: describe's actions plus the section's Filter…; each segment's
+  menu is Rename, its Filter… (fields carrying `inherited`, the section's
+  value "Any" falls through to) and Remove. A filter action's options are the
+  workspace's unarchived teams, projects (`GET /projects`, read beside
+  groups; a failure is no projects), epics and labels (`GET /labels?slim=true`,
+  through the 1 h cache); a saved choice no longer offered is offered still.
+- **Badges** are a story's Shortcut project — `abbreviation` (else a code
+  from its name), its hex `color` (else grey), title the name — else its team,
+  else its epic, else none. `project` is a fact after `team`.
 - **Team colours** come from `color_key` (Shortcut sends `color: null`),
   mapped to hex by `colorKeys`; a hex `color`, if ever sent, wins; an
   unknown key is grey. Archived teams are never offered in any list of
   teams (none exists yet — keep it that way when one is added).
-- **Never `GET /epics` or `GET /iterations`** — the epic list is megabytes
-  on a real workspace. Only the ids the stories at hand reference are
-  looked up (`/epics/{id}`, `/iterations/{id}`; the sidebar only for
-  team-less stories' badges), through a 1 h cache shared by every project on
-  the same API (`lookup`), stale on error, an empty fact when nothing is
-  cached. Refresh drops it; other actions don't.
+- **Never `GET /epics` with descriptions, and never `GET /iterations`** —
+  the full epic list is megabytes on a real workspace. Ids the stories at
+  hand reference are looked up one by one (`/epics/{id}`, `/iterations/{id}`;
+  the sidebar only for project- and team-less stories' badges and the
+  filters' epics), through a 1 h cache shared by every project on the same
+  API (`lookup`), stale on error, an empty fact when nothing is cached. The
+  one exception is the filter editor's epic list: `GET
+  /epics?includes_description=false`, **only** from the `warm` subcommand,
+  never on a method's own path. A sidebar reads it from the 1 h cache alone
+  (`cachedEpics`); with nothing cached, or only a stale list, it starts
+  `nat-source-shortcut warm` detached (`Env.Spawn` — its own session, stdio
+  `/dev/null`, not waited on, so nat's kill of the sidebar never reaches it;
+  at most once a minute, `warmingKey`), sends the epic field `loading`, and
+  keeps that sidebar out of the response cache so gnat's one re-read finds
+  the list. `warm` prints nothing and exits 0 with the list cached, 1
+  without. Refresh drops the cache, list and all; other actions don't.
 - **Cache.** `sidebar` (keyed by sorted `expand`) and `container` (by id)
   responses are cached per project for 30 s under
   `$XDG_CACHE_HOME/nat-source-shortcut` (else
@@ -96,9 +125,13 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
   best-effort: it never fails a call.
 - **Settings** live in `$XDG_CONFIG_HOME/nat-source-shortcut/config.json`
   (else `~/.config/…`), keyed by nat project id: `segments` (id, name,
-  query), `started_state`, `done_state` (a state name or id in the story's
-  workflow), `team` (appended to every search as `team:<x>`). A project with
-  no entry gets one segment, Mine = `owner:me`; nil segments mean default,
+  `filter` — team mention name, project id, epic id, label names),
+  `started_state`, `done_state` (a state name or id in the story's
+  workflow), `filter` (the section's, narrowing every search; an older
+  entry's `team` reads into it, and a segment's older `query` is not read).
+  The `filter` action sets the section's (no group) or a segment's, its input
+  a JSON object of field id to choices. A project with no entry gets one
+  segment, Ready, with an empty filter; nil segments mean default,
   an empty list means the user removed them all. A segment's id is fixed at
   creation — its group id is `ready/<id>`, which nat and gnat remember, so a
   rename never changes it. Nothing is written until an action changes it.

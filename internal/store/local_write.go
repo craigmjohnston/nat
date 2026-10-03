@@ -634,6 +634,15 @@ func (l *Local) EditSlice(ctx context.Context, id, title, repo, brief string) er
 	return err
 }
 
+// SetSliceRepo records the repository a slice is worked in and nothing else
+// about it.
+func (l *Local) SetSliceRepo(ctx context.Context, id, repo string) error {
+	_, err := l.updateSlice(ctx, id, "record the slice's repository", func(tx *sql.Tx, _ domain.Slice) error {
+		return l.exec(ctx, tx, "record the slice's repository", `UPDATE slices SET repo = ? WHERE id = ?`, repo, id)
+	})
+	return err
+}
+
 // SetSliceBrief rewrites a slice's brief and nothing else about it.
 func (l *Local) SetSliceBrief(ctx context.Context, id, brief string) error {
 	_, err := l.updateSlice(ctx, id, "write the slice brief", func(tx *sql.Tx, _ domain.Slice) error {

@@ -60,8 +60,9 @@ public final class PluginsModel {
     }
 
     @ObservationIgnored private let client: NatClientProtocol
-    /// Told after a plugin is installed or taken away, so what else reads
-    /// the installed plugins (the `+` menu's) reads them again.
+    /// Told after a plugin is installed, taken away or set up, so what else
+    /// reads the installed plugins — the app model, which makes a connected
+    /// plugin's section — reads them again.
     @ObservationIgnored private let pluginsChanged: @MainActor () async -> Void
 
     public init(client: NatClientProtocol, pluginsChanged: @escaping @MainActor () async -> Void = {}) {
@@ -145,15 +146,20 @@ public final class PluginsModel {
         let value = setupValues[key] ?? ""
         running.insert(.setup(key))
         setupOutcomes[key] = nil
+        var saved = false
         do {
             let result = try await client.sourceSetup(plugin: plugin, id: field, value: value)
             setupValues[key] = ""
             setupOutcomes[key] = .saved(result.message.isEmpty ? "Saved." : result.message)
+            saved = true
         } catch {
             setupOutcomes[key] = .refused(Self.message(error))
         }
         await load()
         running.remove(.setup(key))
+        // A value set may be what connects the plugin, and connecting it is
+        // what makes its sidebar section (AppModel.ensureSourceProjects).
+        if saved { await pluginsChanged() }
     }
 
     /// One action: its spinner up while nat runs, its refusal kept, and the

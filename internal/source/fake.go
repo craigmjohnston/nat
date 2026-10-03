@@ -8,6 +8,7 @@ import "context"
 type Fake struct {
 	DescribeResult Describe
 	Groups         []Group
+	SidebarMenu    []Action
 	Details        map[string]ContainerDetail
 	ActionResult   ActionResult
 	SetupMessage   string
@@ -58,13 +59,13 @@ func (f *Fake) Describe(_ context.Context, _ Project) (Describe, error) {
 	return f.DescribeResult, nil
 }
 
-// Sidebar records expand and returns Groups, or SidebarErr.
-func (f *Fake) Sidebar(_ context.Context, _ Project, expand []string) ([]Group, error) {
+// Sidebar records expand and returns Groups with SidebarMenu, or SidebarErr.
+func (f *Fake) Sidebar(_ context.Context, _ Project, expand []string) (Sidebar, error) {
 	f.Expands = append(f.Expands, expand)
 	if f.SidebarErr != nil {
-		return nil, f.SidebarErr
+		return Sidebar{}, f.SidebarErr
 	}
-	return f.Groups, nil
+	return Sidebar{Groups: f.Groups, Menu: f.SidebarMenu}, nil
 }
 
 // Container records id and returns Details[id] — the zero detail where there

@@ -76,6 +76,13 @@ import (
 // plugin at launch by [actions.Launch]; nil for every other project, for a fix
 // launch, and where the read failed — the prompt then simply has no section
 // for it.
+//
+// RepoUnknown says the slice has no repository to work in yet: a source
+// project, which has no working directory of its own, on a task none has been
+// recorded for. The session starts in the home directory (WorkingDir), with no
+// worktree, and the prompt sends it to work the repository out from the
+// container, record it with `nat slice-repo`, and cut the worktree itself —
+// see [repoPassage].
 type PromptContext struct {
 	Slice           domain.Slice
 	Project         config.ProjectConfig
@@ -97,6 +104,7 @@ type PromptContext struct {
 	ReviewComments  string
 	ReviewChecks    string
 	Container       *PromptContainer
+	RepoUnknown     bool
 }
 
 // PromptContainer is the container a task hangs off in a source project — the
@@ -134,6 +142,62 @@ func containerSection(c PromptContext) string {
 	if ct.Prose != "" {
 		fmt.Fprintf(&b, "\n%s\n", strings.TrimRight(ct.Prose, "\n"))
 	}
+	return b.String()
+}
+
+// repoPassage sends an agent whose slice has no repository yet (RepoUnknown)
+// to find it before anything else: work it out from the container, ask the
+// user where it cannot tell, record it with `nat slice-repo` so every later
+// session, the review and the merge find it, and then cut the slice's worktree
+// itself — by the very naming nat's own launch cuts one by, since a relaunch
+// finds the worktree by arriving at the same path.
+//
+// The naming — actions.SliceBranch, worktree.pathSlug, git.CLI.Base — is
+// spelled out here in prose and again in skills/next-slice/SKILL.md. Never
+// deduplicate it: a prompt is read by an agent, not compiled, so it cannot
+// call the Go, and both copies must independently say the same thing.
+func repoPassage(c PromptContext) string {
+	noun := "container"
+	if c.Container != nil && c.Container.Noun != "" {
+		noun = c.Container.Noun
+	}
+	var b strings.Builder
+	b.WriteString("\n## First, find the repository\n\n")
+	b.WriteString("This project has no repository of its own: each of its tasks is worked in\n")
+	fmt.Fprintf(&b, "whichever repository its %s is about, and nobody has said which that is\n", noun)
+	b.WriteString("for this one yet. That is your first job, before any other.\n\n")
+	fmt.Fprintf(&b, "Work it out from the %s above and what is on this machine: its facts and\n", noun)
+	b.WriteString("links — branches, pull requests, external links — its project and epic,\n")
+	b.WriteString("and its description. If you cannot tell with confidence, ask the user\n")
+	b.WriteString("here in the terminal, and do nothing else until they answer.\n\n")
+	b.WriteString("Once you know, record it, so every later session on this slice, the\n")
+	b.WriteString("review and the merge all find it:\n\n")
+	fmt.Fprintf(&b, "    nat slice-repo %s --project %s --repo <absolute path to the checkout>\n\n", c.Slice.ID, c.ProjectID)
+	b.WriteString("Then cut this slice's own worktree from that repository, exactly as nat\n")
+	b.WriteString("cuts one — a later launch finds it by arriving at the same path, so the\n")
+	b.WriteString("naming has to be followed to the letter:\n\n")
+	b.WriteString("- The branch is `slice/` followed by the slice's name lowercased, with\n")
+	b.WriteString("  every run of anything that is not an ASCII letter or digit collapsed\n")
+	b.WriteString("  into a single hyphen and none left at either end: \"Fix the login page\"\n")
+	b.WriteString("  is `slice/fix-the-login-page`.\n")
+	b.WriteString("- The worktree goes in a sibling `<repo>.worktrees` directory, one entry\n")
+	b.WriteString("  per branch, named by the branch with every run of anything that is not\n")
+	b.WriteString("  a letter, a digit, a dot, a hyphen or an underscore collapsed into a\n")
+	b.WriteString("  single hyphen — so `slice/fix-the-login-page` under a repository at\n")
+	b.WriteString("  `/repos/app` is `/repos/app.worktrees/slice-fix-the-login-page`.\n")
+	b.WriteString("  `<repo>` is the directory holding the git directory every worktree of\n")
+	b.WriteString("  the repository shares: the parent of what `git rev-parse\n")
+	b.WriteString("  --path-format=absolute --git-common-dir` names.\n")
+	b.WriteString("- If `git worktree list --porcelain` already shows a worktree on that\n")
+	b.WriteString("  branch, work there and cut nothing. If the branch exists with no\n")
+	b.WriteString("  worktree, check it out: `git worktree add <repo>.worktrees/<path slug>\n")
+	b.WriteString("  slice/<slug>`. Otherwise run `git fetch origin` (a fetch that fails is\n")
+	b.WriteString("  no reason to stop) and cut it from the base:\n")
+	b.WriteString("  `git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <base>`.\n")
+	b.WriteString("- The base is whatever `git symbolic-ref --short refs/remotes/origin/HEAD`\n")
+	b.WriteString("  names (`origin/main`, `origin/master`); with no such ref, `origin/main`\n")
+	b.WriteString("  if the repository has one; and only a repository with no origin at all\n")
+	b.WriteString("  falls back to the local `main`.\n")
 	return b.String()
 }
 
@@ -216,7 +280,12 @@ func Prompt(c PromptContext) string {
 	if c.Slice.URL != "" {
 		fmt.Fprintf(&b, "- Slice URL: %s\n", c.Slice.URL)
 	}
-	fmt.Fprintf(&b, "- Working directory: %s\n", c.WorkingDir)
+	if c.RepoUnknown {
+		fmt.Fprintf(&b, "- Working directory: none yet — this session starts in %s, your home\n", c.WorkingDir)
+		b.WriteString("  directory, and finding the repository is your first job (below)\n")
+	} else {
+		fmt.Fprintf(&b, "- Working directory: %s\n", c.WorkingDir)
+	}
 	if repoOverridden(c) {
 		fmt.Fprintf(&b, "  (this slice overrides the project default of %s)\n", c.Project.WorkingDir)
 	}
@@ -234,7 +303,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString("criteria, then the conventions that apply to every slice of the project.\n")
 	b.WriteString("The body may end in `Note` sections that earlier sessions left for\n")
 	b.WriteString("whoever worked the slice next: they are part of the brief.\n\n")
-	if !Resuming(c) {
+	if !Resuming(c) && !c.RepoUnknown {
 		b.WriteString("Claude Code has already loaded git status into this session's context —\n")
 		b.WriteString("branch, working-tree state, recent commits — so there is no need to run\n")
 		b.WriteString("`git status` yourself.\n\n")
@@ -250,9 +319,13 @@ func Prompt(c PromptContext) string {
 	b.WriteString("which they can switch while you work.\n")
 	b.WriteString(containerSection(c))
 
-	b.WriteString("\n## Already in your context\n\n")
-	b.WriteString("`CLAUDE.md` in the working directory — architecture and the verification\n")
-	b.WriteString("gate — is auto-loaded by Claude Code; there is no need to read it again.\n")
+	if c.RepoUnknown {
+		b.WriteString(repoPassage(c))
+	} else {
+		b.WriteString("\n## Already in your context\n\n")
+		b.WriteString("`CLAUDE.md` in the working directory — architecture and the verification\n")
+		b.WriteString("gate — is auto-loaded by Claude Code; there is no need to read it again.\n")
+	}
 
 	b.WriteString("\n## Before you write code\n\n")
 	b.WriteString("If this slice turns on an architecture question — a decision neither the\n")
@@ -264,9 +337,16 @@ func Prompt(c PromptContext) string {
 	b.WriteString("might not be.\n")
 
 	b.WriteString("\n## Do the work\n\n")
-	b.WriteString("Work in the working directory above; if that is not where this session\n")
-	b.WriteString("started, use absolute paths or `git -C`. Honour the brief's acceptance\n")
-	b.WriteString("criteria and the project's verification gate before calling it done.\n\n")
+	if c.RepoUnknown {
+		b.WriteString("Work in the worktree you cut above; this session did not start there,\n")
+		b.WriteString("so use absolute paths or `git -C`. Read its `CLAUDE.md`, if it has one,\n")
+		b.WriteString("before anything else — architecture and the verification gate. Honour\n")
+		b.WriteString("the brief's acceptance criteria and that gate before calling it done.\n\n")
+	} else {
+		b.WriteString("Work in the working directory above; if that is not where this session\n")
+		b.WriteString("started, use absolute paths or `git -C`. Honour the brief's acceptance\n")
+		b.WriteString("criteria and the project's verification gate before calling it done.\n\n")
+	}
 	b.WriteString("Read files with the Read tool, not `cat`/`sed`/`head` — Read handles\n")
 	b.WriteString("offsets for files too big to read whole. Edit files with Edit or Write,\n")
 	b.WriteString("not a shell heredoc — a heredoc edit re-transmits the whole old block and\n")
@@ -286,6 +366,13 @@ func Prompt(c PromptContext) string {
 		b.WriteString("yours and is what you hand back. Do not run `gh`, and do not open a\n")
 		b.WriteString("pull request: you hand the branch back and the user opens the pull\n")
 		b.WriteString("request from the board once they have reviewed it.\n\n")
+	case c.RepoUnknown:
+		b.WriteString("Once the worktree above is cut, it is yours alone. If the work is code:\n")
+		b.WriteString("commit there — exactly ONE change, this slice's — and push its branch.\n")
+		b.WriteString("Do not create another branch and do not switch away; that one is what\n")
+		b.WriteString("you hand back. Do not run `gh`, and do not open a pull request: you hand\n")
+		b.WriteString("the branch back and the user opens the pull request from the board once\n")
+		b.WriteString("they have reviewed it.\n\n")
 	case c.Branch != "":
 		fmt.Fprintf(&b, "That directory is a git worktree cut for this slice alone, already on\n")
 		fmt.Fprintf(&b, "the branch %s and shared with nobody. If the work is code: commit\n", c.Branch)

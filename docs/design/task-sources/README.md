@@ -54,12 +54,18 @@ story through their prompt.
 The hierarchy is not project → milestone → slice, but:
 
 ```
-source (Shortcut)                 its own top-level sidebar section
-└─ group                          Doing · Ready · Done   (Done: count only, loads on expand)
-   └─ (Ready only) segment        a saved filter: Mine / Board / Bugs — Shortcut's own business
-      └─ card                     a Shortcut story: the container a task hangs off
-         └─ task                  an ordinary nat slice, parented to a card instead of a milestone
+source (SHORTCUT)                 its own top-level sidebar section, headed by the plugin's title
+└─ group                          Doing · each segment · Done   (Done: count only, loads on expand)
+   │                              a segment is a saved filter (Ready by default) — Shortcut's own business
+   └─ card                        a Shortcut story: the container a task hangs off
+      └─ task                     an ordinary nat slice, parented to a card instead of a milestone
 ```
+
+Doing is the user's started stories; each segment, a top-level group of its
+own, its unstarted stories by a filter of team, Shortcut project, epic and
+labels; Done the user's stories completed this week (Monday on). The section
+header has a filter of its own that narrows every list, and a segment's
+filter overrides it field by field.
 
 A card shows its id (`sc-4821`), title, Shortcut project (code + colour
 tag), workflow state, type, estimate, epic, labels, owner, requester,
@@ -83,7 +89,9 @@ Where the source customises display:
    "Linked to sc-4821. Merging moves the card to Done when it's the last
    open task."
 6. **Status bar** — `<container> / <task>`.
-7. **Sidebar `+` menu** — a new-project entry for the source.
+7. **No new-project entry.** Connecting the plugin — setting what its
+   `describe` asks for, the Shortcut token — makes its one source project and
+   so its section; nothing in the `+` menu makes one.
 
 ## Non-goals (v1)
 
@@ -185,6 +193,7 @@ The method-specific fields below are added to this object.
 ### Shared types
 
 ```
+Sidebar   { groups: [Group], menu?: [Action] }
 Group     { id, label, count?, lazy?, menu?: [Action], children?: [Group], containers?: [Container] }
 Container { id, title, external_url?, badges?: [Badge], meta?, menu?: [Action] }
 Badge     { text, color, title? }
@@ -193,7 +202,10 @@ Section   { id, title, kind: "prose" | "comments" | "links", body?, comments?: [
             links?: [Link], composer?: Action }
 Comment   { by, when, text }
 Link      { label, text, state?, url }
-Action    { id, label, input: "none" | "text" | "choice", options?: [string], destructive? }
+Action    { id, label, input: "none" | "text" | "choice" | "filter", options?: [string],
+            fields?: [FilterField], destructive? }
+FilterField  { id, label, multi?, options: [FilterOption], value: [string], inherited?, loading? }
+FilterOption { id, label, color? }
 Setup     { id, label, input: "secret" | "text", hint?, set? }
 ```
 
@@ -211,6 +223,19 @@ Setup     { id, label, input: "secret" | "text", hint?, set? }
   response carrying one, on any menu or composer. `destructive` actions
   draw in red and confirm first. `secret` is a `Setup` field's input alone
   and refused on any action.
+- **`filter`** opens a small filter editor over the action's `fields`, each a
+  choice among its `options` — one, or several where `multi` — opened on
+  `value`, the selection saved now (empty is "Any"). The plugin sends the
+  options *and* the selection on every response that carries the action, so
+  the editor always opens on what is saved. `inherited` (optional) names what
+  "Any" falls through to — a wider filter's own choice for the field — and
+  gnat shows it beside "Any" so an override reads as one. `loading`
+  (optional) says the plugin is still fetching that field's options in the
+  background: gnat draws the field as loading, reads the tree once more, and
+  never holds the other fields for it. A filter with no fields, a field or
+  option id empty or repeated, more than one value in a field that isn't
+  `multi`, or a value naming no option of its field is refused. The answer
+  goes back as the action's `input` — see `action`.
 
 ### `describe`
 
@@ -254,7 +279,8 @@ Response:
   otherwise, naming it and both versions: `source plugin shortcut speaks
   protocol 2; this nat speaks protocol 1`.
 - `name` should equal the `<name>` it was discovered by.
-- `title` is the human name ("Open in Shortcut", "New Shortcut project…").
+- `title` is the human name ("Open in Shortcut", and the heading of the
+  source's sidebar section, upper-cased — never the project's name).
 - `tag` is 1–3 upper-case letters or digits, drawn on Active rows of the
   source's tasks and in the container titlebar. A `describe` with a bad tag
   is refused.
@@ -266,7 +292,7 @@ Response:
   "task"); gnat and the agent prompt use them in place of "milestone" /
   "slice" (`## The card`, "Other cards", "New task").
 - `menu` (optional) is the source section header's menu; its actions are
-  run with `target: {}`.
+  run with `target: {}`. A `sidebar` response may replace it per project.
 - `setup` (optional) is what the plugin needs set before it works, drawn
   under the plugin in gnat's Settings ▸ Sources and sent back through
   `setup`. `id` is lower-case letters, digits and `-`, unique within the
@@ -275,7 +301,9 @@ Response:
   breaking any of these is refused. A plugin with nothing to set up omits
   it.
 - `set` (optional) says whether the plugin holds a value for the field
-  right now, so gnat can say "API token not set" or "API token set". It is
+  right now, so gnat can say "API token not set" or "API token set" — and a
+  plugin none of whose fields is `false` is **connected**: gnat makes its one
+  source project, and so its section, the first time it sees it so. It is
   a **presence check only** — describe still reads no credential (Shortcut
   asks the Keychain whether an item exists, without `-w`) — and a check
   that fails reads as `false`, never as a failed `describe`. Absent means
@@ -302,36 +330,44 @@ Response:
       "containers": [
         { "id": "4821", "title": "Improve diff review ergonomics",
           "external_url": "https://app.shortcut.com/acme/story/4821",
-          "badges": [ { "text": "NA", "color": "#4f6bd8", "title": "Native App" } ],
+          "badges": [ { "text": "MOB", "color": "#e5732a", "title": "Mobile App" } ],
           "meta": "3 pts" },
         { "id": "4790", "title": "Board mouse support",
           "external_url": "https://app.shortcut.com/acme/story/4790",
           "badges": [ { "text": "BD", "color": "#2a9d8f", "title": "Board" } ],
           "meta": "2 pts" }
       ] },
-    { "id": "ready", "label": "Ready", "count": 3,
-      "children": [
-        { "id": "seg-mine", "label": "Mine", "count": 1,
-          "menu": [
-            { "id": "rename-segment", "label": "Rename…", "input": "text" },
-            { "id": "segment-owner", "label": "Owner", "input": "choice", "options": ["any", "me", "unassigned"] },
-            { "id": "remove-segment", "label": "Remove Segment", "input": "none", "destructive": true }
-          ],
-          "containers": [
-            { "id": "4802", "title": "Kanban column view",
-              "badges": [ { "text": "BD", "color": "#2a9d8f", "title": "Board" } ], "meta": "3 pts" }
-          ] },
-        { "id": "seg-bugs", "label": "Bugs", "count": 1,
-          "containers": [
-            { "id": "4811", "title": "Wheel scrolling in the Active panel",
-              "badges": [ { "text": "BD", "color": "#2a9d8f", "title": "Board" } ], "meta": "1 pt" }
-          ] }
+    { "id": "ready/ready", "label": "Ready", "count": 1,
+      "menu": [
+        { "id": "rename", "label": "Rename…", "input": "text" },
+        { "id": "filter", "label": "Filter…", "input": "filter", "fields": [
+          { "id": "team", "label": "Team", "options": [
+              { "id": "board", "label": "Board", "color": "#2a9d8f" },
+              { "id": "native-app", "label": "Native App", "color": "#4f6bd8" } ],
+            "value": [ "board" ] },
+          { "id": "project", "label": "Project", "options": [
+              { "id": "30", "label": "Mobile App", "color": "#e5732a" } ],
+            "value": [], "inherited": "Mobile App" },
+          { "id": "epic", "label": "Epic", "options": [], "value": [], "loading": true },
+          { "id": "labels", "label": "Labels", "multi": true, "options": [
+              { "id": "bug", "label": "bug", "color": "#d64545" } ],
+            "value": [] } ] },
+        { "id": "remove", "label": "Remove Segment", "input": "none", "destructive": true }
+      ],
+      "containers": [
+        { "id": "4802", "title": "Kanban column view",
+          "badges": [ { "text": "BD", "color": "#2a9d8f", "title": "Board" } ], "meta": "3 pts" }
       ] },
     { "id": "done", "label": "Done", "count": 36, "lazy": true,
       "containers": [
         { "id": "4756", "title": "Pluggable plan storage",
-          "badges": [ { "text": "NA", "color": "#4f6bd8", "title": "Native App" } ], "meta": "5 pts" }
+          "badges": [ { "text": "MOB", "color": "#e5732a", "title": "Mobile App" } ], "meta": "5 pts" }
       ] }
+  ],
+  "menu": [
+    { "id": "refresh", "label": "Refresh", "input": "none" },
+    { "id": "new-segment", "label": "New Segment…", "input": "text" },
+    { "id": "filter", "label": "Filter…", "input": "filter", "fields": [ … ] }
   ]
 }
 ```
@@ -354,6 +390,19 @@ Response:
   after the title, in order; `external_url` backs "Open in <title>".
 - The tasks under each container are nat's, not the plugin's: gnat nests
   the plan's tasks under the row by container id.
+- `menu` (optional, top level) is the section header's menu for this
+  project, in place of `describe`'s static one — what lets the header carry
+  an action with per-project choices, a `filter`. Validated as any menu.
+  Absent, `describe`'s stands.
+- **A slow list belongs in the background.** `sidebar` is what a project
+  opening waits on, inside nat's 20 s kill, so a plugin should not fetch a
+  slow list (Shortcut's epics) on its path: it answers from its own cache,
+  marks a filter field it has nothing for `loading`, and fills the cache in
+  the background — Shortcut starts a detached child of itself (its own
+  session, its stdio `/dev/null`, not waited on, so nat's kill and nat's
+  wait on the call's pipes reach neither it nor the answer) and keeps that
+  `sidebar` answer out of its own response cache, so gnat's one re-read
+  finds the list. nat adds no method for this.
 
 ### `container`
 
@@ -426,8 +475,8 @@ Response:
 
 Run one of the plugin's own actions.
 
-Request adds `action` (an Action's `id`), `target` and, for `text` and
-`choice` actions, `input`:
+Request adds `action` (an Action's `id`), `target` and, for `text`,
+`choice` and `filter` actions, `input`:
 
 ```json
 { "project": { "id": "5f0c2b7e-8a41-4d3e-9a51-3c1d2e7f9b10", "name": "Work", "working_dir": "/Users/craig/work/app" },
@@ -446,7 +495,14 @@ Response:
   (`describe`'s `menu`), `{"group": id}` a group's, `{"container": id}` a
   container's menu or a section composer.
 - `input`: absent for `none`; the text for `text`; exactly one of
-  `options` for `choice`.
+  `options` for `choice`; for `filter`, a string holding a JSON object of
+  field id to the option ids chosen — every field named, an empty list
+  "Any" — so `input` stays one type on the wire:
+
+  ```json
+  { "action": "filter", "target": { "group": "ready/ready" },
+    "input": "{\"epic\":[],\"labels\":[\"bug\"],\"project\":[],\"team\":[\"board\"]}" }
+  ```
 - `message` (optional) is shown to the user (a toast in gnat; printed by
   `nat source-action`).
 - **nat re-reads `sidebar` after every action**, successful or not, and
@@ -603,14 +659,33 @@ project.
 ### `project-create --source`
 
 ```
-nat project-create <name> --source <plugin name> [--plan-dir <dir>] [--repo <url>] [--description -] …
+nat project-create <name> --source <plugin name> [--plan-dir <dir>] [--description -] …
 ```
 
 In order: the plugin must be discovered and `describe` with protocol 1
 (refused otherwise, before any write); then the plan file is written; then
 the config entry (backend `source`, `source: <plugin name>`, `plan_dir`
 as for a local project). Mutually exclusive with `--local`. Needs no
-Notion token. `--json` prints the project as `--local` does, with
+Notion token. **A source project has no working directory** — its cards
+come from anywhere, so the repository is each task's own (`Repo`) — and
+`--repo` is refused with `--source`.
+
+### New: `slice-repo`
+
+```
+nat slice-repo <slice> --repo <path> [--json] --project <id>
+```
+
+Records the repository a task is worked in (a directory; `~` expanded, made
+absolute). A Todo task takes it from anyone, one in progress only from its
+holder, a Done one from nobody; refused on a project whose plan is in
+Notion. A task launched with no repository on a project with none — a
+source project's — starts in the home directory with no worktree cut and no
+git read, and its prompt tells the agent to work the repository out from
+the card's facts and links (asking the user in the terminal where it
+cannot tell), record it with `slice-repo`, and cut the slice's worktree
+itself by nat's own naming. From then on relaunch, approve, merge and the
+merge's worktree removal all find it through the task's `Repo`. `--json` prints the project as `--local` does, with
 `"backend": "source"` and `"source": "<plugin name>"`.
 
 ### `info --json`
@@ -677,7 +752,8 @@ required, and `--container` is refused anywhere else. A container already
 in the plan is filed under directly; a new one is read with `container`
 first for its title (a blank title falls back to the id), and the add
 refused if that read fails (nat won't file under a container it can't
-name). Fires `created`.
+name). A task given no `--repo` starts from the repository of the
+container's latest task that has one. Fires `created`.
 
 ### `config-show`
 
@@ -848,18 +924,30 @@ a version that doesn't read that way is never newer.
 ## gnat
 
 - **Sidebar.** Projects with a `source` are pulled out of the project list
-  into **one top-level fold each**: plugin icon (`icon_svg`, else
-  `icon_symbol`), the project's name, the header `menu`. Inside, group
-  headers with `count` and their `menu` (actions → `source-action`; `text`
-  through a small sheet, `choice` through a submenu, `destructive`
+  into **one top-level fold each**, a section with its own scroll as Active,
+  Projects and Scratch are: plugin icon (`icon_svg`, else `icon_symbol`),
+  the plugin's `title`, the header `menu` (the `sidebar` response's, else
+  `describe`'s). Inside, group headers with `count` and their `menu`
+  (actions → `source-action`; `text` through a small sheet, `choice`
+  through a submenu, `filter` through the filter editor, `destructive`
   confirmed), one level of sub-groups, then container rows (title,
-  `badges`, `meta` on hover, `menu`, `+` → the New Task sheet with the
-  container preset) with the plan's tasks at depth 2 beneath. A `lazy`
-  group opens by re-reading `info --expand`. Active rows of a source's
-  tasks carry its `tag`.
-- **`+` menu.** One "New <title> project…" per discovered plugin
-  (`source-list`), opening a small sheet (name, working dir) →
-  `project-create --source`.
+  `badges`, `meta` on hover, `menu`, and under the pointer a `+` in the
+  badges' place → the New Task sheet with the container preset) with the
+  plan's tasks at depth 2 beneath. A `lazy` group opens by re-reading
+  `info --expand`. Active rows of a source's tasks carry its `tag`. Every
+  section but Active, folded, pins to the sidebar's foot under the open
+  ones.
+- **No `+` entry: connecting makes the section.** Once a plugin's `describe`
+  says every `setup` field is set (`set` never `false`; for Shortcut, the
+  token), gnat makes exactly one source project for it — `project-create
+  --source`, named after the plugin's `title`, with no working directory —
+  and its section appears. Checked whenever the plugins are read: at start
+  and after Settings ▸ Sources installs or sets one up. A plugin with a
+  project already gets nothing more.
+- **The section heading is the plugin's `title`**, upper-cased, never the
+  project's name, and nothing renames it; Rename and the filter editor are a
+  segment's. The header menu's Filter… and a segment's open the filter editor
+  as a popover anchored to the row.
 - **Container selected.** A third selection kind beside slices and
   sessions, mutually exclusive with both. Navigator: titlebar icon + tag +
   title; a facts card with **New task**; one section per `sections` entry
@@ -875,9 +963,12 @@ a version that doesn't read that way is never newer.
   field for `secret`, a text field for `text`, the
   hint as a caption, Save → `nat source-setup` with the value on stdin; the
   plugin's message or refusal inline, then `plugin-list` re-read).
-- **Gallery stories**: `sidebar-source`, `window-container`,
-  `window-container-comments`, `window-source-task-brief`,
-  `window-source-task-pr`, `new-source-project`, `settings-sources`.
+- **Gallery stories**: `sidebar-source`, `sidebar-source-hover`,
+  `sidebar-source-projects-open`, `sidebar-source-folded`,
+  `sidebar-source-all-folded`, `source-filter-popover`,
+  `source-filter-popover-section`, `source-filter-popover-loading`,
+  `window-container`, `window-container-comments`,
+  `window-source-task-brief`, `window-source-task-pr`, `settings-sources`.
 
 ## Edge cases
 
@@ -989,8 +1080,9 @@ read*, not code to run or port.
 
 - **Variants A and B are both superseded** by one top-level section per
   source, the plugin organising within (see *Alternatives considered*).
-- **The filters popover becomes a group menu** of `choice` actions (Owner,
-  Epic, Label, Type); nat draws no filter UI of its own.
+- **The filters popover is a `filter` action**: the plugin declares the
+  fields, their choices and the selection, and gnat draws one editor for
+  any plugin's — the section header's and each segment's.
 - **"Doing cards in Active" mode is not built.** Active stays flat task
   rows, each carrying the source tag.
 - **The status-bar crumb shows the container's title**, not its short id;

@@ -86,6 +86,57 @@ func TestValidateGroups(t *testing.T) {
 	}
 }
 
+func TestValidateFilterActions(t *testing.T) {
+	opts := []FilterOption{{ID: "a", Label: "A", Color: "#112233"}, {ID: "b", Label: "B"}}
+	filter := func(fields ...FilterField) []Group {
+		return []Group{{ID: "seg", Menu: []Action{{ID: "filter", Label: "Filter…", Input: InputFilter, Fields: fields}}}}
+	}
+	for _, tt := range []struct {
+		name   string
+		groups []Group
+		want   string
+	}{
+		{"a valid filter", filter(
+			FilterField{ID: "team", Label: "Team", Options: opts, Value: []string{"a"}},
+			FilterField{ID: "labels", Label: "Labels", Multi: true, Options: opts, Value: []string{"a", "b"}},
+			FilterField{ID: "epic", Label: "Epic", Options: nil, Value: nil},
+		), ""},
+		{"no fields", filter(), `group "seg"'s menu: filter action "filter": has no fields`},
+		{"a field with no id", filter(FilterField{Options: opts}), "a field has no id"},
+		{"a repeated field id", filter(FilterField{ID: "t"}, FilterField{ID: "t"}), `field id "t" is used more than once`},
+		{"an option with no id", filter(FilterField{ID: "t", Options: []FilterOption{{Label: "x"}}}), `field "t": an option has no id`},
+		{"a repeated option id", filter(FilterField{ID: "t", Options: []FilterOption{{ID: "a"}, {ID: "a"}}}), `option id "a" is used more than once`},
+		{"two selected, not multi", filter(FilterField{ID: "t", Options: opts, Value: []string{"a", "b"}}), `field "t" selects 2 options but is not multi`},
+		{"a selection not offered", filter(FilterField{ID: "t", Options: opts, Value: []string{"z"}}), `field "t" selects "z", which it does not offer`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGroups(tt.groups)
+			if tt.want == "" {
+				if err != nil {
+					t.Errorf("ValidateGroups() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("ValidateGroups() = %v, want it to say %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateSidebar(t *testing.T) {
+	if err := ValidateSidebar(Sidebar{Groups: []Group{{ID: "g"}}, Menu: []Action{{ID: "refresh", Input: InputNone}}}); err != nil {
+		t.Errorf("ValidateSidebar() = %v, want nil", err)
+	}
+	if err := ValidateSidebar(Sidebar{Groups: []Group{{ID: ""}}}); err == nil || !strings.Contains(err.Error(), "a group has no id") {
+		t.Errorf("ValidateSidebar() = %v, want the tree refused", err)
+	}
+	if err := ValidateSidebar(Sidebar{Menu: []Action{{ID: "filter", Input: InputFilter}}}); err == nil ||
+		!strings.Contains(err.Error(), `the sidebar menu: filter action "filter": has no fields`) {
+		t.Errorf("ValidateSidebar() = %v, want the menu refused", err)
+	}
+}
+
 func TestValidateContainer(t *testing.T) {
 	bad := Action{ID: "pick", Input: InputChoice}
 	good := Action{ID: "comment", Input: InputText}

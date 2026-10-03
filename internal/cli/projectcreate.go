@@ -69,6 +69,14 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	// A source project has no working directory: its cards come from all over,
+	// so the repository is each task's own (Repo), worked out by its agent.
+	if src != "" {
+		if *repo != "" {
+			return usageErrorf("project-create: --repo means nothing with --source: each of a source project's tasks names its own repository")
+		}
+		return projectCreateSource(ctx, env, src, name, info, *planDir, *asJSON)
+	}
 	workdir, err := workingDir(*repo)
 	if err != nil {
 		return err
@@ -76,9 +84,6 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 
 	if *local {
 		return projectCreateLocal(ctx, env, name, info, workdir, *planDir, *asJSON)
-	}
-	if src != "" {
-		return projectCreateSource(ctx, env, src, name, info, workdir, *planDir, *asJSON)
 	}
 
 	cfg, err := env.workspace()
@@ -187,13 +192,14 @@ func createPlanProject(ctx context.Context, env Env, entry config.ProjectConfig,
 // anything is written — a project over a plugin that cannot answer is one
 // whose every container read fails from its first. Then the plan file, then
 // the config entry, in projectCreateLocal's order and for its reason. No
-// Notion token is read.
-func projectCreateSource(ctx context.Context, env Env, srcName, name, conventions, workdir, planDir string, asJSON bool) error {
+// Notion token is read, and no working directory recorded: each task's
+// repository is its own.
+func projectCreateSource(ctx context.Context, env Env, srcName, name, conventions, planDir string, asJSON bool) error {
 	d, err := describePlugin(ctx, env, srcName)
 	if err != nil {
 		return fmt.Errorf("project-create: %w", err)
 	}
-	entry := config.ProjectConfig{Name: name, WorkingDir: workdir, Backend: config.BackendSource, Source: srcName}
+	entry := config.ProjectConfig{Name: name, Backend: config.BackendSource, Source: srcName}
 	id, dir, err := createPlanProject(ctx, env, entry, conventions, planDir)
 	if err != nil {
 		return err
@@ -201,15 +207,15 @@ func projectCreateSource(ctx context.Context, env Env, srcName, name, convention
 
 	if asJSON {
 		return writeJSON(env.Out, projectCreatedJSON{Project: createdProjectJSON{
-			ID: id, Name: name, WorkingDir: workdir, Backend: config.BackendSource, PlanDir: dir, Source: srcName,
+			ID: id, Name: name, Backend: config.BackendSource, PlanDir: dir, Source: srcName,
 		}})
 	}
-	_, err = io.WriteString(env.Out, sourceProjectCreatedMarkdown(id, name, workdir, dir, srcName, d.Title))
+	_, err = io.WriteString(env.Out, sourceProjectCreatedMarkdown(id, name, dir, srcName, d.Title))
 	return err
 }
 
 // sourceProjectCreatedMarkdown reports a source project as created.
-func sourceProjectCreatedMarkdown(id, name, workdir, planDir, srcName, title string) string {
+func sourceProjectCreatedMarkdown(id, name, planDir, srcName, title string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", name)
 	fmt.Fprintf(&b, "Created, with an empty plan kept in a file of nat's own, its tasks filed under %s's containers (nat-source-%s).\n\n",
@@ -218,7 +224,7 @@ func sourceProjectCreatedMarkdown(id, name, workdir, planDir, srcName, title str
 	if planDir != "" {
 		fmt.Fprintf(&b, "- Plan directory: %s\n", planDir)
 	}
-	fmt.Fprintf(&b, "- Working directory: %s\n", workdir)
+	b.WriteString("- Working directory: none — each task's agent works out its own repository\n")
 	fmt.Fprintf(&b, "- %s\n", switchNote)
 	return b.String()
 }

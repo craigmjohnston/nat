@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -112,34 +113,45 @@ func TestActionRefreshDropsCache(t *testing.T) {
 
 func TestActionSegments(t *testing.T) {
 	h := newHarness(t)
-	if got := h.act("new-segment", `{}`, "Board work"); !strings.Contains(got, "Added segment Board work") {
+	if got := h.act("new-segment", `{}`, "Board work"); !strings.Contains(got, "Added segment Board work, showing every unstarted story") {
 		t.Errorf("new-segment = %q", got)
 	}
 	h.act("new-segment", `{}`, "Board work")
 	segs := h.segments()
-	if len(segs) != 3 || segs[0].ID != "mine" || segs[1] != (settings.Segment{ID: "board-work", Name: "Board work", Query: "owner:me"}) || segs[2].ID != "board-work-2" {
+	if len(segs) != 3 || segs[0].ID != "ready" || segs[1].ID != "board-work" || segs[1].Name != "Board work" ||
+		!reflect.DeepEqual(segs[1].Filter, settings.Filter{}) || segs[2].ID != "board-work-2" {
 		t.Fatalf("segments = %+v", segs)
 	}
 
 	if got := h.act("rename", `{"group":"ready/board-work"}`, "Board"); !strings.Contains(got, "Renamed Board work to Board") {
 		t.Errorf("rename = %q", got)
 	}
-	if got := h.act("edit-query", `{"group":"ready/board-work"}`, "label:board"); !strings.Contains(got, "Board now shows label:board") {
-		t.Errorf("edit-query = %q", got)
+	filter := `{"team":["board"],"project":["30"],"epic":["10"],"labels":["diff"," ","agent"]}`
+	if got := h.act("filter", `{"group":"ready/board-work"}`, filter); !strings.Contains(got,
+		"Board now shows team board; project 30; epic 10; labels diff, agent") {
+		t.Errorf("filter = %q", got)
 	}
 	if got := h.act("remove", `{"group":"ready/board-work-2"}`, ""); !strings.Contains(got, "Removed segment Board work") {
 		t.Errorf("remove = %q", got)
 	}
 	segs = h.segments()
-	if len(segs) != 2 || segs[1] != (settings.Segment{ID: "board-work", Name: "Board", Query: "label:board"}) {
+	want := settings.Segment{ID: "board-work", Name: "Board", Filter: settings.Filter{Team: "board", Project: "30", Epic: "10", Labels: []string{"diff", "agent"}}}
+	if len(segs) != 2 || !reflect.DeepEqual(segs[1], want) {
 		t.Errorf("segments = %+v", segs)
 	}
 	// The renamed segment keeps its group id in the tree.
 	if got := tree(t, h.call("sidebar", `"expand":[]`)); !strings.Contains(got, "ready/board-work Board 0") {
 		t.Errorf("sidebar after edits:\n%s", got)
 	}
+	// An empty answer clears the filter back to every unstarted story.
+	if got := h.act("filter", `{"group":"ready/board-work"}`, `{"team":[],"labels":[]}`); !strings.Contains(got, "Board now shows every unstarted story") {
+		t.Errorf("filter cleared = %q", got)
+	}
+	if segs := h.segments(); !reflect.DeepEqual(segs[1].Filter, settings.Filter{}) {
+		t.Errorf("cleared filter = %+v", segs[1].Filter)
+	}
 	// Removing the last one leaves none, not the default back.
-	h.act("remove", `{"group":"ready/mine"}`, "")
+	h.act("remove", `{"group":"ready/ready"}`, "")
 	h.act("remove", `{"group":"ready/board-work"}`, "")
 	if segs := h.segments(); len(segs) != 0 {
 		t.Errorf("segments after removing all = %+v", segs)
@@ -158,8 +170,17 @@ func TestActionSegments(t *testing.T) {
 	if errs := h.actFail("rename", `{"group":"ready/x"}`, ""); errs != "shortcut: a segment needs a name" {
 		t.Errorf("rename blank: %q", errs)
 	}
-	if errs := h.actFail("edit-query", `{"group":"ready/x"}`, ""); errs != "shortcut: a segment needs a query" {
-		t.Errorf("edit-query blank: %q", errs)
+	for input, want := range map[string]string{
+		"":                      "shortcut: a filter is a JSON object of field ids to lists of choices",
+		"label:bug":             "shortcut: a filter is a JSON object of field ids to lists of choices",
+		`{"team":["a","b"]}`:    "shortcut: a segment's team is one choice, not 2",
+		`{"project":["1","2"]}`: "shortcut: a segment's project is one choice, not 2",
+		`{"epic":["1","2"]}`:    "shortcut: a segment's epic is one choice, not 2",
+		`{"owner":["me"]}`:      `shortcut: a segment has no filter field "owner"`,
+	} {
+		if errs := h.actFail("filter", `{"group":"ready/x"}`, input); errs != want {
+			t.Errorf("filter %q: %q, want %q", input, errs, want)
+		}
 	}
 	if errs := h.actFail("frobnicate", `{}`, ""); errs != `shortcut: unknown action "frobnicate"` {
 		t.Errorf("unknown: %q", errs)

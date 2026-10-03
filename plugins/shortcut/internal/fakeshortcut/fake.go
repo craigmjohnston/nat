@@ -1,6 +1,7 @@
 // Package fakeshortcut is an in-memory stand-in for the slice of the
 // Shortcut REST API v3 the plugin uses: the reads (member, members,
-// workflows, groups, one epic, one iteration, story search, one story) and the
+// workflows, groups, projects, labels, the epic list and one epic, one
+// iteration, story search, one story) and the
 // writes (comments, story updates, story tasks). It records every request it
 // is sent, so a test can assert the exact method, path and body, and it can
 // be told to fail any route with a status.
@@ -55,6 +56,8 @@ type Server struct {
 	Members    []shortcut.Member
 	Workflows  []shortcut.Workflow
 	Groups     []shortcut.Group
+	Projects   []shortcut.Project
+	Labels     []shortcut.Label
 	Epics      []shortcut.Epic
 	Iterations []shortcut.Iteration
 	Stories    map[int64]*shortcut.Story
@@ -160,6 +163,13 @@ func (s *Server) route(method, path string, req Request) (int, any) {
 		return 0, s.Workflows
 	case method == http.MethodGet && path == "/groups":
 		return 0, s.Groups
+	case method == http.MethodGet && path == "/projects":
+		return 0, s.Projects
+	case method == http.MethodGet && path == "/labels":
+		return 0, s.Labels
+	case method == http.MethodGet && path == "/epics":
+		// The slim list: an Epic here carries no description to leave out.
+		return 0, s.Epics
 	case method == http.MethodGet && len(parts) == 2 && parts[0] == "epics":
 		return found(s.Epics, parts[1], func(e shortcut.Epic) int64 { return e.ID })
 	case method == http.MethodGet && len(parts) == 2 && parts[0] == "iterations":
@@ -366,8 +376,29 @@ func (s *Server) term(st *shortcut.Story, t string) bool {
 		return slices.ContainsFunc(s.Epics, func(e shortcut.Epic) bool {
 			return e.ID == st.EpicID && (e.Name == val || strconv.FormatInt(e.ID, 10) == val)
 		})
+	case "project":
+		return slices.ContainsFunc(s.Projects, func(p shortcut.Project) bool {
+			return p.ID == st.ProjectID && (p.Name == val || strconv.FormatInt(p.ID, 10) == val)
+		})
+	case "completed":
+		return completedIn(st.CompletedAt.Time, val)
 	}
 	return false
+}
+
+// completedIn is whether t, a completion time, falls in the search's date
+// range `from..to` — each YYYY-MM-DD, or `*` for open — or on the one date
+// given alone. A story never completed is in no range.
+func completedIn(t time.Time, val string) bool {
+	if t.IsZero() {
+		return false
+	}
+	day := t.Format("2006-01-02")
+	from, to, isRange := strings.Cut(val, "..")
+	if !isRange {
+		return day == val
+	}
+	return (from == "*" || day >= from) && (to == "*" || day <= to)
 }
 
 func (s *Server) mention(memberID string) string {

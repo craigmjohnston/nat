@@ -55,6 +55,17 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   written. A fresh launch (Todo, nothing logged yet) writes nothing: its own
   claim is the log's first word. The write's own failure is logged
   (`logging.Action`) and never fails the launch.
+- **A source project's task with no repository** (`RepoUnknown`: the
+  project is `backend: source`, which has no working directory, and
+  `WorkdirFor` came back empty) is launched with no `PlaceAgent` and no git
+  snapshot: the session starts in the home directory and
+  `PromptContext.RepoUnknown` sends the agent to find, record (`nat
+  slice-repo`) and cut its own worktree. `LaunchDir` is `ExistingDir` with
+  that one case let through — the TUI's launch checks use it; every other
+  empty directory is still refused. Once the repo is recorded, relaunch,
+  approve (`slice-approve`), merge (`pr-merge`) and the TUI's worktree
+  removal all go through `WorkdirFor`, which never needs the project's own
+  directory then.
 - A non-fix launch of a slice with a `MilestoneID`, on a store answering
   `store.ContainerReader` (only `store.Sourced`), fills
   `PromptContext.Container` (`promptContainer`): title, URL, the prose

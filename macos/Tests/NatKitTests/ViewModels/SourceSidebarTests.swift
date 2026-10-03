@@ -32,7 +32,7 @@ final class SourceSidebarTests: XCTestCase {
         XCTAssertEqual(source.tag, "DM")
         XCTAssertEqual(source.icon, SourceIcon(symbol: "rectangle.on.rectangle.angled"))
         XCTAssertEqual(source.containerNoun, "card")
-        XCTAssertEqual(source.menu.map(\.id), ["refresh", "new-segment"])
+        XCTAssertEqual(source.menu.map(\.id), ["refresh", "new-segment", "filter"])
         XCTAssertTrue(model.sources[0].milestones.isEmpty)
     }
 
@@ -46,13 +46,12 @@ final class SourceSidebarTests: XCTestCase {
 
     func testGroupsKeepThePluginsShapeAndCounts() throws {
         let source = try XCTUnwrap(model().sources[0].source)
-        XCTAssertEqual(source.groups.map(\.id), ["doing", "ready", "done"])
-        XCTAssertEqual(source.groups.map(\.count), [2, 3, 36])
-        XCTAssertEqual(source.groups.map(\.lazy), [false, false, true])
-        XCTAssertEqual(source.groups[1].children.map(\.id), ["seg-mine", "seg-board"])
-        XCTAssertEqual(source.groups[1].children[0].menu.map(\.id), ["rename-segment", "segment-owner", "remove-segment"])
+        XCTAssertEqual(source.groups.map(\.id), ["doing", "ready/mine", "ready/board", "done"])
+        XCTAssertEqual(source.groups.map(\.count), [2, 1, 2, 4])
+        XCTAssertEqual(source.groups.map(\.lazy), [false, false, false, true])
+        XCTAssertEqual(source.groups[1].menu.map(\.id), ["rename", "filter", "remove"])
         XCTAssertEqual(source.groups[0].containers.map(\.id), [Fixtures.sourceCardID, Fixtures.sourceSecondCardID])
-        XCTAssertEqual(source.groups[2].containers, [], "a lazy group lists nothing until expanded")
+        XCTAssertEqual(source.groups[3].containers, [], "a lazy group lists nothing until expanded")
     }
 
     func testAContainersTasksAreThePlansSlicesFiledUnderItInPlanOrder() throws {
@@ -77,8 +76,8 @@ final class SourceSidebarTests: XCTestCase {
                 assignee: "", pr: "", url: "", blocked: false, handedBack: false)],
             source: Fixtures.sourceInfo())
         let source = try XCTUnwrap(model([input(plan)]).sources[0].source)
-        let mine = source.groups[1].children[0].containers[0]
-        let board = source.groups[1].children[1].containers[1]
+        let mine = source.groups[1].containers[0]
+        let board = source.groups[2].containers[1]
         XCTAssertEqual(mine.id, Fixtures.sourceMineCardID)
         XCTAssertEqual(mine, board)
         XCTAssertEqual(mine.tasks.map(\.sliceID), ["t-mine"])
@@ -111,7 +110,7 @@ final class SourceSidebarTests: XCTestCase {
         XCTAssertEqual(hidden.container(withID: Fixtures.sourceCardID)?.tasks.map(\.sliceID), [
             Fixtures.sourceWorkingTaskID, Fixtures.sourceReviewTaskID,
         ])
-        XCTAssertEqual(hidden.groups[1].children.count, 2, "the tree itself is kept")
+        XCTAssertEqual(hidden.groups.count, 4, "the tree itself is kept")
     }
 
     func testAFailedPluginDrawsItsErrorOverTheUnlistedGroupWithDefaults() throws {
@@ -148,7 +147,7 @@ final class SourceSidebarTests: XCTestCase {
         let model = model()
         var tree = CrumbTree(model: model, projectID: Fixtures.sourceProjectID)
         XCTAssertEqual(tree.projects.map(\.id), [Fixtures.projectID, Fixtures.sourceProjectID])
-        XCTAssertEqual(tree.entries.map(\.id), ["g:doing", "g:ready", "g:seg-mine", "g:seg-board", "g:done"])
+        XCTAssertEqual(tree.entries.map(\.id), ["g:doing", "g:ready/mine", "g:ready/board", "g:done"])
         XCTAssertNil(tree.containers)
         XCTAssertNil(tree.slices)
 
@@ -160,7 +159,7 @@ final class SourceSidebarTests: XCTestCase {
 
         tree.open(group: "doing")
         XCTAssertEqual(tree.container, Fixtures.sourceSecondCardID, "reopening the same group keeps its container")
-        tree.open(group: "seg-board")
+        tree.open(group: "ready/board")
         XCTAssertNil(tree.container)
         XCTAssertEqual(tree.containers?.map(\.id), [Fixtures.sourceBoardCardID, Fixtures.sourceMineCardID])
 
@@ -171,7 +170,7 @@ final class SourceSidebarTests: XCTestCase {
 
     func testAContainerCrumbOpensOnTheFirstGroupListingIt() {
         let tree = CrumbTree(model: model(), projectID: Fixtures.sourceProjectID, container: Fixtures.sourceMineCardID)
-        XCTAssertEqual(tree.group, "seg-mine")
+        XCTAssertEqual(tree.group, "ready/mine")
         XCTAssertEqual(tree.slices, [])
         let gone = CrumbTree(model: model(), projectID: Fixtures.sourceProjectID, container: "nope")
         XCTAssertNil(gone.group)

@@ -43,13 +43,61 @@ extension Fixtures {
     static let sourceNativeApp = SourceBadge(text: "NA", color: "#4f6bd8", title: "Native App")
     static let sourceBoard = SourceBadge(text: "BD", color: "#2a9d8f", title: "Board")
 
-    /// The menu every segment (a Ready child group) carries: one action of
-    /// each input kind, the last destructive.
-    public static let sourceSegmentMenu: [SourceAction] = [
-        SourceAction(id: "rename-segment", label: "Rename…", input: .text),
-        SourceAction(id: "segment-owner", label: "Owner", input: .choice, options: ["any", "me", "unassigned"]),
-        SourceAction(id: "remove-segment", label: "Remove Segment", input: .none, destructive: true),
+    // The workspace's choices a filter offers, as the Shortcut plugin sends
+    // them: teams by mention name, projects and epics by id, labels by name.
+    static let sourceTeamOptions = [
+        SourceFilterOption(id: "board", label: "Board", color: "#2a9d8f"),
+        SourceFilterOption(id: "native-app", label: "Native App", color: "#4f6bd8"),
     ]
+    static let sourceProjectOptions = [
+        SourceFilterOption(id: "30", label: "Mobile App", color: "#e5732a"),
+        SourceFilterOption(id: "31", label: "Web", color: "#8e8e93"),
+    ]
+    static let sourceEpicOptions = [
+        SourceFilterOption(id: "10", label: "Native app parity"),
+        SourceFilterOption(id: "12", label: "Review pane v3"),
+    ]
+    static let sourceLabelOptions = [
+        SourceFilterOption(id: "agent", label: "agent"),
+        SourceFilterOption(id: "diff", label: "diff", color: "#d64545"),
+        SourceFilterOption(id: "sidebar", label: "sidebar"),
+    ]
+
+    /// The section's own filter: every list narrowed to the Mobile App
+    /// project.
+    static let sourceSectionFilter = ["project": ["30"]]
+
+    /// A filter action's four fields over `selected`; `section` (a segment's)
+    /// names what each "Any" falls through to, and `epicsLoading` is the
+    /// plugin still fetching its epic list.
+    public static func sourceFilterAction(
+        _ selected: [String: [String]], section: [String: [String]]? = nil, epicsLoading: Bool = false
+    ) -> SourceAction {
+        func named(_ options: [SourceFilterOption], _ field: String) -> String? {
+            guard let ids = section?[field], !ids.isEmpty else { return nil }
+            return ids.map { id in options.first { $0.id == id }?.label ?? id }.joined(separator: ", ")
+        }
+        return SourceAction(id: "filter", label: "Filter…", input: .filter, fields: [
+            SourceFilterField(id: "team", label: "Team", options: sourceTeamOptions, value: selected["team"] ?? [],
+                              inherited: named(sourceTeamOptions, "team")),
+            SourceFilterField(id: "project", label: "Project", options: sourceProjectOptions,
+                              value: selected["project"] ?? [], inherited: named(sourceProjectOptions, "project")),
+            SourceFilterField(id: "epic", label: "Epic", options: epicsLoading ? [] : sourceEpicOptions,
+                              value: selected["epic"] ?? [], inherited: named(sourceEpicOptions, "epic"),
+                              loading: epicsLoading),
+            SourceFilterField(id: "labels", label: "Labels", multi: true, options: sourceLabelOptions,
+                              value: selected["labels"] ?? [], inherited: named(sourceLabelOptions, "labels")),
+        ])
+    }
+
+    /// A segment's menu: Rename, its filter over the section's, Remove.
+    public static func sourceSegmentMenu(_ filter: [String: [String]], epicsLoading: Bool = false) -> [SourceAction] {
+        [
+            SourceAction(id: "rename", label: "Rename…", input: .text),
+            sourceFilterAction(filter, section: sourceSectionFilter, epicsLoading: epicsLoading),
+            SourceAction(id: "remove", label: "Remove Segment", input: .none, destructive: true),
+        ]
+    }
 
     static let sourceCardMenu: [SourceAction] = [
         SourceAction(id: "unassign-me", label: "Remove Me as Owner"),
@@ -84,24 +132,26 @@ extension Fixtures {
     ]
 
     /// The plugin's tree, with the lazy Done group listing its cards only
-    /// where `expand` names it — as `info --expand done` reads it. The same
-    /// card sits under both segments, as segments are filters over one board.
-    public static func sourceGroups(expand: [String] = []) -> [SourceGroup] {
+    /// where `expand` names it — as `info --expand done` reads it. Each saved
+    /// segment is a top-level group between Doing and Done, and the same card
+    /// sits under both, as segments are filters over one board.
+    public static func sourceGroups(expand: [String] = [], epicsLoading: Bool = false) -> [SourceGroup] {
         [
             SourceGroup(id: "doing", label: "Doing", count: 2, containers: sourceDoingCards),
-            SourceGroup(id: "ready", label: "Ready", count: 3, children: [
-                SourceGroup(id: "seg-mine", label: "Mine", count: 1, menu: sourceSegmentMenu,
-                            containers: [sourceMineCard]),
-                SourceGroup(id: "seg-board", label: "Board", count: 2, menu: sourceSegmentMenu,
-                            containers: [sourceBoardCard, sourceMineCard]),
-            ]),
-            SourceGroup(id: "done", label: "Done", count: 36, lazy: true,
+            SourceGroup(id: "ready/mine", label: "Mine", count: 1,
+                        menu: sourceSegmentMenu(["team": ["board"]], epicsLoading: epicsLoading),
+                        containers: [sourceMineCard]),
+            SourceGroup(id: "ready/board", label: "Board", count: 2,
+                        menu: sourceSegmentMenu(["labels": ["sidebar"]], epicsLoading: epicsLoading),
+                        containers: [sourceBoardCard, sourceMineCard]),
+            SourceGroup(id: "done", label: "Done", count: 4, lazy: true,
                         containers: expand.contains("done") ? sourceDoneCards : []),
         ]
     }
 
-    /// `info --json`'s `source` for the Work project.
-    public static func sourceInfo(expand: [String] = []) -> SourceInfo {
+    /// `info --json`'s `source` for the Work project: the sidebar's own
+    /// header menu, with the section's filter, in place of describe's.
+    public static func sourceInfo(expand: [String] = [], epicsLoading: Bool = false) -> SourceInfo {
         SourceInfo(
             name: "demo", title: "Demo source", tag: "DM",
             iconSymbol: "rectangle.on.rectangle.angled",
@@ -109,8 +159,9 @@ extension Fixtures {
             menu: [
                 SourceAction(id: "refresh", label: "Refresh"),
                 SourceAction(id: "new-segment", label: "New Segment…", input: .text),
+                sourceFilterAction(sourceSectionFilter, epicsLoading: epicsLoading),
             ],
-            groups: sourceGroups(expand: expand)
+            groups: sourceGroups(expand: expand, epicsLoading: epicsLoading)
         )
     }
 
@@ -313,11 +364,14 @@ extension Fixtures {
         SourcePlugin(
             name: "demo",
             path: "/Users/craig/.config/notion-agent-tracker/plugins/demo/nat-source-demo",
+            // Not connected — its token unset — so a board started over a
+            // config with no demo project makes none (AppModel.ensureSourceProjects).
             describe: SourceDescribe(
                 name: "demo", title: "Demo source", tag: "DM",
                 iconSymbol: "rectangle.on.rectangle.angled",
                 containerNoun: "card", taskNoun: "task",
-                menu: [SourceAction(id: "refresh", label: "Refresh")]
+                menu: [SourceAction(id: "refresh", label: "Refresh")],
+                setup: [PluginSetupField(id: "token", label: "API token", input: "secret", set: false)]
             )
         ),
         SourcePlugin(

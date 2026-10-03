@@ -169,7 +169,7 @@ func TestProjectCreateSourceWritesThePlanThenTheConfig(t *testing.T) {
 	sp := newSourceProject(t, &source.Fake{})
 
 	entry := sp.saved.Projects[sp.id]
-	want := config.ProjectConfig{Name: "Work", WorkingDir: "/tmp/typed-here", Backend: config.BackendSource, Source: "demo", PlanDir: sp.planDir}
+	want := config.ProjectConfig{Name: "Work", Backend: config.BackendSource, Source: "demo", PlanDir: sp.planDir}
 	if entry != want {
 		t.Errorf("config entry = %+v, want %+v", entry, want)
 	}
@@ -198,6 +198,18 @@ func TestProjectCreateSourceWritesThePlanThenTheConfig(t *testing.T) {
 	if out := sp.run(t, "project-create", "Fourth", "--source", "demo"); !strings.Contains(out, "under demo's containers") ||
 		strings.Contains(out, "Plan directory") {
 		t.Errorf("text = %q", out)
+	}
+}
+
+// A source project takes no --repo: its tasks each name their own.
+func TestProjectCreateSourceRefusesARepo(t *testing.T) {
+	sp := newSourceProject(t, &source.Fake{})
+	err := sp.fail(t, "project-create", "Other", "--source", "demo", "--repo", "/src/app")
+	if err == nil || !strings.Contains(err.Error(), "--repo means nothing with --source") {
+		t.Errorf("err = %v, want --repo refused", err)
+	}
+	if len(sp.saved.Projects) != 1 {
+		t.Errorf("projects = %+v, want nothing more written", sp.saved.Projects)
 	}
 }
 
@@ -360,6 +372,17 @@ func TestInfoCarriesTheSourceAndItsUnlistedGroup(t *testing.T) {
 	}
 	if len(doc.Source.Groups) != 3 || fake.Expands[len(fake.Expands)-1] != nil {
 		t.Errorf("groups = %+v, expand = %v", doc.Source.Groups, fake.Expands[len(fake.Expands)-1])
+	}
+
+	// A sidebar that sends a header menu replaces describe's static one.
+	filter := source.Action{ID: "filter", Label: "Filter…", Input: source.InputFilter,
+		Fields: []source.FilterField{{ID: "team", Label: "Team", Options: []source.FilterOption{}, Value: []string{}}}}
+	fake.SidebarMenu = []source.Action{filter}
+	if err := json.Unmarshal([]byte(sp.run(t, "info", "--json", "--project", sp.id)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(doc.Source.Menu, []source.Action{filter}) {
+		t.Errorf("menu = %+v, want the sidebar's", doc.Source.Menu)
 	}
 }
 

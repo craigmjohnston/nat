@@ -77,8 +77,18 @@ type LaunchResult struct {
 // disagree about where the agent is.
 func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, viewer PRReviewReader, assigneeID string,
 	c agent.PromptContext, m config.AgentModel) (LaunchResult, error) {
-	p := PlaceAgent(w, r, c.WorkingDir, c.Slice)
-	if !p.OK {
+	var p Placement
+	if RepoUnknown(c.WorkingDir, c.Project) {
+		// A source project's task with no repository yet: there is nothing to
+		// cut a worktree from or read a branch of, so the session starts in the
+		// home directory and its prompt sends it to work the repository out,
+		// record it, and cut the worktree itself (agent.PromptContext.RepoUnknown).
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return LaunchResult{}, fmt.Errorf("launch agent: no home directory to start in: %w", err)
+		}
+		p, c.RepoUnknown = Placement{Dir: home, OK: true}, true
+	} else if p = PlaceAgent(w, r, c.WorkingDir, c.Slice); !p.OK {
 		return LaunchResult{Toast: p.Toast, Sev: p.Sev}, nil
 	}
 	c.WorkingDir, c.Branch, c.Repo = p.Dir, p.Branch, p.Repo
@@ -242,6 +252,24 @@ func WorkdirFor(s domain.Slice, p config.ProjectConfig) string {
 		return s.Repo
 	}
 	return p.WorkingDir
+}
+
+// RepoUnknown says whether a launch in dir has no repository to work in yet: a
+// source project, which has no working directory of its own, on a task that
+// has not recorded one ([WorkdirFor] came back empty). Every other project
+// with no directory is the plain mistake [ExistingDir] refuses.
+func RepoUnknown(dir string, p config.ProjectConfig) bool {
+	return strings.TrimSpace(dir) == "" && p.IsSource()
+}
+
+// LaunchDir validates where a slice's agent is launched: [ExistingDir], except
+// for the one launch with no directory at all — a source project's task whose
+// repository its agent has still to work out ([RepoUnknown]).
+func LaunchDir(dir string, p config.ProjectConfig) error {
+	if RepoUnknown(dir, p) {
+		return nil
+	}
+	return ExistingDir(dir)
 }
 
 // TrimModel is the model pair as a launch sends it: what the user typed, with

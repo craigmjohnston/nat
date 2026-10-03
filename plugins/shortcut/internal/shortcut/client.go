@@ -143,11 +143,30 @@ func (c *Client) Groups(ctx context.Context) ([]Group, error) {
 	return gs, c.do(ctx, http.MethodGet, "/groups", nil, &gs)
 }
 
-// Epic is GET /epics/{id}. The full list (GET /epics) is never read: on a
-// real workspace it runs to megabytes and seconds.
+// Projects is GET /projects — a short list, one per Shortcut project.
+func (c *Client) Projects(ctx context.Context) ([]Project, error) {
+	var ps []Project
+	return ps, c.do(ctx, http.MethodGet, "/projects", nil, &ps)
+}
+
+// Epic is GET /epics/{id}.
 func (c *Client) Epic(ctx context.Context, id int64) (Epic, error) {
 	var e Epic
 	return e, c.do(ctx, http.MethodGet, fmt.Sprintf("/epics/%d", id), nil, &e)
+}
+
+// Epics is GET /epics with includes_description=false — the slim list. With
+// the descriptions, a real workspace's list runs to megabytes and seconds;
+// without them it is ids and names, which is all a filter offers.
+func (c *Client) Epics(ctx context.Context) ([]Epic, error) {
+	var es []Epic
+	return es, c.do(ctx, http.MethodGet, "/epics?includes_description=false", nil, &es)
+}
+
+// Labels is GET /labels in its slim form.
+func (c *Client) Labels(ctx context.Context) ([]Label, error) {
+	var ls []Label
+	return ls, c.do(ctx, http.MethodGet, "/labels?slim=true", nil, &ls)
 }
 
 // Iteration is GET /iterations/{id}.

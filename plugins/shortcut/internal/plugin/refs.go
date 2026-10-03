@@ -18,14 +18,23 @@ import (
 )
 
 // refs is the workspace's reference data a response is drawn with: who's
-// who, what each workflow state is, the teams, epics and iterations. Each
-// method fetches only the parts it needs, all at once.
+// who, what each workflow state is, the teams, projects, epics, labels and
+// iterations. Each method fetches only the parts it needs, all at once.
+//
+// epics are the epics looked up one by one (a badge's, a fact's, a segment's);
+// epicList is the whole slim list a filter offers, read only from the cache
+// on the sidebar's path — epicsLoading says it had nothing to read there yet,
+// and a background fetch is filling it.
 type refs struct {
-	members    []shortcut.Member
-	workflows  []shortcut.Workflow
-	groups     []shortcut.Group
-	epics      []shortcut.Epic
-	iterations []shortcut.Iteration
+	members      []shortcut.Member
+	workflows    []shortcut.Workflow
+	groups       []shortcut.Group
+	projects     []shortcut.Project
+	epics        []shortcut.Epic
+	epicList     []shortcut.Epic
+	epicsLoading bool
+	labels       []shortcut.Label
+	iterations   []shortcut.Iteration
 }
 
 // parallel runs fns at once and returns the first error in argument order,
@@ -99,6 +108,26 @@ func lookup[T any](ctx context.Context, a *app, kind string, ids []int64, fetch 
 	return out
 }
 
+// listed reads a whole workspace list through the long cache: fresh, the
+// cached copy; else fetched and cached; a failed fetch falls back to a stale
+// copy, else to nothing — a filter offering fewer choices, never a failed call.
+func listed[T any](ctx context.Context, a *app, kind string, fetch func(context.Context) ([]T, error)) []T {
+	c, scope := a.refCache(), a.refScope()
+	body, fresh, ok := c.Get(scope, kind)
+	if !fresh {
+		if v, err := fetch(ctx); err == nil {
+			c.Put(scope, kind, marshal(v))
+			return v
+		}
+	}
+	var v []T
+	if ok {
+		// Our own marshalled list: it decodes.
+		_ = json.Unmarshal(body, &v)
+	}
+	return v
+}
+
 // into is a fetch for parallel: f's answer lands in dst.
 func into[T any](ctx context.Context, dst *T, f func(context.Context) (T, error)) func() error {
 	return func() error {
@@ -131,6 +160,14 @@ func (r *refs) group(id string) (shortcut.Group, bool) {
 		return shortcut.Group{}, false
 	}
 	return r.groups[i], true
+}
+
+func (r *refs) project(id int64) (shortcut.Project, bool) {
+	i := slices.IndexFunc(r.projects, func(p shortcut.Project) bool { return p.ID == id })
+	if id == 0 || i < 0 {
+		return shortcut.Project{}, false
+	}
+	return r.projects[i], true
 }
 
 func (r *refs) epic(id int64) (shortcut.Epic, bool) {
@@ -234,8 +271,29 @@ func code(mention, name string) string {
 	return b.String()
 }
 
-// badges is a story's one badge: its team, else its epic, else none.
+// hexOr is c, lower-cased, where it is a #rrggbb colour, else fallback.
+func hexOr(c, fallback string) string {
+	if hexColor.MatchString(c) {
+		return strings.ToLower(c)
+	}
+	return fallback
+}
+
+// projectCode is a Shortcut project's short tag: its abbreviation, else one
+// made from its name as a team's is.
+func projectCode(p shortcut.Project) string {
+	if p.Abbreviation != "" {
+		return p.Abbreviation
+	}
+	return code("", p.Name)
+}
+
+// badges is a story's one badge: its Shortcut project, else its team, else
+// its epic, else none.
 func (r *refs) badges(st shortcut.Story) []source.Badge {
+	if p, ok := r.project(st.ProjectID); ok {
+		return []source.Badge{{Text: projectCode(p), Color: hexOr(p.Color, neutral), Title: p.Name}}
+	}
 	if g, ok := r.group(st.GroupID); ok {
 		return []source.Badge{{Text: code(g.MentionName, g.Name), Color: teamColor(g), Title: g.Name}}
 	}
@@ -358,14 +416,161 @@ func withMe(query, mention string) string {
 	return strings.Join(terms, " ")
 }
 
-// withTeam is query restricted to the project's team, if one is set.
-func withTeam(query string, p *settings.Project) string {
-	if p.Team == "" {
-		return query
+// merged is a segment's filter over the section's: each field the segment
+// sets replaces the section's, and each it leaves empty ("Any") falls through
+// to it — labels as a whole, so a segment with any label replaces the
+// section's set, and one with none inherits it.
+func merged(section, segment settings.Filter) settings.Filter {
+	f := section
+	if segment.Team != "" {
+		f.Team = segment.Team
 	}
-	t := p.Team
-	if strings.ContainsAny(t, " \t") {
-		t = `"` + t + `"`
+	if segment.Project != "" {
+		f.Project = segment.Project
 	}
-	return query + " team:" + t
+	if segment.Epic != "" {
+		f.Epic = segment.Epic
+	}
+	if len(segment.Labels) > 0 {
+		f.Labels = segment.Labels
+	}
+	return f
+}
+
+// search is the one way a sidebar query is made: f's terms, then base (the
+// group's own — `owner:me is:started`, `!is:done`, …). A team by mention name,
+// a Shortcut project by id, an epic by name (the search takes an epic's
+// title, quoted for an exact match; r.epics has it looked up by id, and the
+// id itself stands in where it could not be), each label quoted.
+func (r *refs) search(f settings.Filter, base string) string {
+	var terms []string
+	if f.Team != "" {
+		terms = append(terms, "team:"+quoteSpaced(f.Team))
+	}
+	if f.Project != "" {
+		terms = append(terms, "project:"+f.Project)
+	}
+	if f.Epic != "" {
+		terms = append(terms, "epic:"+quoted(r.epicName(f.Epic)))
+	}
+	for _, l := range f.Labels {
+		terms = append(terms, "label:"+quoted(l))
+	}
+	return strings.Join(append(terms, base), " ")
+}
+
+// epicName is the name of the epic id names, as looked up, else id itself.
+func (r *refs) epicName(id string) string {
+	if n, err := strconv.ParseInt(id, 10, 64); err == nil {
+		if e, ok := r.epic(n); ok && e.Name != "" {
+			return e.Name
+		}
+	}
+	return id
+}
+
+// quoted is s as one quoted search value, any quote inside it dropped — the
+// search has no escape for one.
+func quoted(s string) string { return `"` + strings.ReplaceAll(s, `"`, "") + `"` }
+
+// quoteSpaced is s quoted only where it holds a space, as a mention name
+// never does.
+func quoteSpaced(s string) string {
+	if strings.ContainsAny(s, " \t") {
+		return quoted(s)
+	}
+	return s
+}
+
+// filterFields are a filter editor — the section's (wider nil) or a
+// segment's (wider the section's) — Team, Project, Epic and Labels, each
+// offering the workspace's unarchived choices with f's own selection. A saved
+// choice the workspace no longer offers is offered still, named as well as it
+// can be, so opening and saving the editor never drops it. Where wider sets a
+// field, the field says so (Inherited), since "Any" there means wider's
+// choice. The epic list is only what the cache held: with nothing there yet
+// the field says it is loading.
+func (r *refs) filterFields(f settings.Filter, wider *settings.Filter) []source.FilterField {
+	var teams, projects, epics, labels []source.FilterOption
+	for _, g := range r.groups {
+		if !g.Archived && g.MentionName != "" {
+			teams = append(teams, source.FilterOption{ID: g.MentionName, Label: g.Name, Color: teamColor(g)})
+		}
+	}
+	for _, p := range r.projects {
+		if !p.Archived {
+			projects = append(projects, source.FilterOption{ID: strconv.FormatInt(p.ID, 10), Label: p.Name, Color: hexOr(p.Color, neutral)})
+		}
+	}
+	for _, e := range r.epicList {
+		if !e.Archived {
+			epics = append(epics, source.FilterOption{ID: strconv.FormatInt(e.ID, 10), Label: e.Name})
+		}
+	}
+	for _, l := range r.labels {
+		if !l.Archived {
+			labels = append(labels, source.FilterOption{ID: l.Name, Label: l.Name, Color: hexOr(l.Color, "")})
+		}
+	}
+	one := func(v string) []string {
+		if v == "" {
+			return []string{}
+		}
+		return []string{v}
+	}
+	labelValue := append([]string{}, f.Labels...)
+	fields := []source.FilterField{
+		{ID: "team", Label: "Team", Options: offering(teams, one(f.Team), nil), Value: one(f.Team)},
+		{ID: "project", Label: "Project", Options: offering(projects, one(f.Project), nil), Value: one(f.Project)},
+		{ID: "epic", Label: "Epic", Options: offering(epics, one(f.Epic), r.epicName), Value: one(f.Epic), Loading: r.epicsLoading},
+		{ID: "labels", Label: "Labels", Multi: true, Options: offering(labels, labelValue, nil), Value: labelValue},
+	}
+	if wider != nil {
+		named := func(options []source.FilterOption, ids []string) string {
+			var names []string
+			for _, id := range ids {
+				i := slices.IndexFunc(options, func(o source.FilterOption) bool { return o.ID == id })
+				if i < 0 {
+					names = append(names, id)
+				} else {
+					names = append(names, options[i].Label)
+				}
+			}
+			return strings.Join(names, ", ")
+		}
+		fields[0].Inherited = named(teams, one(wider.Team))
+		fields[1].Inherited = named(projects, one(wider.Project))
+		if wider.Epic != "" {
+			fields[2].Inherited = r.epicName(wider.Epic)
+		}
+		fields[3].Inherited = named(labels, wider.Labels)
+	}
+	return fields
+}
+
+// filterAction is the Filter… action over fields.
+func filterAction(fields []source.FilterField) source.Action {
+	return source.Action{ID: "filter", Label: "Filter…", Input: source.InputFilter, Fields: fields}
+}
+
+// offering is options sorted by label, with every id in selected that it
+// lacks added — labelled by name(id), else by the id itself.
+func offering(options []source.FilterOption, selected []string, name func(string) string) []source.FilterOption {
+	out := slices.Clone(options)
+	for _, id := range selected {
+		if !slices.ContainsFunc(out, func(o source.FilterOption) bool { return o.ID == id }) {
+			label := id
+			if name != nil {
+				label = name(id)
+			}
+			out = append(out, source.FilterOption{ID: id, Label: label})
+		}
+	}
+	slices.SortStableFunc(out, func(x, y source.FilterOption) int {
+		return strings.Compare(strings.ToLower(x.Label), strings.ToLower(y.Label))
+	})
+	if out == nil {
+		out = []source.FilterOption{}
+	}
+	return out
 }

@@ -18,7 +18,8 @@ func TestFakeAnswersFromItsCannedValues(t *testing.T) {
 	if d, err := f.Describe(ctx, testProject); err != nil || d.Name != "sc" {
 		t.Errorf("Describe() = %+v, %v", d, err)
 	}
-	if g, err := f.Sidebar(ctx, testProject, []string{"done"}); err != nil || !reflect.DeepEqual(g, f.Groups) {
+	f.SidebarMenu = []Action{{ID: "filter", Input: InputFilter}}
+	if g, err := f.Sidebar(ctx, testProject, []string{"done"}); err != nil || !reflect.DeepEqual(g, Sidebar{Groups: f.Groups, Menu: f.SidebarMenu}) {
 		t.Errorf("Sidebar() = %+v, %v", g, err)
 	}
 	if d, err := f.Container(ctx, testProject, "c1"); err != nil || d.Title != "Card" {
