@@ -26,8 +26,8 @@ import (
 )
 
 // TokenMissing is the line every method but describe and setup fails with
-// when there is no token. nat shows it in gnat word for word — under the
-// plugin in Settings ▸ Sources, among other places — so it says how to fix it.
+// when there is no token. nat shows it in gnat word for word — a source
+// project's sidebar error, say — so it says how to fix it.
 const TokenMissing = "Shortcut token missing — set it in gnat's Settings ▸ Sources or run nat-source-shortcut login"
 
 // errTokenMissing carries TokenMissing as an error. It is capitalised

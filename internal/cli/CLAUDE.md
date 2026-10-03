@@ -15,7 +15,10 @@ config as no extra sources and no projects. `plugin-list` then describes
 each installed plugin through `Env.NewSource` (`describeInstalled`): its
 entry gains `setup` (always an array) and `describe_error` — the plugin's
 own first stderr line (`*source.ExitError`), else nat's error — so gnat
-draws a setup form and its "token missing" warning from one read.
+draws a setup form and why a plugin is broken from one read. (`describe`
+needs no credential, so a missing token is not a describe failure: the
+Shortcut plugin's "token missing" shows up in a source project's
+`source.error`, not here.)
 
 `source-setup <plugin> --id <id>` reads the value from **stdin only** (all
 of it, one trailing `\n`/`\r\n` trimmed — never a flag, so a token is never

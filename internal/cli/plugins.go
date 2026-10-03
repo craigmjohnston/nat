@@ -82,7 +82,7 @@ type pluginListingJSON struct {
 // fields — always a list, empty where it has none or would not describe —
 // and DescribeError, the line a failed describe answered (the plugin's own
 // first stderr line where it wrote one), so gnat draws a plugin's setup form
-// and its "token missing" warning from one read.
+// and why it is broken from one read.
 type installedPluginJSON struct {
 	plugins.Installed
 	Setup         []source.SetupField `json:"setup"`
@@ -107,9 +107,8 @@ func describeInstalled(ctx context.Context, env Env, l plugins.Listing) pluginLi
 }
 
 // describeErrorLine is what a failed describe said: the plugin's own first
-// stderr line when it exited non-zero — "Shortcut token missing — …", with no
-// "nat-source-<name> describe:" in front of it — else the failure as nat
-// worded it.
+// stderr line when it exited non-zero, with no "nat-source-<name> describe:"
+// in front of it, else the failure as nat worded it.
 func describeErrorLine(err error) string {
 	var exitErr *source.ExitError
 	if errors.As(err, &exitErr) {
