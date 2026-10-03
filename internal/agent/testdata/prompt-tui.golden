@@ -13,6 +13,8 @@ This slice is already claimed for Craig Johnston: the board claims a slice as
 it launches the agent for it, so there is nothing to run before starting
 work. What follows is your brief: the slice's own body and acceptance
 criteria, then the conventions that apply to every slice of the project.
+The body may end in `Note` sections that earlier sessions left for
+whoever worked the slice next: they are part of the brief.
 
 Claude Code has already loaded git status into this session's context —
 branch, working-tree state, recent commits — so there is no need to run
@@ -76,6 +78,31 @@ pull request from the board once they have reviewed it.
 If the work is not code — docs, research, written-up findings — produce
 the deliverable the brief asks for and link it in the summary below.
 
+## Notes for later slices
+
+If this session finds out something a *later* slice needs to know — a
+constraint, a seam that moved, an assumption in another slice's brief
+that is no longer true — leave a note on that slice, named by its name:
+
+    nat slice-note '<slice name>' --from 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+        --note '<what it needs to know, and why>'
+
+Add `--milestone '<milestone name>'` where that name is filed under more
+than one milestone, and `--note -` to pipe a long note in. The note ends
+that slice's brief, with where it came from written by nat, so whoever
+works it next reads it as part of the brief. A note is never work to be
+done — that is a follow-up, not a note — and never goes on a Done slice.
+
+## Naming slices
+
+Refer to another slice only by its name, adding its milestone's name
+where the name alone is ambiguous — never by a number, an index, a
+position in a list, a page ID, a URL, or any id of another tracker (a
+card number, an issue key). Names are what every reading of the plan
+shows; the rest is the tracker's own or a plugin's, which the next reader
+may not have. This holds for everything you write: summaries, PR
+descriptions, follow-up briefs, notes, proposal briefs.
+
 ## Finish
 
 If what you changed is visible — a pane, a page, a rendered component —
@@ -136,5 +163,6 @@ in progress, so nobody else picks it up on top of your work:
 - One slice per session. Never pick up another when this one is done.
 - The `nat` commands are the only way to record anything about the slice.
 - Every one of them carries `--project 3b738308-f654-8117-9f2e-c3b0a9b7f001`.
-- Never touch other slices, other milestones, or the plan itself.
+- Never touch other slices, other milestones, or the plan itself, beyond
+  a note on a later slice's brief.
 - Never open or merge a pull request, and never push to the main branch.

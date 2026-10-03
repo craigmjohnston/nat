@@ -256,6 +256,8 @@ public enum ThreadEventKind: Equatable, Sendable {
     case blocked
     /// Follow-ups the agent proposed, and what became of each.
     case followUps
+    /// A note left on the brief, from another slice or a person.
+    case note
     case approved
     case merged
     /// Closed straight to Done with no branch.
@@ -315,7 +317,7 @@ public func agentFacts(_ agent: AgentStatus?) -> (model: [ThreadFact], context: 
 /// The Task log, built only from what nat reports: the live agent's own
 /// statusline reading (model, effort, context), the slice's recorded branch,
 /// and `events` — `slice-show`'s ordered record of every hand-back, send-back,
-/// release, relaunch and proposal of follow-ups on the slice's page, then
+/// release, relaunch, note and proposal of follow-ups on the slice's page, then
 /// its approve and merge. The design's launch time, token count, files
 /// touched, current tool and merged-by have no source in nat yet, and are
 /// left out rather than made up.
@@ -328,8 +330,11 @@ public func buildThreadEvents(
 ) -> [ThreadEvent] {
     let state = displayState(
         for: slice, agent: agent.map { AgentActivity($0.activity) }, fixLaunched: false)
-    // A released slice is back to do, and its history is still its own.
-    guard state.isLaunched || agent != nil || !(events ?? []).isEmpty else { return [] }
+    // A released slice is back to do, and its history is still its own. Notes
+    // alone are not history: one left on a slice never launched is read in its
+    // brief, and opens no log of launches that never happened.
+    let history = (events ?? []).contains { $0.kind != .note }
+    guard state.isLaunched || agent != nil || history else { return [] }
 
     let branch = (slice.branch ?? "").isEmpty ? nil : slice.branch
     let reading = agentFacts(agent)
@@ -383,6 +388,9 @@ private func threadEvent(_ event: TaskLogEvent) -> ThreadEvent {
                 followUp.decision.map { ThreadFact(followUpDecisionWord($0), followUp.title) }
             },
             awaitsTriage: pending)
+    case .note:
+        return ThreadEvent(.note, who: event.by.flatMap { $0.isEmpty ? nil : $0 } ?? "Note",
+                           meta: "left a note", body: note)
     case .approved:
         let pr = event.pr ?? ""
         if let number = pullRequestNumber(pr) {

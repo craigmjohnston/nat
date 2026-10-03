@@ -54,6 +54,16 @@ revise it in conversation and run `nat plan-propose` again — the same
 workspace id replaces the proposal already there rather than adding a
 second one.
 
+## Naming slices
+
+Refer to another slice only by its name, adding its milestone's name
+where the name alone is ambiguous — never by a number, an index, a
+position in a list, a page ID, a URL, or any id of another tracker (a
+card number, an issue key). Names are what every reading of the plan
+shows; the rest is the tracker's own or a plugin's, which the next reader
+may not have. This holds for everything you write: summaries, PR
+descriptions, follow-up briefs, notes, proposal briefs.
+
 ## Guardrails
 
 - Plan only. Never claim, start, or complete a slice — there is no

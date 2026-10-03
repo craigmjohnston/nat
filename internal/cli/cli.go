@@ -509,6 +509,12 @@ usage:
                       for the user to review in the app: each value's first
                       line what it shows, the next the image's path or URI. A
                       later hand-in replaces an earlier one; nothing waits on it
+  nat slice-note <slice> --note TEXT|- [--from SLICE] [--milestone NAME] --project ID
+                      append a note to a Todo or in-progress slice's brief, for
+                      whoever works it later: the slice named by name (with
+                      --milestone where the name is filed under more than one),
+                      URL or ID. nat writes where it came from — the --from
+                      slice by name and milestone, else you
   nat slice-rework <slice> [--comments TEXT] --project ID
                       take a handed-back slice back out of review: its branch is
                       cleared and nothing else, so it reads as in progress until
@@ -674,6 +680,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceTriage(ctx, args[1:], env)
 	case "slice-visuals":
 		return sliceVisuals(ctx, args[1:], env)
+	case "slice-note":
+		return sliceNote(ctx, args[1:], env)
 	case "release-slice":
 		return releaseSlice(ctx, args[1:], env)
 	case "pr-view":

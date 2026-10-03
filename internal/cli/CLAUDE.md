@@ -173,9 +173,19 @@ once, or `--drop-all` alone; refuses a Todo slice, nothing pending, and any
 nudges, then sends one message — a failed send exits non-zero with the
 record standing). See root CLAUDE.md's Follow-ups rule.
 
+`slice-note <slice> --note TEXT|- [--from <slice>] [--milestone NAME]`
+(Todo/In progress slices, anyone's): the target by ID/URL (`pageID`) or by
+name (`sliceResolver` — trimmed, case-insensitive, as plan-apply resolves a
+`depends_on`; `--milestone` narrows, and is refused beside an ID). Refuses an
+empty note, an unknown or ambiguous name (listing the matches with their
+milestones), Done, an unreadable body, and an unreadable `--from` — all before
+`Store.RecordNote`. Provenance is `fromSlice` (`From "<name>" (<milestone>)`)
+or `fromPerson` (the config's assignee name), never an ID; `slice-triage`'s
+queued-follow-up line is `fromSlice` too. See root CLAUDE.md's Notes rule.
+
 `slice-show --json`'s `events` is the slice's whole task log: every
 `store.TaskEvent` its body carries (`handed_back`/`sent_back`/`relaunched`/
-`released`/`blocked`/`summary`/`follow_ups`), in body order, plus — read off
+`released`/`blocked`/`summary`/`follow_ups`/`note`), in body order, plus — read off
 the slice's properties rather than its body — an `approved` event where a
 pull request is recorded and a `merged` event where the slice is Done with a
 pull request or branch recorded. Always an array, never `omitempty`: the app

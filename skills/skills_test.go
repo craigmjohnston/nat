@@ -384,3 +384,39 @@ func TestPlanningSkillsDraftStructuredBriefs(t *testing.T) {
 		}
 	}
 }
+
+// Every embedded skill — a skill added later included — carries the naming
+// rule the prompts carry, since each one has an agent write about slices.
+// Wrapping differs between a skill and a prompt, so whitespace is compared
+// collapsed.
+func TestEverySkillCarriesTheNamingRule(t *testing.T) {
+	const rule = "Refer to another slice only by its name, adding its milestone's name where the " +
+		"name alone is ambiguous — never by a number, an index, a position in a list, a " +
+		"page ID, a URL, or any id of another tracker (a card number, an issue key)."
+	entries, err := fs.ReadDir(FS(), ".")
+	if err != nil {
+		t.Fatalf("read the embedded skills: %v", err)
+	}
+	for _, e := range entries {
+		body, err := fs.ReadFile(FS(), e.Name()+"/SKILL.md")
+		if err != nil {
+			t.Errorf("read the %s skill: %v", e.Name(), err)
+			continue
+		}
+		if !strings.Contains(strings.Join(strings.Fields(string(body)), " "), rule) {
+			t.Errorf("the %s skill does not carry the naming rule", e.Name())
+		}
+	}
+}
+
+// /next-slice tells its agent how to leave a note on a later slice, from its
+// own, as the slice prompt does.
+func TestNextSliceCarriesTheNoteCommand(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the skill: %v", err)
+	}
+	if !strings.Contains(string(body), "nat slice-note '<slice name>' --from <slice> --project <project>") {
+		t.Error("the next-slice skill does not carry the note command")
+	}
+}

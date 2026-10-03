@@ -12,6 +12,12 @@ import (
 // relaunch always reads the same whichever store wrote it.
 const relaunchedLine = "Relaunched to pick up the work so far."
 
+// noteText is a Note section's content: the provenance paragraph, then the
+// note — one rule, so both backends write the same section.
+func noteText(from, text string) string {
+	return from + "\n\n" + text
+}
+
 // RecordSentBack files review comments on the slice page under a heading of
 // their own, in one append. Comments go on before `slice-rework`'s own
 // [Notion.ClearBranch] — the same order a hand-back's own note goes on before
@@ -24,6 +30,16 @@ func (n *Notion) RecordSentBack(ctx context.Context, id, comments string) error 
 		return err
 	}
 	logging.Action("slice sent back", "slice", id)
+	return nil
+}
+
+// RecordNote files a note on the slice page under a heading of its own, its
+// provenance the first paragraph, in one append.
+func (n *Notion) RecordNote(ctx context.Context, id, from, text string) error {
+	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.NoteHeading, noteText(from, text))); err != nil {
+		return err
+	}
+	logging.Action("slice noted", "slice", id)
 	return nil
 }
 
@@ -47,6 +63,16 @@ func (l *Local) RecordSentBack(ctx context.Context, id, comments string) error {
 	return nil
 }
 
+// RecordNote appends the note to the slice's body, in the markdown Notion
+// would render the same section to.
+func (l *Local) RecordNote(ctx context.Context, id, from, text string) error {
+	if err := l.appendToBody(ctx, id, "note the slice", notion.NoteHeading, noteText(from, text)); err != nil {
+		return err
+	}
+	logging.Action("slice noted", "slice", id)
+	return nil
+}
+
 // RecordRelaunch appends the relaunch's one fixed line to the slice's body.
 func (l *Local) RecordRelaunch(ctx context.Context, id string) error {
 	if err := l.appendToBody(ctx, id, "relaunch the slice", notion.RelaunchedHeading, relaunchedLine); err != nil {
@@ -63,6 +89,15 @@ func (m *Mirrored) RecordSentBack(ctx context.Context, id, comments string) erro
 		return err
 	}
 	m.push(ctx, id, func() error { return m.remote.RecordSentBack(ctx, id, comments) })
+	return nil
+}
+
+// RecordNote files the note locally, then pushes it to the workspace.
+func (m *Mirrored) RecordNote(ctx context.Context, id, from, text string) error {
+	if err := m.local.RecordNote(ctx, id, from, text); err != nil {
+		return err
+	}
+	m.push(ctx, id, func() error { return m.remote.RecordNote(ctx, id, from, text) })
 	return nil
 }
 

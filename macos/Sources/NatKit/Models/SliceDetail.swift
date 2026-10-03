@@ -137,15 +137,18 @@ public struct TaskLogEvent: Codable, Equatable, Sendable {
         case blocked
         case summary
         case followUps = "follow_ups"
+        /// A note left on the brief with `nat slice-note`.
+        case note
         case approved
         case merged
     }
 
     public let kind: Kind
     /// The section's own text: a hand-back's note, the comments sent back,
-    /// a blocked or closing summary.
+    /// a blocked or closing summary, a note's text without its provenance.
     public let note: String?
-    /// Who released it.
+    /// Who released it, or who a note came from — a slice by name and
+    /// milestone, or a person.
     public let by: String?
     /// The pull request an approve opened.
     public let pr: String?

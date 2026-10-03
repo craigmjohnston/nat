@@ -51,15 +51,40 @@ be measured against:
 
     nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
-That and the `slice-visuals` command below are the only `nat` commands
-this session has any business running, and both name the project the way
-every other one does:
+That and the two commands below, `slice-note` and `slice-visuals`, are
+the only `nat` commands this session has any business running, and each
+names the project the way every other one does:
 
     --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
 A command given no project is refused: there is nothing for it to fall
 back to, and in particular not the project the user's board is on,
 which they can switch while you work.
+
+## Notes for later slices
+
+If this session finds out something a *later* slice needs to know — a
+constraint, a seam that moved, an assumption in another slice's brief
+that is no longer true — leave a note on that slice, named by its name:
+
+    nat slice-note '<slice name>' --from 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+        --note '<what it needs to know, and why>'
+
+Add `--milestone '<milestone name>'` where that name is filed under more
+than one milestone, and `--note -` to pipe a long note in. The note ends
+that slice's brief, with where it came from written by nat, so whoever
+works it next reads it as part of the brief. A note is never work to be
+done — that is a follow-up, not a note — and never goes on a Done slice.
+
+## Naming slices
+
+Refer to another slice only by its name, adding its milestone's name
+where the name alone is ambiguous — never by a number, an index, a
+position in a list, a page ID, a URL, or any id of another tracker (a
+card number, an issue key). Names are what every reading of the plan
+shows; the rest is the tracker's own or a plugin's, which the next reader
+may not have. This holds for everything you write: summaries, PR
+descriptions, follow-up briefs, notes, proposal briefs.
 
 ## Finish
 
@@ -92,7 +117,7 @@ read the review's state off your last message.
   one is done.
 - Never change the slice on the tracker beyond handing in renders of your
   fixes: it is done, and its record of what happened is not yours to
-  rewrite.
+  rewrite. A note goes on a later slice, never on this one.
 - `gh pr view` and `gh pr checks` are the only `gh` you may run.
 - Never open, merge, close or reopen a pull request, and never push to
   the main branch.

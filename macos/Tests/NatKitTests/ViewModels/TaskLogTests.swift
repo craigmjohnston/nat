@@ -43,6 +43,16 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(detail.events?[3].pr, prURL)
     }
 
+    func testANoteDecodesWithWhoItCameFrom() throws {
+        let json = """
+        {"id": "s", "name": "n", "url": "", "status": "Todo", "milestone": "M1", "assignee": "",
+         "blocked": false, "handed_back": false, "brief": "",
+         "events": [{"kind": "note", "note": "The seam moved.", "by": "\\"Draw it\\" (M2)"}]}
+        """
+        let detail = try JSONDecoder().decode(SliceDetail.self, from: Data(json.utf8))
+        XCTAssertEqual(detail.events, [TaskLogEvent(.note, note: "The seam moved.", by: "\"Draw it\" (M2)")])
+    }
+
     func testAReadingWithNoEventsHasNone() throws {
         let json = """
         {"id": "s", "name": "n", "url": "", "status": "Todo", "milestone": "M1", "assignee": "",
@@ -72,6 +82,29 @@ final class TaskLogTests: XCTestCase {
         ])
         XCTAssertEqual(followUps?.awaitsTriage, false)
         XCTAssertEqual(log.first { $0.kind == .approved }?.facts, [ThreadFact("pr", "#101"), ThreadFact("into", "main")])
+    }
+
+    func testANoteIsDrawnAsItsOwnCardLabelledWithWhoItCameFrom() {
+        let log = buildThreadEvents(
+            slice: slice(status: "In progress"), agent: nil, brief: nil, events: Fixtures.notedTaskLogEvents)
+
+        XCTAssertEqual(log.map(\.kind), [.launched, .note, .handedBack, .sentBack, .note])
+        XCTAssertEqual(log[1], ThreadEvent(
+            .note, who: "\"Bootstrap the SwiftUI shell\" (M1: Foundations)", meta: "left a note",
+            body: Fixtures.notedTaskLogEvents[0].note))
+        XCTAssertEqual(log[4].who, "Craig Johnston")
+        let anonymous = buildThreadEvents(
+            slice: slice(status: "In progress"), agent: nil, brief: nil, events: [TaskLogEvent(.note, note: "n")])
+        XCTAssertEqual(anonymous.last?.who, "Note")
+    }
+
+    /// Notes left on a slice never launched are read in its brief; they open
+    /// no log of a launch that never happened.
+    func testNotesAloneOnASliceNeverLaunchedOpenNoLog() {
+        let log = buildThreadEvents(
+            slice: slice(status: "Todo"), agent: nil, brief: nil,
+            events: [TaskLogEvent(.note, note: "n", by: "Craig")])
+        XCTAssertEqual(log, [])
     }
 
     func testTheLiveAgentSitsAfterWhatThePageRecordsAndBeforeTheApprove() {

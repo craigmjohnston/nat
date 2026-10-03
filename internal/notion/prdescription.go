@@ -34,6 +34,11 @@ const (
 	RelaunchedHeading = "Relaunched"
 )
 
+// NoteHeading is the heading `slice-note` files a note under: a paragraph of
+// provenance nat composed, then the note as it was given. Matched as
+// PRDescriptionHeading is, and read back by store.TaskEvents.
+const NoteHeading = "Note"
+
 // PRDescriptionOf is the pull request description an agent left on a slice
 // page: the blocks between its PR description heading and the next heading of
 // the same or higher level, rendered as markdown. A page with no such heading —

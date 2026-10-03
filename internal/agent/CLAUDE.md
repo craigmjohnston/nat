@@ -42,6 +42,10 @@ running agent's state.
   CLI, and the prompts say so as well as doing it. **One test walks every
   template for an unpinned `nat` invocation** — do not add a new templated
   command without pinning `--project`.
+- `namingPassage` (refer to another slice only by name) is in every slice,
+  fix, plan and new-project prompt, and `notesPassage` (`nat slice-note
+  --from <own slice ID>`) in every slice and fix prompt; tests walk each
+  template for them. The skills carry the same words in their own copies.
 - The `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
   worktree path are derived — `actions.SliceBranch`, `worktree.pathSlug`,
   `git.CLI.Base`) is spelled out **verbatim** in this package's prompts and in

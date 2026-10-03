@@ -161,6 +161,12 @@ func (s *Sourced) RecordSentBack(ctx context.Context, id, comments string) error
 	return s.local.RecordSentBack(ctx, id, comments)
 }
 
+// RecordNote files a note in the file. A note is body prose, so the plugin
+// hears nothing of it.
+func (s *Sourced) RecordNote(ctx context.Context, id, from, text string) error {
+	return s.local.RecordNote(ctx, id, from, text)
+}
+
 // RecordRelaunch files a relaunch line in the file.
 func (s *Sourced) RecordRelaunch(ctx context.Context, id string) error {
 	return s.local.RecordRelaunch(ctx, id)

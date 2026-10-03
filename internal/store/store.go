@@ -237,6 +237,10 @@ type Store interface {
 	// Sent back heading, which `slice-rework` writes before it clears the
 	// slice's Branch — the task-log counterpart of a hand-back's own note.
 	RecordSentBack(ctx context.Context, id, comments string) error
+	// RecordNote files a note on a slice's brief under a Note heading: from,
+	// the provenance the caller already composed, as its first paragraph and
+	// text after it — for whoever works the slice later to read as part of it.
+	RecordNote(ctx context.Context, id, from, text string) error
 	// RecordRelaunch files one fixed line under a Relaunched heading, which
 	// [actions.Launch] writes when a session is picked back up rather than
 	// starting fresh.

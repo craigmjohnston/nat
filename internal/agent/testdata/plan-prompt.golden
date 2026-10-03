@@ -38,6 +38,16 @@ plan:
 - `nat slice-add <title> --milestone <name> [--description -] --project 3b738308-f654-8117-9f2e-c3b0a9b7f001`
   — one new Todo slice, its brief read from stdin
 
+## Naming slices
+
+Refer to another slice only by its name, adding its milestone's name
+where the name alone is ambiguous — never by a number, an index, a
+position in a list, a page ID, a URL, or any id of another tracker (a
+card number, an issue key). Names are what every reading of the plan
+shows; the rest is the tracker's own or a plugin's, which the next reader
+may not have. This holds for everything you write: summaries, PR
+descriptions, follow-up briefs, notes, proposal briefs.
+
 ## Guardrails
 
 - Plan only. Never claim, start, or complete a slice — launching work is

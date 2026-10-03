@@ -160,6 +160,38 @@ extension Fixtures {
         sliceDetails.merging([shellSliceID: taskLogSliceDetail]) { _, new in new }
     }
 
+    /// An in-progress slice with notes left on its brief: one from the shell
+    /// slice before it was launched, one from Craig after its first
+    /// hand-back was sent back — `slice-show`'s `events` for it, in order.
+    public static let notedTaskLogEvents: [TaskLogEvent] = [
+        TaskLogEvent(.note, note: "The window's frame is autosaved under the scene's id now: read it from there rather than adding a key of your own.",
+                     by: "\"Bootstrap the SwiftUI shell\" (M1: Foundations)"),
+        TaskLogEvent(.handedBack, note: "Polls every second; each row draws its agent's activity."),
+        TaskLogEvent(.sentBack, note: "Sources/NatKit/Activity.swift, line 30: a failed capture is unread, not gone."),
+        TaskLogEvent(.note, note: "tmux 3.5 renamed the pane activity format; check `tmux -V` before trusting it.",
+                     by: "Craig Johnston"),
+    ]
+
+    /// The activity slice, read with those notes in its history.
+    public static let notedSliceDetail = SliceDetail(
+        id: activitySliceID,
+        name: "Poll tmux for agent activity",
+        url: "https://notion.so/\(activitySliceID)",
+        status: "In progress",
+        milestone: "M2: Review flow",
+        assignee: "Craig Johnston",
+        blocked: false,
+        handedBack: false,
+        state: "in progress",
+        brief: "Poll tmux every second for each agent's activity.",
+        events: notedTaskLogEvents
+    )
+
+    /// `sliceDetails` with the activity slice's notes added.
+    public static var notedSliceDetails: [String: SliceDetail] {
+        sliceDetails.merging([activitySliceID: notedSliceDetail]) { _, new in new }
+    }
+
     /// Every slice a fixture has a detail for, keyed the way
     /// `SliceDetailStore` asks for one.
     public static var sliceDetails: [String: SliceDetail] {

@@ -9,7 +9,8 @@ import (
 
 // TaskEvent is one entry of a slice's task log, read back off its body by
 // [TaskEvents] in the order it was written. Kind is one of: "handed_back",
-// "sent_back", "relaunched", "released", "blocked", "summary", "follow_ups".
+// "sent_back", "relaunched", "released", "blocked", "summary", "follow_ups",
+// "note".
 // `nat slice-show --json` adds two more of its own, read off the slice's
 // properties rather than its body — see its own doc comment.
 type TaskEvent struct {
@@ -18,7 +19,9 @@ type TaskEvent struct {
 	// show — every kind but "relaunched", whose one line is always the same
 	// fixed sentence and so carries nothing worth surfacing a second time.
 	Note string
-	// By is who released the slice, for a "released" event alone.
+	// By is who released the slice, for a "released" event, and who a "note"
+	// came from — its provenance line less the leading "From " — for a note.
+	// Note is a note's text without that line.
 	By string
 	// FollowUps is the proposals of a "follow_ups" event alone.
 	FollowUps []TaskFollowUp
@@ -56,7 +59,7 @@ func releasedBy(line string) (string, bool) {
 }
 
 // TaskEvents reads a slice's whole task log off its body, top to bottom: one
-// event per Handed back, Sent back, Relaunched, Blocked, Summary and
+// event per Handed back, Sent back, Relaunched, Blocked, Summary, Note and
 // Follow-ups section, plus one for every Released-back-to-Todo paragraph,
 // wherever in a section it falls. Every other heading — PR description,
 // Visual changes, a brief's own — is not an event and simply ends whatever
@@ -103,9 +106,13 @@ func TaskEvents(body string) []TaskEvent {
 	// exactly when in == otherSection — and every place that sets in to
 	// otherSection sets curKind alongside it, so curKind is never empty here.
 	closeOther := func() {
-		if curKind == relaunchedKind {
+		switch curKind {
+		case relaunchedKind:
 			events = append(events, TaskEvent{Kind: relaunchedKind})
-		} else {
+		case noteKind:
+			by, note := noteParts(strings.TrimSpace(strings.Join(curLines, "\n")))
+			events = append(events, TaskEvent{Kind: noteKind, Note: note, By: by})
+		default:
 			events = append(events, TaskEvent{Kind: curKind, Note: strings.TrimSpace(strings.Join(curLines, "\n"))})
 		}
 		curKind, curLines = "", nil
@@ -176,6 +183,10 @@ func TaskEvents(body string) []TaskEvent {
 			closeCurrent()
 			in, level, curKind, curLines = otherSection, h, relaunchedKind, nil
 			continue
+		case h > 0 && strings.EqualFold(text, notion.NoteHeading):
+			closeCurrent()
+			in, level, curKind, curLines = otherSection, h, noteKind, nil
+			continue
 		case h > 0 && strings.EqualFold(text, blockedHeading):
 			closeCurrent()
 			in, level, curKind, curLines = otherSection, h, blockedKind, nil
@@ -223,7 +234,23 @@ const (
 	summaryKind    = "summary"
 	releasedKind   = "released"
 	followUpsKind  = "follow_ups"
+	noteKind       = "note"
 )
+
+// notePrefix opens the provenance paragraph `slice-note` writes first in a
+// Note section.
+const notePrefix = "From "
+
+// noteParts splits a Note section's text into who it came from and the note
+// itself. A section whose first paragraph is not a provenance line — one
+// typed onto the page by hand — is all note, from nobody named.
+func noteParts(text string) (by, note string) {
+	first, rest, _ := strings.Cut(text, "\n\n")
+	if !strings.HasPrefix(first, notePrefix) || strings.Contains(first, "\n") {
+		return "", text
+	}
+	return strings.TrimSpace(strings.TrimPrefix(first, notePrefix)), strings.TrimSpace(rest)
+}
 
 // taskFollowUpsOf turns a Follow-ups section's own parsed items into the
 // event's own [TaskFollowUp]s, each still pending until [applyDecision]

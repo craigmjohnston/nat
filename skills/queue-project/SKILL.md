@@ -103,6 +103,16 @@ every slice: anything true of one slice alone belongs in that slice's brief.
   unassigned; a milestone's status follows its slices, so there is none to set
   anywhere.
 
+## Naming slices
+
+Refer to another slice only by its name, adding its milestone's name where the
+name alone is ambiguous — never by a number, an index, a position in a list, a
+page ID, a URL, or any id of another tracker (a card number, an issue key).
+Names are what every reading of the plan shows; the rest is the tracker's own
+or a plugin's, which the next reader may not have. This holds for everything
+you write: summaries, PR descriptions, follow-up briefs, notes, proposal
+briefs.
+
 ## Procedure
 
 1. Present the proposal in chat: the project name, the repo, the brief in full,

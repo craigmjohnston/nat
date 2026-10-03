@@ -230,3 +230,30 @@ func TestTaskEventsFollowUpsSectionWithNoItems(t *testing.T) {
 		t.Errorf("TaskEvents() = %#v, want one empty follow_ups event", got)
 	}
 }
+
+// A Note section's provenance line is who it came from, and the note is what
+// follows it; one typed by hand with no such line is all note.
+func TestTaskEventsNote(t *testing.T) {
+	body := "Brief.\n\n" +
+		"### Note\n\nFrom \"Render the board\" (M2: Board)\n\nThe seam moved.\n\nTwice.\n\n" +
+		"### Note\n\nFrom Craig\n\nMind the cache.\n\n" +
+		"### Note\n\nJust a remark."
+	want := []TaskEvent{
+		{Kind: "note", By: `"Render the board" (M2: Board)`, Note: "The seam moved.\n\nTwice."},
+		{Kind: "note", By: "Craig", Note: "Mind the cache."},
+		{Kind: "note", Note: "Just a remark."},
+	}
+	if got := TaskEvents(body); !reflect.DeepEqual(got, want) {
+		t.Errorf("TaskEvents() =\n%#v\nwant\n%#v", got, want)
+	}
+}
+
+// A first paragraph running over more than one line is not a provenance line,
+// even where it opens with the same word.
+func TestTaskEventsNoteFirstParagraphOverLines(t *testing.T) {
+	body := "### Note\n\nFrom here on\nthe schema is v6."
+	want := []TaskEvent{{Kind: "note", Note: "From here on\nthe schema is v6."}}
+	if got := TaskEvents(body); !reflect.DeepEqual(got, want) {
+		t.Errorf("TaskEvents() = %#v, want %#v", got, want)
+	}
+}
