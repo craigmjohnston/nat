@@ -15,7 +15,9 @@ import (
 // colour, painted with currentColor so gnat can draw it as a template image.
 const iconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M18.2765 8.46875H39.8392L30.0769 19.183L39.652 28.7301L29.7873 39.5561L8.15918 39.5506L17.9624 28.7915L8.42517 19.2828L18.2765 8.46875ZM19.7228 30.5467L13.8141 37.0315L26.2301 37.0346L19.7228 30.5467ZM29.2139 36.498L21.3993 28.7067L28.4005 21.0229L36.2151 28.8147L29.2139 36.498ZM26.6401 19.2677L19.6388 26.9516L11.8619 19.1979L18.8627 11.5129L26.6401 19.2677ZM28.3166 17.4277L34.183 10.9893H21.8593L28.3166 17.4277Z"/></svg>`
 
-// describeResponse is who the plugin is. It needs no project and no API call.
+// describeResponse is who the plugin is, and the one thing it needs set up —
+// the token. It is constant: it needs no project, no token and no API call,
+// so a plugin with no token still says what it wants.
 func describeResponse() source.Describe {
 	return source.Describe{
 		Protocol:      source.ProtocolVersion,
@@ -29,6 +31,9 @@ func describeResponse() source.Describe {
 		Menu: []source.Action{
 			{ID: "refresh", Label: "Refresh", Input: source.InputNone},
 			{ID: "new-segment", Label: "New Segment…", Input: source.InputText},
+		},
+		Setup: []source.SetupField{
+			{ID: tokenField, Label: "API token", Input: source.InputSecret, Hint: "Shortcut ▸ Settings ▸ API Tokens"},
 		},
 	}
 }

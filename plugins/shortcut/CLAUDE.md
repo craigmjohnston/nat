@@ -12,8 +12,8 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
 - `main.go` — hands the real process to `plugin.Run`; its edges (args,
   stdio, exit, env, the Keychain) are package variables `main_test.go`
   swaps, as nat's own `main.go` does.
-- `internal/plugin/` — the program: the five methods (`describe`, `sidebar`,
-  `container`, `action`, `event`) and the human subcommands (`login`,
+- `internal/plugin/` — the program: the six methods (`describe`, `sidebar`,
+  `container`, `action`, `event`, `setup`) and the human subcommands (`login`,
   `config <project id>`). `read.go` is the two reads, `write.go` actions and
   events, `refs.go` the workspace reference data and every formatting rule.
 - The wire types are nat's own `internal/source` (`Describe`, `Group`,
@@ -41,12 +41,26 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
   `Shortcut-Token` header, to the configured base URL only (a search page's
   `next` link keeps just its query). `login` never sees the token: it runs
   `security add-generic-password … -w` with `-w` last so `security` prompts
-  on the terminal itself.
+  on the terminal itself. `setup` (gnat's Settings ▸ Sources, through `nat
+  source-setup`) does see it, and keeps it out of every argv:
+  `Keychain.Save` runs `security -i` and writes the `add-generic-password -U
+  -s … -a … -w …` line to its **stdin**, each argument double-quoted with
+  `\`/`"` escaped, refusing a token or account with a control character
+  (a newline would start a second command). `Feed` discards what `security`
+  prints.
 - **Token**: `SHORTCUT_API_TOKEN`, else the Keychain (service
-  `nat-source-shortcut`). Without one **every** method, `describe` included,
-  fails with exactly `Shortcut token missing — run nat-source-shortcut
-  login` (`plugin.TokenMissing`). `describe` otherwise needs no project and
-  makes no request — `nat source-list` sends it an empty one.
+  `nat-source-shortcut`). Without one every method but `describe` and
+  `setup` fails with exactly `Shortcut token missing — set it in gnat's
+  Settings ▸ Sources or run nat-source-shortcut login`
+  (`plugin.TokenMissing`). **`describe` is static** — no token, no project,
+  no request (`nat source-list` sends it an empty project) — and lists the
+  one setup field, `token` (secret, hinted "Shortcut ▸ Settings ▸ API
+  Tokens"), so gnat can ask for it.
+- **`setup`** takes only id `token` and a non-blank input (trimmed), stores
+  it through `Tokens.Save` under `$USER` (else `nat`), then checks it
+  exactly as `login` does — read back, `GET /member` — and answers `Logged
+  in to <workspace url_slug> as <name>` (`/member` carries no workspace
+  name). A refused token stays stored, as with `login`.
 - **`SHORTCUT_API_URL`** overrides the API base (default
   `https://api.app.shortcut.com/api/v3`) — the fake server's address in a
   scratch run.
@@ -103,8 +117,9 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
 nat's own, run at the repo root — this tree is in it. Tests run against
 `fakeshortcut` through httptest and assert the exact writes
 (`Server.Writes`, method + path + body). No test touches the real Keychain
-(`keychain.ExecRunner` is exercised only on `echo`/`true`; `main_test.go`
-swaps the token source out).
+(`keychain.ExecRunner` is exercised only on `echo`/`true`/`grep`;
+`main_test.go` swaps the token source out; `keychain_test.go` asserts the
+exact `security -i` stdin and an argv with no token in it).
 
 ## Install
 

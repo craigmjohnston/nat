@@ -41,12 +41,12 @@ type Project struct {
 // Describe is what a plugin says about itself: who it is, how it is drawn,
 // and what its containers and tasks are called.
 type Describe struct {
-	Protocol      int      `json:"protocol"`
-	Name          string   `json:"name"`
-	Title         string   `json:"title"`
-	Tag           string   `json:"tag"`
-	IconSymbol    string   `json:"icon_symbol"`
-	IconSVG       string   `json:"icon_svg,omitempty"`
+	Protocol      int          `json:"protocol"`
+	Name          string       `json:"name"`
+	Title         string       `json:"title"`
+	Tag           string       `json:"tag"`
+	IconSymbol    string       `json:"icon_symbol"`
+	IconSVG       string       `json:"icon_svg,omitempty"`
 	ContainerNoun string       `json:"container_noun"`
 	TaskNoun      string       `json:"task_noun"`
 	Menu          []Action     `json:"menu,omitempty"`

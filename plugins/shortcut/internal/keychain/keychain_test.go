@@ -3,6 +3,7 @@ package keychain
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -10,6 +11,13 @@ type fakeRunner struct {
 	out   string
 	err   error
 	calls [][]string
+	stdin []string
+}
+
+func (f *fakeRunner) Feed(stdin string, name string, args ...string) error {
+	f.calls = append(f.calls, append([]string{name}, args...))
+	f.stdin = append(f.stdin, stdin)
+	return f.err
 }
 
 func (f *fakeRunner) Output(name string, args ...string) ([]byte, error) {
@@ -54,6 +62,44 @@ func TestStore(t *testing.T) {
 	}
 }
 
+// TestSave: the token reaches security on stdin, as one quoted
+// add-generic-password line for `security -i`, and never in its argv.
+func TestSave(t *testing.T) {
+	r := &fakeRunner{}
+	const tok = `t0k "with" \ odd bits`
+	if err := (Keychain{Run: r}).Save("craig j", tok); err != nil {
+		t.Fatal(err)
+	}
+	if want := [][]string{{"security", "-i"}}; !reflect.DeepEqual(r.calls, want) {
+		t.Errorf("argv = %v, want %v", r.calls, want)
+	}
+	for _, arg := range r.calls[0] {
+		if strings.Contains(arg, "t0k") {
+			t.Errorf("the token is in argv: %v", r.calls[0])
+		}
+	}
+	want := `add-generic-password -U -s "nat-source-shortcut" -a "craig j" -w "t0k \"with\" \\ odd bits"` + "\n"
+	if len(r.stdin) != 1 || r.stdin[0] != want {
+		t.Errorf("stdin = %q, want %q", r.stdin, want)
+	}
+
+	r.err = errors.New("exit status 50")
+	if err := (Keychain{Run: r}).Save("craig", "tok"); err == nil {
+		t.Error("Save swallowed security's failure")
+	}
+	// A line break would end security's command and start another, so
+	// nothing with a control character in it is run at all.
+	r = &fakeRunner{}
+	for _, c := range [][2]string{{"craig", "tok\nadd-internet-password"}, {"cr\raig", "tok"}, {"craig", "tok\x00"}} {
+		if err := (Keychain{Run: r}).Save(c[0], c[1]); !errors.Is(err, ErrUnstorable) {
+			t.Errorf("Save(%q, %q) = %v, want ErrUnstorable", c[0], c[1], err)
+		}
+	}
+	if len(r.calls) != 0 {
+		t.Errorf("security ran for an unstorable token: %v", r.calls)
+	}
+}
+
 // The real runner, run on harmless commands — never on security.
 func TestExecRunner(t *testing.T) {
 	out, err := ExecRunner{}.Output("echo", "hi")
@@ -62,5 +108,12 @@ func TestExecRunner(t *testing.T) {
 	}
 	if err := (ExecRunner{}).Interactive("true"); err != nil {
 		t.Errorf("Interactive = %v", err)
+	}
+	// Feed hands the command its stdin: grep exits 0 only if it read the line.
+	if err := (ExecRunner{}).Feed("fed line\n", "grep", "-q", "^fed line$"); err != nil {
+		t.Errorf("Feed = %v", err)
+	}
+	if err := (ExecRunner{}).Feed("other\n", "grep", "-q", "^fed line$"); err == nil {
+		t.Error("Feed swallowed a non-zero exit")
 	}
 }

@@ -137,9 +137,12 @@ position order, and let the user override both per project in config.
 
 - Token: `nat-source-shortcut login` stores it in the macOS Keychain
   (service `nat-source-shortcut`); `SHORTCUT_API_TOKEN` overrides for CI.
-  A missing token makes every method fail with stderr
-  "Shortcut token missing — run nat-source-shortcut login". nat shows that
-  line in gnat.
+  A missing token makes every method but `describe` and `setup` fail with
+  stderr "Shortcut token missing — set it in gnat's Settings ▸ Sources or
+  run nat-source-shortcut login". nat shows that line in gnat. (Amended
+  after the build: `describe` must answer with no token, and lists the
+  token as its one `setup` field, which gnat's Settings sends back through
+  the `setup` method — see the protocol spec.)
 - Per-project config, keyed by the nat project id, in
   `~/.config/nat-source-shortcut/config.json`: the segments (name, query),
   optional started/done state overrides, optional team filter. nat stores

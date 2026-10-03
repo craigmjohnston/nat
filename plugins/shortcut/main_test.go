@@ -12,8 +12,9 @@ import (
 // noTokens is a Keychain stand-in with nothing in it.
 type noTokens struct{}
 
-func (noTokens) Token() (string, error) { return "", errors.New("none") }
-func (noTokens) Store(string) error     { return errors.New("none") }
+func (noTokens) Token() (string, error)    { return "", errors.New("none") }
+func (noTokens) Store(string) error        { return errors.New("none") }
+func (noTokens) Save(string, string) error { return errors.New("none") }
 
 func TestMainWiring(t *testing.T) {
 	if a := args(); len(a) == 0 {
@@ -28,8 +29,8 @@ func TestMainWiring(t *testing.T) {
 	}(args, exit, getenv, tokens)
 
 	var out, errb bytes.Buffer
-	stdin, stdout, stderr = strings.NewReader(`{"project":{"id":""}}`), &out, &errb
-	args = func() []string { return []string{"nat-source-shortcut", "describe"} }
+	stdin, stdout, stderr = strings.NewReader(`{"project":{"id":"p1"}}`), &out, &errb
+	args = func() []string { return []string{"nat-source-shortcut", "sidebar"} }
 	getenv = func(string) string { return "" }
 	tokens = noTokens{}
 	code := -1

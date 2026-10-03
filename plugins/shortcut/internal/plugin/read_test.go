@@ -49,8 +49,20 @@ func TestDescribe(t *testing.T) {
 	if got := actions(d.Menu); got != "refresh(none) new-segment(text)" {
 		t.Errorf("menu = %s", got)
 	}
+	want := []source.SetupField{{ID: "token", Label: "API token", Input: source.InputSecret, Hint: "Shortcut ▸ Settings ▸ API Tokens"}}
+	if !slices.Equal(d.Setup, want) {
+		t.Errorf("setup = %+v, want %+v", d.Setup, want)
+	}
 	if len(h.fake.Requests()) != 0 {
 		t.Error("describe called Shortcut")
+	}
+
+	// describe is static: with no token anywhere it answers the same, so nat
+	// can learn a token is wanted from a plugin that has none.
+	h.tokens.err, h.tokens.token = errors.New("not found"), ""
+	code, again, errs := h.run(`{"project":{"id":""}}`, "describe")
+	if code != 0 || again != out {
+		t.Errorf("describe with no token: exit %d, %q, stderr %q", code, again, errs)
 	}
 }
 
