@@ -210,11 +210,7 @@ struct SettingsView: View {
         Form {
             configSection(
                 "Working directories",
-                footer: "Where a project's agents start, unless a task names its own repo. Applies at the next launch.\n\n"
-                    + "Runs are one-click commands, run by sh -c: a global one from the latest origin/main, from the "
-                    + "titlebar; a slice one from a handed-back task's worktree, from its navigator. Keep a label as "
-                    + "short as it can be — Run, Debug, Play. Runs are for projects where a one-click run plainly "
-                    + "helps, such as playtesting a build or a prototype's dev server; most projects need none."
+                footer: "Where a project's agents start, unless a task names its own repo. Applies at the next launch."
             ) {
                 if sortedProjectIDs.isEmpty {
                     Text("No projects are tracked on this Mac yet.")
@@ -222,7 +218,6 @@ struct SettingsView: View {
                 } else {
                     ForEach(sortedProjectIDs, id: \.self) { projectID in
                         workingDirRow(projectID: projectID)
-                        runsTable(projectID: projectID)
                     }
                 }
             }
@@ -541,81 +536,6 @@ struct SettingsView: View {
                 Button("Choose…") { chooseDirectory(into: path) }
             }
         }
-    }
-
-    /// A project's runs, under its working directory: one line per run —
-    /// label, command, scope — with add and remove. Each is written whole
-    /// through `config-set project.<id>.runs`, once every row is filled in.
-    private func runsTable(projectID: String) -> some View {
-        let runs = edited.projectRuns[projectID] ?? []
-        let key = SettingsModel.runsKey(projectID: projectID)
-        return LabeledContent {
-            runsTableBody(projectID: projectID, runs: runs, key: key)
-        } label: {
-            Text("Runs").ink(.secondary)
-        }
-    }
-
-    private func runsTableBody(projectID: String, runs: [RunCommand], key: String) -> some View {
-        VStack(alignment: .trailing, spacing: 6) {
-            HStack {
-                Button {
-                    edited.projectRuns[projectID, default: []].append(RunCommand(label: "", command: ""))
-                } label: {
-                    Label("Add Run", systemImage: "plus")
-                }
-                .help("Add a run to this project")
-            }
-            if runs.isEmpty {
-                Text("None").font(.footnote).ink(.tertiary)
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(runs.indices, id: \.self) { index in
-                        HStack(spacing: 6) {
-                            CommitTextField(text: runBinding(projectID, index, \.label), width: 60, commit: commit)
-                                .help("The run's label, as short as it can be")
-                            CommitTextField(text: runBinding(projectID, index, \.command), width: 170, commit: commit)
-                                .help("The command, run by sh -c")
-                            Picker("Scope", selection: runBinding(projectID, index, \.scope)) {
-                                ForEach(RunScope.allCases, id: \.self) { scope in
-                                    Text(scope.title).tag(scope)
-                                }
-                            }
-                            .labelsHidden()
-                            .fixedSize()
-                            .onChange(of: runs[index].scope) { commit() }
-                            Button {
-                                edited.projectRuns[projectID]?.remove(at: index)
-                                commit()
-                            } label: {
-                                Image(systemName: "minus.circle")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Remove this run")
-                        }
-                    }
-                }
-            }
-            if let error = fieldErrors[key] {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
-                    .ink(.danger)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    /// One field of one run, as the table edits it.
-    private func runBinding<Value>(
-        _ projectID: String, _ index: Int, _ field: WritableKeyPath<RunCommand, Value>
-    ) -> Binding<Value> {
-        Binding(
-            get: { edited.projectRuns[projectID]?[index][keyPath: field] ?? RunCommand(label: "", command: "")[keyPath: field] },
-            set: { value in
-                guard edited.projectRuns[projectID]?.indices.contains(index) == true else { return }
-                edited.projectRuns[projectID]?[index][keyPath: field] = value
-            }
-        )
     }
 
     /// The open panel as a settings window opens one: directories only,

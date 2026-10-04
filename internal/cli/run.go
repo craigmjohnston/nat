@@ -98,7 +98,7 @@ func sliceRunDir(ctx context.Context, env Env, projectID string, project config.
 // empty — refused where there are none of the scope, or none of that label.
 func pickRun(runs []config.RunCommand, scope, label string) (config.RunCommand, error) {
 	if len(runs) == 0 {
-		return config.RunCommand{}, fmt.Errorf("run: the project has no %s runs: add one under its runs in Settings ▸ Projects, or with config-set project.<id>.runs", scope)
+		return config.RunCommand{}, fmt.Errorf("run: the project has no %s runs: add one to its config entry with config-set project.<id>.runs", scope)
 	}
 	if label == "" {
 		return runs[0], nil

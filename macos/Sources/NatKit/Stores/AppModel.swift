@@ -2390,6 +2390,19 @@ public struct RunAttachment: Equatable, Sendable {
     }
 }
 
+/// A project as the titlebar's run tree lists it: its name and its runs.
+public struct RunProject: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let runs: [RunCommand]
+
+    public init(id: String, name: String, runs: [RunCommand]) {
+        self.id = id
+        self.name = name
+        self.runs = runs
+    }
+}
+
 extension AppModel {
     /// The key a run is held under: the slice's ID, or the project's own for
     /// a global run.
@@ -2397,10 +2410,14 @@ extension AppModel {
         sliceID ?? "project:" + projectID
     }
 
-    /// The project's short mark, as its Active rows and the titlebar carry
-    /// it (`sidebarTags`).
-    public func projectTag(_ projectID: String) -> String {
-        sidebarTags(sidebarInputs)[projectID] ?? ""
+    /// Every project with runs to offer from the titlebar, by name, each
+    /// with its global runs — the titlebar's run tree.
+    public var runProjects: [RunProject] {
+        (config?.projects ?? [:]).compactMap { id, project in
+            let runs = project.runs.globalRuns
+            return runs.isEmpty ? nil : RunProject(id: id, name: tabName(id, fallback: project.name), runs: runs)
+        }
+        .sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
     }
 
     /// The project's runs the titlebar offers, as its config entry lists

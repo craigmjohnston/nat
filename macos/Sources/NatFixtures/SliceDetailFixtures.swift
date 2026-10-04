@@ -324,22 +324,28 @@ extension Fixtures {
         )
     }
 
-    /// The fixture project's run commands: one global, one both, one slice —
-    /// so the titlebar offers Serve then Play, and a handed-back slice Play
-    /// then Test.
+    /// The fixture project's run commands: Play for both places, and Board
+    /// with a scoped pair — something different in a slice's worktree — so
+    /// the titlebar offers Play then Board, and a handed-back slice the same
+    /// labels with its own Board.
     public static let runs: [RunCommand] = [
-        RunCommand(label: "Serve", command: "make serve", scope: .global),
-        RunCommand(label: "Play", command: "./scripts/play.sh --windowed", scope: .both),
-        RunCommand(label: "Test", command: "go test ./...", scope: .slice),
+        RunCommand(label: "Play", command: "./scripts/play.sh --windowed"),
+        RunCommand(label: "Board", command: "go run .", scope: .global),
+        RunCommand(label: "Board", command: "go run . --sandbox", scope: .slice),
     ]
 
-    /// `twoProjectConfig` with `runs` on the fixture project, the second
-    /// project with none.
+    /// The second project's one run.
+    public static let secondProjectRuns = [RunCommand(label: "Unity", command: "open -a Unity --args -projectPath .")]
+
+    /// `twoProjectConfig` with `runs` on both projects.
     public static var runsConfig: NatProjectConfig {
         var projects = twoProjectConfig.projects
         let p = projects[projectID]!
         projects[projectID] = ProjectConfig(
             name: p.name, slicesDSID: p.slicesDSID, workingDir: p.workingDir, runs: runs)
+        let second = projects[secondProjectID]!
+        projects[secondProjectID] = ProjectConfig(
+            name: second.name, slicesDSID: second.slicesDSID, workingDir: second.workingDir, runs: secondProjectRuns)
         return NatProjectConfig(
             projects: projects, agentSplitPercent: 45, pollSeconds: 3600,
             workshopAgent: AgentModel(model: "sonnet", effort: nil),

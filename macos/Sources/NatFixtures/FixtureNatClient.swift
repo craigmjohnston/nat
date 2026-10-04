@@ -687,28 +687,6 @@ extension Fixtures {
         )
     }
 
-    /// `nat config-show --json` with two projects: the fixture one with two
-    /// runs, the second with none — the Settings runs table both ways.
-    public static var configDocWithRuns: ConfigDoc {
-        ConfigDoc(
-            agentSplitPercent: 45,
-            pollSeconds: 3600,
-            workshopAgent: AgentModel(model: "sonnet", effort: nil),
-            sliceAgent: AgentModel(model: "opus", effort: "high"),
-            projects: [
-                projectID: ConfigDocProject(
-                    name: "notion-agent-tracker",
-                    workingDir: "/Users/craig/Projects/notion-agent-tracker",
-                    runs: [
-                        RunCommand(label: "Play", command: "./scripts/play.sh --windowed", scope: .slice),
-                        RunCommand(label: "Serve", command: "make serve", scope: .global),
-                    ]
-                ),
-                secondProjectID: ConfigDocProject(name: "gnat", workingDir: "/Users/craig/Projects/gnat"),
-            ]
-        )
-    }
-
     /// The same config with the slice agent's model set to a full model ID
     /// rather than one of `AgentOptions`' own aliases — what the Settings
     /// Agents story shows the model picker's Custom state over.

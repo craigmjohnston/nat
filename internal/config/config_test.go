@@ -751,7 +751,8 @@ func TestValidRuns(t *testing.T) {
 	if err := ValidRuns(nil); err != nil {
 		t.Errorf("no runs: %v", err)
 	}
-	ok := []RunCommand{{Label: "Run", Command: "make run"}, {Label: "Debug", Command: "make debug", Scope: RunScopeGlobal}, {Label: "Play", Command: "p", Scope: RunScopeSlice}}
+	ok := []RunCommand{{Label: "Run", Command: "make run"}, {Label: "Debug", Command: "make debug", Scope: RunScopeGlobal},
+		{Label: "Play", Command: "p", Scope: RunScopeSlice}, {Label: "play", Command: "p --main", Scope: RunScopeGlobal}}
 	if err := ValidRuns(ok); err != nil {
 		t.Errorf("valid runs refused: %v", err)
 	}
@@ -762,7 +763,8 @@ func TestValidRuns(t *testing.T) {
 	}{
 		{"empty label", []RunCommand{{Label: " ", Command: "x"}}, "run 1 has no label"},
 		{"empty command", []RunCommand{{Label: "Run", Command: ""}}, `run "Run" has no command`},
-		{"duplicate label", []RunCommand{{Label: "Run", Command: "a"}, {Label: "run", Command: "b"}}, `two runs are labelled "run"`},
+		{"duplicate label", []RunCommand{{Label: "Run", Command: "a"}, {Label: "run", Command: "b"}}, `two global runs are labelled "run"`},
+		{"scoped beside scopeless", []RunCommand{{Label: "Run", Command: "a"}, {Label: "Run", Command: "b", Scope: RunScopeSlice}}, `two slice runs are labelled "Run"`},
 		{"unknown scope", []RunCommand{{Label: "Run", Command: "a", Scope: "both"}}, `run "Run" has scope "both"`},
 	} {
 		err := ValidRuns(tt.runs)

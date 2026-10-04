@@ -297,7 +297,7 @@ func TestConfigSetProjectRunsRefusals(t *testing.T) {
 	for _, tt := range []struct{ key, value, want string }{
 		{"project.project-1.runs", "make run", "wants a JSON array of runs"},
 		{"project.project-1.runs", `[{"label":"","command":"x"}]`, "run 1 has no label"},
-		{"project.project-1.runs", `[{"label":"Run","command":"a"},{"label":"Run","command":"b"}]`, `two runs are labelled "Run"`},
+		{"project.project-1.runs", `[{"label":"Run","command":"a"},{"label":"Run","command":"b"}]`, `two global runs are labelled "Run"`},
 		{"project.project-1.runs", `[{"label":"Run","command":"a","scope":"all"}]`, `scope "all"`},
 		{"project.nope.runs", `[]`, "no project nope"},
 	} {

@@ -3,6 +3,8 @@ import Foundation
 /// Where a run command is offered, mirroring `internal/config`'s scope words:
 /// `global` (the titlebar, run from origin/main), `slice` (a handed-back
 /// slice's navigator, run from its worktree), or — the word left off — both.
+/// A run is scopeless unless it does something different in a worktree: then
+/// the same label is given once per scope.
 public enum RunScope: String, CaseIterable, Equatable, Hashable, Sendable {
     case global, slice, both
 
@@ -13,15 +15,6 @@ public enum RunScope: String, CaseIterable, Equatable, Hashable, Sendable {
     /// since nat refuses an unknown word where it is written.
     init(word: String?) {
         self = word.flatMap(RunScope.init(rawValue:)) ?? .both
-    }
-
-    /// The scope as the settings picker names it.
-    public var title: String {
-        switch self {
-        case .global: return "Global"
-        case .slice: return "Slice"
-        case .both: return "Both"
-        }
     }
 
     func offers(_ scope: RunScope) -> Bool { self == .both || self == scope }
@@ -68,16 +61,6 @@ extension Array where Element == RunCommand {
 
     /// The runs a handed-back slice's navigator offers, likewise.
     public var sliceRuns: [RunCommand] { filter { $0.scope.offers(.slice) } }
-
-    /// The list as `config-set project.<id>.runs` takes it: a JSON array, or
-    /// the empty string — unset — for none.
-    public var configValue: String {
-        guard !isEmpty else { return "" }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        guard let data = try? encoder.encode(self) else { return "" }
-        return String(decoding: data, as: UTF8.self)
-    }
 }
 
 /// `nat run --json`'s answer (mirrors `internal/cli/run.go`'s `runJSON`): the

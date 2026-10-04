@@ -23,13 +23,6 @@ final class RunCommandModelTests: XCTestCase {
         XCTAssertEqual(runs.sliceRuns.map(\.label), ["Run", "Play"])
     }
 
-    func testConfigValueIsWhatConfigSetTakes() {
-        XCTAssertEqual([RunCommand]().configValue, "")
-        let value = [RunCommand(label: "Run", command: "make run", scope: .slice), RunCommand(label: "Play", command: "./p")]
-            .configValue
-        XCTAssertEqual(value, #"[{"command":"make run","label":"Run","scope":"slice"},{"command":"./p","label":"Play"}]"#)
-    }
-
     func testConfigDocAndProjectConfigDecodeRunsAndTolerateTheirAbsence() throws {
         let doc = #"{"name":"nat","working_dir":"/w","runs":[{"label":"Run","command":"make run"}]}"#
         XCTAssertEqual(try JSONDecoder().decode(ConfigDocProject.self, from: Data(doc.utf8)).runs,
@@ -59,56 +52,25 @@ final class RunCommandModelTests: XCTestCase {
     }
 }
 
-final class RunSettingsTests: XCTestCase {
-    private func fields(_ runs: [RunCommand]) -> SettingsFields {
-        SettingsFields(
-            pollSeconds: "", workshopModel: "", workshopEffort: "", sliceModel: "", sliceEffort: "",
-            projectWorkingDirs: ["p": "/w"], projectRuns: ["p": runs])
-    }
-
-    func testRunsAreWrittenWholeOnceEveryRowIsFilledIn() {
-        let run = RunCommand(label: "Run", command: "make run", scope: .slice)
-        let changes = SettingsModel.changes(from: fields([]), to: fields([run]))
-        XCTAssertEqual(changes, [ConfigChange(key: "project.p.runs", value: [run].configValue)])
-
-        let draft = SettingsModel.changes(from: fields([run]), to: fields([run, RunCommand(label: "", command: "x")]))
-        XCTAssertEqual(draft, [], "a row still being typed is written with nothing")
-
-        XCTAssertEqual(SettingsModel.changes(from: fields([run]), to: fields([])),
-                       [ConfigChange(key: "project.p.runs", value: "")])
-    }
-
-    func testApplyingAWrittenListMovesTheBaseline() {
-        let run = RunCommand(label: "Play", command: "./p")
-        let moved = SettingsModel.applying([ConfigChange(key: "project.p.runs", value: [run].configValue)], to: fields([]))
-        XCTAssertEqual(moved.projectRuns["p"], [run])
-        let cleared = SettingsModel.applying([ConfigChange(key: "project.p.runs", value: "")], to: fields([run]))
-        XCTAssertEqual(cleared.projectRuns["p"], [])
-    }
-
-    func testFromConfigDocReadsEachProjectsRuns() {
-        XCTAssertEqual(SettingsFields(from: Fixtures.configDocWithRuns).projectRuns[Fixtures.projectID]?.count, 2)
-    }
-}
-
 @MainActor
 final class AppModelRunTests: XCTestCase {
     func testAGlobalRunIsHeldForEverySliceOfItsProjectUntilItEnds() async {
         let model = await Fixtures.startedAppModel(config: Fixtures.runsConfig)
         model.runSessionExists = { _ in true }
-        XCTAssertEqual(model.globalRuns(ofProject: Fixtures.projectID).map(\.label), ["Serve", "Play"])
-        XCTAssertEqual(model.sliceRuns(ofProject: Fixtures.projectID).map(\.label), ["Play", "Test"])
-        XCTAssertEqual(model.globalRuns(ofProject: Fixtures.secondProjectID), [])
+        XCTAssertEqual(model.globalRuns(ofProject: Fixtures.projectID).map(\.command), ["./scripts/play.sh --windowed", "go run ."])
+        XCTAssertEqual(model.sliceRuns(ofProject: Fixtures.projectID).map(\.command), ["./scripts/play.sh --windowed", "go run . --sandbox"])
+        XCTAssertEqual(model.runProjects.map(\.name), ["gnat", "notion-agent-tracker"])
+        XCTAssertEqual(model.runProjects.last?.runs.map(\.label), ["Play", "Board"])
 
         await model.startRun(projectID: Fixtures.projectID)
         let run = model.run(forSlice: Fixtures.mergeBoxSliceID, inProject: Fixtures.projectID)
-        XCTAssertEqual(run?.label, "Serve")
+        XCTAssertEqual(run?.label, "Play")
         XCTAssertNil(run?.sliceID)
         XCTAssertEqual(model.runShowRequest, 1)
         XCTAssertFalse(model.isStartingRun(projectID: Fixtures.projectID, sliceID: nil))
 
-        await model.startRun(projectID: Fixtures.projectID, sliceID: Fixtures.mergeBoxSliceID, label: "Test")
-        XCTAssertEqual(model.run(forSlice: Fixtures.mergeBoxSliceID, inProject: Fixtures.projectID)?.label, "Test",
+        await model.startRun(projectID: Fixtures.projectID, sliceID: Fixtures.mergeBoxSliceID, label: "Board")
+        XCTAssertEqual(model.run(forSlice: Fixtures.mergeBoxSliceID, inProject: Fixtures.projectID)?.label, "Board",
                        "a slice's own run wins over its project's")
 
         model.runEnded(session: run!.session)
@@ -132,5 +94,13 @@ final class AppModelRunTests: XCTestCase {
         XCTAssertTrue(model.runs.isEmpty)
         model.dismissRunError()
         XCTAssertNil(model.runError)
+    }
+}
+
+@MainActor
+final class RunProjectsTests: XCTestCase {
+    func testAProjectWithNoRunsIsLeftOutOfTheTree() async {
+        let model = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+        XCTAssertEqual(model.runProjects, [])
     }
 }

@@ -220,30 +220,26 @@ enum AppStories {
         }
     }
 
-    /// The sidebar's titlebar segment with the run button, over a project
-    /// with global runs — the menu drawn under it where `menuOpen`, since a
-    /// real popover is a window of its own no render of this one can show.
-    private static func titlebarRun(menuOpen: Bool) async -> some View {
+    /// The sidebar's own titlebar segment over a project with runs, its run
+    /// tree drawn under the play button where `treeOpen` — a real popover is a
+    /// window of its own no render of this one can show.
+    private static func titlebarRun(treeOpen: Bool) async -> some View {
         let appModel = await Fixtures.startedAppModel(config: Fixtures.runsConfig)
-        let runs = appModel.globalRuns(ofProject: Fixtures.projectID)
-        return VStack(alignment: .leading, spacing: 0) {
-            GnatTitlebar(leading: GnatMetrics.lightsInset) {
-                RunSplitButton(
-                    size: .titlebar, runs: runs, badge: appModel.projectTag(Fixtures.projectID),
-                    menuOpen: .constant(false)) { _ in }
-                Spacer(minLength: 0)
-            }
-            if menuOpen {
-                RunMenuList(runs: runs) { _ in }
+        return ZStack(alignment: .topTrailing) {
+            SidebarView(appModel: appModel, showsTitlebar: true)
+                .frame(width: 260, height: 820, alignment: .top)
+                .environment(\.pulsesPaused, true)
+            if treeOpen {
+                RunTreeList(projects: appModel.runProjects) { _, _ in }
                     .surface(.window)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(DesignTokens.rule(.separator, on: .window), lineWidth: 1))
-                    .padding(.leading, GnatMetrics.lightsInset - 6)
-                    .padding(.top, 4)
+                    .padding(.top, GnatMetrics.titlebarHeight + 2)
+                    .padding(.trailing, 8)
             }
-            Spacer(minLength: 0)
         }
-        .surface(.header)
+        .frame(width: 260, height: treeOpen ? 300 : GnatMetrics.titlebarHeight, alignment: .top)
+        .clipped()
     }
 
     /// A slice's crumbs in the fixture project, under M2.
@@ -1675,27 +1671,26 @@ enum AppStories {
 
         Story(
             name: "titlebar-run",
-            summary: "The sidebar\u{2019}s titlebar segment on a project with global runs: past the traffic "
-                + "lights, the compact split button \u{2014} \u{25B6}, the project\u{2019}s badge, the default "
-                + "Serve \u{2014} then a thin divider and the chevron, sized to its text.",
+            summary: "The sidebar\u{2019}s titlebar segment while a project has runs: the play button beside "
+                + "Settings and +.",
             size: CGSize(width: 260, height: GnatMetrics.titlebarHeight)
         ) {
-            await titlebarRun(menuOpen: false)
+            await titlebarRun(treeOpen: false)
         },
 
         Story(
             name: "titlebar-run-menu",
-            summary: "The titlebar\u{2019}s run menu open from its chevron: every global run, its command under "
-                + "it, the default marked.",
-            size: CGSize(width: 260, height: 150)
+            summary: "The play button\u{2019}s run tree open: each project with runs, then its runs with their "
+                + "commands, the first of each marked default.",
+            size: CGSize(width: 260, height: 300)
         ) {
-            await titlebarRun(menuOpen: true)
+            await titlebarRun(treeOpen: true)
         },
 
         Story(
             name: "window-run-heading",
             summary: "A handed-back slice of a project with runs: the Run heading under the Task log, above "
-                + "Changes \u{2014} no section, no fold \u{2014} its split button full bleed; the global run "
+                + "Changes \u{2014} no section, no fold \u{2014} its split button full bleed; the play "
                 + "button in the sidebar\u{2019}s titlebar segment.",
             size: window
         ) {
@@ -1725,19 +1720,6 @@ enum AppStories {
                 appModel.runSessionExists = { _ in true }
                 await appModel.startRun(projectID: Fixtures.projectID, sliceID: Fixtures.mergeBoxSliceID)
             }
-        },
-
-        Story(
-            name: "settings-projects-runs",
-            summary: "Settings \u{25B8} Projects: under each working directory its runs \u{2014} two on the "
-                + "fixture project, label, command and scope with remove, none on gnat \u{2014} and the rules "
-                + "in the footnote.",
-            size: CGSize(width: 520, height: 520),
-            colorScheme: .light
-        ) {
-            let client = FixtureNatClient(config: Fixtures.configDocWithRuns)
-            return SettingsView(
-                appModel: await Fixtures.startedAppModel(client: client), client: client, initialTab: .projects)
         },
 
         // MARK: - Settings

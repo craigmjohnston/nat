@@ -11,33 +11,39 @@ Each project's entry in `config.json` may carry `runs`, omitted until set:
 
 ```json
 "runs": [
-  {"label": "Play",  "command": "./scripts/play.sh --windowed", "scope": "slice"},
-  {"label": "Serve", "command": "make serve", "scope": "global"},
-  {"label": "Test",  "command": "go test ./..."}
+  {"label": "Play",  "command": "./scripts/play.sh"},
+  {"label": "Board", "command": "go run ."},
+  {"label": "Seed",  "command": "make seed", "scope": "global"},
+  {"label": "Seed",  "command": "make seed DB=./worktree.db", "scope": "slice"}
 ]
 ```
 
 - `label` is what the button says: as short as it can be (`Run`, `Debug`,
-  `Play`) and unique within the project, case ignored.
+  `Play`).
 - `command` is run by `sh -c`, exactly as written.
-- `scope` is `global`, `slice`, or left off for both. The first run of each
-  scope is that scope's default.
+- `scope` is almost always left off: the run is offered in both places and
+  does the same thing in each. Give a label a `global` and a `slice` variant
+  only where the run has to do or pass something different in a worktree.
+  The first run offered in each place is that place's default.
 
-An empty label or command, a duplicate label or an unknown scope word is
-refused where it is written. Write the whole list at once with
+A label is offered once in each place, case ignored: once scopeless, or once
+per scope. An empty label or command, a label offered twice in one place, or
+an unknown scope word is refused where it is written. Runs live in the
+project's config entry alone — there is no settings screen for them. Write
+the whole list at once with
 
-    nat config-set project.<id>.runs '[{"label":"Run","command":"make run","scope":"slice"}]'
+    nat config-set project.<id>.runs '[{"label":"Run","command":"make run"}]'
 
-(the empty string unsets it), or in gnat's Settings ▸ Projects. `nat
-config-show` lists every project's runs with their scope.
+(the empty string unsets it). `nat config-show` lists every project's runs
+with their scope.
 
 ## Where each scope runs
 
-- **Global** runs are offered in gnat's titlebar, beside the traffic lights,
-  for the front project. They run in nat's own run checkout: a worktree on
-  the branch `run/main` beside the repository (`<repo>.worktrees/run-main`),
-  cut where there is none and, before every run, fetched and hard-reset to
-  origin's default branch. A failed fetch runs from the refs as last known.
+- **Global** runs are offered by the play button in gnat's titlebar, beside
+  Settings, as a tree: every project with runs, then its runs. They run in
+  nat's own run checkout: a worktree on the branch `run/main` beside the
+  repository (`<repo>.worktrees/run-main`), cut where there is none and,
+  before every run, fetched and hard-reset to origin's default branch. A failed fetch runs from the refs as last known.
   The user's own checkout is never checked out or reset.
 - **Slice** runs are offered as a Run heading in a handed-back slice's
   navigator, and run in that slice's worktree — the one its agent worked in.

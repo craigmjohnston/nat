@@ -1,25 +1,17 @@
 import SwiftUI
 import NatKit
 
-/// The one control both run placements draw: a split button. The main part,
-/// `▶ <label>`, runs the default — `nat run` with no `--label`, so nat picks
+/// The navigator's Run heading's one action: a split button. The main part,
+/// `<label> ▶`, runs the default — `nat run` with no `--label`, so nat picks
 /// it — and the split part, past a thin divider, is a chevron opening the
-/// menu of every run of that scope (`RunMenuList`), the default marked.
-///
-/// Two sizes: `.titlebar` is compact, sized to its text and washed under the
-/// pointer as the titlebar's own glyph buttons are, with the project's badge
-/// before the label; `.header` is full bleed to a navigator header's height,
-/// in `GnatHeaderButtonStyle`'s shape — `HeaderActionLabel`'s words and glyph.
+/// menu of every run the slice is offered (`RunMenuList`), the default
+/// marked. Full bleed to the header's height, in `GnatHeaderButtonStyle`'s
+/// shape — `HeaderActionLabel`'s words and glyph.
 struct RunSplitButton: View {
-    enum Size { case titlebar, header }
-
-    let size: Size
-    /// The runs of the scope, the default first; never empty where drawn.
+    /// The runs offered, the default first; never empty where drawn.
     let runs: [RunCommand]
-    /// The project's short mark, drawn before the label in the titlebar.
-    var badge: String?
     var isBusy = false
-    /// Whether the menu is open — the popover's, or a story's drawn below.
+    /// Whether the menu is open — the popover's, or a story's.
     @Binding var menuOpen: Bool
     /// Run a label — nil for the default.
     let onRun: (String?) -> Void
@@ -30,96 +22,30 @@ struct RunSplitButton: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            mainPart
-            divider
-            chevronPart
+            Button { onRun(nil) } label: {
+                HeaderActionLabel(title: defaultLabel, systemImage: isBusy ? nil : "play.fill", isBusy: isBusy)
+            }
+            .buttonStyle(GnatHeaderButtonStyle())
+            .help("Run \(defaultLabel) in this task's worktree")
+            DesignTokens.rule(.separator, on: .chrome)
+                .frame(width: 1)
+                .padding(.vertical, 8)
+                .opacity(isEnabled ? 1 : 0.4)
+            Button { menuOpen.toggle() } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .accessibilityLabel("Choose a run")
+            }
+            .buttonStyle(RunHeaderChevronStyle())
+            .help("Choose a run")
         }
-        .fixedSize(horizontal: true, vertical: size == .titlebar)
+        .fixedSize(horizontal: true, vertical: false)
         .popover(isPresented: $menuOpen, arrowEdge: .bottom) {
             RunMenuList(runs: runs) { label in
                 menuOpen = false
                 onRun(label)
             }
         }
-    }
-
-    // MARK: - Parts
-
-    @ViewBuilder
-    private var mainPart: some View {
-        switch size {
-        case .titlebar:
-            Button { onRun(nil) } label: { titlebarLabel }
-                .buttonStyle(RunTitlebarPartStyle())
-                .help("Run \(defaultLabel) from origin/main")
-        case .header:
-            Button { onRun(nil) } label: {
-                HeaderActionLabel(title: defaultLabel, systemImage: isBusy ? nil : "play.fill", isBusy: isBusy)
-            }
-            .buttonStyle(GnatHeaderButtonStyle())
-            .help("Run \(defaultLabel) in this task's worktree")
-        }
-    }
-
-    private var titlebarLabel: some View {
-        HStack(spacing: 5) {
-            if isBusy {
-                ProgressView().controlSize(.mini).frame(width: 9, height: 9)
-            } else {
-                Image(systemName: "play.fill").font(.system(size: 8.5))
-            }
-            if let badge, !badge.isEmpty {
-                Text(badge)
-                    .font(Typo.mono(size: Typo.scaled(10), weight: .medium))
-                    .tracking(1)
-                    .ink(.tertiary)
-            }
-            Text(defaultLabel)
-                .font(.system(size: GnatMetrics.titlebarText))
-                .lineLimit(1)
-        }
-        .ink(.secondary)
-    }
-
-    private var divider: some View {
-        DesignTokens.rule(.separator, on: size == .titlebar ? .header : .chrome)
-            .frame(width: 1)
-            .padding(.vertical, size == .titlebar ? 4 : 8)
-            .opacity(isEnabled ? 1 : 0.4)
-    }
-
-    @ViewBuilder
-    private var chevronPart: some View {
-        let chevron = Image(systemName: "chevron.down")
-            .font(.system(size: size == .titlebar ? 8 : 9, weight: .semibold))
-            .accessibilityLabel("Choose a run")
-        switch size {
-        case .titlebar:
-            Button { menuOpen.toggle() } label: { chevron.ink(.tertiary) }
-                .buttonStyle(RunTitlebarPartStyle(horizontal: 5))
-                .help("Choose a run")
-        case .header:
-            Button { menuOpen.toggle() } label: { chevron }
-                .buttonStyle(RunHeaderChevronStyle())
-                .help("Choose a run")
-        }
-    }
-}
-
-/// A part of the titlebar's split button: bare at rest, the hover wash under
-/// the pointer as `GnatIconButtonStyle` draws it — the titlebar's own
-/// control style — dimmed while disabled.
-private struct RunTitlebarPartStyle: ButtonStyle {
-    var horizontal: CGFloat = 6
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, horizontal)
-            .frame(height: 22)
-            .hoverWash(cornerRadius: 4, enabled: isEnabled)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.4)
-            .contentShape(Rectangle())
     }
 }
 
@@ -146,6 +72,8 @@ private struct RunHeaderChevronStyle: ButtonStyle {
 /// label, its command in mono under it — the default marked.
 struct RunMenuList: View {
     let runs: [RunCommand]
+    /// Whether it stands alone, with a menu's own inset and width.
+    var padded = true
     let onPick: (String) -> Void
 
     var body: some View {
@@ -182,29 +110,70 @@ struct RunMenuList: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(5)
-        .frame(minWidth: 200, maxWidth: 320, alignment: .leading)
+        .padding(padded ? 5 : 0)
+        .frame(minWidth: padded ? 200 : nil, maxWidth: padded ? 320 : nil, alignment: .leading)
     }
 }
 
-/// The titlebar's global run: the split button for the front project's
-/// global runs, drawn only where it has any.
+/// The titlebar's run button: a play glyph, beside Settings, drawn while
+/// any project has runs to offer. It opens the run tree (`RunTreeList`) —
+/// every such project, its runs under it — and a pick runs that project's
+/// run from its origin/main.
 struct TitlebarRunButton: View {
     @Bindable var appModel: AppModel
-    @State private var menuOpen = false
+    @State private var treeOpen = false
 
     var body: some View {
-        if let projectID = appModel.activeProjectID {
-            let runs = appModel.globalRuns(ofProject: projectID)
-            if !runs.isEmpty {
-                RunSplitButton(
-                    size: .titlebar, runs: runs, badge: appModel.projectTag(projectID),
-                    isBusy: appModel.isStartingRun(projectID: projectID, sliceID: nil), menuOpen: $menuOpen
-                ) { label in
-                    Task { await appModel.startRun(projectID: projectID, label: label) }
+        let projects = appModel.runProjects
+        if !projects.isEmpty {
+            Button { treeOpen.toggle() } label: {
+                Group {
+                    if appModel.runsStarting.isEmpty {
+                        Image(systemName: "play.fill").font(.system(size: 11))
+                    } else {
+                        ProgressView().controlSize(.mini)
+                    }
+                }
+                .ink(.tertiary)
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(GnatIconButtonStyle())
+            .help("Run\u{2026}")
+            .popover(isPresented: $treeOpen, arrowEdge: .bottom) {
+                RunTreeList(projects: projects) { project, label in
+                    treeOpen = false
+                    Task { await appModel.startRun(projectID: project, label: label) }
                 }
             }
         }
+    }
+}
+
+/// The titlebar's run tree: each project with runs, then its runs, each
+/// with its command — the first of each project's marked as its default.
+struct RunTreeList: View {
+    let projects: [RunProject]
+    /// A pick: the project and the run's label.
+    let onPick: (String, String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(projects) { project in
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(project.name)
+                        .font(.system(size: GnatMetrics.body, weight: .medium))
+                        .ink(.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                    RunMenuList(runs: project.runs, padded: false) { onPick(project.id, $0) }
+                        .padding(.leading, 12)
+                }
+            }
+        }
+        .padding(5)
+        .frame(minWidth: 220, maxWidth: 340, alignment: .leading)
     }
 }
 
@@ -230,7 +199,7 @@ struct RunHeadingRow: View {
                     .ink(merged ? .tertiary : .primary)
                     .fixedSize()
                 Spacer(minLength: 0)
-                RunSplitButton(size: .header, runs: runs, isBusy: isBusy, menuOpen: $menuOpen, onRun: onRun)
+                RunSplitButton(runs: runs, isBusy: isBusy, menuOpen: $menuOpen, onRun: onRun)
                     .frame(maxHeight: .infinity)
                     .disabled(merged)
             }

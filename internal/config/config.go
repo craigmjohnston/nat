@@ -89,9 +89,11 @@ func (p ProjectConfig) runsIn(scope string) []RunCommand {
 }
 
 // ValidRuns says whether a list of run commands is one the config would keep:
-// every label and command non-empty, no label used twice — case ignored, since
-// two buttons reading Run and run are one too many — and every scope one of
-// the two words or none.
+// every label and command non-empty, every scope one of the two words or none,
+// and no label offered twice in one place — case ignored, since two buttons
+// reading Run and run are one too many. A scopeless run is offered in both
+// places, so a label may appear once scopeless, or once per scope: the scoped
+// pair is how a run says it does something different in a slice's worktree.
 func ValidRuns(runs []RunCommand) error {
 	seen := map[string]bool{}
 	for i, r := range runs {
@@ -101,12 +103,19 @@ func ValidRuns(runs []RunCommand) error {
 			return fmt.Errorf("run %d has no label", i+1)
 		case strings.TrimSpace(r.Command) == "":
 			return fmt.Errorf("run %q has no command", label)
-		case seen[strings.ToLower(label)]:
-			return fmt.Errorf("two runs are labelled %q: a label names one run", label)
 		case r.Scope != "" && r.Scope != RunScopeGlobal && r.Scope != RunScopeSlice:
 			return fmt.Errorf("run %q has scope %q: want %s, %s or none (both)", label, r.Scope, RunScopeGlobal, RunScopeSlice)
 		}
-		seen[strings.ToLower(label)] = true
+		for _, scope := range []string{RunScopeGlobal, RunScopeSlice} {
+			if r.Scope != "" && r.Scope != scope {
+				continue
+			}
+			key := scope + "\x00" + strings.ToLower(label)
+			if seen[key] {
+				return fmt.Errorf("two %s runs are labelled %q: a label names one run in each place", scope, label)
+			}
+			seen[key] = true
+		}
 	}
 	return nil
 }
