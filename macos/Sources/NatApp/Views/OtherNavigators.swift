@@ -37,23 +37,27 @@ struct SessionNavigatorView: View {
                 onHead: { click(.thread) }, onFold: { fold(.thread) }
             ) {
                 ScrollView {
-                    VStack(spacing: 6) {
-                        ThreadEventCard(event: ThreadEvent(
-                            .launched, who: "Started", meta: ago(clock().timeIntervalSince(session.startedAt)),
-                            facts: [session.branch.isEmpty ? ThreadFact("dir", session.dir) : ThreadFact("branch", session.branch)],
-                            metaIsAction: false))
+                    VStack(alignment: .leading, spacing: LogMetrics.spacing) {
+                        ThreadEventCard(
+                            event: ThreadEvent(
+                                .launched, who: "Started", meta: ago(clock().timeIntervalSince(session.startedAt)),
+                                facts: [session.branch.isEmpty ? ThreadFact("dir", session.dir) : ThreadFact("branch", session.branch)],
+                                metaIsAction: false),
+                            connector: .solid)
                         if let agent {
                             let waiting = AgentActivity(agent.activity) == .waiting
                             let reading = agentFacts(agent)
-                            ThreadEventCard(event: ThreadEvent(
-                                .agent, who: "Agent", meta: waiting ? "waiting for you" : "working",
-                                tone: waiting ? .hot : .accent,
-                                facts: reading.model + reading.context))
+                            ThreadEventCard(
+                                event: ThreadEvent(
+                                    .agent, who: "Agent", meta: waiting ? "waiting for you" : "working",
+                                    tone: waiting ? .hot : .accent,
+                                    facts: reading.model + reading.context, isLive: true),
+                                connector: .dashed)
                         } else {
                             ThreadEventCard(event: ThreadEvent(.agent, who: "Agent", meta: "ended"))
                         }
                     }
-                    .padding(6)
+                    .taskLogPadding(live: agent != nil)
                 }
                 .thinScrollers()
             }

@@ -491,7 +491,7 @@ enum AppStories {
 
         Story(
             name: "window-blocked",
-            summary: "A blocked slice: its dot hollow and dim, Launch disabled, and the Thread's launch card greyed and hatched over what it waits on.",
+            summary: "A blocked slice: its dot hollow and dim, Launch disabled, and the Thread's launch item quietened, its chips disabled, over what it waits on.",
             size: window
         ) {
             await slicePane(Fixtures.cacheSliceID)
@@ -499,7 +499,7 @@ enum AppStories {
 
         Story(
             name: "window-blocked-several",
-            summary: "A slice blocked on two slices with a third already done: the brief's depends list one row apiece, each with its dot, and the launch card naming the two still open.",
+            summary: "A slice blocked on two slices with a third already done: the brief's depends list one row apiece, each with its dot, and the launch item naming the two still open.",
             size: window
         ) {
             let plan = ProjectInfo(
@@ -521,7 +521,7 @@ enum AppStories {
 
         Story(
             name: "window-relaunch",
-            summary: "A slice in progress whose agent is gone: the Thread's log, then the launch card offering Relaunch.",
+            summary: "A slice in progress whose agent is gone: the Thread's log, then the launch item, the header offering Relaunch.",
             size: window
         ) {
             await slicePane(Fixtures.diffPaneSliceID, agents: [])
@@ -561,7 +561,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-fix-launch",
-            summary: "An approved slice with no agent on it: its Task log ends on the Fix card offering Launch fix agent, and the header offers it too.",
+            summary: "An approved slice with no agent on it: its Task log ends on the Fix item saying what a fix agent does, and the header offers Launch fix agent.",
             size: window
         ) {
             await slicePane(
@@ -580,7 +580,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-checks-agent-told",
-            summary: "The same red pull request with its fix agent live and the nudge on record: the notice says the failing check was sent to the agent to fix, with no button; the task log card reads Checks failed — sent to the agent.",
+            summary: "The same red pull request with its fix agent live and the nudge on record: the notice says the failing check was sent to the agent to fix, with no button; the task log item reads Checks failed — sent to the agent.",
             size: window
         ) {
             await slicePane(
@@ -690,7 +690,7 @@ enum AppStories {
 
         Story(
             name: "window-followups",
-            summary: "A waiting agent that proposed three follow-ups: their cards in the Thread, Apply in its header.",
+            summary: "A waiting agent that proposed three follow-ups: their triage item last in the Thread, its dashed tail under it, Apply at its foot.",
             size: window
         ) {
             shell(await followUpsModel(choices: [1: .queue, 2: .fold, 3: .drop]))
@@ -879,7 +879,7 @@ enum AppStories {
         Story(
             name: "window-task-log",
             summary: "A merged task's log: handed back three times, sent back twice, three follow-ups triaged "
-                + "(each its own card after the proposal: queued, folded in, dropped), then approved and merged.",
+                + "(each its own item after the proposal: queued, folded in, dropped), then approved and merged.",
             size: window
         ) {
             await slicePane(
@@ -889,7 +889,7 @@ enum AppStories {
 
         Story(
             name: "window-task-log-whole",
-            summary: "The same log in a window tall enough to show every card: the three decided follow-ups, "
+            summary: "The same log in a window tall enough to show every item: the three decided follow-ups, "
                 + "the queued one's task row, then the approve and the merge.",
             size: CGSize(width: window.width, height: 1500)
         ) {
@@ -900,7 +900,7 @@ enum AppStories {
 
         Story(
             name: "window-task-log-notes",
-            summary: "An in-progress task's log with two notes on its brief, each headed \"Another agent left a note\": one from a task on the plan, its task fact the depends-on row (dot, name, hover, click to go), and one from a person, its source fact plain text. Each card is stamped at its header's end — the time for today's, the day for this year's, the year too for last year's.",
+            summary: "An in-progress task's log with two notes on its brief, each headed \"Another agent left a note\": one from a task on the plan, its task fact the depends-on row (dot, name, hover, click to go), and one from a person, its source fact plain text. Each item is stamped at its header's end — the time for today's, the day for this year's, the year too for last year's.",
             size: window
         ) {
             await slicePane(
@@ -1294,7 +1294,7 @@ enum AppStories {
 
         Story(
             name: "window-source-task-brief",
-            summary: "A Todo task under a card: the brief card's facts lead with the card, opening in its "
+            summary: "A Todo task under a card: the brief's facts lead with the card, opening in its "
                 + "source, and the card's own facts in the milestone's place; the status bar reads card / task.",
             size: window
         ) {
