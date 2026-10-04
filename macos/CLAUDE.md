@@ -24,6 +24,8 @@ fuller structure and theme system.
   bug. `macos/README.md` has the incidents behind both.
 - A key that misbehaves in the agent pane: `docs/debugging/agent-pane-keys.md`
   (the key chain, the `NAT_KEY_DEBUG` harness on a private tmux socket).
+- Context menus that stop opening: `docs/debugging/context-menus.md` (the
+  `NatMenuDebug` default / `NAT_MENU_DEBUG` trace, what is ruled out).
 
 ## NatClient: `nat` is the only source of truth
 

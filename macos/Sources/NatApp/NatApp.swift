@@ -161,6 +161,9 @@ struct NatApp: App {
             .task { CursorDebugWalker.startIfAsked() }
             // Likewise a no-op unless NAT_KEY_DEBUG=1 and NAT_KEY_DEBUG_SYNTH=1.
             .onAppear { KeyDebug.synthesizeIfAsked() }
+            // Likewise a no-op unless NAT_MENU_DEBUG=1 or the NatMenuDebug
+            // default is set; installs once however often this reappears.
+            .onAppear { MenuDebug.startIfAsked() }
             // The other half of init's `.regular` policy: brings the window
             // to the front the way launching a bundled app would, now that
             // there is a window to bring.

@@ -228,6 +228,16 @@ Three environment variables, all off by default and costing nothing unset:
 tmux server and a byte recorder), how to run it without touching the real
 tmux server, and how to read the log.
 
+### Debug context menus that stop opening:
+
+`NAT_MENU_DEBUG=1`, or `defaults write com.craigmjohnston.nat.NatApp
+NatMenuDebug -bool YES` for the installed app — logs (NSLog, `nat
+menu-debug:`) every right-click and control-click, whether a menu opened
+after it and, where none did, whether the click missed SwiftUI, SwiftUI had
+no menu, or the menu was never presented; plus sleep/wake, activation,
+key-window, sheet and screen changes. `docs/debugging/context-menus.md` is
+the capture procedure and how to read it.
+
 ### Build a release .app bundle:
 ```bash
 bash macos/Scripts/make-app.sh
