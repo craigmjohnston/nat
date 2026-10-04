@@ -128,10 +128,11 @@ extension Fixtures {
     /// with comments between them twice, three follow-ups triaged on the way
     /// (one queued, one folded in, one dropped),
     /// then approved and merged — `slice-show`'s `events` for it, in order.
-    /// Each section is stamped a day apart, the first hand-back eight days
-    /// before `now` and the proposal five; two of its decisions a day after
-    /// it, the dropped one's predating stamps.
+    /// Each section is stamped a day apart, the launch nine days before `now`,
+    /// the first hand-back eight and the proposal five; two of its decisions
+    /// a day after it, the dropped one's predating stamps.
     public static let taskLogEvents: [TaskLogEvent] = [
+        TaskLogEvent(.launched, at: now.addingTimeInterval(-9 * 86_400)),
         TaskLogEvent(
             .handedBack, note: "The shell window and its three panes, empty states in each.",
             at: now.addingTimeInterval(-8 * 86_400)),
@@ -191,9 +192,9 @@ extension Fixtures {
     }
 
     /// An in-progress slice with notes left on its brief: one from the shell
-    /// slice (a task on the plan) before it was launched, last year; a
-    /// hand-back and a send-back earlier this year; and one from Craig (no
-    /// task) today — `slice-show`'s `events` for it, in order. The times are
+    /// slice (a task on the plan) before it was launched, last year; its
+    /// launch, a hand-back and a send-back earlier this year; and one from
+    /// Craig (no task) today — `slice-show`'s `events` for it, in order. The times are
     /// measured from `now`, the clock the gallery draws at, so a story of it
     /// says "today", "this year" and "last year" the same way every run.
     public static var notedTaskLogEvents: [TaskLogEvent] {
@@ -207,6 +208,7 @@ extension Fixtures {
                          by: "\"Bootstrap the SwiftUI shell\" (M1: Foundations)",
                          fromSlice: NoteSource(name: "Bootstrap the SwiftUI shell", milestone: "M1: Foundations"),
                          at: lastYear),
+            TaskLogEvent(.launched, at: thisYear.addingTimeInterval(-2 * 3600)),
             TaskLogEvent(.handedBack, note: "Polls every second; each row draws its agent's activity.", at: thisYear),
             TaskLogEvent(.sentBack, note: "Sources/NatKit/Activity.swift, line 30: a failed capture is unread, not gone.",
                          at: thisYear.addingTimeInterval(3 * 3600)),
@@ -235,6 +237,65 @@ extension Fixtures {
     /// `sliceDetails` with the activity slice's notes added.
     public static var notedSliceDetails: [String: SliceDetail] {
         sliceDetails.merging([activitySliceID: notedSliceDetail]) { _, new in new }
+    }
+
+    /// An in-progress slice whose log has gone quiet in the middle: launched
+    /// and handed back early this year, then three notes, a blocked hand-in
+    /// and a proposal of follow-ups already triaged (its count line and one
+    /// decided follow-up) in a row — six quiet items, which fold into one
+    /// group — then a send-back and one more note today, folded alone. Times
+    /// measured from `now`, as `notedTaskLogEvents`' are.
+    public static var groupedTaskLogEvents: [TaskLogEvent] {
+        let calendar = Calendar.current
+        let today = max(calendar.startOfDay(for: now), now.addingTimeInterval(-40 * 60))
+        let startOfYear = calendar.dateInterval(of: .year, for: now)?.start ?? now
+        let thisYear = max(startOfYear, calendar.date(byAdding: .day, value: -12, to: now) ?? now)
+        func day(_ n: Int) -> Date { calendar.date(byAdding: .day, value: n, to: thisYear) ?? thisYear }
+        return [
+            TaskLogEvent(.launched, at: thisYear),
+            TaskLogEvent(.handedBack, note: "Polls every second; each row draws its agent's activity.", at: day(1)),
+            TaskLogEvent(.note, note: "tmux 3.5 renamed the pane activity format; check `tmux -V` before trusting it.",
+                         by: "Craig Johnston", at: day(2)),
+            TaskLogEvent(.note, note: "The window's frame is autosaved under the scene's id now: read it from there rather than adding a key of your own.",
+                         by: "\"Bootstrap the SwiftUI shell\" (M1: Foundations)",
+                         fromSlice: NoteSource(name: "Bootstrap the SwiftUI shell", milestone: "M1: Foundations"),
+                         at: day(3)),
+            TaskLogEvent(.note, note: "The capture can take 200ms on a busy server; don't block the main actor on it.",
+                         by: "Craig Johnston", at: day(4)),
+            TaskLogEvent(.blocked, note: "No tmux on the CI runner to test against.", at: day(5)),
+            TaskLogEvent(.followUps, at: day(6), followUps: [
+                TaskFollowUp(
+                    index: 1, title: "Install tmux on the CI runner",
+                    brief: "Add tmux to the runner image so the activity poll can be tested end to end.",
+                    decision: .folded, decidedAt: day(7)),
+            ]),
+            TaskLogEvent(.sentBack, note: "Sources/NatKit/Activity.swift, line 30: a failed capture is unread, not gone.",
+                         at: today),
+            TaskLogEvent(.note, note: "The poll can drop to every two seconds while the window is in the background.",
+                         by: "Craig Johnston", at: today.addingTimeInterval(20 * 60)),
+        ]
+    }
+
+    /// The activity slice, read with that quiet run in its history.
+    public static var groupedSliceDetail: SliceDetail {
+        SliceDetail(
+            id: activitySliceID,
+            name: "Poll tmux for agent activity",
+            url: "https://notion.so/\(activitySliceID)",
+            status: "In progress",
+            milestone: "M2: Review flow",
+            assignee: "Craig Johnston",
+            blocked: false,
+            handedBack: false,
+            state: "in progress",
+            brief: "Poll tmux every second for each agent's activity.",
+            events: groupedTaskLogEvents
+        )
+    }
+
+    /// `sliceDetails` with the activity slice's quiet run added.
+    public static var groupedSliceDetails: [String: SliceDetail] {
+        sliceDetails.merging([activitySliceID: groupedSliceDetail]) { _, new in new }
     }
 
     /// The fixtures slice, never launched, with one note on its brief from the

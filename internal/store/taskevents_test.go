@@ -16,6 +16,7 @@ func TestTaskEventsNone(t *testing.T) {
 
 func TestTaskEventsEachSimpleKind(t *testing.T) {
 	body := "Brief.\n\n" +
+		"### Launched\n\nLaunched.\n\n" +
 		"### Handed back\n\nDid the thing.\n\n" +
 		"### Sent back\n\nRename the helper.\n\n" +
 		"### Relaunched\n\nRelaunched to pick up the work so far.\n\n" +
@@ -23,6 +24,7 @@ func TestTaskEventsEachSimpleKind(t *testing.T) {
 		"### Summary\n\nClosed it out.\n\n" +
 		"### PR description\n\nNot an event."
 	want := []TaskEvent{
+		{Kind: "launched"},
 		{Kind: "handed_back", Note: "Did the thing."},
 		{Kind: "sent_back", Note: "Rename the helper."},
 		{Kind: "relaunched"},
@@ -269,11 +271,12 @@ func TestTaskEventsStampedNote(t *testing.T) {
 }
 
 // Every stamped section reads its stamp off into At, and its text is what
-// follows the stamp — the relaunch's fixed line included, which is still not
-// surfaced. A release's line says when inside its sentence.
+// follows the stamp — the launch's and the relaunch's fixed lines included,
+// which are still not surfaced. A release's line says when inside its sentence.
 func TestTaskEventsStampedSections(t *testing.T) {
 	stamp := "\n\n" + testStamp + "\n\n"
 	body := "Brief.\n\n" +
+		"### Launched" + stamp + "Launched.\n\n" +
 		"### Handed back" + stamp + "Did the thing.\n\n" +
 		"### Sent back" + stamp + "Rename the helper.\n\n" +
 		"### Relaunched" + stamp + "Relaunched to pick up the work so far.\n\n" +
@@ -283,6 +286,7 @@ func TestTaskEventsStampedSections(t *testing.T) {
 		"### Follow-ups triaged" + stamp + "- Dropped: A\n\n" +
 		releasedLine("Craig Johnston", testNow)
 	want := []TaskEvent{
+		{Kind: "launched", At: readNow},
 		{Kind: "handed_back", Note: "Did the thing.", At: readNow},
 		{Kind: "sent_back", Note: "Rename the helper.", At: readNow},
 		{Kind: "relaunched", At: readNow},

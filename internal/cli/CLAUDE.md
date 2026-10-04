@@ -209,7 +209,7 @@ standing, and the output adds `Its live agent was told.` only where one was.
 See root CLAUDE.md's Notes rule.
 
 `slice-show --json`'s `events` is the slice's whole task log: every
-`store.TaskEvent` its body carries (`handed_back`/`sent_back`/`relaunched`/
+`store.TaskEvent` its body carries (`handed_back`/`sent_back`/`launched`/`relaunched`/
 `released`/`blocked`/`summary`/`follow_ups`/`note`/`checks_failed`), in body order, plus — read off
 the slice's properties rather than its body — an `approved` event where a
 pull request is recorded and a `merged` event where the slice is Done with a

@@ -28,4 +28,8 @@ type Store interface {
 	// [Launch] writes for a non-fix launch picking a session back up — never
 	// a fresh one. Its own failure is logged and never fails the launch.
 	RecordRelaunch(ctx context.Context, id string) error
+	// RecordLaunch files a fresh launch's one fixed line in the task log, which
+	// [Launch] writes for every non-fix launch that is not a relaunch. Its own
+	// failure is logged and never fails the launch either.
+	RecordLaunch(ctx context.Context, id string) error
 }

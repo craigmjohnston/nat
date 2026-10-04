@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
@@ -27,6 +28,10 @@ type fakeClient struct {
 	updated      []updateCall
 	blockParents []string
 	appended     []string
+	// headings is the heading each append opened with, in the order they
+	// came — "" for one that opened with anything else — so a test can tell a
+	// Launched from a Relaunched.
+	headings []string
 }
 
 var _ store.API = (*fakeClient)(nil)
@@ -81,6 +86,7 @@ func (f *fakeClient) CreatePage(context.Context, notion.Parent, map[string]notio
 
 func (f *fakeClient) AppendBlockChildren(_ context.Context, id string, children []map[string]any) ([]notion.Block, error) {
 	f.appended = append(f.appended, id)
+	f.headings = append(f.headings, headingOfBlocks(children))
 	if f.appendBlocks == nil {
 		return nil, nil
 	}
@@ -88,6 +94,31 @@ func (f *fakeClient) AppendBlockChildren(_ context.Context, id string, children 
 }
 
 func (f *fakeClient) TrashPage(context.Context, string) error { panic("not used") }
+
+// headingOfBlocks reads the text of the heading_3 an append's children open
+// with, by way of the JSON Notion would be sent, and "" where the first child
+// is no such heading.
+func headingOfBlocks(children []map[string]any) string {
+	if len(children) == 0 {
+		return ""
+	}
+	raw, _ := json.Marshal(children[0])
+	var b struct {
+		Heading struct {
+			RichText []struct {
+				Text struct {
+					Content string `json:"content"`
+				} `json:"text"`
+			} `json:"rich_text"`
+		} `json:"heading_3"`
+	}
+	_ = json.Unmarshal(raw, &b)
+	var text string
+	for _, r := range b.Heading.RichText {
+		text += r.Text.Content
+	}
+	return text
+}
 
 // store is the fake driving a real Notion-backed store, which is what the
 // launch and approve flows now take.

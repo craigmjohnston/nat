@@ -97,6 +97,9 @@ enum LogMetrics {
     static let tailOverrun: CGFloat = 16
     /// The rule's x in the margin column: under the icon's centre.
     static let ruleX: CGFloat = 6
+    /// The x of an open group's own rule, beside its items: in the margin
+    /// column's gutter, between the log's rule and the items' text.
+    static let groupRuleX: CGFloat = 18
 }
 
 extension View {
@@ -119,8 +122,14 @@ extension View {
 struct LogItem<Action: View, Content: View>: View {
     let symbol: String
     var iconRole: InkRole = .tertiary
+    /// Drawn in the icon's slot in place of `symbol`'s glyph, at the same
+    /// size so nothing shifts — a folded item's chevron under the pointer, a
+    /// group's stacked icon. Nil draws the glyph.
+    var glyph: AnyView?
     let who: String
     var whoRole: InkRole = .primary
+    /// Sets who in italic — a group's count, which names no one.
+    var whoItalic = false
     var meta: String?
     var metaRole: InkRole = .secondary
     var when: String?
@@ -130,9 +139,11 @@ struct LogItem<Action: View, Content: View>: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            ThreadIcon(symbol: symbol, role: iconRole)
-                .frame(width: ThreadIcon.size, height: LogMetrics.headHeight)
-                .frame(width: LogMetrics.margin, alignment: .leading)
+            Group {
+                if let glyph { glyph } else { ThreadIcon(symbol: symbol, role: iconRole) }
+            }
+            .frame(width: ThreadIcon.size, height: LogMetrics.headHeight)
+            .frame(width: LogMetrics.margin, alignment: .leading)
             VStack(alignment: .leading, spacing: 0) {
                 header
                 if Content.self != EmptyView.self {
@@ -150,6 +161,7 @@ struct LogItem<Action: View, Content: View>: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(who)
                 .font(.system(size: Typo.scaled(13.5)))
+                .italic(whoItalic)
                 .ink(whoRole)
                 .fixedSize(horizontal: false, vertical: true)
             if let meta {
@@ -183,13 +195,15 @@ struct LogItem<Action: View, Content: View>: View {
 
 extension LogItem where Action == EmptyView {
     init(
-        symbol: String, iconRole: InkRole = .tertiary, who: String, whoRole: InkRole = .primary,
+        symbol: String, iconRole: InkRole = .tertiary, glyph: AnyView? = nil, who: String,
+        whoRole: InkRole = .primary, whoItalic: Bool = false,
         meta: String? = nil, metaRole: InkRole = .secondary, when: String? = nil,
         connector: LogConnector = .none, @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
-            symbol: symbol, iconRole: iconRole, who: who, whoRole: whoRole, meta: meta, metaRole: metaRole,
-            when: when, connector: connector, action: { EmptyView() }, content: content)
+            symbol: symbol, iconRole: iconRole, glyph: glyph, who: who, whoRole: whoRole, whoItalic: whoItalic,
+            meta: meta, metaRole: metaRole, when: when, connector: connector, action: { EmptyView() },
+            content: content)
     }
 }
 
@@ -232,7 +246,8 @@ struct ThreadFactKey: View {
 struct LaunchCard: View {
     enum Mode: Equatable {
         case launch
-        /// A slice under way whose agent is gone.
+        /// A slice nat recorded a launch of, whose agent is gone
+        /// (`launchIsRelaunch`).
         case relaunch
         /// An approved slice at its pull request: a fix agent, sent at the
         /// review on the same branch.

@@ -259,6 +259,10 @@ type Store interface {
 	// [actions.Launch] writes when a session is picked back up rather than
 	// starting fresh.
 	RecordRelaunch(ctx context.Context, id string) error
+	// RecordLaunch files one fixed line under a Launched heading, which
+	// [actions.Launch] writes when a session starts a slice fresh — the task
+	// log's first word, and its time.
+	RecordLaunch(ctx context.Context, id string) error
 	// RecordPR writes a pull request's URL onto a slice and nothing else. The
 	// slice stays in progress: the merge is what marks work landed.
 	RecordPR(ctx context.Context, id, url string) error

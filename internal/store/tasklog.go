@@ -12,6 +12,10 @@ import (
 // relaunch always reads the same whichever store wrote it.
 const relaunchedLine = "Relaunched to pick up the work so far."
 
+// launchedLine is the one fixed line a fresh launch files under
+// [notion.LaunchedHeading], shared by both backends as [relaunchedLine] is.
+const launchedLine = "Launched."
+
 // noteText is a Note section's content under its stamp: the provenance
 // paragraph, then the note — one rule, so both backends write the same
 // section. Every section here is [stamped] as it is written, so the stamp
@@ -65,6 +69,16 @@ func (n *Notion) RecordRelaunch(ctx context.Context, id string) error {
 	return nil
 }
 
+// RecordLaunch files the one fixed line a fresh launch leaves on the slice
+// page under a heading of its own, in one append.
+func (n *Notion) RecordLaunch(ctx context.Context, id string) error {
+	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.LaunchedHeading, stamped(clockOr(n.Clock), launchedLine))); err != nil {
+		return err
+	}
+	logging.Action("slice launched", "slice", id)
+	return nil
+}
+
 // RecordSentBack appends the review comments to the slice's body, in the
 // markdown Notion would render the same section to.
 func (l *Local) RecordSentBack(ctx context.Context, id, comments string) error {
@@ -104,6 +118,15 @@ func (l *Local) RecordRelaunch(ctx context.Context, id string) error {
 	return nil
 }
 
+// RecordLaunch appends a fresh launch's one fixed line to the slice's body.
+func (l *Local) RecordLaunch(ctx context.Context, id string) error {
+	if err := l.appendToBody(ctx, id, "record the slice's launch", notion.LaunchedHeading, stamped(clockOr(l.Clock), launchedLine)); err != nil {
+		return err
+	}
+	logging.Action("slice launched", "slice", id)
+	return nil
+}
+
 // RecordSentBack files the comments locally, then pushes them to the
 // workspace.
 func (m *Mirrored) RecordSentBack(ctx context.Context, id, comments string) error {
@@ -139,5 +162,33 @@ func (m *Mirrored) RecordRelaunch(ctx context.Context, id string) error {
 		return err
 	}
 	m.push(ctx, id, func() error { return m.remote.RecordRelaunch(ctx, id) })
+	return nil
+}
+
+// RecordLaunch files the launch locally, then pushes it to the workspace.
+//
+// It is written straight after the launch's own claim, whose push may have
+// failed and left the slice ahead of the workspace — and the line landing is
+// not the claim landing. So only a slice that was level before this write is
+// marked sent once the line is pushed; one already ahead stays ahead, for a
+// later sync to send what the claim's push could not, and a pull meanwhile
+// not to read the claim back off a workspace that never heard of it. A sync
+// state that cannot be read is taken as ahead: at worst the slice is sent
+// again.
+func (m *Mirrored) RecordLaunch(ctx context.Context, id string) error {
+	ahead, err := m.local.Dirty(ctx, id)
+	ahead = ahead || err != nil
+	if err := m.local.RecordLaunch(ctx, id); err != nil {
+		return err
+	}
+	send := func() error { return m.remote.RecordLaunch(ctx, id) }
+	if !ahead {
+		m.push(ctx, id, send)
+		return nil
+	}
+	if err := send(); err != nil {
+		logging.Error("push to the workspace failed, the file is ahead and will send it on the next sync",
+			"slice", id, "err", err)
+	}
 	return nil
 }

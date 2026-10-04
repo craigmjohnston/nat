@@ -365,6 +365,10 @@ struct SliceNavigatorView: View {
     private enum ThreadItem {
         case brief
         case event(ThreadEvent)
+        /// A quiet item, drawn folded to its header (`ThreadLogItem.folded`).
+        case folded(ThreadEvent)
+        /// A run of quiet items folded into one (`ThreadLogItem.group`).
+        case group([ThreadEvent])
         /// The pending follow-ups, awaiting the user's decision — and when
         /// they were proposed, where the log says.
         case triage(Date?)
@@ -390,6 +394,11 @@ struct SliceNavigatorView: View {
                             briefItem(connector: connector)
                         case .event(let event):
                             ThreadEventCard(event: event, connector: connector, taskRow: { taskRow(id: $0) })
+                        case .folded(let event):
+                            ThreadEventCard(
+                                event: event, connector: connector, collapsible: true, taskRow: { taskRow(id: $0) })
+                        case .group(let events):
+                            ThreadGroupCard(events: events, connector: connector, taskRow: { taskRow(id: $0) })
                         case .triage(let when):
                             FollowUpCards(
                                 appModel: appModel, slice: slice, followUps: followUps, milestone: milestoneName,
@@ -409,16 +418,30 @@ struct SliceNavigatorView: View {
         .thinScrollers()
     }
 
-    private func threadItems(_ nav: NavigatorModel) -> [ThreadItem] {
-        let log = buildThreadEvents(
+    /// The Task log's events, as nat reports them.
+    private var threadLog: [ThreadEvent] {
+        buildThreadEvents(
             slice: slice, agent: agent, brief: detail.detail?.brief, events: detail.detail?.events,
             plan: plan, milestones: milestones)
+    }
+
+    private func threadItems(_ nav: NavigatorModel) -> [ThreadItem] {
+        let log = threadLog
         var items: [ThreadItem] = [.brief]
-        for event in log {
-            if !event.awaitsTriage {
-                items.append(.event(event))
-            } else if !followUps.isEmpty {
-                items.append(.triage(event.when))
+        // The quiet items folded, and three or more of them in a row folded
+        // together into one.
+        for item in threadLogItems(log) {
+            switch item {
+            case .card(let event):
+                if !event.awaitsTriage {
+                    items.append(.event(event))
+                } else if !followUps.isEmpty {
+                    items.append(.triage(event.when))
+                }
+            case .folded(let event):
+                items.append(.folded(event))
+            case .group(let events):
+                items.append(.group(events))
             }
         }
         // A reading with no proposal in its log (a nat too old to report
@@ -433,7 +456,8 @@ struct SliceNavigatorView: View {
             return .blocked(waitingOn: dependencies.filter { $0.status != "Done" }.map(\.name))
         }
         if nav.launchIsFix { return .fix }
-        return nav.state.isLaunched ? .relaunch : .launch
+        // A relaunch only where nat recorded an earlier launch.
+        return launchIsRelaunch(log: threadLog, hasLiveAgent: nav.hasLiveAgent) ? .relaunch : .launch
     }
 
     private func resetLaunchForm() {

@@ -21,6 +21,10 @@ private struct TerminalStubbedKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct ThreadFoldsOpenKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 private struct ClockKey: EnvironmentKey {
     static let defaultValue: @Sendable () -> Date = { Date() }
 }
@@ -39,6 +43,15 @@ extension EnvironmentValues {
     var terminalStubbed: Bool {
         get { self[TerminalStubbedKey.self] }
         set { self[TerminalStubbedKey.self] = newValue }
+    }
+
+    /// Whether the Task log's folded items and groups start open. False
+    /// everywhere but a story: a render has no pointer to open one with, so
+    /// a story of the open state says so here. A group's own items start
+    /// folded whatever it says.
+    var threadFoldsOpen: Bool {
+        get { self[ThreadFoldsOpenKey.self] }
+        set { self[ThreadFoldsOpenKey.self] = newValue }
     }
 
     /// The instant a view measures "ago" and "resets at" against: the live

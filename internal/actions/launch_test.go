@@ -362,11 +362,11 @@ func TestLaunchReportsAFailedStart(t *testing.T) {
 	}
 }
 
-// TestLaunchRecordsARelaunchWhenTheSliceWasNotTodo covers a launch picking a
-// session back up: the slice was already In progress before this claim (a
-// relaunch, placed back on its own branch), so the task log gets one more
-// line saying so.
-func TestLaunchRecordsARelaunchWhenTheSliceWasNotTodo(t *testing.T) {
+// TestLaunchRecordsALaunchForAnInProgressSliceWithNoHistory covers a slice
+// set In progress some other way (claimed by hand, say) with nothing on its
+// record: status alone is no earlier launch, so it is launched fresh — a
+// Launched, never a Relaunched.
+func TestLaunchRecordsALaunchForAnInProgressSliceWithNoHistory(t *testing.T) {
 	l := &fakeLauncher{}
 	client := &fakeClient{getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil }}
 
@@ -376,14 +376,14 @@ func TestLaunchRecordsARelaunchWhenTheSliceWasNotTodo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
 	}
-	if len(client.appended) != 1 || client.appended[0] != "s5" {
-		t.Errorf("appended = %v, want the Relaunched note filed on the slice", client.appended)
+	if len(client.appended) != 1 || client.appended[0] != "s5" || client.headings[0] != notion.LaunchedHeading {
+		t.Errorf("appended = %v %v, want the Launched line filed on the slice", client.appended, client.headings)
 	}
 }
 
 // A slice still Todo, with nothing yet in its task log, is a fresh launch:
-// nothing is written about a relaunch.
-func TestLaunchWritesNoRelaunchForAFreshLaunch(t *testing.T) {
+// it files the log's first line, a Launched, and no Relaunched.
+func TestLaunchRecordsALaunchForAFreshLaunch(t *testing.T) {
 	l := &fakeLauncher{}
 	client := &fakeClient{getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil }}
 
@@ -393,8 +393,8 @@ func TestLaunchWritesNoRelaunchForAFreshLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
 	}
-	if len(client.appended) != 0 {
-		t.Errorf("appended = %v, want nothing written about a relaunch", client.appended)
+	if len(client.appended) != 1 || client.appended[0] != "s5" || client.headings[0] != notion.LaunchedHeading {
+		t.Errorf("appended = %v %v, want the Launched line alone filed on the slice", client.appended, client.headings)
 	}
 }
 
@@ -421,13 +421,13 @@ func TestLaunchRecordsARelaunchWhenTheBriefAlreadyHasATaskEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
 	}
-	if len(client.appended) != 1 || client.appended[0] != "s5" {
-		t.Errorf("appended = %v, want the Relaunched note filed on the slice", client.appended)
+	if len(client.appended) != 1 || client.appended[0] != "s5" || client.headings[0] != notion.RelaunchedHeading {
+		t.Errorf("appended = %v %v, want the Relaunched line alone filed on the slice", client.appended, client.headings)
 	}
 }
 
 // noteLaunch launches a Todo slice whose brief is the given blocks, and
-// reports which slices a relaunch was written on.
+// reports the heading of every section the launch filed.
 func noteLaunch(t *testing.T, body ...notion.Block) []string {
 	t.Helper()
 	client := &fakeClient{
@@ -445,20 +445,20 @@ func noteLaunch(t *testing.T, body ...notion.Block) []string {
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
 	}
-	return client.appended
+	return client.headings
 }
 
 // A note is context left for whoever first launches the slice, not history of
-// an earlier pass: a Todo slice carrying only a note launches fresh, with no
-// Relaunched line.
-func TestLaunchWritesNoRelaunchForASliceWithOnlyANote(t *testing.T) {
+// an earlier pass: a Todo slice carrying only a note launches fresh — a
+// Launched, with no Relaunched line.
+func TestLaunchRecordsALaunchForASliceWithOnlyANote(t *testing.T) {
 	appended := noteLaunch(t,
 		block(t, "heading_3", "Note"),
 		block(t, "paragraph", "At 2026-10-03T23:14:05+01:00"),
 		block(t, "paragraph", `From "Render the board" (M1)`),
 		block(t, "paragraph", "The menu moved."))
-	if len(appended) != 0 {
-		t.Errorf("appended = %v, want nothing written about a relaunch", appended)
+	if len(appended) != 1 || appended[0] != notion.LaunchedHeading {
+		t.Errorf("appended = %v, want the Launched line alone", appended)
 	}
 }
 
@@ -471,8 +471,8 @@ func TestLaunchRecordsARelaunchForANoteBesideAHandBack(t *testing.T) {
 		block(t, "paragraph", "Mind the cache."),
 		block(t, "heading_3", "Handed back"),
 		block(t, "paragraph", "Wrote it."))
-	if len(appended) != 1 || appended[0] != "s5" {
-		t.Errorf("appended = %v, want the Relaunched note filed on the slice", appended)
+	if len(appended) != 1 || appended[0] != notion.RelaunchedHeading {
+		t.Errorf("appended = %v, want the Relaunched line alone", appended)
 	}
 }
 
@@ -493,8 +493,8 @@ func TestLaunchRecordsARelaunchForAFixLaunch(t *testing.T) {
 		if err != nil || len(l.launches) != 1 {
 			t.Fatalf("%s: Launch() = %v, launches %+v, want it to go through", status, err, l.launches)
 		}
-		if len(client.appended) != 1 || client.appended[0] != "s5" {
-			t.Errorf("%s: appended = %v, want the Relaunched note filed on the slice", status, client.appended)
+		if len(client.appended) != 1 || client.appended[0] != "s5" || client.headings[0] != notion.RelaunchedHeading {
+			t.Errorf("%s: appended = %v %v, want the Relaunched line filed on the slice", status, client.appended, client.headings)
 		}
 		if len(client.updated) != 0 {
 			t.Errorf("%s: updated = %v, want nothing claimed", status, client.updated)
@@ -513,23 +513,34 @@ func TestLaunchRecordsARelaunchForAFixLaunch(t *testing.T) {
 	}
 }
 
-// A relaunch note that fails to write is logged and never fails the launch:
-// the agent is still started.
-func TestLaunchToleratesAFailedRelaunchWrite(t *testing.T) {
-	l := &fakeLauncher{}
-	client := &fakeClient{
-		getPage:      func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
-		appendBlocks: func(string, []map[string]any) ([]notion.Block, error) { return nil, errors.New("notion: 500") },
-	}
+// A relaunch's or a fresh launch's line that fails to write is logged and
+// never fails the launch: the agent is still started.
+func TestLaunchToleratesAFailedLaunchOrRelaunchWrite(t *testing.T) {
+	for name, body := range map[string][]notion.Block{
+		"launch":   nil,
+		"relaunch": {block(t, "heading_3", "Handed back"), block(t, "paragraph", "Wrote it.")},
+	} {
+		l := &fakeLauncher{}
+		client := &fakeClient{
+			getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil },
+			blocks: func(id string) ([]notion.Block, error) {
+				if id == "s5" {
+					return body, nil
+				}
+				return nil, nil
+			},
+			appendBlocks: func(string, []map[string]any) ([]notion.Block, error) { return nil, errors.New("notion: 500") },
+		}
 
-	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), nil, "u1",
-		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed}, WorkingDir: t.TempDir()},
-		config.AgentModel{})
-	if err != nil {
-		t.Fatalf("Launch() = %v, want it to go through despite the failed note", err)
-	}
-	if res.Session == "" {
-		t.Error("session = \"\", want the agent launched regardless")
+		res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{}, client.store(), nil, "u1",
+			agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed}, WorkingDir: t.TempDir()},
+			config.AgentModel{})
+		if err != nil {
+			t.Fatalf("%s: Launch() = %v, want it to go through despite the failed note", name, err)
+		}
+		if res.Session == "" {
+			t.Errorf("%s: session = \"\", want the agent launched regardless", name)
+		}
 	}
 }
 

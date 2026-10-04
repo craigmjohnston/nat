@@ -887,8 +887,9 @@ enum AppStories {
 
         Story(
             name: "window-task-log",
-            summary: "A merged task's log: handed back three times, sent back twice, three follow-ups triaged "
-                + "(each its own item after the proposal: queued, folded in, dropped), then approved and merged.",
+            summary: "A merged task's log: launched (with its time), handed back three times, sent back twice, "
+                + "three follow-ups triaged — the proposal and its three decisions folded into one group of four "
+                + "other items — then approved and merged.",
             size: window
         ) {
             await slicePane(
@@ -898,28 +899,83 @@ enum AppStories {
 
         Story(
             name: "window-task-log-whole",
-            summary: "The same log in a window tall enough to show every item: the three decided follow-ups, "
-                + "the queued one's task row, then the approve and the merge.",
+            summary: "The same log in a window tall enough to show every item, its folds open: the group of the "
+                + "proposal and its three decided follow-ups, each still folded, then the approve and the merge.",
             size: CGSize(width: window.width, height: 1500)
         ) {
             await slicePane(
                 Fixtures.shellSliceID, agents: [], details: Fixtures.taskLogSliceDetails,
                 focus: NavigatorFocus(open: [.thread], main: .diff))
+                .environment(\.threadFoldsOpen, true)
         },
 
         Story(
             name: "window-task-log-notes",
-            summary: "An in-progress task's log with two notes on its brief, each headed \"Another agent left a note\": one from a task on the plan, its task fact the depends-on row (dot, name, hover, click to go), and one from a person, its source fact plain text. Each item is stamped at its header's end — the time for today's, the day for this year's, the year too for last year's.",
+            summary: "An in-progress task's log with two notes on its brief, drawn with its folds open, each headed \"Another agent left a note\": one from a task on the plan, its task fact the depends-on row (dot, name, hover, click to go), and one from a person, its source fact plain text. Each item is stamped at its header's end — the time for today's, the day for this year's, the year too for last year's — Launched too, with the launch nat recorded.",
             size: window
         ) {
             await slicePane(
                 Fixtures.activitySliceID, agents: [], details: Fixtures.notedSliceDetails,
                 focus: NavigatorFocus(open: [.thread], main: .diff))
+                .environment(\.threadFoldsOpen, true)
+        },
+
+        Story(
+            name: "window-task-log-folds",
+            summary: "An in-progress task's log as it first draws: Launched with its time, the hand-back open, "
+                + "then a run of six quiet items (three notes, a blocked hand-in, a triaged proposal and its "
+                + "decision) folded into one group — stacked icon, its count in italic, the span of its times — "
+                + "then the send-back open and a lone note folded to its header; Relaunch, as nat recorded a launch.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.activitySliceID, agents: [], details: Fixtures.groupedSliceDetails,
+                focus: NavigatorFocus(open: [.thread], main: .diff))
+        },
+
+        Story(
+            name: "window-task-log-folds-open",
+            summary: "The same log with its folds open: the group's header, each of its six items folded to "
+                + "icon, title and time beside the group's thin rule, and the foot's up chevron that folds it "
+                + "again; the lone note open below.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.activitySliceID, agents: [], details: Fixtures.groupedSliceDetails,
+                focus: NavigatorFocus(open: [.thread], main: .diff))
+                .environment(\.threadFoldsOpen, true)
+        },
+
+        Story(
+            name: "task-log-fold-hover",
+            summary: "A folded group and a folded note under the pointer: each one's icon becomes its chevron, "
+                + "pointing right while folded, in the icon's own slot, so nothing on the row moves.",
+            size: CGSize(width: 330, height: 120)
+        ) {
+            let items = threadLogItems(buildThreadEvents(
+                slice: Fixtures.slice(Fixtures.activitySliceID), agent: nil, brief: nil,
+                events: Fixtures.groupedTaskLogEvents))
+            let group = items.compactMap { item -> [ThreadEvent]? in
+                if case .group(let events) = item { return events }
+                return nil
+            }
+            let folded = items.compactMap { item -> ThreadEvent? in
+                if case .folded(let event) = item { return event }
+                return nil
+            }
+            return VStack(alignment: .leading, spacing: LogMetrics.spacing) {
+                ThreadGroupCard(events: group.first ?? [], connector: .solid)
+                if let note = folded.last { ThreadEventCard(event: note, collapsible: true) }
+            }
+            .taskLogPadding()
+            .frame(maxHeight: .infinity, alignment: .top)
+            .surface(.window)
+            .environment(\.hoverForced, true)
         },
 
         Story(
             name: "window-task-log-note-todo",
-            summary: "A Todo task never launched, with one note on its brief from a task on the plan: the log is that note alone, stamped with today's time, then the Launch action — no Launched item claims a launch that never happened.",
+            summary: "A Todo task never launched, with one note on its brief from a task on the plan: the log is that note alone, folded to its header and stamped with today's time, then the Launch action — no Launched item claims a launch that never happened.",
             size: window
         ) {
             await slicePane(
