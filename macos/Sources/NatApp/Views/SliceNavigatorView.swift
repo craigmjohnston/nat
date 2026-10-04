@@ -24,8 +24,11 @@ struct SliceNavigatorView: View {
     @State private var agentOptions = AgentOptions.fallback
     @State private var launchWarning: String?
     @State private var showMergeConfirm = false
+    /// Whether the Run heading's menu is open — a story's seam too.
+    @State private var runMenuOpen = false
 
     private var projectID: String { appModel.projectStore?.projectID ?? "" }
+    private var sliceRuns: [RunCommand] { appModel.sliceRuns(ofProject: projectID) }
     private var agent: AgentStatus? { appModel.activityStore?.agents[slice.id] }
     private var nav: NavigatorModel {
         NavigatorModel(
@@ -59,6 +62,16 @@ struct SliceNavigatorView: View {
                 threadActions(nav)
             } content: {
                 threadBody(nav)
+            }
+            // The project's slice-scoped runs, once the slice has handed
+            // back: a heading with no section under it.
+            if slice.handedBack, !sliceRuns.isEmpty {
+                RunHeadingRow(
+                    runs: sliceRuns, merged: stage(for: slice, agent: nil) == .done,
+                    isBusy: appModel.isStartingRun(projectID: projectID, sliceID: slice.id), menuOpen: $runMenuOpen
+                ) { label in
+                    Task { await appModel.startRun(projectID: projectID, sliceID: slice.id, label: label) }
+                }
             }
             // Changes and PR are only there once there is a branch, and a
             // pull request, to show.

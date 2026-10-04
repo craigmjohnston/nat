@@ -30,13 +30,19 @@ public struct SettingsFields: Equatable, Sendable {
     /// board happens to be showing.
     public var projectWorkingDirs: [String: String]
 
+    /// Each tracked project's run commands, keyed by project ID, as the
+    /// table under its working directory edits them — a row being typed in
+    /// included.
+    public var projectRuns: [String: [RunCommand]]
+
     public init(
         pollSeconds: String,
         workshopModel: String,
         workshopEffort: String,
         sliceModel: String,
         sliceEffort: String,
-        projectWorkingDirs: [String: String]
+        projectWorkingDirs: [String: String],
+        projectRuns: [String: [RunCommand]] = [:]
     ) {
         self.pollSeconds = pollSeconds
         self.workshopModel = workshopModel
@@ -44,6 +50,7 @@ public struct SettingsFields: Equatable, Sendable {
         self.sliceModel = sliceModel
         self.sliceEffort = sliceEffort
         self.projectWorkingDirs = projectWorkingDirs
+        self.projectRuns = projectRuns
     }
 
     /// Reads a loaded `ConfigDoc` into the form's own shape. An unset number
@@ -56,6 +63,7 @@ public struct SettingsFields: Equatable, Sendable {
         sliceModel = config.sliceAgent.model ?? ""
         sliceEffort = config.sliceAgent.effort ?? ""
         projectWorkingDirs = config.projects.mapValues { $0.workingDir }
+        projectRuns = config.projects.mapValues { $0.runs }
     }
 }
 
@@ -76,10 +84,21 @@ public enum SettingsModel {
         "project.\(projectID).working_dir"
     }
 
+    /// The key `config-set` reads a project's whole run list from, mirroring
+    /// `internal/cli/configset.go`'s `project.<id>.runs`.
+    public static func runsKey(projectID: String) -> String {
+        "project.\(projectID).runs"
+    }
+
     /// The `config-set` writes that would carry `edited` onto `original` —
     /// one per field that actually changed, nothing for a field left alone.
     /// Order is fixed (the scalar fields, then projects sorted by ID) so a
     /// save always writes in the same order twice.
+    ///
+    /// A project's runs are written whole, and only once every row has a
+    /// label and a command: a row still being typed is no run to write, and
+    /// nat would refuse it. Anything else nat refuses — a label used twice —
+    /// comes back as that key's error.
     public static func changes(from original: SettingsFields, to edited: SettingsFields) -> [ConfigChange] {
         var changes: [ConfigChange] = []
 
@@ -100,6 +119,14 @@ public enum SettingsModel {
             addIfChanged(workingDirKey(projectID: projectID), oldValue, newValue)
         }
 
+        for projectID in edited.projectRuns.keys.sorted() {
+            let runs = edited.projectRuns[projectID] ?? []
+            guard runs.allSatisfy(\.isComplete) else { continue }
+            addIfChanged(
+                runsKey(projectID: projectID),
+                (original.projectRuns[projectID] ?? []).configValue, runs.configValue)
+        }
+
         return changes
     }
 
@@ -117,24 +144,36 @@ public enum SettingsModel {
             case keySliceModel: result.sliceModel = change.value
             case keySliceEffort: result.sliceEffort = change.value
             default:
-                if let projectID = projectID(fromWorkingDirKey: change.key) {
+                if let projectID = projectID(from: change.key, suffix: ".working_dir") {
                     result.projectWorkingDirs[projectID] = change.value
+                } else if let projectID = projectID(from: change.key, suffix: ".runs") {
+                    result.projectRuns[projectID] = change.value.isEmpty
+                        ? []
+                        : (try? JSONDecoder().decode([RunCommand].self, from: Data(change.value.utf8))) ?? []
                 }
             }
         }
         return result
     }
 
-    /// The project ID a `project.<id>.working_dir` key names, or nil for any
+    /// The project ID a `project.<id><suffix>` key names, or nil for any
     /// other key.
-    private static func projectID(fromWorkingDirKey key: String) -> String? {
+    private static func projectID(from key: String, suffix: String) -> String? {
         let prefix = "project."
-        let suffix = ".working_dir"
         guard key.hasPrefix(prefix), key.hasSuffix(suffix), key.count > prefix.count + suffix.count else {
             return nil
         }
         let start = key.index(key.startIndex, offsetBy: prefix.count)
         let end = key.index(key.endIndex, offsetBy: -suffix.count)
         return String(key[start..<end])
+    }
+}
+
+extension RunCommand {
+    /// Whether the row is a run nat would keep: a label and a command, both
+    /// more than space.
+    public var isComplete: Bool {
+        !label.trimmingCharacters(in: .whitespaces).isEmpty
+            && !command.trimmingCharacters(in: .whitespaces).isEmpty
     }
 }

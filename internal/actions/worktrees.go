@@ -21,6 +21,9 @@ type Worktrees interface {
 	Path(dir, branch string) (string, error)
 	Create(dir, branch, base string) (string, error)
 	Remove(dir, branch string) error
+	// Reset hard-resets the worktree at path to ref — for nat's own run
+	// checkout alone (see [GlobalRunDir]).
+	Reset(path, ref string) error
 }
 
 // Repo is what a launch needs of git that the worktree package does not ask:

@@ -200,6 +200,19 @@ func (c CLI) Remove(dir, branch string) error {
 	return nil
 }
 
+// Reset hard-resets the worktree at path to ref: its branch moved to ref and
+// every tracked file put back as ref has it. It is for nat's own run checkout
+// alone — a branch nobody else works on — and never for a slice's worktree,
+// whose uncommitted work is an agent's.
+func (c CLI) Reset(path, ref string) error {
+	if _, err := c.runner.Run(path, Binary, "reset", "--hard", ref); err != nil {
+		logging.Error("could not reset a worktree", "path", path, "ref", ref, "error", err)
+		return err
+	}
+	logging.Action("worktree reset", "path", path, "ref", ref)
+	return nil
+}
+
 // Path is where the repository at dir keeps branch's worktree, read off
 // `git worktree list --porcelain` — the machine-readable form of the listing,
 // which names each worktree's path and the branch it has checked out. A branch

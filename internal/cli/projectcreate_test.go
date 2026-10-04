@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -77,7 +78,7 @@ func TestProjectCreateBuildsTheProjectAndRegistersIt(t *testing.T) {
 	}
 
 	want := config.ProjectConfig{Name: "nat", SlicesDSID: "new-slices-ds", WorkingDir: "/src/nat"}
-	if got := saved.Projects["new-project"]; got != want {
+	if got := saved.Projects["new-project"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("saved project = %+v, want %+v", got, want)
 	}
 	for _, want := range []string{"# nat", "new-project", "https://notion.so/new-project",

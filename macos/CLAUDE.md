@@ -261,6 +261,19 @@ nothing draws until every image's pixel size is known and every image has an
 explicit frame; keep it so. Stories: `window-visuals`,
 `window-visuals-comments`, `visuals-zoomed`, `visuals-comment-editor`.
 
+**Run commands** (`docs/run-commands.md`): a project's `runs` (config,
+`RunCommand`) are offered by one control, `RunSplitButton` — the global ones
+in the sidebar's titlebar segment (`TitlebarRunButton`), the slice-scoped ones
+as `RunHeadingRow` under the Task section of a handed-back slice, greyed once
+its stage is done. Both call `AppModel.startRun` → `nat run`; nothing in Swift
+picks a directory or default. The run's session is the Run tab
+(`MainPaneMode.run`, `TitlebarTab.run`) beside Terminal, held in
+`AppModel.runs` until tmux says it is gone (`watchRun`, `TmuxSession.exists`).
+Settings ▸ Projects edits them, written whole through `config-set
+project.<id>.runs` once every row is filled in. Stories: `titlebar-run`,
+`titlebar-run-menu`, `window-run-heading`, `window-run-heading-merged`,
+`window-run-tab`, `settings-projects-runs`.
+
 **Task sources.** There is no new-project entry for one: **connecting a
 plugin makes its section.** `AppModel.ensureSourceProjects` makes exactly one
 source project — `project-create --source`, no working directory, and named

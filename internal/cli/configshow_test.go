@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -68,7 +69,7 @@ func TestConfigShowSaysEachBackend(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Projects["local-1"] != (configProjectJSON{Name: "mine", WorkingDir: "/w", Backend: "local", PlanDir: "/plans"}) ||
+	if !reflect.DeepEqual(got.Projects["local-1"], configProjectJSON{Name: "mine", WorkingDir: "/w", Backend: "local", PlanDir: "/plans"}) ||
 		got.Projects["project-1"].Backend != "notion" {
 		t.Errorf("json = %+v", got.Projects)
 	}
@@ -109,7 +110,7 @@ func TestConfigShowJSON(t *testing.T) {
 	}
 	if got.AgentSplitPercent != want.AgentSplitPercent || got.PollSeconds != want.PollSeconds ||
 		got.WorkshopAgent != want.WorkshopAgent || got.SliceAgent != want.SliceAgent ||
-		len(got.Projects) != 1 || got.Projects["project-1"] != want.Projects["project-1"] {
+		len(got.Projects) != 1 || !reflect.DeepEqual(got.Projects["project-1"], want.Projects["project-1"]) {
 		t.Errorf("json = %+v\nwant %+v", got, want)
 	}
 }
@@ -155,5 +156,37 @@ func TestConfigShowReportsAFailedLoad(t *testing.T) {
 
 	if !errors.Is(err, want) {
 		t.Errorf("err = %v, want %v", err, want)
+	}
+}
+
+// Every project's runs are listed with their scope — a scopeless one as both —
+// in markdown and JSON alike, and a project with none says nothing of them.
+func TestConfigShowListsRuns(t *testing.T) {
+	cfg := fullConfig()
+	runs := []config.RunCommand{{Label: "Run", Command: "make run", Scope: "slice"}, {Label: "Play", Command: "./play"}}
+	cfg.Projects["game"] = config.ProjectConfig{Name: "game", WorkingDir: "/g", Runs: runs}
+	env, out := testEnv(cfg, &fakeAPI{})
+	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`  - run "Run" (slice): make run`, `  - run "Play" (global+slice): ./play`} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, out.String())
+		}
+	}
+
+	env, out = testEnv(cfg, &fakeAPI{})
+	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
+		t.Fatal(err)
+	}
+	var got configDoc
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Projects["game"].Runs, runs) || got.Projects["project-1"].Runs != nil {
+		t.Errorf("json = %+v", got.Projects)
+	}
+	if strings.Count(out.String(), `"runs"`) != 1 {
+		t.Errorf("a project with no runs wrote the key:\n%s", out.String())
 	}
 }

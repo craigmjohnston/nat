@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -578,7 +579,7 @@ func TestSourceProjectRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := out.Projects["a"]; got != in.Projects["a"] {
+	if got := out.Projects["a"]; !reflect.DeepEqual(got, in.Projects["a"]) {
 		t.Fatalf("round trip: %+v", got)
 	}
 
@@ -634,7 +635,7 @@ func TestLocalProjectRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := out.Projects["a"]; got != in.Projects["a"] {
+	if got := out.Projects["a"]; !reflect.DeepEqual(got, in.Projects["a"]) {
 		t.Fatalf("round trip: %+v", got)
 	}
 }
@@ -690,5 +691,83 @@ func TestAssigneeFor(t *testing.T) {
 	currentUser = func() (*user.User, error) { return nil, errors.New("no") }
 	if id, name := none.AssigneeFor(local); id != "" || name != "" {
 		t.Errorf("unreadable: %q %q", id, name)
+	}
+}
+
+// Runs survive a round trip, and a project with none writes no runs key, so
+// an older config is written back unchanged.
+func TestRunsRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	in := Config{Projects: map[string]ProjectConfig{
+		"a": {WorkingDir: "/w", Runs: []RunCommand{{Label: "Run", Command: "make run", Scope: RunScopeSlice}, {Label: "Play", Command: "./play"}}},
+	}}
+	if err := Save(in); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := out.Projects["a"]; !reflect.DeepEqual(got, in.Projects["a"]) {
+		t.Fatalf("round trip: %+v", got)
+	}
+
+	if err := Save(Config{Projects: map[string]ProjectConfig{"b": {WorkingDir: "/w"}}}); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := Path()
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), `"runs"`) {
+		t.Fatalf("a project with no runs wrote the key:\n%s", data)
+	}
+}
+
+// A scopeless run is both kinds; each filter keeps the order written, so the
+// first of each is that kind's default.
+func TestRunScopes(t *testing.T) {
+	p := ProjectConfig{Runs: []RunCommand{
+		{Label: "Serve", Command: "s", Scope: RunScopeGlobal},
+		{Label: "Play", Command: "p"},
+		{Label: "Test", Command: "t", Scope: RunScopeSlice},
+	}}
+	labels := func(rs []RunCommand) (out []string) {
+		for _, r := range rs {
+			out = append(out, r.Label)
+		}
+		return out
+	}
+	if got := labels(p.GlobalRuns()); !reflect.DeepEqual(got, []string{"Serve", "Play"}) {
+		t.Errorf("GlobalRuns = %v", got)
+	}
+	if got := labels(p.SliceRuns()); !reflect.DeepEqual(got, []string{"Play", "Test"}) {
+		t.Errorf("SliceRuns = %v", got)
+	}
+	if got := (ProjectConfig{}).GlobalRuns(); got != nil {
+		t.Errorf("no runs: GlobalRuns = %v", got)
+	}
+}
+
+func TestValidRuns(t *testing.T) {
+	if err := ValidRuns(nil); err != nil {
+		t.Errorf("no runs: %v", err)
+	}
+	ok := []RunCommand{{Label: "Run", Command: "make run"}, {Label: "Debug", Command: "make debug", Scope: RunScopeGlobal}, {Label: "Play", Command: "p", Scope: RunScopeSlice}}
+	if err := ValidRuns(ok); err != nil {
+		t.Errorf("valid runs refused: %v", err)
+	}
+	for _, tt := range []struct {
+		name string
+		runs []RunCommand
+		want string
+	}{
+		{"empty label", []RunCommand{{Label: " ", Command: "x"}}, "run 1 has no label"},
+		{"empty command", []RunCommand{{Label: "Run", Command: ""}}, `run "Run" has no command`},
+		{"duplicate label", []RunCommand{{Label: "Run", Command: "a"}, {Label: "run", Command: "b"}}, `two runs are labelled "run"`},
+		{"unknown scope", []RunCommand{{Label: "Run", Command: "a", Scope: "both"}}, `run "Run" has scope "both"`},
+	} {
+		err := ValidRuns(tt.runs)
+		if err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: err = %v, want %q", tt.name, err, tt.want)
+		}
 	}
 }

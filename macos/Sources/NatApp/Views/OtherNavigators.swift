@@ -186,7 +186,7 @@ struct SessionMainPane: View {
         let store = appModel.sessionDiffStore(projectID: appModel.projectStore?.projectID ?? "")
         VStack(spacing: 0) {
             switch mode {
-            case .terminal, .empty, .visuals:
+            case .terminal, .empty, .visuals, .run:
                 AgentTerminalPane(
                     agent: appModel.activityStore?.agents[session.tag],
                     sessionExists: { appModel.activityStore?.agents[session.tag] != nil })

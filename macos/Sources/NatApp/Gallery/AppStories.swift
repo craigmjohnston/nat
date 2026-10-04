@@ -95,11 +95,12 @@ enum AppStories {
         _ sliceID: String, agents: [AgentStatus] = Fixtures.agentStatuses, plan: ProjectInfo = Fixtures.projectInfo,
         prStatus: PRStatusDoc = Fixtures.prStatusDoc, pr: PRDetail = Fixtures.prGreen,
         details: [String: SliceDetail] = Fixtures.sliceDetails, focus: NavigatorFocus? = nil,
+        config: NatProjectConfig = Fixtures.twoProjectConfig,
         configure: @MainActor (AppModel) async -> Void = { _ in }
     ) async -> some View {
         let appModel = await Fixtures.startedAppModel(
             client: FixtureNatClient(plan: plan, agents: agents, pr: pr, details: details, prStatus: prStatus),
-            config: Fixtures.twoProjectConfig)
+            config: config)
         appModel.selectedSliceID = sliceID
         for _ in 0..<50 where !agents.isEmpty && appModel.activityStore?.agents.isEmpty != false {
             try? await Task.sleep(nanoseconds: 20_000_000)
@@ -217,6 +218,32 @@ enum AppStories {
                 openPicker: .constant(nil)
             ) { _ in EmptyView() }
         }
+    }
+
+    /// The sidebar's titlebar segment with the run button, over a project
+    /// with global runs — the menu drawn under it where `menuOpen`, since a
+    /// real popover is a window of its own no render of this one can show.
+    private static func titlebarRun(menuOpen: Bool) async -> some View {
+        let appModel = await Fixtures.startedAppModel(config: Fixtures.runsConfig)
+        let runs = appModel.globalRuns(ofProject: Fixtures.projectID)
+        return VStack(alignment: .leading, spacing: 0) {
+            GnatTitlebar(leading: GnatMetrics.lightsInset) {
+                RunSplitButton(
+                    size: .titlebar, runs: runs, badge: appModel.projectTag(Fixtures.projectID),
+                    menuOpen: .constant(false)) { _ in }
+                Spacer(minLength: 0)
+            }
+            if menuOpen {
+                RunMenuList(runs: runs) { _ in }
+                    .surface(.window)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(DesignTokens.rule(.separator, on: .window), lineWidth: 1))
+                    .padding(.leading, GnatMetrics.lightsInset - 6)
+                    .padding(.top, 4)
+            }
+            Spacer(minLength: 0)
+        }
+        .surface(.header)
     }
 
     /// A slice's crumbs in the fixture project, under M2.
@@ -1643,6 +1670,75 @@ enum AppStories {
         },
 
         // MARK: - Follow-ups
+
+        // MARK: - Run commands
+
+        Story(
+            name: "titlebar-run",
+            summary: "The sidebar\u{2019}s titlebar segment on a project with global runs: past the traffic "
+                + "lights, the compact split button \u{2014} \u{25B6}, the project\u{2019}s badge, the default "
+                + "Serve \u{2014} then a thin divider and the chevron, sized to its text.",
+            size: CGSize(width: 260, height: GnatMetrics.titlebarHeight)
+        ) {
+            await titlebarRun(menuOpen: false)
+        },
+
+        Story(
+            name: "titlebar-run-menu",
+            summary: "The titlebar\u{2019}s run menu open from its chevron: every global run, its command under "
+                + "it, the default marked.",
+            size: CGSize(width: 260, height: 150)
+        ) {
+            await titlebarRun(menuOpen: true)
+        },
+
+        Story(
+            name: "window-run-heading",
+            summary: "A handed-back slice of a project with runs: the Run heading under the Task log, above "
+                + "Changes \u{2014} no section, no fold \u{2014} its split button full bleed; the global run "
+                + "button in the sidebar\u{2019}s titlebar segment.",
+            size: window
+        ) {
+            await slicePane(Fixtures.mergeBoxSliceID, config: Fixtures.runsConfig)
+        },
+
+        Story(
+            name: "window-run-heading-merged",
+            summary: "The same slice once merged: the Run heading greyed and its button disabled, the worktree "
+                + "being gone.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.mergeBoxSliceID, plan: Fixtures.mergedReviewProjectInfo, config: Fixtures.runsConfig)
+        },
+
+        Story(
+            name: "window-run-tab",
+            summary: "A slice-scoped run started: the Run tab beside Terminal, picked, the run\u{2019}s session "
+                + "attached in the main pane (the terminal stubbed).",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.mergeBoxSliceID, focus: NavigatorFocus(open: [.changes], main: .run),
+                config: Fixtures.runsConfig
+            ) { appModel in
+                appModel.runSessionExists = { _ in true }
+                await appModel.startRun(projectID: Fixtures.projectID, sliceID: Fixtures.mergeBoxSliceID)
+            }
+        },
+
+        Story(
+            name: "settings-projects-runs",
+            summary: "Settings \u{25B8} Projects: under each working directory its runs \u{2014} two on the "
+                + "fixture project, label, command and scope with remove, none on gnat \u{2014} and the rules "
+                + "in the footnote.",
+            size: CGSize(width: 520, height: 520),
+            colorScheme: .light
+        ) {
+            let client = FixtureNatClient(config: Fixtures.configDocWithRuns)
+            return SettingsView(
+                appModel: await Fixtures.startedAppModel(client: client), client: client, initialTab: .projects)
+        },
 
         // MARK: - Settings
 

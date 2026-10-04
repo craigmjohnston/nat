@@ -561,6 +561,16 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         )
     }
 
+    public func run(projectID: String, sliceRef: String?, label: String?) async throws -> RunResult {
+        try await record("run \(sliceRef ?? "") \(label ?? "")")
+        let runs = Fixtures.runs
+        let offered = sliceRef == nil ? runs.globalRuns : runs.sliceRuns
+        let run = offered.first { $0.label == label } ?? offered.first ?? RunCommand(label: label ?? "Run", command: "make run")
+        return RunResult(
+            session: "nat-run-f1x7ure5-\(run.label.lowercased())", label: run.label, command: run.command,
+            dir: sliceRef == nil ? "/repos/nat.worktrees/run-main" : "/repos/nat.worktrees/slice-\(sliceRef ?? "")")
+    }
+
     public func sessionList(projectID: String) async throws -> [Session] {
         try await answer(sessionsList)
     }
@@ -673,6 +683,28 @@ extension Fixtures {
                     name: "notion-agent-tracker",
                     workingDir: "/Users/craig/Projects/notion-agent-tracker"
                 ),
+            ]
+        )
+    }
+
+    /// `nat config-show --json` with two projects: the fixture one with two
+    /// runs, the second with none — the Settings runs table both ways.
+    public static var configDocWithRuns: ConfigDoc {
+        ConfigDoc(
+            agentSplitPercent: 45,
+            pollSeconds: 3600,
+            workshopAgent: AgentModel(model: "sonnet", effort: nil),
+            sliceAgent: AgentModel(model: "opus", effort: "high"),
+            projects: [
+                projectID: ConfigDocProject(
+                    name: "notion-agent-tracker",
+                    workingDir: "/Users/craig/Projects/notion-agent-tracker",
+                    runs: [
+                        RunCommand(label: "Play", command: "./scripts/play.sh --windowed", scope: .slice),
+                        RunCommand(label: "Serve", command: "make serve", scope: .global),
+                    ]
+                ),
+                secondProjectID: ConfigDocProject(name: "gnat", workingDir: "/Users/craig/Projects/gnat"),
             ]
         )
     }

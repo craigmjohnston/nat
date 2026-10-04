@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -41,7 +42,7 @@ func TestProjectOpenFolderRecordsThePlan(t *testing.T) {
 		t.Errorf("reported %+v", got.Project)
 	}
 	want := config.ProjectConfig{Name: "Found", Backend: "local", PlanDir: dir}
-	if saved.Projects[id] != want {
+	if !reflect.DeepEqual(saved.Projects[id], want) {
 		t.Errorf("config entry = %+v, want %+v", saved.Projects[id], want)
 	}
 

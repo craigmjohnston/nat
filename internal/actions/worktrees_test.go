@@ -30,7 +30,9 @@ type fakeWorktrees struct {
 	pathErr   error
 	createErr error
 	removeErr error
+	resetErr  error
 
+	resets  []worktreeCall
 	looks   []worktreeCall
 	creates []worktreeCall
 	removes []worktreeCall
@@ -60,6 +62,12 @@ func (f *fakeWorktrees) Create(dir, branch, base string) (string, error) {
 func (f *fakeWorktrees) Remove(dir, branch string) error {
 	f.removes = append(f.removes, worktreeCall{dir: dir, branch: branch})
 	return f.removeErr
+}
+
+// Reset records the path and ref as dir and base.
+func (f *fakeWorktrees) Reset(path, ref string) error {
+	f.resets = append(f.resets, worktreeCall{dir: path, base: ref})
+	return f.resetErr
 }
 
 // fakeRepo stands in for git: what the fetch was asked of, what origin's HEAD

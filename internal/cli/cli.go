@@ -563,14 +563,23 @@ usage:
                       launch a planning agent detached in tmux on the
                       project's working dir, on the request when one is
                       given, else a plain planning session
+  nat run [--slice <slice>] [--label LABEL] [--json] --project ID
+                      start one of the project's run commands in a detached
+                      tmux session: a slice-scoped run in the slice's
+                      worktree, else a global run in nat's run/main checkout
+                      at the latest origin/main; --label picks the run, the
+                      first of its scope otherwise
   nat config-show [--json]
                       print local config: the agent split, the poll interval,
                       the two model pairs and each project's working directory
+                      and runs
   nat config-set <key> <value>
                       set one local config key: agent_split_percent,
                       poll_seconds, workshop_agent.model, workshop_agent.effort,
-                      slice_agent.model, slice_agent.effort, or
-                      project.<id>.working_dir; an empty value unsets it
+                      slice_agent.model, slice_agent.effort,
+                      project.<id>.working_dir, or project.<id>.runs (a JSON
+                      array of {label, command, scope}, scope global, slice or
+                      none for both); an empty value unsets it
   nat help            show this message
 `
 
@@ -714,6 +723,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return prStatus(ctx, args[1:], env)
 	case "workshop-launch":
 		return workshopLaunch(ctx, args[1:], env)
+	case "run":
+		return runCmd(ctx, args[1:], env)
 	case "config-show":
 		return configShow(args[1:], env)
 	case "config-set":

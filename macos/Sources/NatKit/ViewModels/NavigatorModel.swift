@@ -18,13 +18,16 @@ public enum NavigatorSection: String, CaseIterable, Equatable, Hashable, Sendabl
 }
 
 /// What the main pane shows: the agent's terminal, the diff, the images the
-/// agent handed in, the pull request's description and conversation, or
-/// nothing.
+/// agent handed in, the pull request's description and conversation, a run
+/// command's terminal, or nothing.
 public enum MainPaneMode: Equatable, Sendable {
     case terminal
     case diff
     case visuals
     case pr
+    /// A run command's terminal (`AppModel.runs`): no navigator section's
+    /// view, put up by its own tab.
+    case run
     /// "The terminal opens here on launch."
     case empty
 }

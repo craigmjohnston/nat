@@ -58,6 +58,7 @@ public protocol NatClientProtocol: Sendable {
     func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult
     func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult
     func projectCreate(name: String, repo: String?, description: String?, source: String?) async throws -> CreatedProject
+    func run(projectID: String, sliceRef: String?, label: String?) async throws -> RunResult
 }
 
 extension NatClientProtocol {
@@ -171,6 +172,12 @@ extension NatClientProtocol {
     }
 
     public func sessionList(projectID: String) async throws -> [Session] { [] }
+
+    /// A run command: only `NatClient` and the fixture client implement it,
+    /// and the AppModel tests that start one stub it themselves.
+    public func run(projectID: String, sliceRef: String?, label: String?) async throws -> RunResult {
+        throw NatError.commandFailed("run: not stubbed by this test client")
+    }
 
     public func sessionStatus(projectID: String, sessionID: String, discard: Bool) async throws -> SessionStatusDoc {
         throw NatError.commandFailed("session-status: not stubbed by this test client")

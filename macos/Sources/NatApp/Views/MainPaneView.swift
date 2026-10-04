@@ -70,29 +70,47 @@ struct MainPaneEmptyState: View {
 
 /// A live agent's terminal, full-bleed on the terminal ground — or, with
 /// none, the empty pane's mark, or `emptyText` where there is something to
-/// say instead.
+/// say instead. A run command's terminal is the same pane over the run's
+/// session (`init(session:)`), told when that session has gone.
 struct AgentTerminalPane: View {
-    let agent: AgentStatus?
+    let session: String?
     var emptyText: String?
     var focusRequest = 0
     var sessionExists: () -> Bool = { true }
+    var onSessionGone: () -> Void = {}
     @Environment(\.terminalStubbed) private var terminalStubbed
 
+    init(
+        agent: AgentStatus?, emptyText: String? = nil, focusRequest: Int = 0,
+        sessionExists: @escaping () -> Bool = { true }
+    ) {
+        self.session = agent?.session
+        self.emptyText = emptyText
+        self.focusRequest = focusRequest
+        self.sessionExists = sessionExists
+    }
+
+    init(session: String?, sessionExists: @escaping () -> Bool, onSessionGone: @escaping () -> Void) {
+        self.session = session
+        self.sessionExists = sessionExists
+        self.onSessionGone = onSessionGone
+    }
+
     var body: some View {
-        if let agent {
+        if let session {
             ZStack {
                 DesignTokens.fill(.terminal)
                 Group {
                     if terminalStubbed {
-                        TerminalStubView(session: agent.session)
+                        TerminalStubView(session: session)
                     } else {
                         AgentTerminalHostView(
-                            attachSpec: AttachSpec(session: agent.session),
+                            attachSpec: AttachSpec(session: session),
                             sessionExists: sessionExists,
-                            onExit: { _ in },
+                            onExit: { if $0 == .sessionGone { onSessionGone() } },
                             focusRequest: focusRequest
                         )
-                        .id(agent.session)
+                        .id(session)
                     }
                 }
                 .padding(.vertical, 14)
@@ -100,6 +118,27 @@ struct AgentTerminalPane: View {
             }
         } else if let emptyText {
             MainPaneNote(text: emptyText)
+        } else {
+            MainPaneEmptyState(showsShortcuts: false)
+        }
+    }
+}
+
+/// A run command's terminal, attached to the session `nat run` answered
+/// with. The session's end is what takes the run away: the attach hears it
+/// when it is on screen, `AppModel.watchRun` when it is not. A run's
+/// session is no agent's, so liveness is asked of tmux rather than the
+/// activity poll — synchronously, here, only when the attach ends.
+struct RunTerminalPane: View {
+    let appModel: AppModel
+    let run: RunAttachment?
+
+    var body: some View {
+        if let run {
+            AgentTerminalPane(
+                session: run.session,
+                sessionExists: { TmuxSession.existsNow(run.session) },
+                onSessionGone: { appModel.runEnded(session: run.session) })
         } else {
             MainPaneEmptyState(showsShortcuts: false)
         }
@@ -225,6 +264,9 @@ struct SliceMainPane: View {
                 PRConversationPane(
                     store: appModel.prStore(projectID: appModel.projectStore?.projectID ?? ""),
                     expectedNumber: pullRequestNumber(slice.pr))
+            case .run:
+                RunTerminalPane(
+                    appModel: appModel, run: appModel.run(forSlice: slice.id, inProject: appModel.activeProjectID ?? ""))
             case .empty:
                 MainPaneEmptyState(showsShortcuts: false)
             }

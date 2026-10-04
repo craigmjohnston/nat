@@ -324,6 +324,45 @@ extension Fixtures {
         )
     }
 
+    /// The fixture project's run commands: one global, one both, one slice —
+    /// so the titlebar offers Serve then Play, and a handed-back slice Play
+    /// then Test.
+    public static let runs: [RunCommand] = [
+        RunCommand(label: "Serve", command: "make serve", scope: .global),
+        RunCommand(label: "Play", command: "./scripts/play.sh --windowed", scope: .both),
+        RunCommand(label: "Test", command: "go test ./...", scope: .slice),
+    ]
+
+    /// `twoProjectConfig` with `runs` on the fixture project, the second
+    /// project with none.
+    public static var runsConfig: NatProjectConfig {
+        var projects = twoProjectConfig.projects
+        let p = projects[projectID]!
+        projects[projectID] = ProjectConfig(
+            name: p.name, slicesDSID: p.slicesDSID, workingDir: p.workingDir, runs: runs)
+        return NatProjectConfig(
+            projects: projects, agentSplitPercent: 45, pollSeconds: 3600,
+            workshopAgent: AgentModel(model: "sonnet", effort: nil),
+            sliceAgent: AgentModel(model: "opus", effort: "high"),
+            assigneeUserName: "Craig Johnston")
+    }
+
+    /// The plan with the handed-back slice merged: Done, its pull request
+    /// recorded — what greys its Run heading.
+    public static var mergedReviewProjectInfo: ProjectInfo {
+        ProjectInfo(
+            project: projectInfo.project,
+            milestones: projectInfo.milestones,
+            slices: projectInfo.slices.map { s in
+                guard s.id == mergeBoxSliceID else { return s }
+                return Slice(
+                    id: s.id, name: s.name, status: "Done", milestoneID: s.milestoneID, assignee: s.assignee,
+                    pr: "https://github.com/craigmjohnston/notion-agent-tracker/pull/120", url: s.url,
+                    branch: s.branch, repo: s.repo, dependsOn: s.dependsOn, blocked: s.blocked,
+                    handedBack: s.handedBack, state: s.state)
+            })
+    }
+
     /// The second project's page ID, sorting after `projectID` so the
     /// fixture project stays the active tab.
     public static let secondProjectID = "f1x70000-0000-4000-8000-000000000002"

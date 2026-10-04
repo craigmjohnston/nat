@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -259,5 +260,51 @@ func TestConfigSetRefusesAnUnknownFlag(t *testing.T) {
 	var usage *UsageError
 	if !errors.As(err, &usage) {
 		t.Fatalf("err = %v (%T), want a *UsageError", err, err)
+	}
+}
+
+// The runs key writes the whole list from a JSON array, leaving the rest of
+// the project alone, and the empty string unsets it.
+func TestConfigSetProjectRuns(t *testing.T) {
+	env, saved := savingEnv(testConfig(t))
+	value := `[{"label":"Run","command":"make run","scope":"slice"},{"label":"Play","command":"./play"}]`
+	if err := Run(context.Background(), []string{"config-set", "project.project-1.runs", value}, env); err != nil {
+		t.Fatalf("config-set: %v", err)
+	}
+	want := []config.RunCommand{{Label: "Run", Command: "make run", Scope: "slice"}, {Label: "Play", Command: "./play"}}
+	if got := saved.Projects["project-1"]; !reflect.DeepEqual(got.Runs, want) || got.Name != "nat" {
+		t.Errorf("project = %+v, want runs %+v and the rest untouched", got, want)
+	}
+
+	cfg := testConfig(t)
+	p := cfg.Projects["project-1"]
+	p.Runs = want
+	cfg.Projects["project-1"] = p
+	for _, empty := range []string{"", "[]"} {
+		env, saved = savingEnv(cfg)
+		if err := Run(context.Background(), []string{"config-set", "project.project-1.runs", empty}, env); err != nil {
+			t.Fatalf("config-set %q: %v", empty, err)
+		}
+		if got := saved.Projects["project-1"].Runs; got != nil {
+			t.Errorf("%q: runs = %+v, want unset", empty, got)
+		}
+	}
+}
+
+// What the config would not keep is refused where it is written: JSON that is
+// not a list of runs, an invalid list, and a project nobody tracks.
+func TestConfigSetProjectRunsRefusals(t *testing.T) {
+	for _, tt := range []struct{ key, value, want string }{
+		{"project.project-1.runs", "make run", "wants a JSON array of runs"},
+		{"project.project-1.runs", `[{"label":"","command":"x"}]`, "run 1 has no label"},
+		{"project.project-1.runs", `[{"label":"Run","command":"a"},{"label":"Run","command":"b"}]`, `two runs are labelled "Run"`},
+		{"project.project-1.runs", `[{"label":"Run","command":"a","scope":"all"}]`, `scope "all"`},
+		{"project.nope.runs", `[]`, "no project nope"},
+	} {
+		env, _ := savingEnv(testConfig(t))
+		err := Run(context.Background(), []string{"config-set", tt.key, tt.value}, env)
+		if err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s=%s: err = %v, want %q", tt.key, tt.value, err, tt.want)
+		}
 	}
 }
