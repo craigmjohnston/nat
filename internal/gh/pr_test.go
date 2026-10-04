@@ -89,10 +89,10 @@ func TestViewPROpen(t *testing.T) {
 		Checks: []Check{
 			// A finished run is worth its conclusion, one still going its
 			// status, and a StatusContext has only ever had the one word. A
-			// run is named under its workflow, as GitHub names it.
-			{Name: "CI / test", State: "SUCCESS",
+			// run goes by its job's own name, never under its workflow.
+			{Name: "test", State: "SUCCESS",
 				URL: "https://github.com/craigmjohnston/nat/actions/runs/1/job/1"},
-			{Name: "CI / lint", State: "IN_PROGRESS",
+			{Name: "lint", State: "IN_PROGRESS",
 				URL: "https://github.com/craigmjohnston/nat/actions/runs/1/job/2"},
 			{Name: "ci/legacy", State: "PENDING", URL: "https://ci.test/build/1"},
 		},
@@ -198,7 +198,7 @@ func TestViewPRChecksFailing(t *testing.T) {
 		Mergeable:        "CONFLICTING",
 		MergeStateStatus: "DIRTY",
 		Checks: []Check{
-			{Name: "CI / test", State: "FAILURE",
+			{Name: "test", State: "FAILURE",
 				URL: "https://github.com/craigmjohnston/nat/actions/runs/9/job/1"},
 			{Name: "ci/legacy", State: "ERROR", URL: "https://ci.test/build/9"},
 		},
@@ -218,7 +218,7 @@ func TestViewPRChecksFailing(t *testing.T) {
 func TestViewPRUnknownCheckKind(t *testing.T) {
 	runner := &fakeRunner{out: `{"statusCheckRollup":[` +
 		`{"__typename":"Later","name":"newfangled","status":"QUEUED","detailsUrl":"https://gh.test/1"},` +
-		`{"__typename":"Later","name":"build","workflowName":"Release","status":"QUEUED"},` +
+		`{"__typename":"Later","name":"release / build","workflowName":"Release","status":"QUEUED"},` +
 		`{"__typename":"Later","context":"old/style","state":"SUCCESS","targetUrl":"https://ci.test/2"}` +
 		`]}`}
 	pr, err := NewWithRunner(runner).ViewPR("/repos/nat", "7")
@@ -227,11 +227,65 @@ func TestViewPRUnknownCheckKind(t *testing.T) {
 	}
 	want := []Check{
 		{Name: "newfangled", State: "QUEUED", URL: "https://gh.test/1"},
-		{Name: "Release / build", State: "QUEUED"},
+		{Name: "build", State: "QUEUED"},
 		{Name: "old/style", State: "SUCCESS", URL: "https://ci.test/2"},
 	}
 	if !reflect.DeepEqual(pr.Checks, want) {
 		t.Errorf("checks = %+v, want %+v", pr.Checks, want)
+	}
+}
+
+// TestViewPRCheckNameClashes names every run by its job alone unless another
+// check in the rollup shares that name, when each clashing run is led by the
+// one name outward: the caller job of a reusable workflow's path, else its
+// workflow. A StatusContext stays whole and only the run beside it grows a
+// prefix; names that still clash, or have nothing outward, are left as they
+// are.
+func TestViewPRCheckNameClashes(t *testing.T) {
+	cases := []struct {
+		name   string
+		rollup string
+		want   []string
+	}{
+		{"no clash is bare",
+			`{"__typename":"CheckRun","name":"lint","workflowName":"CI"},` +
+				`{"__typename":"CheckRun","name":"checks / Gate","workflowName":"Pull request"}`,
+			[]string{"lint", "Gate"}},
+		{"a clash across workflows is led by each workflow",
+			`{"__typename":"CheckRun","name":"test","workflowName":"CI"},` +
+				`{"__typename":"CheckRun","name":"lint","workflowName":"CI"},` +
+				`{"__typename":"CheckRun","name":"test","workflowName":"macOS App CI"}`,
+			[]string{"CI / test", "lint", "macOS App CI / test"}},
+		{"a reusable workflow's clash is led by its caller job, not its workflow",
+			`{"__typename":"CheckRun","name":"checks / Gate","workflowName":"Pull request"},` +
+				`{"__typename":"CheckRun","name":"nightly / Gate","workflowName":"Nightly"}`,
+			[]string{"checks / Gate", "nightly / Gate"}},
+		{"a status context stays whole and only the run grows a prefix",
+			`{"__typename":"StatusContext","context":"deploy"},` +
+				`{"__typename":"CheckRun","name":"deploy","workflowName":"Release"}`,
+			[]string{"deploy", "Release / deploy"}},
+		{"a clash still standing, or with nothing outward, is left",
+			`{"__typename":"CheckRun","name":"build","workflowName":"CI"},` +
+				`{"__typename":"CheckRun","name":"build","workflowName":"CI"},` +
+				`{"__typename":"CheckRun","name":"vet"},` +
+				`{"__typename":"CheckRun","name":"vet"}`,
+			[]string{"CI / build", "CI / build", "vet", "vet"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runner := &fakeRunner{out: `{"statusCheckRollup":[` + tc.rollup + `]}`}
+			pr, err := NewWithRunner(runner).ViewPR("/repos/nat", "7")
+			if err != nil {
+				t.Fatalf("ViewPR() = %v, want a pull request", err)
+			}
+			var names []string
+			for _, check := range pr.Checks {
+				names = append(names, check.Name)
+			}
+			if !reflect.DeepEqual(names, tc.want) {
+				t.Errorf("names = %q, want %q", names, tc.want)
+			}
+		})
 	}
 }
 
