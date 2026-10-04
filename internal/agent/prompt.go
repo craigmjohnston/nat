@@ -658,7 +658,8 @@ func notesPassage(c PromptContext) string {
 	b.WriteString("Add `--milestone '<milestone name>'` where that name is filed under more\n")
 	b.WriteString("than one milestone, and `--note -` to pipe a long note in. The note ends\n")
 	b.WriteString("that slice's brief, with where it came from written by nat, so whoever\n")
-	b.WriteString("works it next reads it as part of the brief. A note is never work to be\n")
+	b.WriteString("works it next reads it as part of the brief; where that slice has a live\n")
+	b.WriteString("agent, the note reaches it in its session too. A note is never work to be\n")
 	b.WriteString("done — that is a follow-up, not a note — and never goes on a Done slice.\n")
 	return b.String()
 }

@@ -162,7 +162,11 @@ back into `slice-show`'s `fromSlice`), else `From <Config.AssigneeFor name>`
 — no ID or URL, by the same helper (`fromSlice`) the triage's
 queued-follow-up line uses. Refused, before any write: Done, an unreadable body, an empty note, an
 unknown/ambiguous name, an unreadable `--from`. A note on a Todo slice
-reaches its agent as part of the brief with no further plumbing.
+reaches its agent as part of the brief with no further plumbing; one on a
+slice with a live agent is **written before it is sent** into that session
+(`agent.NoteArrivedPrompt`, one `agent-send`, as the triage sends after its
+record) — except a note whose `--from` is the target itself, never sent back
+to the agent that wrote it.
 
 **Naming slices.** Every text handed to an agent that writes about slices
 (slice, fix, plan and new-project prompts; every embedded skill) carries one

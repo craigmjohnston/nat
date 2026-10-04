@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
 )
@@ -239,6 +240,98 @@ func TestSliceNoteReportsAFailedOutput(t *testing.T) {
 	fp.env.Out = failingWriter{}
 	if err := Run(context.Background(), []string{"slice-note", drawM1ID, "--note", "x", "--project", "project-1"}, fp.env); err == nil {
 		t.Error("an unwritable output: want an error")
+	}
+}
+
+// bodyAtSendRunner reads the target's body the moment a prompt is pasted, so a
+// test can say the note was on the page before the agent was told.
+type bodyAtSendRunner struct {
+	*agentTestRunner
+	read func() string
+	seen []string
+}
+
+func (r *bodyAtSendRunner) Run(name string, args ...string) (string, error) {
+	if len(args) > 1 && args[1] == "paste-buffer" {
+		r.seen = append(r.seen, r.read())
+	}
+	return r.agentTestRunner.Run(name, args...)
+}
+
+// A note on a slice whose agent is live is filed, then sent to that agent as
+// one turn, and the output says so.
+func TestSliceNoteTellsALiveAgent(t *testing.T) {
+	fp := newNotePlan(t, nil)
+	fp.runner.liveSessions[drawM2ID] = "nat-draw"
+	r := &bodyAtSendRunner{agentTestRunner: fp.runner, read: func() string { return fp.bodyOf(t, drawM2ID) }}
+	fp.env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(r) }
+	if err := fp.run("slice-note", "Draw it", "--milestone", "M2", "--from", sliceID,
+		"--note", "The menu moved to the toolbar."); err != nil {
+		t.Fatalf("slice-note: %v", err)
+	}
+	want := agent.NoteArrivedPrompt(`From "Render the board" (M1)`, "The menu moved to the toolbar.")
+	if len(fp.runner.sends) != 1 || fp.runner.sends[0].session != "nat-draw" || fp.runner.sends[0].prompt != want {
+		t.Errorf("sends = %+v, want one to nat-draw of\n%s", fp.runner.sends, want)
+	}
+	if len(r.seen) != 1 || !strings.HasSuffix(r.seen[0], "The menu moved to the toolbar.") {
+		t.Errorf("body at send = %q, want the note already on it", r.seen)
+	}
+	if want := "# Draw it\n\nNote filed at the end of its brief: From \"Render the board\" (M1). Its live agent was told.\n"; fp.out.String() != want {
+		t.Errorf("output = %q, want %q", fp.out.String(), want)
+	}
+}
+
+// No live session, and an agent noting its own slice, each send nothing and
+// print the plain line.
+func TestSliceNoteTellsNobody(t *testing.T) {
+	for name, args := range map[string][]string{
+		"no live agent": {"slice-note", drawM1ID, "--note", "x"},
+		"self note":     {"slice-note", sliceID, "--from", sliceID, "--note", "x"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fp := newNotePlan(t, nil)
+			fp.runner.liveSessions[sliceID] = "nat-render"
+			if err := fp.run(args...); err != nil {
+				t.Fatalf("slice-note: %v", err)
+			}
+			if len(fp.runner.sends) != 0 {
+				t.Errorf("sends = %+v, want none", fp.runner.sends)
+			}
+			if strings.Contains(fp.out.String(), "told") {
+				t.Errorf("output = %q, want the plain line", fp.out.String())
+			}
+		})
+	}
+}
+
+// A tmux that cannot be listed concludes nothing: the note is filed and nobody
+// told.
+func TestSliceNoteOverAnUnreadableTmux(t *testing.T) {
+	fp := newNotePlan(t, nil)
+	fp.runner.liveFatalErr = "tmux broke"
+	if err := fp.run("slice-note", drawM1ID, "--note", "x"); err != nil {
+		t.Fatalf("slice-note: %v, want it to go ahead", err)
+	}
+	if got := fp.bodyOf(t, drawM1ID); !strings.HasSuffix(got, "\n\nx") {
+		t.Errorf("body = %q, want the note filed", got)
+	}
+	if want := "# Draw it\n\nNote filed at the end of its brief: From Craig Johnston.\n"; fp.out.String() != want {
+		t.Errorf("output = %q, want %q", fp.out.String(), want)
+	}
+}
+
+// A send that fails leaves the note on the page and says the agent was not
+// told.
+func TestSliceNoteFailedSendLeavesTheNote(t *testing.T) {
+	fp := newNotePlan(t, nil)
+	fp.runner.liveSessions[drawM1ID] = "nat-draw"
+	fp.runner.sendErr = "pane gone"
+	err := fp.run("slice-note", drawM1ID, "--note", "x")
+	if err == nil || !strings.Contains(err.Error(), "the note is filed, but telling the agent failed") {
+		t.Fatalf("err = %v, want the failed send named", err)
+	}
+	if got := fp.bodyOf(t, drawM1ID); !strings.HasSuffix(got, "\n\nx") {
+		t.Errorf("body = %q, want the note to stand", got)
 	}
 }
 
