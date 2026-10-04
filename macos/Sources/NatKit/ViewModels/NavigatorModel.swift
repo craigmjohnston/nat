@@ -282,8 +282,10 @@ public enum ThreadEventKind: Equatable, Sendable {
     case checksFailed
     /// Handed in as blocked.
     case blocked
-    /// Follow-ups the agent proposed, and what became of each.
+    /// Follow-ups the agent proposed: the count line.
     case followUps
+    /// One proposed follow-up the user has decided, after its proposal.
+    case followUp
     /// A note left on the brief, from another slice or a person.
     case note
     case approved
@@ -322,6 +324,10 @@ public struct ThreadEvent: Equatable, Sendable {
     /// drawn as the triage card (Queue / Fold in / Drop, Apply) in its place
     /// in the log rather than as a record.
     public let awaitsTriage: Bool
+    /// Something happening now (the live agent, working or waiting) or
+    /// waiting on the user's decision (a proposal awaiting triage): drawn
+    /// apart from the settled cards around it.
+    public let isLive: Bool
     /// Whether the meta says what `who` did ("handed back", "left a note"),
     /// so the card reads the two as one line, `title`; false where it is
     /// a separate fact about the card, such as a comment's time.
@@ -333,8 +339,8 @@ public struct ThreadEvent: Equatable, Sendable {
 
     public init(
         _ kind: ThreadEventKind, who: String, meta: String? = nil, tone: ThreadTone = .muted,
-        body: String? = nil, facts: [ThreadFact] = [], awaitsTriage: Bool = false, metaIsAction: Bool = true,
-        when: Date? = nil
+        body: String? = nil, facts: [ThreadFact] = [], awaitsTriage: Bool = false, isLive: Bool = false,
+        metaIsAction: Bool = true, when: Date? = nil
     ) {
         self.kind = kind
         self.who = who
@@ -343,6 +349,7 @@ public struct ThreadEvent: Equatable, Sendable {
         self.body = body
         self.facts = facts
         self.awaitsTriage = awaitsTriage
+        self.isLive = isLive
         self.metaIsAction = metaIsAction
         self.when = when
     }
@@ -429,7 +436,7 @@ public func buildThreadEvents(
             .agent, who: "Agent",
             meta: waiting ? "waiting for you" : "working",
             tone: waiting ? .hot : .accent,
-            facts: reading.context)
+            facts: reading.context, isLive: true)
     }
 
     guard let events else {
@@ -438,14 +445,16 @@ public func buildThreadEvents(
     // What the page records, in the order it was written; then the agent as
     // it is now; then what the properties say came of it all.
     let closing: Set<TaskLogEvent.Kind> = [.approved, .merged]
-    let card = { (event: TaskLogEvent) -> ThreadEvent in
-        var card = threadEvent(event, plan: plan, milestones: milestones)
-        card.when = event.at
-        return card
+    let cards = { (event: TaskLogEvent) -> [ThreadEvent] in
+        threadEvents(event, plan: plan, milestones: milestones).map { card in
+            var card = card
+            card.when = event.at
+            return card
+        }
     }
-    log += events.filter { !closing.contains($0.kind) }.map(card)
+    log += events.filter { !closing.contains($0.kind) }.flatMap(cards)
     if let agentCard { log.append(agentCard) }
-    log += events.filter { closing.contains($0.kind) }.map(card)
+    log += events.filter { closing.contains($0.kind) }.flatMap(cards)
     return log
 }
 
@@ -463,7 +472,37 @@ public func noteSourceSlice(_ source: NoteSource, plan: [Slice], milestones: [Mi
     return matches.count == 1 ? matches[0] : nil
 }
 
-/// One recorded event as its Task log card.
+/// The one slice on the plan a queued follow-up's `link` names — its URL,
+/// or its ID (dashes and case aside), or a URL ending in that ID as a
+/// Notion page URL does. Nil where none does.
+public func followUpSlice(link: String?, plan: [Slice]) -> Slice? {
+    guard let link, !link.isEmpty else { return nil }
+    let compact = link.replacingOccurrences(of: "-", with: "").lowercased()
+    return plan.first { candidate in
+        let id = candidate.id.replacingOccurrences(of: "-", with: "").lowercased()
+        return (!candidate.url.isEmpty && candidate.url == link) || (!id.isEmpty && compact.hasSuffix(id))
+    }
+}
+
+/// One recorded event as its Task log cards: one card, except a proposal of
+/// follow-ups, which is its count line then one card per decided follow-up —
+/// its title, its brief as the body, the decision as the meta, and a `task`
+/// row for the slice a queued one became where the plan holds it.
+private func threadEvents(_ event: TaskLogEvent, plan: [Slice], milestones: [Milestone]) -> [ThreadEvent] {
+    [threadEvent(event, plan: plan, milestones: milestones)] + event.followUps.compactMap { followUp in
+        followUp.decision.map { decision in
+            let queued = decision == .queued ? followUpSlice(link: followUp.link, plan: plan) : nil
+            return ThreadEvent(
+                .followUp, who: followUp.title, meta: followUpDecisionWord(decision),
+                body: followUp.brief.isEmpty ? nil : followUp.brief,
+                facts: queued.map { [ThreadFact("task", $0.name, sliceID: $0.id)] } ?? [],
+                metaIsAction: false)
+        }
+    }
+}
+
+/// One recorded event as its Task log card — a proposal of follow-ups as
+/// its count line.
 private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Milestone]) -> ThreadEvent {
     let note = event.note.flatMap { $0.isEmpty ? nil : $0 }
     switch event.kind {
@@ -494,11 +533,7 @@ private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Mile
         let pending = event.followUps.contains { $0.decision == nil }
         return ThreadEvent(
             .followUps, who: "Agent", meta: "proposed \(count) follow-up\(count == 1 ? "" : "s")",
-            tone: pending ? .hot : .muted,
-            facts: event.followUps.compactMap { followUp in
-                followUp.decision.map { ThreadFact(followUpDecisionWord($0), followUp.title) }
-            },
-            awaitsTriage: pending)
+            tone: pending ? .hot : .muted, awaitsTriage: pending, isLive: pending)
     case .note:
         guard let by = event.by.flatMap({ $0.isEmpty ? nil : $0 }) else {
             return ThreadEvent(.note, who: "Note", body: note)
@@ -521,6 +556,18 @@ private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Mile
         return ThreadEvent(.merged, who: "Merged")
     }
 }
+
+/// Every key a Thread card's facts can carry — the brief's own, the launch
+/// card's and each recorded card's — so the cards can give their key column
+/// one width, that of the widest (`widestThreadFactKey`), and every value
+/// starts at the same x. A source's own fact labels are its, and not listed.
+public let threadFactKeys = [
+    "milestone", "depends on", "model", "effort", "base", "branch", "context", "pr", "into", "task", "source",
+]
+
+/// The longest of `threadFactKeys` — the keys are set in mono, so the
+/// longest is the widest.
+public let widestThreadFactKey = threadFactKeys.max { $0.count < $1.count } ?? ""
 
 /// What a triaged follow-up's line in the log says came of it.
 public func followUpDecisionWord(_ decision: TaskFollowUp.Decision) -> String {

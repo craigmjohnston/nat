@@ -245,7 +245,7 @@ final class NavigatorModelTests: XCTestCase {
             ThreadEvent(.launched, who: "Launched", facts: [
                 ThreadFact("model", "Opus 5.5"), ThreadFact("effort", "medium"), ThreadFact("branch", "slice/x"),
             ]),
-            ThreadEvent(.agent, who: "Agent", meta: "working", tone: .accent, facts: [ThreadFact("context", "37%")]),
+            ThreadEvent(.agent, who: "Agent", meta: "working", tone: .accent, facts: [ThreadFact("context", "37%")], isLive: true),
         ])
     }
 
@@ -253,7 +253,7 @@ final class NavigatorModelTests: XCTestCase {
         let events = buildThreadEvents(slice: slice(status: "In progress"), agent: agent(.waiting, model: ""), brief: nil)
         XCTAssertEqual(events, [
             ThreadEvent(.launched, who: "Launched"),
-            ThreadEvent(.agent, who: "Agent", meta: "waiting for you", tone: .hot),
+            ThreadEvent(.agent, who: "Agent", meta: "waiting for you", tone: .hot, isLive: true),
         ])
     }
 

@@ -164,15 +164,6 @@ struct SettingsView: View {
             } footer: {
                 sectionFootnote("Text size is a sidebar row's, and the rest of the app's type follows it in proportion. Code size is the agent terminal's and the diff's. Applies at once.")
             }
-
-            configSection(
-                "Board",
-                footer: "Seconds between background refetches of the plan; empty is 30. Applies from the next poll."
-            ) {
-                settingRow(title: "Poll interval", key: SettingsKey.pollSeconds) {
-                    commitField($edited.pollSeconds, width: FieldWidth.number)
-                }
-            }
         }
         .settingsForm()
     }
@@ -501,16 +492,19 @@ struct SettingsView: View {
         model: Binding<String>,
         effort: Binding<String>
     ) -> some View {
+        // Both pickers, in both agents' groups, in one frame and set to its
+        // trailing edge, so all four end on one right edge.
         settingRow(title: "Model", key: modelKey) {
             ModelPicker(value: model, options: agentOptions.models, commit: commit) { text in
                 commitField(text, width: FieldWidth.model)
             }
-            .frame(width: FieldWidth.model)
+            .frame(width: FieldWidth.model, alignment: .trailing)
             .help("An alias (\(agentOptions.models.joined(separator: ", "))), Custom for a full model ID, or Default to leave it to Claude Code.")
         }
 
         settingRow(title: "Effort", key: effortKey) {
             defaultablePicker(effort, options: agentOptions.efforts)
+                .frame(width: FieldWidth.model, alignment: .trailing)
         }
     }
 
@@ -741,7 +735,6 @@ struct SettingsView: View {
 /// field for two digits drawn the width of the column is what no settings
 /// window has.
 private enum FieldWidth {
-    static let number: CGFloat = 80
     static let size: CGFloat = 44
     static let model: CGFloat = 160
 }

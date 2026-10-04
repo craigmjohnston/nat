@@ -5,7 +5,7 @@ import NatKit
 /// then each Claude usage window, set apart by faint dividers at the leading
 /// edge, all quietly in the system sans at `xs`; at the trailing edge
 /// (`trailing`), the selection's live agent's model, effort and context in
-/// small mono (`AgentModelHeading`) — a slice's, a session's, the planning
+/// the same (`AgentModelHeading`) — a slice's, a session's, the planning
 /// agent's — or nothing. Where the selection sits is the titlebar band's
 /// breadcrumb.
 struct StatusBarView<Trailing: View>: View {
@@ -53,8 +53,9 @@ extension StatusBarView where Trailing == EmptyView {
     }
 }
 
-/// The faint upright line between the status bar's clauses.
-private struct StatusBarDivider: View {
+/// The faint upright line between the status bar's clauses — the leading
+/// edge's and `AgentModelHeading`'s alike.
+struct StatusBarDivider: View {
     var body: some View {
         DesignTokens.rule(.separator, on: .chrome)
             .frame(width: 1, height: 12)

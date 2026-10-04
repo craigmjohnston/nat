@@ -137,7 +137,7 @@ struct TitlebarBreadcrumb<Picker: View>: View {
         HStack(spacing: 10) {
             if let project = crumbs.project {
                 HStack(spacing: 10) {
-                    crumbButton(.project) { Text(project).ink(.secondary) }
+                    crumbButton(.project) { ProjectCrumbLabel(name: project) }
                     CrumbSlash()
                 }
                 .transition(.opacity)
@@ -163,7 +163,7 @@ struct TitlebarBreadcrumb<Picker: View>: View {
                             }
                         }
                     case .project:
-                        Text(parent).ink(.secondary)
+                        ProjectCrumbLabel(name: parent)
                     }
                     CrumbSlash()
                 }
@@ -208,6 +208,23 @@ struct TitlebarBreadcrumb<Picker: View>: View {
 /// rather than each on its own bounds.
 private enum CrumbLine {
     static let height: CGFloat = 16
+}
+
+/// A crumb naming the project: the sidebar's own project mark, open, then
+/// the name — the glyph framed to the crumb line as the milestone's is.
+private struct ProjectCrumbLabel: View {
+    let name: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            StackedFolderGlyph(
+                open: true,
+                color: DesignTokens.ink(.tertiary, on: .header),
+                backColor: DesignTokens.ink(.tertiary, on: .header))
+                .frame(height: CrumbLine.height)
+            Text(name).ink(.secondary)
+        }
+    }
 }
 
 /// The quiet slash after a crumb. A slash descends below the baseline, so
@@ -258,23 +275,29 @@ struct TitlebarIdentityLabel: View {
     }
 }
 
-/// The agent readout, at the status bar's trailing edge, kept small and in
-/// mono: the selection's live agent's model, its effort quieter, then its context
-/// use as a bare percent as its own statusline reports it — in the warning
-/// tint once it runs high — or nothing. The long form is its tooltip.
+/// The agent readout, at the status bar's trailing edge in the bar's own
+/// sans: the selection's live agent's model, its effort quieter, then — past
+/// a divider like the leading edge's — its context clause as its own
+/// statusline reports it, in the warning tint once it runs high; or nothing.
+/// The long form is its tooltip.
 struct AgentModelHeading: View {
     let agent: AgentStatus?
 
     var body: some View {
         if let readout = buildAgentReadout(from: agent) {
-            HStack(spacing: 6) {
-                if let model = readout.model { Text(model).ink(.secondary) }
-                if let effort = readout.effort { Text(effort).ink(.tertiary) }
+            HStack(spacing: 10) {
+                if readout.model != nil || readout.effort != nil {
+                    HStack(spacing: 6) {
+                        if let model = readout.model { Text(model).ink(.secondary) }
+                        if let effort = readout.effort { Text(effort).ink(.tertiary) }
+                    }
+                }
                 if let context = readout.context {
+                    if readout.model != nil || readout.effort != nil { StatusBarDivider() }
                     Text(context.text).ink(context.warning ? .hot : .tertiary)
                 }
             }
-            .font(Typo.mono(size: Typo.caption))
+            .font(.system(size: GnatMetrics.xs))
             .monospacedDigit()
             .lineLimit(1)
             .fixedSize()

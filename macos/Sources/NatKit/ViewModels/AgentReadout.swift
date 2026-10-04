@@ -3,9 +3,9 @@ import Foundation
 /// Context use at or above this percent renders in the warning tint.
 public let contextWarningThreshold = 80.0
 
-/// What the titlebar band draws for its agent, kept small since it stands
-/// beside the tabs: the model and effort apart ("Sonnet 5", "high"), and the
-/// context as its bare percent ("42%") — each independently absent when
+/// What the status bar draws for its agent: the model and effort apart
+/// ("Sonnet 5", "high"), and the context clause ("context 42% (84k tokens)",
+/// or "context 42%" with no token count) — each independently absent when
 /// `nat` had no value for it, never a zero. `detail` is the long form for
 /// the readout's tooltip: "Sonnet 5 / high · context 42% (84k tokens)".
 public struct AgentReadout: Equatable {
@@ -38,15 +38,15 @@ public func buildAgentReadout(from agent: AgentStatus?) -> AgentReadout? {
     guard let agent else { return nil }
     let model = agent.model.flatMap { $0.isEmpty ? nil : $0 }
     let effort = agent.effort.flatMap { $0.isEmpty ? nil : $0 }
-    let percent = agent.contextPercent.map { Int($0.rounded()) }
+    let tokens = agent.contextTokens.map { " (\(formatTokenCount($0)) tokens)" } ?? ""
     let context = agent.contextPercent.map { value in
-        AgentReadout.Context(text: "\(Int(value.rounded()))%", warning: value >= contextWarningThreshold)
+        AgentReadout.Context(
+            text: "context \(Int(value.rounded()))%\(tokens)", warning: value >= contextWarningThreshold)
     }
     guard model != nil || effort != nil || context != nil else { return nil }
-    let tokens = agent.contextTokens.map { " (\(formatTokenCount($0)) tokens)" } ?? ""
     let detail = [
         modelEffortLabel(model: model ?? "", effort: effort ?? ""),
-        percent.map { "context \($0)%\(tokens)" },
+        context?.text,
     ].compactMap { $0 }.joined(separator: " \u{00B7} ")
     return AgentReadout(model: model, effort: effort, context: context, detail: detail)
 }

@@ -104,7 +104,8 @@ struct ChangesSectionBody: View {
 /// The agent's proposed follow-ups as one item of the Thread: a card headed
 /// with how many there are, each follow-up a row of it with its Queue /
 /// Fold in / Drop picker, and a foot holding the item's own two actions,
-/// Discard all and Apply.
+/// Discard all and Apply — set apart as a live card while it waits on the
+/// decision.
 struct FollowUpCards: View {
     @Bindable var appModel: AppModel
     let slice: Slice
@@ -120,7 +121,7 @@ struct FollowUpCards: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    ThreadIcon(symbol: "lightbulb")
+                    ThreadIcon(symbol: ThreadEventKind.followUps.symbol, role: .hot)
                     Text("Agent proposed \(followUps.count) follow-up\(followUps.count == 1 ? "" : "s")")
                         .font(.system(size: GnatMetrics.body, weight: .medium))
                         .ink(.secondary)
@@ -181,11 +182,7 @@ struct FollowUpCards: View {
             .surface(.chrome)
             .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .overlay {
-            RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
-        }
+        .threadCard(live: true, hot: true)
     }
 
     private var canApply: Bool {
