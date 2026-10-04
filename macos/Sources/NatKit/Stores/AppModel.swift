@@ -190,7 +190,7 @@ public final class AppModel {
         untitledOpened += 1
         let id = Self.untitledPrefix + String(untitledOpened)
         projectTabs.append((id: id, name: Self.untitledName))
-        workspaceIDs[id] = UUID().uuidString.lowercased()
+        workspaceIDs[id] = newWorkspaceID(id)
         activeProjectID = id
         startProposalWatch()
         return id
@@ -446,6 +446,11 @@ public final class AppModel {
     /// minutes.
     private let now: @Sendable () -> Date
 
+    /// Mints an Untitled tab's workspace id, given the tab's own id: a fresh
+    /// UUID unless a fixture pins one, so a story drawn twice names its
+    /// planning session the same way twice.
+    private let newWorkspaceID: @Sendable (String) -> String
+
     /// Whether every binary onboarding checks for is on the machine — what
     /// separates a launch with no projects that opens the starter card from
     /// one that shows the checklist. Injectable so a test says which without
@@ -476,6 +481,7 @@ public final class AppModel {
             try? await Task.sleep(nanoseconds: 250_000_000)
         },
         now: @escaping @Sendable () -> Date = { Date() },
+        newWorkspaceID: @escaping @Sendable (String) -> String = { _ in UUID().uuidString.lowercased() },
         visitHold: TimeInterval = agentVisitHold,
         toolsReady: @escaping @Sendable () -> Bool = {
             ["nat", "tmux", "gh", "ntn"].allSatisfy { BinaryLocator.status(of: $0).isFound }
@@ -497,6 +503,7 @@ public final class AppModel {
         self.usageStoreFactory = usageStoreFactory
         self.launchSettleWait = launchSettleWait
         self.now = now
+        self.newWorkspaceID = newWorkspaceID
         self.visitHold = visitHold
     }
 

@@ -30,6 +30,26 @@ final class UntitledTabTests: XCTestCase {
         XCTAssertNil(appModel.projectStore, "no project, so no store")
     }
 
+    func testAnUntitledTabsWorkspaceIDIsMintedFromItsTab() {
+        let appModel = AppModel(newWorkspaceID: { "workspace-for-\($0)" })
+
+        let id = appModel.openUntitledTab()
+
+        XCTAssertEqual(appModel.workspaceID(forTab: id), "workspace-for-\(id)")
+    }
+
+    func testTheFixtureAppPinsEachTabsWorkspaceIDAndKeepsThemApart() async {
+        let first = await started()
+        let second = await started()
+
+        let a = first.openUntitledTab(), b = first.openUntitledTab()
+
+        XCTAssertEqual(first.workspaceID(forTab: a), "f1x7a0a0-0000-4000-8000-000000000001")
+        XCTAssertNotEqual(first.workspaceID(forTab: a), first.workspaceID(forTab: b))
+        XCTAssertEqual(second.workspaceID(forTab: second.openUntitledTab()), first.workspaceID(forTab: a),
+                       "the same tab of another run is the same workspace, so a story draws the same way twice")
+    }
+
     func testMoreThanOneUntitledTabMayExistAndEachHasItsOwnID() async {
         let appModel = await started()
         let first = appModel.openUntitledTab()

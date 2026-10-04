@@ -200,6 +200,20 @@ window, and is what those two regions and a real Notion load are reviewed
 through; the selector that used to drive it to a slice or to the workshop is
 gone, since every state it could reach is a story now.
 
+A render has no pointer, so a hover is pinned the same way: `hoverForced`
+(`Views/ViewHelpers.swift`) makes every hover wash under it — `HoverWash`,
+`GnatRowWash`, `HoverReader` — draw as hovered, and a view that wants one row
+hovered rather than the screen takes the row as a story-only input
+(`SidebarView`'s `hoveredSlice:`/`hoveredActiveRow:`, `TitlebarBand`'s
+`hoveredTab`). Unset, `.onHover` alone decides.
+
+A story drawn twice is the same PNG twice, byte for byte. The runner sets
+`pulsesPaused` over every story (no live dot mid-pulse, no skeleton
+mid-sweep) and pins `clock` (`Views/StorySeams.swift`) to `Fixtures.now`,
+which every fixture time is measured from — so an "ago", a reset time or a
+task-log stamp reads the same on every run. A view that measures against the
+clock reads `clock()`, never `Date()`.
+
 `Story`/`StoryCatalog` and the argument parsing are in `NatKit/Gallery`, where
 they are tested; the AppKit capture is in `NatApp/Gallery`, where a window
 belongs. It captures the window's own drawn pixels

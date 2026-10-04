@@ -25,27 +25,11 @@ public enum Fixtures {
 
     // MARK: - Usage
 
-    /// The live clock plus the given number of hours, rather than `now` plus
-    /// it — a usage reading's `resetsAt` has to be in the *real* future for
-    /// `buildUsageDisplay`'s own expiry rule not to drop it on sight, the
-    /// same reason `activityStoreFactory`'s own comment gives for reading the
-    /// live clock instead of the pinned one: a fixture measured back from a
-    /// pinned instant in the past would read as already expired the moment
-    /// real time has moved past it, which it always has by now.
+    /// `now` plus the given number of hours: a usage window's reset. The
+    /// gallery measures it against `now` too (its `clock`), so the window
+    /// is in the future there and its label is the same every run.
     public static func hoursFromNow(_ hours: Double) -> Date {
-        Date().addingTimeInterval(hours * 3600)
-    }
-
-    /// The live clock less the given number of minutes, for the same reason
-    /// `hoursFromNow` reads the live clock instead of the pinned one: an ad
-    /// hoc session's rail row measures its own elapsed/started time against
-    /// `Date()` (see `RailView.railModel`'s own `buildRailModel` call, which
-    /// takes no pinned `now`), so a session fixture measured back from
-    /// `Fixtures.now` would read as having started tens of thousands of
-    /// hours ago the moment real time has moved past January 2026, which it
-    /// always has by now.
-    public static func liveMinutesAgo(_ minutes: Double) -> Date {
-        Date().addingTimeInterval(-minutes * 60)
+        now.addingTimeInterval(hours * 3600)
     }
 
     /// The at-rest reading: both windows well under the warning threshold.

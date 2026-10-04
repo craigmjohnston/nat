@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import NatKit
+import NatFixtures
 
 /// The headless half of the gallery: mounts a story in an offscreen window,
 /// captures the pixels the window actually drew, and writes them out.
@@ -67,8 +68,13 @@ enum GalleryRunner {
         // against, and `preferredColorScheme` is what SwiftUI's own
         // environment reads.
         window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+        // Pinned too, so a story drawn twice is the same PNG twice: no
+        // animation caught mid-phase, no label read off the live clock.
         window.contentView = NSHostingView(
-            rootView: AnyView(content.preferredColorScheme(scheme)))
+            rootView: AnyView(content
+                .preferredColorScheme(scheme)
+                .environment(\.pulsesPaused, true)
+                .environment(\.clock, { Fixtures.now })))
         window.setFrame(frame, display: false)
         // Far off any screen: the window has to be ordered in for SwiftUI to
         // lay it out and draw it, and a window that flashes up in front of

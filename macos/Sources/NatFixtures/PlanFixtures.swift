@@ -339,7 +339,7 @@ extension Fixtures {
         tag: "session:\(projectID):\(liveSessionID)",
         live: true,
         session: "nat-session-f1x75e55",
-        startedAt: liveMinutesAgo(12),
+        startedAt: minutesAgo(12),
         dir: "/Users/craig/Projects/scratch",
         branch: "session/f1x75e55"
     )
@@ -350,7 +350,7 @@ extension Fixtures {
         id: reviewSessionID,
         tag: "session:\(projectID):\(reviewSessionID)",
         live: false,
-        startedAt: liveMinutesAgo(90),
+        startedAt: minutesAgo(90),
         dir: "/Users/craig/Projects/notion-agent-tracker",
         branch: "session/review-fixture",
         prs: [
@@ -363,7 +363,7 @@ extension Fixtures {
         id: doneSessionID,
         tag: "session:\(projectID):\(doneSessionID)",
         live: false,
-        startedAt: liveMinutesAgo(240),
+        startedAt: minutesAgo(240),
         dir: "/Users/craig/Projects/notion-agent-tracker",
         branch: "session/done-fixture",
         ended: true,
@@ -380,7 +380,7 @@ extension Fixtures {
         id: multiPRSessionID,
         tag: "session:\(projectID):\(multiPRSessionID)",
         live: false,
-        startedAt: liveMinutesAgo(150),
+        startedAt: minutesAgo(150),
         dir: "/Users/craig/Projects/notion-agent-tracker",
         branch: "session/picker-model",
         prs: [
@@ -396,7 +396,7 @@ extension Fixtures {
         id: twoBranchSessionID,
         tag: "session:\(projectID):\(twoBranchSessionID)",
         live: false,
-        startedAt: liveMinutesAgo(75),
+        startedAt: minutesAgo(75),
         dir: "/Users/craig/Projects/notion-agent-tracker",
         branch: "session/first-pass"
     )

@@ -1,7 +1,7 @@
 import SwiftUI
 import NatKit
 
-/// The two places a story cannot draw the real thing, and what it draws
+/// The places a story cannot draw the real thing, and what it draws
 /// instead.
 ///
 /// Everything else in the gallery is the app's own view over a fixture value:
@@ -12,12 +12,17 @@ import NatKit
 /// a pseudo-terminal, and the onboarding checklist is the machine the app is
 /// running on. Both are declared here as environment values with the real
 /// thing as their default, so nothing changes for the app and a story says
-/// which of the two it is pinning.
+/// which of the two it is pinning. The clock is the third: a view that says
+/// how long ago something was reads it here, so the gallery can pin it.
 
 // MARK: - The terminal region
 
 private struct TerminalStubbedKey: EnvironmentKey {
     static let defaultValue = false
+}
+
+private struct ClockKey: EnvironmentKey {
+    static let defaultValue: @Sendable () -> Date = { Date() }
 }
 
 private struct ToolStatusKey: EnvironmentKey {
@@ -34,6 +39,14 @@ extension EnvironmentValues {
     var terminalStubbed: Bool {
         get { self[TerminalStubbedKey.self] }
         set { self[TerminalStubbedKey.self] = newValue }
+    }
+
+    /// The instant a view measures "ago" and "resets at" against: the live
+    /// clock by default; the gallery pins it to `Fixtures.now`, since a label
+    /// read off the live clock is a different PNG every minute.
+    var clock: @Sendable () -> Date {
+        get { self[ClockKey.self] }
+        set { self[ClockKey.self] = newValue }
     }
 
     /// How the onboarding checklist finds out about a binary. The real

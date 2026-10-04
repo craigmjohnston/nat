@@ -8,6 +8,7 @@ import NatKit
 /// with the chip row the old Diff tab had), PR its own pull requests.
 struct SessionNavigatorView: View {
     @Bindable var appModel: AppModel
+    @Environment(\.clock) private var clock
     let session: Session
     @Binding var open: Set<NavigatorSection>
     @Binding var main: MainPaneMode
@@ -38,7 +39,7 @@ struct SessionNavigatorView: View {
                 ScrollView {
                     VStack(spacing: 6) {
                         ThreadEventCard(event: ThreadEvent(
-                            .launched, who: "Started", meta: ago(Date().timeIntervalSince(session.startedAt)),
+                            .launched, who: "Started", meta: ago(clock().timeIntervalSince(session.startedAt)),
                             facts: [session.branch.isEmpty ? ThreadFact("dir", session.dir) : ThreadFact("branch", session.branch)],
                             metaIsAction: false))
                         if let agent {

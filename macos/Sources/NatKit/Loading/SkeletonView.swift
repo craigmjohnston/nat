@@ -58,7 +58,8 @@ public struct SkeletonBlock: View {
     private let height: CGFloat?
     private let cornerRadius: CGFloat
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotionSetting
+    @Environment(\.pulsesPaused) private var pulsesPaused
     @State private var phase: Double = 0
 
     /// Either dimension left out fills whatever the caller frames it in —
@@ -70,6 +71,9 @@ public struct SkeletonBlock: View {
         self.height = height
         self.cornerRadius = cornerRadius
     }
+
+    /// Drawn flat, as reduced motion draws it, under a gallery capture too.
+    private var reduceMotion: Bool { reduceMotionSetting || pulsesPaused }
 
     public var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)

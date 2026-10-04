@@ -11,15 +11,30 @@ import NatKit
 struct HoverWash: ViewModifier {
     var cornerRadius: CGFloat = 6
     var enabled: Bool = true
+    @Environment(\.hoverForced) private var forced
     @State private var hovering = false
 
     func body(content: Content) -> some View {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(enabled && hovering ? DesignTokens.fill(.hover) : Color.clear)
+                    .fill(enabled && (hovering || forced) ? DesignTokens.fill(.hover) : Color.clear)
             )
             .onHover { hovering = $0 }
+    }
+}
+
+private struct HoverForcedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Whether a hover wash draws as if the pointer were over it. False
+    /// everywhere but a story: a render has no pointer, so a story sets this
+    /// over the one row it wants hovered. Unset, `.onHover` alone decides.
+    var hoverForced: Bool {
+        get { self[HoverForcedKey.self] }
+        set { self[HoverForcedKey.self] = newValue }
     }
 }
 
