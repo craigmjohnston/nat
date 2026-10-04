@@ -278,8 +278,11 @@ public final class AppModel {
     /// a session that ends drops it (`watchRun`).
     public private(set) var runs: [String: RunAttachment] = [:]
 
-    /// The keys of runs being started — the `nat run` in flight.
-    public private(set) var runsStarting: Set<String> = []
+    /// The runs being started — the `nat run` in flight — by key, each with
+    /// the label asked for (nat's default resolved to its scope's first run,
+    /// "" where the scope lists none), so a run in flight is told from its
+    /// siblings.
+    public private(set) var runsStarting: [String: String] = [:]
 
     /// What the last `nat run` refused with, until dismissed or the next run.
     public private(set) var runError: String?
@@ -2430,7 +2433,16 @@ extension AppModel {
 
     /// Whether a run for that key is being started.
     public func isStartingRun(projectID: String, sliceID: String?) -> Bool {
-        runsStarting.contains(Self.runKey(projectID: projectID, sliceID: sliceID))
+        runsStarting[Self.runKey(projectID: projectID, sliceID: sliceID)] != nil
+    }
+
+    /// Whether the run with that label is being started or its session is
+    /// still live — what a run offered anywhere is disabled for, so the same
+    /// command is not doubled up. A guard of the UI's alone: nat itself
+    /// restarts a live session asked for the same run again.
+    public func isRunning(projectID: String, sliceID: String?, label: String) -> Bool {
+        let key = Self.runKey(projectID: projectID, sliceID: sliceID)
+        return runsStarting[key] == label || runs[key]?.label == label
     }
 
     /// Whether a run for that key is being started or its session is still
@@ -2446,13 +2458,14 @@ extension AppModel {
 
     /// Start a run — `nat run`, `sliceID` nil for a global one and `label`
     /// nil for nat's default — and hold its session while it lives, in
-    /// place of whatever that key held; no pane opens on it. A refusal is `runError`, in nat's
-    /// own words.
+    /// place of whatever that key held; no pane opens on it. A refusal is
+    /// `runError`, in nat's own words.
     public func startRun(projectID: String, sliceID: String? = nil, label: String? = nil) async {
         let key = Self.runKey(projectID: projectID, sliceID: sliceID)
-        runsStarting.insert(key)
+        let scope = sliceID == nil ? globalRuns(ofProject: projectID) : sliceRuns(ofProject: projectID)
+        runsStarting[key] = label ?? scope.first?.label ?? ""
         runError = nil
-        defer { runsStarting.remove(key) }
+        defer { runsStarting[key] = nil }
         do {
             let result = try await clientFactory().run(projectID: projectID, sliceRef: sliceID, label: label)
             runs[key] = RunAttachment(session: result.session, label: result.label, projectID: projectID, sliceID: sliceID)

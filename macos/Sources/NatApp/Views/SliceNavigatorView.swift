@@ -351,7 +351,8 @@ struct SliceNavigatorView: View {
         if slice.handedBack, !sliceRuns.isEmpty {
             RunSplitButton(
                 runs: sliceRuns, isBusy: appModel.isRunBusy(projectID: projectID, sliceID: slice.id),
-                menuOpen: $runMenuOpen
+                menuOpen: $runMenuOpen,
+                isRunning: { appModel.isRunning(projectID: projectID, sliceID: slice.id, label: $0) }
             ) { label in
                 Task { await appModel.startRun(projectID: projectID, sliceID: slice.id, label: label) }
             }
