@@ -65,7 +65,7 @@ struct SourceBadgeView: View {
     var body: some View {
         let colors = DesignTokens.wireBadge(badge.color, on: ground)
         Text(badge.text)
-            .font(Typo.mono(size: 10.5, weight: .medium))
+            .font(Typo.mono(size: Typo.scaled(10.5), weight: .medium))
             .tracking(0.3)
             .lineLimit(1)
             .minimumScaleFactor(0.6)

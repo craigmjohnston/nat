@@ -327,7 +327,7 @@ struct SidebarView: View {
         return HStack(spacing: 6) {
             DisclosureChevron(open: open)
             Text(label.uppercased())
-                .font(.system(size: 12))
+                .font(.system(size: Typo.subhead))
                 .tracking(0.7)
                 .ink(.secondary)
             if count > 0 {
@@ -499,7 +499,7 @@ struct SidebarView: View {
             SourceIconView(icon: source?.icon ?? SourceIcon(symbol: ""), size: 13)
                 .ink(.secondary)
             Text((source?.title ?? project.name).uppercased())
-                .font(.system(size: 12))
+                .font(.system(size: Typo.subhead))
                 .tracking(0.7)
                 .ink(.secondary)
                 .lineLimit(1)
@@ -586,12 +586,12 @@ struct SidebarView: View {
             HStack(spacing: 6) {
                 DisclosureChevron(open: open)
                 Text(group.label.uppercased())
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: Typo.caption, weight: .medium))
                     .tracking(0.7)
                     .ink(.tertiary)
                     .lineLimit(1)
                 if let count = group.count {
-                    Text("\(count)").font(Typo.mono(size: 11)).ink(.tertiary)
+                    Text("\(count)").font(Typo.mono(size: Typo.caption)).ink(.tertiary)
                 }
                 Spacer(minLength: 0)
                 // A segment's filter button under the pointer, beside its

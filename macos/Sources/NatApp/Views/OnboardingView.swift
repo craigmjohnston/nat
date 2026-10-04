@@ -31,7 +31,7 @@ struct OnboardingView: View {
 
             VStack(spacing: 20) {
                 Text("nat")
-                    .font(.system(size: 32, weight: .semibold))
+                    .font(.system(size: Typo.scaled(32), weight: .semibold))
                     .ink(.primary)
 
                 Text("A native board over the notion-agent-tracker project, for launching and reviewing agent work.")

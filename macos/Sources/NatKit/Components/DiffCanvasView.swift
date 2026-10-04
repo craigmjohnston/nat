@@ -74,7 +74,7 @@ public final class DiffCanvasView: NSView {
     public var measureAttachment: (@MainActor (String, CGFloat) -> CGFloat)?
 
     public private(set) var diffLayout = DiffLayout(files: [], width: 0)
-    public private(set) var metrics = DiffMetrics()
+    public private(set) var metrics = DiffMetrics(codeSize: Typo.codeView)
 
     let scrollView = NSScrollView()
     let document = DiffDocumentView()

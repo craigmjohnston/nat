@@ -124,7 +124,7 @@ struct SessionNavigatorView: View {
                 if let diff = diffStore.loadState.diff {
                     ForEach(diff.files) { file in
                         HStack(spacing: 6) {
-                            Text(file.path).font(Typo.mono(size: 13)).ink(.primary)
+                            Text(file.path).font(Typo.mono(size: Typo.codeView)).ink(.primary)
                                 .lineLimit(1).truncationMode(.head)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             HStack(spacing: 4) {

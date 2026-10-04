@@ -226,7 +226,7 @@ struct SliceNavigatorView: View {
                         Text("This task has no brief yet. What you write here becomes the agent's prompt.").ink(.secondary)
                     } else {
                         Excerpt(text: detail.brief) { shown in
-                            Text(markdownAttributed(shown, size: 13.5))
+                            Text(markdownAttributed(shown, size: Typo.scaled(13.5)))
                                 .ink(.primary)
                                 .textSelection(.enabled)
                         }
@@ -238,7 +238,7 @@ struct SliceNavigatorView: View {
                         .frame(maxWidth: .infinity, minHeight: 60)
                 }
             }
-            .font(.system(size: 13.5))
+            .font(.system(size: Typo.scaled(13.5)))
             .lineSpacing(2)
             .padding(.horizontal, 10)
             .padding(.top, 4)

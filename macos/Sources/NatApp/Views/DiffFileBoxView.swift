@@ -62,7 +62,7 @@ struct PendingCommentCardView: View {
                 .help("Delete this comment")
             }
             Text(text)
-                .font(.system(size: 13.5))
+                .font(.system(size: Typo.scaled(13.5)))
                 .lineSpacing(2)
                 .ink(.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)

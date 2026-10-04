@@ -448,22 +448,64 @@ public enum DesignTokens {
 /// them as too small on a big display. Every font in the app comes off this
 /// ramp — changing how big the app reads is changing these numbers and
 /// nothing else.
+///
+/// The proportional sizes follow the user's UI size (`TypeSize.ui`, whose
+/// default 14 draws the numbers below unchanged): each is its number scaled
+/// by `ui / 14` and rounded to a whole point, so the ramp keeps its
+/// proportions at any size. `code` does not follow it, and the terminal and
+/// the diff draw at `codeView` instead, which follows the monospace size.
 public enum Typo {
     /// Section headings and the PR title (mock's headline, 15).
-    public static let headline: CGFloat = 15
-    /// Body text and row labels (mock's 13px body, grown to 14).
-    public static let body: CGFloat = 14
+    public static var headline: CGFloat { ui(15) }
+    /// Body text and row labels (mock's 13px body, grown to 14) — and the
+    /// size the user's UI size names.
+    public static var body: CGFloat { ui(14) }
     /// Secondary rows, meta lines, tab labels (mock's 11px subheadline → 12).
-    public static let subhead: CGFloat = 12
+    public static var subhead: CGFloat { ui(12) }
     /// Badges, timestamps, section labels (mock's 10px caption2 → 11).
-    public static let caption: CGFloat = 11
-    /// Monospaced code and diff text (mock's 12px code → 13).
+    public static var caption: CGFloat { ui(11) }
+    /// Monospaced code outside the terminal and the diff — the PR view,
+    /// fact rows (mock's 12px code → 13). Fixed: neither size setting moves
+    /// it.
     public static let code: CGFloat = 13
     /// Text typed into an input — every `TextField`, `SecureField` and
     /// `TextEditor` in the app, and the placeholder drawn where it is empty.
     /// Never smaller than body, and one size for all of them, so a field's
-    /// type is changed here rather than at each view.
-    public static let input: CGFloat = body
+    /// type is changed here rather than at each view. It is the body, and so
+    /// follows the user's text size with it.
+    public static var input: CGFloat { body }
+    /// A line of code in the agent terminal and the diff: the user's
+    /// monospace size.
+    public static var codeView: CGFloat { CGFloat(TypeSizeSelection.shared.current.mono) }
+
+    /// A size on the ramp at the user's UI size: `base` is what it is drawn
+    /// at by default, when the UI size is the body's own 14.
+    static func ui(_ base: CGFloat) -> CGFloat {
+        scaled(base, by: TypeSizeSelection.shared.current.ui, over: TypeSize.defaultUI)
+    }
+
+    /// A proportional size the ramp has no step for (a 13-point button
+    /// label, 13.5-point prose, a 32-point title), at the user's UI size:
+    /// `base` is what it is drawn at by default. A whole-point base rounds to
+    /// whole points, as the ramp does; a half-point one to half points, so
+    /// that at the default it is drawn at exactly `base`.
+    public static func scaled(_ base: CGFloat) -> CGFloat {
+        let step: CGFloat = base.rounded() == base ? 1 : 0.5
+        return ui(base / step) * step
+    }
+
+    /// A monospaced size in the terminal or the diff that sits beside the
+    /// code rather than being it (a hunk break, a comment box), at the
+    /// user's monospace size: `base` is what it was drawn at beside the old
+    /// 13-point `code`, and it moves in the same proportion code has.
+    public static func codeView(_ base: CGFloat) -> CGFloat {
+        scaled(base, by: TypeSizeSelection.shared.current.mono, over: Int(code))
+    }
+
+    /// `base` scaled by `setting / reference`, to the nearest whole point.
+    static func scaled(_ base: CGFloat, by setting: Int, over reference: Int) -> CGFloat {
+        (base * CGFloat(setting) / CGFloat(reference)).rounded()
+    }
 
     // MARK: - The monospaced face
 
@@ -539,11 +581,11 @@ public enum Typo {
 /// a value nobody chose, which is how the pane came to be drawn in type the
 /// rest of the app does not use.
 public enum TerminalType {
-    /// The terminal's font: the app's own monospaced face at the ramp's
-    /// code size, which is the font and the size the diff pane draws a line
-    /// of code in.
+    /// The terminal's font: the app's own monospaced face at the user's
+    /// monospace size, which is the font and the size the diff pane draws a
+    /// line of code in.
     public static var font: NSFont {
-        Typo.monoNSFont(size: Typo.code, weight: .regular)
+        Typo.monoNSFont(size: Typo.codeView, weight: .regular)
     }
 
     /// Whether the terminal rasterises its glyphs with macOS font
