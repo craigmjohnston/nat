@@ -918,6 +918,16 @@ enum AppStories {
         },
 
         Story(
+            name: "window-task-log-note-todo",
+            summary: "A Todo task never launched, with one note on its brief from a task on the plan: the log is that note alone, stamped with today's time, then the Launch action — no Launched item claims a launch that never happened.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.fixturesSliceID, agents: [], details: Fixtures.notedTodoSliceDetails,
+                focus: NavigatorFocus(open: [.thread], main: .diff))
+        },
+
+        Story(
             name: "sidebar-last-active-selected",
             summary: "The last Active row selected: its highlight the ordinary row height, the line under Active not drawn.",
             size: window

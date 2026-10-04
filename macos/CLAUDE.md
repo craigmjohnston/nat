@@ -239,7 +239,8 @@ relaunches, notes (`nat slice-note`, headed "Another agent left a note";
 `fromSlice` matched once against the loaded plan by name and milestone
 name — `noteSourceSlice` — is a `task` fact drawn as the brief's
 `DependencyRow`, through `ThreadEventCard.taskRow`, else `source` with the
-provenance as text; notes alone open no log on a slice never launched),
+provenance as text; a slice never launched shows its notes alone, and
+notes ahead of every other recorded event sit before Launched),
 follow-ups (a proposal is its count line, then one item per decided
 follow-up — headed "<Queued | Folded in | Dismissed> proposed follow-up"
 (`followUpDecisionHeading`), its title then its brief as the body, a queued
@@ -255,8 +256,8 @@ width of `widestThreadFactKey` (`ThreadFactKey`), and the brief's Edit is
 drawn only while the slice is Todo. Each item with an `at` shows it at
 its header's end (`threadTimestamp`: time today, `d MMM` this year, `d MMM
 y` before) — a decided follow-up its `decidedAt`, the triage item its
-proposal's `at`; Launched, the live agent, approve and merge have none. Story:
-`window-task-log-notes`. Selecting sets the selection *before* awaiting the project's
+proposal's `at`; Launched, the live agent, approve and merge have none. Stories:
+`window-task-log-notes`, `window-task-log-note-todo`. Selecting sets the selection *before* awaiting the project's
 activation (`AppModel.select(inProject:)`), so a later click is never
 overwritten by an earlier one finishing. What the design does not draw
 (workshop, sessions, follow-ups, menus) lives on as the row or section it
