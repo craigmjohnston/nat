@@ -1625,6 +1625,17 @@ enum AppStories {
         },
 
         Story(
+            name: "agent-terminal-transcript",
+            summary: "The agent terminal as a real SwiftTerm view fed a turn of a Claude Code "
+                + "session — the banner, a read, an edit's hunk, a test run, the hand-back and "
+                + "the prompt — the one story where the terminal's own type is what is drawn.",
+            size: pane
+        ) {
+            TerminalTranscriptStoryView()
+                .background(DesignTokens.fill(.terminal))
+        },
+
+        Story(
             name: "pr-composer-typed",
             summary: "The comment box with an emoji comment typed into it: the editor grown to "
                 + "its two lines, under its 60pt ceiling, rather than sitting at either bound.",

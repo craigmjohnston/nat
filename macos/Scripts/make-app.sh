@@ -76,7 +76,7 @@ if [ -d "$RELEASE_DIR/nat_NatApp.bundle" ]; then
     cp -R "$RELEASE_DIR/nat_NatApp.bundle" "$APP_BUNDLE/Contents/Resources/"
 fi
 
-# NatKit's resource bundle — the four JetBrains Mono faces MonoFont registers
+# NatKit's resource bundle — the three Fira Code faces MonoFont registers
 # at launch. Without it the app still runs, in the monospaced system font, so
 # this is copied rather than asserted; see MonoFont.resourceBundle, which
 # looks here first.

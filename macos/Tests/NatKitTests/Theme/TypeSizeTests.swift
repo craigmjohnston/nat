@@ -110,8 +110,8 @@ final class TypeSizeTests: XCTestCase {
         XCTAssertEqual(metrics.rowPadding, DiffMetrics().rowPadding)
     }
 
-    /// The default code size's line holds the face it draws: JetBrains Mono
-    /// at 14 is taller than the 19 a 13-point line was given.
+    /// The default code size's line holds the face it draws: the bundled
+    /// face at 14 is taller than the 19 a 13-point line was given.
     func testDefaultDiffLineHoldsItsFace() {
         let metrics = DiffMetrics(codeSize: Typo.codeView)
         let font = Typo.monoNSFont(size: Typo.codeView)

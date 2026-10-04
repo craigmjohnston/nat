@@ -46,8 +46,9 @@ structure and design-system writeup.
 - A colour that will not parse falls back to Mocha's mauve, the app's accent,
   rather than to white: a parse failure is a bug the tests catch, and the frame
   drawn before anyone reads them should still read as this app.
-- The monospaced face is the app's own, not the Mac's: JetBrains Mono, five
-  static faces (regular, medium, bold, two italics) under `NatKit/Resources/Fonts`, with the OFL beside them,
+- The monospaced face is the app's own, not the Mac's: Fira Code, three
+  static faces (regular, medium, bold — the family has no italic, and nothing
+  here sets code in one) under `NatKit/Resources/Fonts`, with the OFL beside them,
   registered with CoreText for this process alone at launch — nothing is
   installed on the Mac. `MonoFont` holds the names and the registration and
   `Typo.mono(size:weight:)` is the one thing a view calls, falling back to the
@@ -200,6 +201,17 @@ window, and is what those two regions and a real Notion load are reviewed
 through; the selector that used to drive it to a slice or to the workshop is
 gone, since every state it could reach is a story now.
 
+Another monospaced face can be tried on without touching the bundle:
+`NAT_MONO_FAMILY=<family>` draws every monospaced surface in that family, and
+`NAT_MONO_FONT_DIR=<dir>` registers the font files in that directory for the
+process first, so the family need not be installed (`MonoFont.Trial`). Both
+work on the gallery and on a dev run alike; a family that cannot be found
+falls back to the bundled face. For example:
+```bash
+NAT_MONO_FAMILY="IBM Plex Mono" NAT_MONO_FONT_DIR=~/Downloads/plex-mono/ttf \
+  macos/.build/debug/gnat --story window-review --out /tmp/plex.png
+```
+
 A render has no pointer, so a hover is pinned the same way: `hoverForced`
 (`Views/ViewHelpers.swift`) makes every hover wash under it — `HoverWash`,
 `GnatRowWash`, `HoverReader` — draw as hovered, and a view that wants one row
@@ -287,7 +299,7 @@ macos/
 │   │   ├── NatClient/             — the nat subprocess contract (NatClient, NatBinary, PathBootstrap, ProcessRunner)
 │   │   ├── Nudge/                 — the nudge-marker poll, mirroring internal/nudge's read side
 │   │   ├── Onboarding/            — first-run checklist logic
-│   │   ├── Resources/Fonts/       — JetBrains Mono (bundled, OFL)
+│   │   ├── Resources/Fonts/       — Fira Code (bundled, OFL)
 │   │   ├── Stores/                — ~9 files: state management (ActivityStore, ReviewStatsStore, …)
 │   │   ├── Terminal/              — agent-terminal key encoding, link and mouse handling
 │   │   ├── Theme/                 — DesignTokens, Palette (the gnat design's tokens), Theme, MonoFont

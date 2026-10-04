@@ -25,11 +25,11 @@ let package = Package(
             dependencies: [],
             path: "Sources/NatKit",
             resources: [
-                // JetBrains Mono — the face every monospaced surface and
-                // every text input is set in, shipped rather than asked of
-                // the Mac (MonoFont registers it with CoreText at launch).
+                // Fira Code — the face every monospaced surface and every
+                // text input is set in, shipped rather than asked of the
+                // Mac (MonoFont registers it with CoreText at launch).
                 // `.copy` rather than `.process`, so the directory survives
-                // and the OFL licence beside the four faces ships with them.
+                // and the OFL licence beside the three faces ships with them.
                 .copy("Resources/Fonts")
             ]
         ),

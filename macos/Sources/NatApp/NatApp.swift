@@ -73,7 +73,7 @@ struct NatApp: App {
         // ahead of the AppModel below, which is why the property has no
         // default of its own — a default would be initialised first.
         PathBootstrap.bootstrap()
-        // The bundled JetBrains Mono, handed to CoreText before any window
+        // The bundled Fira Code, handed to CoreText before any window
         // draws — the terminal, the diff, markdown code and every input
         // resolve the face by name, and a face registered after the first
         // frame is a frame drawn in the fallback. It is idempotent and
