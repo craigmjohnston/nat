@@ -40,10 +40,10 @@ type fakePRReader struct {
 	comments string
 }
 
-func (f *fakePRReader) FailedLog(dir, run, job string) (string, error) {
-	key := job
+func (f *fakePRReader) FailedLog(dir string, ref gh.ActionsRef) (string, error) {
+	key := ref.Job
 	if key == "" {
-		key = run
+		key = ref.Run
 	}
 	f.logged = append(f.logged, key)
 	if f.logErr != nil {

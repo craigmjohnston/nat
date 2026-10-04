@@ -15,7 +15,7 @@ import (
 // RunLogReader is what slice-checks --log needs of gh: the failed steps' log
 // of a GitHub Actions run, or of one job of it.
 type RunLogReader interface {
-	FailedLog(dir, run, job string) (string, error)
+	FailedLog(dir string, ref gh.ActionsRef) (string, error)
 }
 
 // checksLogLines is how much of one job's failed log slice-checks --log
@@ -33,7 +33,9 @@ const checksLogLines = 200
 // --log appends, for each failed check run by GitHub Actions, the failed
 // steps' log, cut to its last [checksLogLines] lines; a status some other
 // service reported has only its URL to give. A log that cannot be read is
-// logged and passed over, since the verdict and the URL are still the answer.
+// logged and said to be unavailable under its check, naming why — the verdict
+// and the URL are still the answer, and an agent reading it knows the log was
+// tried rather than going to gh for it.
 func sliceChecks(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("slice-checks", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -84,7 +86,7 @@ func sliceChecks(ctx context.Context, args []string, env Env) error {
 	for _, c := range pr.Checks {
 		entry := sliceCheckJSON{Name: c.Name, State: c.State, URL: c.URL}
 		if *withLog && c.Outcome() == gh.CheckFailing {
-			entry.Log = failedLog(ghClient, workdir, c)
+			entry.Log, entry.LogError = failedLog(ghClient, workdir, c)
 		}
 		doc.Checks = append(doc.Checks, entry)
 	}
@@ -97,18 +99,20 @@ func sliceChecks(ctx context.Context, args []string, env Env) error {
 }
 
 // failedLog is a failed check's log as --log prints it, or "" for a check
-// with no Actions run behind it, or one whose log could not be read.
-func failedLog(ghClient GH, dir string, c gh.Check) string {
-	run, job, ok := gh.ActionsRun(c.URL)
+// with no Actions run behind it. A log that could not be read is "" with the
+// first line of why as logErr.
+func failedLog(ghClient GH, dir string, c gh.Check) (log, logErr string) {
+	ref, ok := gh.ActionsRun(c.URL)
 	if !ok {
-		return ""
+		return "", ""
 	}
-	out, err := ghClient.FailedLog(dir, run, job)
+	out, err := ghClient.FailedLog(dir, ref)
 	if err != nil {
 		logging.Action("left a failed check's log out", "check", c.Name, "url", c.URL, "error", err)
-		return ""
+		first, _, _ := strings.Cut(err.Error(), "\n")
+		return "", first
 	}
-	return lastLines(out, checksLogLines)
+	return lastLines(out, checksLogLines), ""
 }
 
 // lastLines is the last n lines of text, after a line saying how many before
@@ -124,8 +128,8 @@ func lastLines(text string, n int) string {
 
 // checksDoc is slice-checks' structured form.
 type checksDoc struct {
-	PR      string      `json:"pr"`
-	Verdict string      `json:"verdict"`
+	PR      string           `json:"pr"`
+	Verdict string           `json:"verdict"`
 	Checks  []sliceCheckJSON `json:"checks"`
 }
 
@@ -134,6 +138,8 @@ type sliceCheckJSON struct {
 	State string `json:"state"`
 	URL   string `json:"url"`
 	Log   string `json:"log,omitempty"`
+	// LogError is why --log could not read a failed check's log.
+	LogError string `json:"log_error,omitempty"`
 }
 
 // checksMarkdown renders the checks: the verdict, a line per check, and each
@@ -146,6 +152,9 @@ func checksMarkdown(doc checksDoc) string {
 	}
 	for _, c := range doc.Checks {
 		fmt.Fprintf(&b, "- %s — %s — %s\n", c.Name, c.State, c.URL)
+		if c.LogError != "" {
+			fmt.Fprintf(&b, "  log not available: %s\n", c.LogError)
+		}
 	}
 	for _, c := range doc.Checks {
 		if c.Log != "" {
