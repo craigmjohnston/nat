@@ -104,12 +104,12 @@ struct SliceNavigatorView: View {
             if nav.isLive(.pr) {
                 NavSectionView(
                     label: "PR", open: open.contains(.pr), selected: main == .pr, status: nav.prStatus,
-                    onHead: { click(.pr) }, onFold: { fold(.pr) }
+                    warning: notice?.text, onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
                     PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
                     if nav.showsMerge { mergeAction }
                 } content: {
-                    prBody
+                    prReading
                 }
             }
         }
@@ -377,7 +377,6 @@ struct SliceNavigatorView: View {
         let live = agent != nil
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if let notice { checksNoticeView(notice, nav) }
                 VStack(alignment: .leading, spacing: LogMetrics.spacing) {
                     ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                         let connector: LogConnector = index < items.count - 1 ? .solid : live ? .dashed : .none
@@ -430,13 +429,6 @@ struct SliceNavigatorView: View {
         }
         if nav.launchIsFix { return .fix }
         return nav.state.isLaunched ? .relaunch : .launch
-    }
-
-    private func checksNoticeView(_ notice: ChecksNotice, _ nav: NavigatorModel) -> some View {
-        ChecksNoticeView(
-            notice: notice, isLaunching: isLaunching,
-            launchEnabled: appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch),
-            onLaunchFix: launch)
     }
 
     private func resetLaunchForm() {
@@ -578,13 +570,6 @@ struct SliceNavigatorView: View {
             await appModel.refresh()
         }
         store.startPolling()
-    }
-
-    private var prBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let notice { checksNoticeView(notice, nav) }
-            prReading
-        }
     }
 
     @ViewBuilder

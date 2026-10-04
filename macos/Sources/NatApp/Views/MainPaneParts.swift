@@ -257,9 +257,9 @@ struct TitlebarIdentityLabel: View {
                 } else if let identity {
                     ActiveIdentityLabel(
                         tag: identity.tag, state: identity.state, live: identity.live, title: identity.title,
-                        size: GnatMetrics.titlebarText, titleInk: .primary)
+                        size: GnatMetrics.titlebarText)
                 } else {
-                    Text(title).ink(.primary)
+                    Text(title).ink(.secondary)
                 }
             }
             .layoutPriority(-1)

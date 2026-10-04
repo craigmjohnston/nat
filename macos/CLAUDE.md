@@ -102,9 +102,10 @@ a relaunch) and its launch item "Fix", through the ordinary
 `ReviewStatsStore.failingChecks` (from `pr-status`'s `checks`, replaced
 each reading, kept on a failed one) drives the Active row's danger marker
 (`SidebarActiveRow.failingChecks`, pr/fixing stage only) and
-`checksNotice` — the notice atop the Thread and PR bodies: Launch fix agent
-with no agent, "sent to the agent to fix" when the latest recorded event is
-the nudge's Sent back. `projectAttention` counts a red pr/fixing slice once.
+`checksNotice` — the PR section header's danger icon (`NavSectionView`'s
+`warning`), its text the tooltip: "sent to the agent to fix" when the latest
+recorded event is the nudge's Sent back (the fix launch itself is the Task
+log's launch item and the header's). `projectAttention` counts a red pr/fixing slice once.
 Stories: `window-pr-fix-launch`, `window-fixing`, `sidebar-checks-failing`,
 `window-pr-checks-failing`, `window-pr-checks-agent-told`,
 `window-task-log-checks-failed`.

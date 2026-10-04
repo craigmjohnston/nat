@@ -60,7 +60,7 @@ struct ChangesSectionBody: View {
                 .help(viewed ? "Mark not viewed" : "Mark viewed")
             }
             Text(file.path)
-                .font(Typo.mono(size: Typo.codeView))
+                .font(.system(size: Typo.scaled(13)))
                 .ink(.primary)
                 .lineLimit(1)
                 .truncationMode(.head)
