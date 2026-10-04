@@ -30,50 +30,176 @@ struct Excerpt<Content: View>: View {
 // MARK: - Icons
 
 extension ThreadEventKind {
-    /// The glyph a Thread card is headed with — filled wherever SF Symbols
-    /// has a filled form, so the set reads as one family.
+    /// The glyph a Task log item is headed with — outlined, never filled,
+    /// as the design's thin line icons are, so the set reads as one family.
     var symbol: String {
         switch self {
-        case .launched: return "play.circle.fill"
-        case .agent: return "terminal.fill"
-        case .handedBack: return "arrow.uturn.backward.circle.fill"
-        case .sentBack: return "arrow.uturn.forward.circle.fill"
-        case .released: return "arrow.down.to.line.circle.fill"
-        case .relaunched: return "arrow.clockwise.circle.fill"
-        case .checksFailed: return "xmark.octagon.fill"
-        case .blocked: return "exclamationmark.octagon.fill"
-        case .followUps: return "lightbulb.fill"
-        case .followUp: return "arrow.right.circle.fill"
-        case .note: return "text.bubble.fill"
-        case .approved: return "checkmark.seal.fill"
+        case .launched: return "play.circle"
+        case .agent: return "terminal"
+        case .handedBack: return "arrow.uturn.backward.circle"
+        case .sentBack: return "arrow.uturn.forward.circle"
+        case .released: return "arrow.down.to.line.circle"
+        case .relaunched: return "arrow.clockwise.circle"
+        case .checksFailed: return "xmark.octagon"
+        case .blocked: return "exclamationmark.octagon"
+        case .followUps: return "lightbulb"
+        case .followUp: return "arrow.right.circle"
+        case .note: return "text.bubble"
+        case .approved: return "checkmark.seal"
         case .merged: return "arrow.triangle.merge"
-        case .closed: return "checkmark.circle.fill"
+        case .closed: return "checkmark.circle"
         }
     }
 }
 
-/// The brief card's own glyph, heading it as a kind heads every other card.
-let briefSymbol = "doc.text.fill"
+/// The brief's own glyph, heading it as a kind heads every other item.
+let briefSymbol = "doc.text"
 
-/// A Thread card's leading glyph: centred in a frame wide enough for the
-/// widest of them (`terminal.fill`, 19pt at this size), so every card's
-/// title starts at one x, and — in a header aligned on its first baseline —
-/// centred on the title's capitals rather than seated on its baseline, which
-/// holds on the first line of a title that wraps.
+/// A Task log item's glyph, in the log's margin column: light, as the
+/// design's line icons are, and quiet unless the item is live.
 struct ThreadIcon: View {
     let symbol: String
     var role: InkRole = .tertiary
 
     static let size: CGFloat = 13
-    static let width: CGFloat = 20
 
     var body: some View {
-        let capHeight = NSFont.systemFont(ofSize: GnatMetrics.body).capHeight
         Image(systemName: symbol)
-            .font(.system(size: Self.size, weight: .semibold))
+            .font(.system(size: Self.size, weight: .regular))
             .ink(role)
-            .frame(width: Self.width)
-            .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + capHeight / 2 }
+    }
+}
+
+// MARK: - Log items
+
+/// How a Task log item's rule runs on down the margin column under its icon:
+/// solid to the next item, none after the last, dashed after the last while
+/// the log is live — the agent still at it.
+enum LogConnector: Equatable {
+    case none, solid, dashed
+}
+
+/// The Task log's measures — the design's `.log`/`.lg` rules.
+enum LogMetrics {
+    /// The margin column the icons and the rule sit in.
+    static let margin: CGFloat = 24
+    /// The header line the icon is centred on.
+    static let headHeight: CGFloat = 19
+    /// Between one item's content and the next's: the design's 16 between
+    /// items plus each item's own 8 above it.
+    static let spacing: CGFloat = 24
+    /// Where the rule starts, under the icon, from the item's top.
+    static let ruleTop: CGFloat = 23
+    /// How far a solid rule runs into the gap under its item: to as far short
+    /// of the next item's icon as it starts under its own.
+    static let ruleOverrun: CGFloat = 20
+    /// How far a live log's dashed tail runs past its last item.
+    static let tailOverrun: CGFloat = 16
+    /// The rule's x in the margin column: under the icon's centre.
+    static let ruleX: CGFloat = 6
+}
+
+extension View {
+    /// The Task log's padding around its items: the design's `.log`, with the
+    /// first item's own 8 above it, and more room at the foot while the log
+    /// is live, for its dashed tail.
+    func taskLogPadding(live: Bool = false) -> some View {
+        padding(.top, 14)
+            .padding(.leading, 12)
+            .padding(.trailing, 14)
+            .padding(.bottom, live ? 22 : 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// One item of the Task log, boxed by nothing: its icon in the margin column,
+/// then beside it the header — who, what (its meta, in its tone), and at the
+/// end when and any action — over its body. Its rule (`connector`) runs down
+/// the margin column from under the icon towards the next item's.
+struct LogItem<Action: View, Content: View>: View {
+    let symbol: String
+    var iconRole: InkRole = .tertiary
+    let who: String
+    var whoRole: InkRole = .primary
+    var meta: String?
+    var metaRole: InkRole = .secondary
+    var when: String?
+    var connector: LogConnector = .none
+    @ViewBuilder var action: () -> Action
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            ThreadIcon(symbol: symbol, role: iconRole)
+                .frame(width: ThreadIcon.size, height: LogMetrics.headHeight)
+                .frame(width: LogMetrics.margin, alignment: .leading)
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                if Content.self != EmptyView.self {
+                    content()
+                        .padding(.top, 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .overlay(alignment: .topLeading) { rule }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(who)
+                .font(.system(size: Typo.scaled(13.5)))
+                .ink(whoRole)
+                .fixedSize(horizontal: false, vertical: true)
+            if let meta {
+                Text(meta).monoXS().ink(metaRole).lineLimit(1).layoutPriority(1)
+            }
+            Spacer(minLength: 0)
+            if let when {
+                Text(when).monoXS().ink(.secondary).lineLimit(1).fixedSize()
+            }
+            action()
+        }
+        .frame(minHeight: LogMetrics.headHeight)
+    }
+
+    @ViewBuilder
+    private var rule: some View {
+        if connector != .none {
+            LogRule()
+                .stroke(
+                    DesignTokens.rule(.border, on: .window),
+                    style: StrokeStyle(lineWidth: 1, dash: connector == .dashed ? [3, 3] : []))
+                .frame(width: 1)
+                .padding(.top, LogMetrics.ruleTop)
+                .padding(.bottom, -(connector == .dashed ? LogMetrics.tailOverrun : LogMetrics.ruleOverrun))
+                .offset(x: LogMetrics.ruleX)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+extension LogItem where Action == EmptyView {
+    init(
+        symbol: String, iconRole: InkRole = .tertiary, who: String, whoRole: InkRole = .primary,
+        meta: String? = nil, metaRole: InkRole = .secondary, when: String? = nil,
+        connector: LogConnector = .none, @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.init(
+            symbol: symbol, iconRole: iconRole, who: who, whoRole: whoRole, meta: meta, metaRole: metaRole,
+            when: when, connector: connector, action: { EmptyView() }, content: content)
+    }
+}
+
+/// The log's rule: one vertical line down the middle of its frame.
+private struct LogRule: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        }
     }
 }
 
@@ -98,13 +224,11 @@ struct ThreadFactKey: View {
 
 // MARK: - Launch
 
-/// The Thread's last item while the slice can be launched: a ghost card —
-/// dashed, not yet anything that happened — drawn as the Launched card it
-/// will become: its header (with Launch itself at the trailing end), what
-/// Launch will do, then the facts that card will carry on the chrome ground
-/// under a line. Model and effort are editable there, each a menu; the base
-/// the worktree is cut from is not. Blocked, it is the same card greyed and
-/// hatched: the menus and Launch disabled, and what it waits on said.
+/// The Task log's last item while the slice can be launched — not yet
+/// anything that happened: what Launch (the section header's) will do, then
+/// the model and effort it will run with, each a chip opening a menu, and
+/// the base the worktree is cut from. Blocked, it is the same item quietened:
+/// the chips disabled, and what it waits on said.
 struct LaunchCard: View {
     enum Mode: Equatable {
         case launch
@@ -115,6 +239,15 @@ struct LaunchCard: View {
         case fix
         /// The dependencies still unfinished, by name.
         case blocked(waitingOn: [String])
+
+        /// The Thread header's launch button, as this mode launches.
+        var actionTitle: String {
+            switch self {
+            case .relaunch: return "Relaunch"
+            case .fix: return "Launch fix agent"
+            case .launch, .blocked: return "Launch"
+            }
+        }
     }
 
     let mode: Mode
@@ -124,96 +257,52 @@ struct LaunchCard: View {
     /// The branch the worktree is cut from, as nat resolves it; nil before
     /// the slice's detail is read, or with no repo to read it in.
     let base: String?
-    let enabled: Bool
-    let isBusy: Bool
-    let onLaunch: () -> Void
 
     private var blocked: Bool {
         if case .blocked = mode { return true }
         return false
     }
 
-    private var actionTitle: String {
-        switch mode {
-        case .relaunch: return "Relaunch"
-        case .fix: return "Launch fix agent"
-        case .launch, .blocked: return "Launch"
-        }
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 6) {
-                ThreadIcon(symbol: blocked ? "lock.fill" : "play.circle.fill")
-                Text(blocked ? "Blocked" : mode == .relaunch ? "Relaunch" : mode == .fix ? "Fix" : "Launch")
-                    .font(.system(size: GnatMetrics.body, weight: .medium))
-                    .ink(blocked ? .tertiary : .secondary)
-                Spacer(minLength: 0)
-                Button(action: onLaunch) {
-                    HeaderActionLabel(title: actionTitle, systemImage: "arrow.right", isBusy: isBusy)
+        LogItem(
+            symbol: blocked ? "lock" : ThreadEventKind.launched.symbol,
+            who: blocked ? "Blocked" : mode == .relaunch ? "Relaunch" : mode == .fix ? "Fix" : "Launch",
+            whoRole: blocked ? .tertiary : .primary
+        ) {
+            VStack(alignment: .leading, spacing: 0) {
+                explanation
+                    .font(.system(size: Typo.scaled(13.5)))
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    NavFactMenu(value: model, placeholder: "default model") {
+                        Button("Default") { model = "" }
+                        ForEach(options.models, id: \.self) { option in Button(option) { model = option } }
+                    }
+                    .help("Model")
+                    NavFactMenu(value: effort, placeholder: "default effort") {
+                        Button("Default") { effort = "" }
+                        ForEach(options.efforts, id: \.self) { option in Button(option) { effort = option } }
+                    }
+                    .help("Effort")
                 }
-                .buttonStyle(GnatButtonStyle(primary: !blocked))
-                .disabled(!enabled || blocked)
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 6)
-
-            explanation
-                .font(.system(size: Typo.scaled(13)))
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 10)
-                .padding(.top, 2)
-                .padding(.bottom, 8)
-
-            facts
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            if blocked { BlockedHatch().clipShape(RoundedRectangle(cornerRadius: 4)) }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .overlay {
-            RoundedRectangle(cornerRadius: 4).strokeBorder(
-                DesignTokens.rule(.border, on: .window), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-        }
-    }
-
-    /// The Launched card's own facts, in its order: model and effort as
-    /// menus, then the base as a plain value.
-    private var facts: some View {
-        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
-            GridRow {
-                ThreadFactKey("model")
-                NavFactMenu(value: model) {
-                    Button("Default") { model = "" }
-                    ForEach(options.models, id: \.self) { option in Button(option) { model = option } }
-                }
-            }
-            GridRow {
-                ThreadFactKey("effort")
-                NavFactMenu(value: effort) {
-                    Button("Default") { effort = "" }
-                    ForEach(options.efforts, id: \.self) { option in Button(option) { effort = option } }
-                }
-            }
-            if let base {
-                GridRow {
-                    ThreadFactKey("base")
-                    Text(base)
-                        .ink(blocked ? .quaternary : .primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                .disabled(blocked)
+                .padding(.top, 8)
+                if let base {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+                        GridRow {
+                            ThreadFactKey("base")
+                            Text(base)
+                                .ink(blocked ? .tertiary : .primary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    .monoXS()
+                    .padding(.top, 8)
                 }
             }
         }
-        .disabled(blocked)
-        .monoXS()
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(blocked ? Color.clear : DesignTokens.fill(.chrome))
-        .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
     }
 
     @ViewBuilder
@@ -236,21 +325,6 @@ struct LaunchCard: View {
             (Text("Waits on ") + waiting
                 + Text(names.count > 1 ? ". Launch unlocks when they are done." : ". Launch unlocks when that task is done."))
                 .ink(.secondary)
-        }
-    }
-}
-
-/// The blocked launch card's ground: faint diagonal rules, the way a
-/// closed-off area is marked.
-private struct BlockedHatch: View {
-    var body: some View {
-        Canvas { context, size in
-            var path = Path()
-            for x in stride(from: -size.height, to: size.width, by: 7) {
-                path.move(to: CGPoint(x: x, y: size.height))
-                path.addLine(to: CGPoint(x: x + size.height, y: 0))
-            }
-            context.stroke(path, with: .color(DesignTokens.rule(.separator, on: .window)), lineWidth: 1)
         }
     }
 }

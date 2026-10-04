@@ -96,7 +96,8 @@ working one with none: relaunchable, not pulsing.
 **Fix launch and failing checks.** `LaunchPlan` admits an approved slice (In
 progress, PR recorded) with no live agent whatever its dependencies
 (`isFix`); `NavigatorModel.launchIsFix` (the `pr` state) makes the Thread's
-Launch and `LaunchCard` say "Launch fix agent", through the ordinary
+Launch say "Launch fix agent" (`LaunchCard.Mode.actionTitle`, "Relaunch" for
+a relaunch) and its launch item "Fix", through the ordinary
 `nat slice-launch` and its one-shot optimistic advance to the terminal.
 `ReviewStatsStore.failingChecks` (from `pr-status`'s `checks`, replaced
 each reading, kept on a failed one) drives the Active row's danger marker
@@ -186,7 +187,7 @@ as a Scratch fold of its own — `SidebarModel.scratch`, whose unfiled
 milestone's slices, `Milestone.unfiled`, sit loose at its head), the navigator's
 stacked Thread/Changes/PR foldouts (`SliceNavigatorView`, with
 `NavigatorModel` deciding phase, liveness and header actions). The brief is
-the Thread's first card, not a section. A header click puts its section's
+the Thread's first item, not a section. A header click puts its section's
 view up in the main pane — Thread the terminal, Changes the diff, PR the
 description and conversation (the PR section keeps checks and review) — and
 folds it again when that view is already up; the chevron only folds
@@ -202,8 +203,9 @@ GitHub in the PR head before Merge, a container's Open in <source> in its
 Story head before New task (both `HeaderLinkButton`, glyph-only where the head
 has no room); the workshop's launch shortcut is in the brief editor's
 placeholder. The PR's title heads the PR view's own body. The Thread ends, while the slice can be launched, on a
-ghost `LaunchCard` (greyed and hatched when blocked); its prose items cut
-short as the brief does (`Excerpt`). View ▸ Hide done items
+`LaunchCard` item — what Launch will do, model and effort as chips, the base;
+quietened, chips disabled, when blocked — with Launch itself only in the
+section header; its prose items cut short as the brief does (`Excerpt`). View ▸ Hide done items
 (`showsDoneItems`) drops done slices, ended sessions and the Done folder from
 the sidebar. `AppModel` keeps its one *active* project —
 every per-project reading is keyed by it — and the sidebar selects across
@@ -235,14 +237,18 @@ relaunches, notes (`nat slice-note`, headed "Another agent left a note";
 name — `noteSourceSlice` — is a `task` fact drawn as the brief's
 `DependencyRow`, through `ThreadEventCard.taskRow`, else `source` with the
 provenance as text; notes alone open no log on a slice never launched),
-follow-ups (a proposal is its count line, then one card per decided
+follow-ups (a proposal is its count line, then one item per decided
 follow-up — title, brief, the decision as its meta, a queued one's slice as
-a `task` row; pending ones as the triage card in their place), then approve
-and merge. A card for something happening now or awaiting the user
-(`ThreadEvent.isLive`: the live agent, a pending proposal) is washed and
-bordered in its hue (`threadCard(live:hot:)`); every key column takes the
+a `task` row; pending ones as the triage item in their place), then approve
+and merge. No item is boxed: each is a `LogItem` — its icon in a margin
+column, who and its meta (in its tone) as the header — and a rule runs down
+the margin from one icon to the next (`LogConnector`, chosen by
+`threadBody`, which knows the sequence): none after the last, dashed after it
+while an agent is live. Something happening now or awaiting the user
+(`ThreadEvent.isLive`: the live agent, a pending proposal) has its icon in
+its hue; every key column takes the
 width of `widestThreadFactKey` (`ThreadFactKey`), and the brief's Edit is
-drawn only while the slice is Todo. Each card with an `at` shows it at
+drawn only while the slice is Todo. Each item with an `at` shows it at
 its header's end (`threadTimestamp`: time today, `d MMM` this year, `d MMM
 y` before); Launched, approve and merge have none. Story:
 `window-task-log-notes`. Selecting sets the selection *before* awaiting the project's

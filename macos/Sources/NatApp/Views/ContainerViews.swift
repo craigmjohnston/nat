@@ -112,16 +112,17 @@ struct ContainerNavigatorView: View {
         ScrollView {
             switch section.kind {
             case .comments:
-                VStack(spacing: 6) {
-                    if section.comments.isEmpty {
-                        NavProse { Text("No comments yet.").ink(.secondary) }
+                if section.comments.isEmpty {
+                    NavProse { Text("No comments yet.").ink(.secondary) }
+                } else {
+                    VStack(alignment: .leading, spacing: LogMetrics.spacing) {
+                        ForEach(Array(section.comments.enumerated()), id: \.offset) { _, comment in
+                            ThreadEventCard(event: ThreadEvent(
+                                .agent, who: comment.by, meta: comment.when, body: comment.text, metaIsAction: false))
+                        }
                     }
-                    ForEach(Array(section.comments.enumerated()), id: \.offset) { _, comment in
-                        ThreadEventCard(event: ThreadEvent(
-                            .agent, who: comment.by, meta: comment.when, body: comment.text, metaIsAction: false))
-                    }
+                    .taskLogPadding()
                 }
-                .padding(6)
             case .links:
                 SourceLinkList(links: section.links)
                     .padding(.vertical, 4)

@@ -101,88 +101,81 @@ struct ChangesSectionBody: View {
     }
 }
 
-/// The agent's proposed follow-ups as one item of the Thread: a card headed
-/// with how many there are, each follow-up a row of it with its Queue /
-/// Fold in / Drop picker, and a foot holding the item's own two actions,
-/// Discard all and Apply — set apart as a live card while it waits on the
-/// decision.
+/// The agent's proposed follow-ups as one item of the Thread's log, headed
+/// with how many there are — its icon and meta in the hue of what waits on
+/// the user — each follow-up a row of it with its Queue / Fold in / Drop
+/// picker, and under them the item's own two actions, Discard all and Apply.
 struct FollowUpCards: View {
     @Bindable var appModel: AppModel
     let slice: Slice
     let followUps: [FollowUp]
     let milestone: String
     let hasLiveAgent: Bool
+    var connector: LogConnector = .none
 
     private var store: FollowUpStore { appModel.followUpStore }
     private var choices: [Int: FollowUpChoice] { store.choices(sliceID: slice.id) }
     private var isApplying: Bool { store.isApplying(sliceID: slice.id) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    ThreadIcon(symbol: ThreadEventKind.followUps.symbol, role: .hot)
-                    Text("Agent proposed \(followUps.count) follow-up\(followUps.count == 1 ? "" : "s")")
-                        .font(.system(size: GnatMetrics.body, weight: .medium))
-                        .ink(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-
-            ForEach(Array(followUps.enumerated()), id: \.element.index) { offset, followUp in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(followUp.title)
-                        .font(.system(size: Typo.scaled(13.5)))
-                        .ink(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Excerpt(text: followUp.brief) { shown in
-                        Text(shown)
-                            .font(.system(size: Typo.scaled(13)))
-                            .ink(.secondary)
+        LogItem(
+            symbol: ThreadEventKind.followUps.symbol, iconRole: .hot, who: "Agent",
+            meta: "proposed \(followUps.count) follow-up\(followUps.count == 1 ? "" : "s")", metaRole: .hot,
+            connector: connector
+        ) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(followUps.enumerated()), id: \.element.index) { offset, followUp in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(followUp.title)
+                            .font(.system(size: Typo.scaled(13.5)))
+                            .ink(.primary)
                             .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
+                        Excerpt(text: followUp.brief) { shown in
+                            Text(shown)
+                                .font(.system(size: Typo.scaled(13)))
+                                .ink(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                        picker(followUp)
                     }
-                    picker(followUp)
+                    .padding(.vertical, 8)
+                    .overlay(alignment: .top) {
+                        if offset > 0 { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+                    }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .overlay(alignment: .top) {
-                    if offset > 0 { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
-                }
+                actions
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                if let notice {
-                    Text(notice.text)
-                        .font(.system(size: Typo.scaled(13)))
-                        .ink(notice.role)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                HStack(spacing: 6) {
-                    Spacer(minLength: 0)
-                    Button("Discard all") {
-                        let sliceID = slice.id
-                        Task { await appModel.discardFollowUps(sliceID: sliceID) }
-                    }
-                    .buttonStyle(GnatButtonStyle())
-                    .disabled(isApplying)
-                    Button(action: apply) {
-                        HeaderActionLabel(title: "Apply", systemImage: "checkmark", isBusy: isApplying)
-                    }
-                    .buttonStyle(GnatButtonStyle(primary: true))
-                    .disabled(!canApply || isApplying)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .surface(.chrome)
-            .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
         }
-        .threadCard(live: true, hot: true)
+    }
+
+    /// What stands in the way, if anything, over Discard all and Apply.
+    private var actions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let notice {
+                Text(notice.text)
+                    .font(.system(size: Typo.scaled(13)))
+                    .ink(notice.role)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 6) {
+                Spacer(minLength: 0)
+                Button("Discard all") {
+                    let sliceID = slice.id
+                    Task { await appModel.discardFollowUps(sliceID: sliceID) }
+                }
+                .buttonStyle(GnatButtonStyle())
+                .disabled(isApplying)
+                Button(action: apply) {
+                    HeaderActionLabel(title: "Apply", systemImage: "checkmark", isBusy: isApplying)
+                }
+                .buttonStyle(GnatButtonStyle(primary: true))
+                .disabled(!canApply || isApplying)
+            }
+        }
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
     }
 
     private var canApply: Bool {

@@ -217,56 +217,43 @@ struct SliceNavigatorView: View {
     // MARK: - Brief
 
     /// The Thread's first item: the brief, cut to its first few lines until
-    /// asked for the rest, its Edit, and the slice's facts as its foot.
-    private var briefCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    ThreadIcon(symbol: briefSymbol)
-                    Text("Brief")
-                        .font(.system(size: GnatMetrics.body, weight: .medium))
-                        .ink(.secondary)
-                }
-                Spacer(minLength: 0)
-                // Only a Todo task's brief can be edited; once launched there
-                // is no Edit at all.
-                if slice.status == "Todo" {
-                    Button("Edit") { editingBrief = true }
-                        .buttonStyle(GnatLinkButtonStyle())
-                        .disabled(detail.detail == nil)
-                        .help("Edit the brief")
-                }
+    /// asked for the rest, its Edit, and the slice's facts under it.
+    private func briefItem(connector: LogConnector) -> some View {
+        LogItem(symbol: briefSymbol, who: "Brief", connector: connector) {
+            // Only a Todo task's brief can be edited; once launched there
+            // is no Edit at all.
+            if slice.status == "Todo" {
+                Button("Edit") { editingBrief = true }
+                    .buttonStyle(GnatLinkButtonStyle())
+                    .disabled(detail.detail == nil)
+                    .help("Edit the brief")
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-
-            VStack(alignment: .leading, spacing: 4) {
-                if let detail = detail.detail {
-                    if detail.brief.isEmpty {
-                        Text("This task has no brief yet. What you write here becomes the agent's prompt.").ink(.secondary)
-                    } else {
-                        Excerpt(text: detail.brief) { shown in
-                            Text(markdownAttributed(shown, size: Typo.scaled(13.5)))
-                                .ink(.primary)
-                                .textSelection(.enabled)
+        } content: {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let detail = detail.detail {
+                        if detail.brief.isEmpty {
+                            Text("This task has no brief yet. What you write here becomes the agent's prompt.").ink(.secondary)
+                        } else {
+                            Excerpt(text: detail.brief) { shown in
+                                Text(markdownAttributed(shown, size: Typo.scaled(13.5)))
+                                    .ink(.primary)
+                                    .textSelection(.enabled)
+                            }
                         }
+                    } else if let message = detail.errorMessage {
+                        Text("The brief could not be read: \(message)").ink(.danger)
+                    } else {
+                        QuietLoadingView(label: "Reading the brief")
+                            .frame(maxWidth: .infinity, minHeight: 60)
                     }
-                } else if let message = detail.errorMessage {
-                    Text("The brief could not be read: \(message)").ink(.danger)
-                } else {
-                    QuietLoadingView(label: "Reading the brief")
-                        .frame(maxWidth: .infinity, minHeight: 60)
                 }
-            }
-            .font(.system(size: Typo.scaled(13.5)))
-            .lineSpacing(2)
-            .padding(.horizontal, 10)
-            .padding(.top, ThreadCardMetrics.bodyGap)
-            .padding(.bottom, 8)
+                .font(.system(size: Typo.scaled(13.5)))
+                .lineSpacing(2)
 
-            facts
+                facts.padding(.top, 8)
+            }
         }
-        .threadCard()
     }
 
     /// The brief's foot: its milestone, and what it depends on — one row
@@ -310,8 +297,6 @@ struct SliceNavigatorView: View {
             }
         }
         .monoXS()
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -362,7 +347,7 @@ struct SliceNavigatorView: View {
         if nav.showsLaunch {
             let enabled = appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch)
             Button(action: launch) {
-                HeaderActionLabel(title: nav.launchIsFix ? "Launch fix agent" : "Launch", systemImage: "arrow.right", isBusy: isLaunching)
+                HeaderActionLabel(title: launchMode(nav).actionTitle, systemImage: "arrow.right", isBusy: isLaunching)
             }
             .buttonStyle(GnatHeaderButtonStyle(primary: nav.launchIsPrimary))
             .disabled(!enabled)
@@ -372,50 +357,71 @@ struct SliceNavigatorView: View {
         }
     }
 
+    /// One item of the Thread's log, in the order `threadBody` draws them.
+    private enum ThreadItem {
+        case brief
+        case event(ThreadEvent)
+        /// The pending follow-ups, awaiting the user's decision.
+        case triage
+        case launch
+    }
+
     /// The brief, what has happened since — follow-ups in their place among
-    /// it, a proposal still awaiting a decision drawn as the card that takes
-    /// one — and, while the slice can be launched, the launch card that says
-    /// what comes next.
+    /// it, a proposal still awaiting a decision drawn as the item that takes
+    /// one — and, while the slice can be launched, the launch item that says
+    /// what comes next. Each item's rule runs on to the next; the last's,
+    /// while an agent is live, runs on dashed.
     @ViewBuilder
     private func threadBody(_ nav: NavigatorModel) -> some View {
-        let log = buildThreadEvents(
-            slice: slice, agent: agent, brief: detail.detail?.brief, events: detail.detail?.events,
-            plan: plan, milestones: milestones)
+        let items = threadItems(nav)
+        let live = agent != nil
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if let notice { checksNoticeView(notice, nav) }
-                VStack(spacing: 6) {
-                    briefCard
-                    ForEach(Array(log.enumerated()), id: \.offset) { _, event in
-                        if event.awaitsTriage {
-                            if !followUps.isEmpty {
-                                FollowUpCards(
-                                    appModel: appModel, slice: slice, followUps: followUps, milestone: milestoneName,
-                                    hasLiveAgent: agent != nil)
-                            }
-                        } else {
-                            ThreadEventCard(event: event, taskRow: { taskRow(id: $0) })
+                VStack(alignment: .leading, spacing: LogMetrics.spacing) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                        let connector: LogConnector = index < items.count - 1 ? .solid : live ? .dashed : .none
+                        switch item {
+                        case .brief:
+                            briefItem(connector: connector)
+                        case .event(let event):
+                            ThreadEventCard(event: event, connector: connector, taskRow: { taskRow(id: $0) })
+                        case .triage:
+                            FollowUpCards(
+                                appModel: appModel, slice: slice, followUps: followUps, milestone: milestoneName,
+                                hasLiveAgent: agent != nil, connector: connector)
+                        case .launch:
+                            LaunchCard(
+                                mode: launchMode(nav), model: $model, effort: $effort, options: agentOptions,
+                                base: detail.detail?.base)
                         }
                     }
-                    // A reading with no proposal in its log (a nat too old to
-                    // report one) still gets its pending follow-ups' card.
-                    if !followUps.isEmpty && !log.contains(where: \.awaitsTriage) {
-                        FollowUpCards(appModel: appModel, slice: slice, followUps: followUps, milestone: milestoneName, hasLiveAgent: agent != nil)
-                    }
-                    if nav.showsLaunch {
-                        LaunchCard(
-                            mode: launchMode(nav), model: $model, effort: $effort, options: agentOptions,
-                            base: detail.detail?.base,
-                            enabled: appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch),
-                            isBusy: isLaunching, onLaunch: launch)
-                    }
                 }
-                .padding(6)
+                .taskLogPadding(live: live)
                 if let launchError { NavNotice(text: launchError) }
                 if let launchWarning { NavNotice(text: launchWarning, role: .warning) }
             }
         }
         .thinScrollers()
+    }
+
+    private func threadItems(_ nav: NavigatorModel) -> [ThreadItem] {
+        let log = buildThreadEvents(
+            slice: slice, agent: agent, brief: detail.detail?.brief, events: detail.detail?.events,
+            plan: plan, milestones: milestones)
+        var items: [ThreadItem] = [.brief]
+        for event in log {
+            if !event.awaitsTriage {
+                items.append(.event(event))
+            } else if !followUps.isEmpty {
+                items.append(.triage)
+            }
+        }
+        // A reading with no proposal in its log (a nat too old to report
+        // one) still gets its pending follow-ups' item.
+        if !followUps.isEmpty && !log.contains(where: \.awaitsTriage) { items.append(.triage) }
+        if nav.showsLaunch { items.append(.launch) }
+        return items
     }
 
     private func launchMode(_ nav: NavigatorModel) -> LaunchCard.Mode {

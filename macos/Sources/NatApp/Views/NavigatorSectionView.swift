@@ -153,13 +153,14 @@ struct NavHeading: View {
     }
 }
 
-/// One card of the Thread log: its icon and title (who and what they did,
-/// as one line) and, at the header's end, when where nat knows; then the
-/// body, cut short as the brief is; then its labelled facts, on the same
-/// ground with nothing between them. A live card (`ThreadEvent.isLive`) is
-/// set apart from the settled ones around it (`threadCard(live:hot:)`).
+/// One recorded item of the Task log (`LogItem`): who, then what they did in
+/// its tone, and at the header's end when where nat knows; then the body,
+/// cut short as the brief is; then its labelled facts, on the same ground. A
+/// live one (`ThreadEvent.isLive`) has its icon in its hue; the log's rule
+/// runs on from it as `connector` says.
 struct ThreadEventCard: View {
     let event: ThreadEvent
+    var connector: LogConnector = .none
     @Environment(\.clock) private var clock
     /// Draws a fact that names a slice (`ThreadFact.sliceID`) as a task row
     /// — the slice navigator's, which has the plan to draw one from. Nil
@@ -168,69 +169,45 @@ struct ThreadEventCard: View {
     var taskRow: ((String) -> AnyView?)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    ThreadIcon(symbol: event.kind.symbol, role: iconRole)
-                    // An action and who did it are one line, in one face
-                    // and ink: "Agent handed back".
-                    Text(event.title)
-                        .font(.system(size: GnatMetrics.body, weight: .medium))
-                        .ink(.secondary)
+        LogItem(
+            symbol: event.kind.symbol, iconRole: iconRole, who: event.who, meta: event.meta, metaRole: tone,
+            when: event.when.map { threadTimestamp($0, now: clock()) }, connector: connector
+        ) {
+            VStack(alignment: .leading, spacing: 0) {
+                if let body = event.body {
+                    Excerpt(text: body) { shown in
+                        Text(markdownAttributed(shown, size: Typo.scaled(13.5)))
+                            .font(.system(size: Typo.scaled(13.5)))
+                            .lineSpacing(2)
+                            .ink(.primary)
+                            .textSelection(.enabled)
+                    }
                 }
-                if !event.metaIsAction, let meta = event.meta {
-                    Text(meta).monoXS().ink(tone).lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                if let when = event.when {
-                    Text(threadTimestamp(when, now: clock())).monoXS().ink(.tertiary).lineLimit(1).fixedSize()
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-            .padding(.bottom, event.body == nil && event.facts.isEmpty ? 8 : 0)
-
-            if let body = event.body {
-                Excerpt(text: body) { shown in
-                    Text(markdownAttributed(shown, size: Typo.scaled(13.5)))
-                        .font(.system(size: Typo.scaled(13.5)))
-                        .lineSpacing(2)
-                        .ink(.primary)
-                        .textSelection(.enabled)
-                }
-                    .padding(.horizontal, 10)
-                    .padding(.top, ThreadCardMetrics.bodyGap)
-                    .padding(.bottom, 8)
-            }
-
-            if !event.facts.isEmpty {
-                // Labelled values, as the brief's own facts are drawn.
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
-                    ForEach(Array(event.facts.enumerated()), id: \.offset) { _, fact in
-                        GridRow {
-                            ThreadFactKey(fact.key)
-                            if let id = fact.sliceID, let row = taskRow?(id) {
-                                row
-                            } else {
-                                Text(fact.value)
-                                    .ink(.primary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
+                if !event.facts.isEmpty {
+                    // Labelled values, as the brief's own facts are drawn.
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+                        ForEach(Array(event.facts.enumerated()), id: \.offset) { _, fact in
+                            GridRow {
+                                ThreadFactKey(fact.key)
+                                if let id = fact.sliceID, let row = taskRow?(id) {
+                                    row
+                                } else {
+                                    Text(fact.value)
+                                        .ink(.primary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
                             }
                         }
                     }
+                    .monoXS()
+                    .padding(.top, event.body == nil ? 2 : 8)
                 }
-                .monoXS()
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, event.body == nil ? 2 : 0)
             }
         }
-        .threadCard(live: event.isLive, hot: event.tone == .hot)
     }
 
-    /// A failure in the danger ink; a live card's in its own hue; the rest
+    /// A failure in the danger ink; a live item's in its own hue; the rest
     /// quiet.
     private var iconRole: InkRole {
         if event.kind == .checksFailed { return .danger }
@@ -247,37 +224,15 @@ struct ThreadEventCard: View {
     }
 }
 
-enum ThreadCardMetrics {
-    /// The room between a card's title and its body, so the two read as two
-    /// things. A card with no body keeps its title close over its facts.
-    static let bodyGap: CGFloat = 8
-}
-
-extension View {
-    /// A Thread card's frame: clipped to its corners and bordered. A live
-    /// one — something happening now, or waiting on the user's decision — is
-    /// washed in its hue (`hot`, else the accent) under a border of it; a
-    /// settled one keeps the plain separator.
-    func threadCard(live: Bool = false, hot: Bool = false) -> some View {
-        frame(maxWidth: .infinity, alignment: .leading)
-            .background { if live { DesignTokens.liveCardWash(hot: hot, on: .window) } }
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .overlay {
-                RoundedRectangle(cornerRadius: 4).strokeBorder(
-                    live ? DesignTokens.liveCardBorder(hot: hot, on: .window) : DesignTokens.rule(.separator, on: .window),
-                    lineWidth: 1)
-            }
-    }
-}
-
-/// A Thread fact's value the user can change: the value as a fact draws it,
-/// with a small caret after it and the hover wash under it, opening a menu of
-/// the choices — the launch card's model and effort. An empty value reads
-/// "default", a step quieter than a chosen one. Disabled, it is drawn as a
-/// plain fact in the quaternary ink, with no caret.
+/// A launch choice the user can change, as a chip — the design's `.chip`, a
+/// bordered pill — holding the value and a small caret, opening a menu of the
+/// choices: the launch item's model and effort. An empty value reads
+/// `placeholder`, a step quieter than a chosen one. Disabled, it is the same
+/// chip with the value in the quaternary ink and no caret.
 struct NavFactMenu<Items: View>: View {
     @Environment(\.isEnabled) private var isEnabled
     let value: String
+    var placeholder = "default"
     @ViewBuilder var items: () -> Items
 
     var body: some View {
@@ -291,29 +246,37 @@ struct NavFactMenu<Items: View>: View {
                         .font(.system(size: 8, weight: .semibold))
                         .ink(.tertiary)
                 }
-                .monoXS()
-                .padding(.horizontal, 4)
-                .hoverWash(cornerRadius: 4)
+                .chip()
+                .hoverWash(cornerRadius: 5)
                 .contentShape(Rectangle())
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
-            // Back out the padding the wash needs, so the value starts in the
-            // column every other fact's value starts in.
-            .padding(.horizontal, -4)
         } else {
-            // Disabled, a plain fact: a disabled Menu fades its label on top
-            // of any ink, which would leave it fainter than the facts beside it.
-            text.monoXS()
+            // Disabled, a plain chip: a disabled Menu fades its label on top
+            // of any ink, which would leave it fainter than meant.
+            text.chip().fixedSize()
         }
     }
 
     private var text: some View {
-        Text(value.isEmpty ? "default" : value)
-            .ink(isEnabled ? (value.isEmpty ? .secondary : .primary) : .quaternary)
+        Text(value.isEmpty ? placeholder : value)
+            .ink(isEnabled ? (value.isEmpty ? .tertiary : .secondary) : .quaternary)
             .lineLimit(1)
+    }
+}
+
+private extension View {
+    /// The design's `.chip`: mono xs in a pill bordered by the stronger rule.
+    func chip() -> some View {
+        monoXS()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .overlay {
+                RoundedRectangle(cornerRadius: 5).strokeBorder(DesignTokens.rule(.border, on: .window), lineWidth: 1)
+            }
     }
 }
 
