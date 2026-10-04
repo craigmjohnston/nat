@@ -69,6 +69,11 @@ extension Fixtures {
             // which is a state the board really has.
             activityStoreFactory: { ActivityStore(client: client) },
             usageStoreFactory: { UsageStore(client: client, cache: NullUsageCache()) },
+            // Pinned by the tab, so an Untitled tab's planning session has
+            // the same name every run and two tabs still differ.
+            newWorkspaceID: { tabID in
+                "f1x7a0a0-0000-4000-8000-" + String(String(repeating: "0", count: 12) + tabID.filter(\.isNumber)).suffix(12)
+            },
             // Pinned rather than looked up, like the pane's own checklist
             // statuses: a config with no projects reads as onboarding unless
             // the toolchain is said to be there, on every machine alike.

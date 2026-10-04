@@ -202,11 +202,12 @@ enum AppStories {
     /// then the tabs at the trailing edge.
     private static func band(
         tabs: [MainPaneTab], selected: MainPaneMode?, crumbs: TitlebarCrumbs, state: SliceDisplayState = .working,
-        identity: TitlebarIdentity? = nil
+        identity: TitlebarIdentity? = nil, hoveredTab: MainPaneTab? = nil
     ) -> some View {
         TitlebarBand(
             navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs.map(\.titlebarTab),
-            selected: tabs.first { $0.mode == selected }?.titlebarTab.id
+            selected: tabs.first { $0.mode == selected }?.titlebarTab.id,
+            hoveredTab: hoveredTab?.titlebarTab.id
         ) {
             TitlebarBreadcrumb(
                 crumbs: crumbs,
@@ -1028,6 +1029,18 @@ enum AppStories {
         },
 
         Story(
+            name: "sidebar-active-hover",
+            summary: "The loaded sidebar with one Active row under the pointer: the same square hover wash the "
+                + "tree\u{2019}s rows take, a step lighter than the selected row\u{2019}s.",
+            size: sidebar
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            return SidebarView(appModel: appModel, hoveredActiveRow: Fixtures.diffPaneSliceID)
+                .environment(\.pulsesPaused, true)
+        },
+
+        Story(
             name: "sidebar-scrolled",
             summary: "The sidebar, short, its Projects tree scrolled down: the active project's row pinned at the "
                 + "top of the tree over its milestones, the rows scrolling under it hidden behind it.",
@@ -1290,6 +1303,17 @@ enum AppStories {
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .terminal, crumbs: sliceCrumbs("Draw the box"))
+        },
+
+        Story(
+            name: "titlebar-band-tab-hover",
+            summary: "The slice\u{2019}s band with its Changes tab under the pointer: the row wash on the header "
+                + "behind that one tab, the picked Terminal tab standing open on the window\u{2019}s ground.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes, .pr], selected: .terminal, crumbs: sliceCrumbs("Draw the box"),
+                hoveredTab: .changes)
         },
 
         Story(

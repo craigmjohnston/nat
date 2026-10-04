@@ -164,11 +164,10 @@ extension Fixtures {
     /// slice (a task on the plan) before it was launched, last year; a
     /// hand-back and a send-back earlier this year; and one from Craig (no
     /// task) today — `slice-show`'s `events` for it, in order. The times are
-    /// read off the clock, so a story of it says "today", "this year" and
-    /// "last year" whenever it is rendered.
+    /// measured from `now`, the clock the gallery draws at, so a story of it
+    /// says "today", "this year" and "last year" the same way every run.
     public static var notedTaskLogEvents: [TaskLogEvent] {
         let calendar = Calendar.current
-        let now = Date()
         let today = max(calendar.startOfDay(for: now), now.addingTimeInterval(-40 * 60))
         let startOfYear = calendar.dateInterval(of: .year, for: now)?.start ?? now
         let thisYear = max(startOfYear, calendar.date(byAdding: .day, value: -12, to: now) ?? now)

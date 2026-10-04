@@ -159,6 +159,7 @@ struct NavHeading: View {
 /// ground with nothing between them.
 struct ThreadEventCard: View {
     let event: ThreadEvent
+    @Environment(\.clock) private var clock
     /// Draws a fact that names a slice (`ThreadFact.sliceID`) as a task row
     /// — the slice navigator's, which has the plan to draw one from. Nil
     /// from it (or no closure at all, as a session's Thread has) and the
@@ -181,7 +182,7 @@ struct ThreadEventCard: View {
                 }
                 Spacer(minLength: 0)
                 if let when = event.when {
-                    Text(threadTimestamp(when)).monoXS().ink(.tertiary).lineLimit(1).fixedSize()
+                    Text(threadTimestamp(when, now: clock())).monoXS().ink(.tertiary).lineLimit(1).fixedSize()
                 }
             }
             .padding(.horizontal, 10)

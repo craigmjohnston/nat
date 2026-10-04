@@ -122,18 +122,6 @@ struct PulseModifier: ViewModifier {
     }
 }
 
-private struct PulsesPausedKey: EnvironmentKey {
-    static let defaultValue = false
-}
-
-extension EnvironmentValues {
-    /// Set by a gallery story so a capture never lands mid-pulse.
-    var pulsesPaused: Bool {
-        get { self[PulsesPausedKey.self] }
-        set { self[PulsesPausedKey.self] = newValue }
-    }
-}
-
 // MARK: - Rows
 
 /// A row's neutral fills: `--sel-2` behind the selected one, `--sel` under
@@ -217,11 +205,12 @@ struct GnatTitlebar<Content: View>: View {
 /// answer the pointer.
 struct HoverReader<Content: View>: View {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.hoverForced) private var forced
     @ViewBuilder let content: (Bool) -> Content
     @State private var hovering = false
 
     var body: some View {
-        content(hovering && isEnabled).onHover { hovering = $0 }
+        content((hovering || forced) && isEnabled).onHover { hovering = $0 }
     }
 }
 

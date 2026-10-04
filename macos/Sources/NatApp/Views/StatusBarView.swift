@@ -11,6 +11,7 @@ import NatKit
 struct StatusBarView<Trailing: View>: View {
     @Bindable var appModel: AppModel
     @ViewBuilder var trailing: () -> Trailing
+    @Environment(\.clock) private var clock
 
     static var height: CGFloat { GnatMetrics.statusBarHeight }
 
@@ -19,7 +20,7 @@ struct StatusBarView<Trailing: View>: View {
     }
 
     var body: some View {
-        let usage = buildUsageDisplay(from: appModel.usageStore?.reading)
+        let usage = buildUsageDisplay(from: appModel.usageStore?.reading, now: clock())
         HStack(spacing: 10) {
             HStack(spacing: 12) {
                 GnatMark(color: DesignTokens.mark)

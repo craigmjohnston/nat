@@ -9,6 +9,7 @@ import NatKit
 /// the markdown they wrote.
 struct PRConversationEntryView: View {
     let entry: ConvoEntry
+    @Environment(\.clock) private var clock
 
     static let avatarSize: CGFloat = 20
 
@@ -32,7 +33,7 @@ struct PRConversationEntryView: View {
 
                 Spacer(minLength: 0)
 
-                Text(ago(Date().timeIntervalSince(entry.at)))
+                Text(ago(clock().timeIntervalSince(entry.at)))
                     .font(.system(size: Typo.caption, weight: .regular))
                     .ink(.tertiary)
             }

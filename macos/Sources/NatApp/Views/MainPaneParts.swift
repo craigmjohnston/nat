@@ -20,6 +20,9 @@ struct TitlebarBand<Identity: View>: View {
     /// The picked tab's `id`.
     var selected: String?
     var onTab: (TitlebarTab) -> Void = { _ in }
+    /// A tab's `id` to draw under the pointer — a story's, since a render
+    /// has no pointer; nil, `.onHover` alone decides.
+    var hoveredTab: String?
     @ViewBuilder var identity: () -> Identity
 
     var body: some View {
@@ -30,6 +33,7 @@ struct TitlebarBand<Identity: View>: View {
                 HStack(spacing: 0) {
                     ForEach(tabs, id: \.self) { tab in
                         MainPaneTabButton(title: tab.label, selected: tab.id == selected) { onTab(tab) }
+                            .transformEnvironment(\.hoverForced) { if tab.id == hoveredTab { $0 = true } }
                     }
                 }
                 .fixedSize(horizontal: true, vertical: false)
