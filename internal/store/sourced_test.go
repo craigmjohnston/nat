@@ -373,6 +373,9 @@ func TestSourcedDelegatesTheRestToTheFile(t *testing.T) {
 	if err := s.RecordRelaunch(ctx, sl.ID); err != nil {
 		t.Error(err)
 	}
+	if err := s.RecordLaunch(ctx, sl.ID); err != nil {
+		t.Error(err)
+	}
 	if err := s.RecordChecksFailed(ctx, sl.ID, "- test"); err != nil {
 		t.Error(err)
 	}

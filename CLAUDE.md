@@ -179,9 +179,11 @@ every template and every skill for it.
 --comments`, filed before the branch is cleared, as hand-back files before
 its property; or a checks nudge, which clears nothing and opens with a
 `From CI` line read back as its `by`), `Checks failed`
-(`checks_failed`, a red reading with no live agent), `Relaunched` (written
-by a fix launch, and by a non-fix `actions.Launch` of a slice already under
-way or with history — `store.HasHistory`: notes alone are not history; a
+(`checks_failed`, a red reading with no live agent), `Launched` (written by
+every other non-fix `actions.Launch`, the log's first word and its time —
+status alone never makes a launch a relaunch), `Relaunched` (written
+by a fix launch, and by a non-fix `actions.Launch` of a slice with
+history — `store.HasHistory`: notes alone are not history; either line's
 failure is logged, never fatal),
 `Blocked`, `Summary`, `Note` (a `note` event, `by` its provenance), released
 line and `Follow-ups` section, each proposal

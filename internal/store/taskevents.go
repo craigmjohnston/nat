@@ -11,15 +11,16 @@ import (
 
 // TaskEvent is one entry of a slice's task log, read back off its body by
 // [TaskEvents] in the order it was written. Kind is one of: "handed_back",
-// "sent_back", "relaunched", "released", "blocked", "summary", "follow_ups",
-// "note", "checks_failed".
+// "sent_back", "launched", "relaunched", "released", "blocked", "summary",
+// "follow_ups", "note", "checks_failed".
 // `nat slice-show --json` adds two more of its own, read off the slice's
 // properties rather than its body — see its own doc comment.
 type TaskEvent struct {
 	Kind string
 	// Note is the section's text, trimmed, and "" where there is none to
-	// show — every kind but "relaunched", whose one line is always the same
-	// fixed sentence and so carries nothing worth surfacing a second time.
+	// show — every kind but "launched" and "relaunched", whose one line is
+	// always the same fixed sentence and so carries nothing worth surfacing a
+	// second time.
 	Note string
 	// By is who released the slice, for a "released" event, and who a "note"
 	// came from — its provenance line less the leading "From " — for a note,
@@ -117,7 +118,7 @@ func releasedBy(line string) (string, time.Time, bool) {
 }
 
 // TaskEvents reads a slice's whole task log off its body, top to bottom: one
-// event per Handed back, Sent back, Relaunched, Checks failed, Blocked,
+// event per Handed back, Sent back, Launched, Relaunched, Checks failed, Blocked,
 // Summary, Note and Follow-ups section, plus one for every Released-back-to-Todo paragraph,
 // wherever in a section it falls. Every other heading — PR description,
 // Visual changes, a brief's own — is not an event and simply ends whatever
@@ -175,8 +176,8 @@ func TaskEvents(body string) []TaskEvent {
 	closeOther := func() {
 		at, text := unstamped(strings.TrimSpace(strings.Join(curLines, "\n")))
 		switch curKind {
-		case relaunchedKind:
-			events = append(events, TaskEvent{Kind: relaunchedKind, At: at})
+		case launchedKind, relaunchedKind:
+			events = append(events, TaskEvent{Kind: curKind, At: at})
 		case noteKind:
 			by, note := noteParts(text)
 			e := TaskEvent{Kind: noteKind, Note: note, By: by, At: at}
@@ -260,6 +261,10 @@ func TaskEvents(body string) []TaskEvent {
 			closeCurrent()
 			in, level, curKind, curLines = otherSection, h, relaunchedKind, nil
 			continue
+		case h > 0 && strings.EqualFold(text, notion.LaunchedHeading):
+			closeCurrent()
+			in, level, curKind, curLines = otherSection, h, launchedKind, nil
+			continue
 		case h > 0 && strings.EqualFold(text, notion.ChecksFailedHeading):
 			closeCurrent()
 			in, level, curKind, curLines = otherSection, h, ChecksFailedKind, nil
@@ -331,6 +336,7 @@ func HasHistory(events []TaskEvent) bool {
 const (
 	handedBackKind = "handed_back"
 	sentBackKind   = "sent_back"
+	launchedKind   = "launched"
 	relaunchedKind = "relaunched"
 	blockedKind    = "blocked"
 	summaryKind    = "summary"

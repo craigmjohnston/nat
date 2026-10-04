@@ -141,7 +141,9 @@ func sliceContainer(ctx context.Context, cr store.ContainerReader, s domain.Slic
 }
 
 // taskEventJSON is one entry of a slice's task log, the wire form of
-// [store.TaskEvent].
+// [store.TaskEvent]. Kind is passed through as the store read it — "launched",
+// "relaunched", "handed_back" and the rest of [store.TaskEvent.Kind]'s list —
+// or is one of the two read off properties, "approved" and "merged".
 type taskEventJSON struct {
 	Kind string `json:"kind"`
 	Note string `json:"note,omitempty"`

@@ -177,6 +177,12 @@ func (s *Sourced) RecordRelaunch(ctx context.Context, id string) error {
 	return s.local.RecordRelaunch(ctx, id)
 }
 
+// RecordLaunch files a fresh launch's line in the file. The plugin hears
+// nothing of it: the protocol has no launch event.
+func (s *Sourced) RecordLaunch(ctx context.Context, id string) error {
+	return s.local.RecordLaunch(ctx, id)
+}
+
 // RecordPR records the pull request in the file, then tells the plugin the
 // task was approved.
 func (s *Sourced) RecordPR(ctx context.Context, id, url string) error {

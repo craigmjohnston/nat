@@ -51,13 +51,17 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   nothing (a worktree failure, a lost claim race) — reported as `Toast`, not
   a Go `error`: nothing is wrong with nat, the slice is simply still there to
   launch again.
-- A non-fix launch that is a **relaunch** — the slice was not Todo before
-  this claim, or its just-read brief already carries a task event
-  (`store.TaskEvents`) from an earlier pass — writes one more task-log line
-  (`Store.RecordRelaunch`) after the brief is read and before the prompt is
-  written. A fresh launch (Todo, nothing logged yet) writes nothing: its own
-  claim is the log's first word. The write's own failure is logged
-  (`logging.Action`) and never fails the launch.
+- A non-fix launch that is a **relaunch** — its just-read brief already
+  carries history (`store.HasHistory` over `store.TaskEvents`) from an
+  earlier pass — writes one more task-log line (`Store.RecordRelaunch`) after
+  the brief is read and before the prompt is written. Status alone is not
+  history: an In progress slice with nothing on the record (claimed by hand)
+  launches fresh. A fresh launch writes `Store.RecordLaunch` there instead —
+  a `Launched`, the log's first word and its time. Either write's own failure
+  is logged (`logging.Action`) and never fails the launch.
+  `Mirrored.RecordLaunch` marks the slice sent only where it was level before
+  the line: a claim whose push failed leaves it ahead, and the line's push
+  landing must not clear that.
 - **A source project's task with no repository** (`RepoUnknown`: the
   project is `backend: source`, which has no working directory, and
   `WorkdirFor` came back empty) is launched with no `PlaceAgent` and no git

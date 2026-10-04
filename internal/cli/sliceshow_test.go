@@ -293,6 +293,20 @@ func TestSliceShowEventsFollowUpDecidedAt(t *testing.T) {
 	}
 }
 
+// A fresh launch's Launched section reaches the JSON as a "launched" event
+// with its stamp's time and no note: the app's Launched item reads its time
+// off it.
+func TestSliceShowEventsCarryALaunchedEventWithItsTime(t *testing.T) {
+	got := taskEventsJSON(domain.Slice{}, "### Launched\n\nAt 2026-10-05T09:30:00+01:00\n\nLaunched.")
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `[{"kind":"launched","at":"2026-10-05T09:30:00+01:00"}]`; string(raw) != want {
+		t.Errorf("events = %s, want %s", raw, want)
+	}
+}
+
 // A slice with nothing in its task log yet still answers an empty array, not
 // a null, so a consumer can range over it with no nil check.
 func TestSliceShowEventsIsAnEmptyArrayNotNull(t *testing.T) {
