@@ -661,7 +661,7 @@ struct PRSectionBody: View {
     /// did not run, dashed for one running, and filled — the only two in
     /// colour — for done and failed.
     /// Set in the pane's own sans at its body size, as the Review line is —
-    /// a check's name ("CI / test") is a label, not code.
+    /// a check's name ("test") is a label, not code.
     private func checkLine(_ check: PRCheck) -> some View {
         let outcome = checkOutcome(state: check.state)
         let (symbol, role): (String, InkRole) = switch outcome {

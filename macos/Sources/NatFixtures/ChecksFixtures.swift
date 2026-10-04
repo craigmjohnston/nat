@@ -15,7 +15,7 @@ extension Fixtures {
             name: "Approve opens the pull request",
             pr: prURL,
             readiness: PRStatusSlice.checksFailing,
-            checks: PRStatusChecks(verdict: "failing", failing: [PRStatusCheck(name: "CI / test", url: failingRunURL)])
+            checks: PRStatusChecks(verdict: "failing", failing: [PRStatusCheck(name: "test", url: failingRunURL)])
         ),
     ])
 

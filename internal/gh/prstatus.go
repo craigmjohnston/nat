@@ -131,11 +131,7 @@ func (c Check) Outcome() CheckOutcome {
 // checksVerdictOf rolls a pull request's rollup into one verdict — see
 // [Verdict], which it is for the entries as [Check]s.
 func checksVerdictOf(rollup []ghRoll) (ChecksVerdict, []Check) {
-	checks := make([]Check, len(rollup))
-	for i, entry := range rollup {
-		checks[i] = entry.check()
-	}
-	return Verdict(checks)
+	return Verdict(checksOf(rollup))
 }
 
 // Verdict rolls a pull request's checks into one verdict: any failure fails

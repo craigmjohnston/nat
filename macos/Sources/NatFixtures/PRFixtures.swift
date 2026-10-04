@@ -19,14 +19,14 @@ extension Fixtures {
 
     static let passingChecks: [PRCheck] = [
         PRCheck(name: "CI / test", state: "SUCCESS", link: prURL + "/checks?check_run_id=1"),
-        PRCheck(name: "CI / lint", state: "SUCCESS", link: prURL + "/checks?check_run_id=2"),
+        PRCheck(name: "lint", state: "SUCCESS", link: prURL + "/checks?check_run_id=2"),
         PRCheck(name: "macOS App CI / test", state: "SUCCESS", link: prURL + "/checks?check_run_id=3"),
         PRCheck(name: "codeql", state: "SKIPPED", link: prURL + "/checks?check_run_id=4"),
     ]
 
     static let failingChecks: [PRCheck] = [
         PRCheck(name: "CI / test", state: "FAILURE", link: prURL + "/checks?check_run_id=1"),
-        PRCheck(name: "CI / lint", state: "SUCCESS", link: prURL + "/checks?check_run_id=2"),
+        PRCheck(name: "lint", state: "SUCCESS", link: prURL + "/checks?check_run_id=2"),
         PRCheck(name: "macOS App CI / test", state: "IN_PROGRESS", link: prURL + "/checks?check_run_id=3"),
         PRCheck(name: "codeql", state: "SKIPPED", link: prURL + "/checks?check_run_id=4"),
     ]
