@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -45,6 +46,78 @@ type ProjectConfig struct {
 	// the <name> of its nat-source-<name> binary. Omitted for every other
 	// project.
 	Source string `json:"source,omitempty"`
+	// Runs are the project's run commands: a label and a shell command each,
+	// offered as one-click runs — the global ones from the latest origin/main,
+	// the slice-scoped ones from a handed-back slice's worktree. Omitted until
+	// set, so a config written before there were any round-trips unchanged.
+	Runs []RunCommand `json:"runs,omitempty"`
+}
+
+// RunCommand is one of a project's run commands: Label is what its button
+// says, as short as it can be and unique within the project; Command is run
+// by `sh -c`, exactly as written, in the directory its scope says; Scope is
+// [RunScopeGlobal], [RunScopeSlice] or empty — both.
+type RunCommand struct {
+	Label   string `json:"label"`
+	Command string `json:"command"`
+	Scope   string `json:"scope,omitempty"`
+}
+
+// The two scope words a run command may carry; the empty string is both.
+const (
+	RunScopeGlobal = "global"
+	RunScopeSlice  = "slice"
+)
+
+// GlobalRuns are the project's runs offered from origin/main, in the order
+// written — the first being the default.
+func (p ProjectConfig) GlobalRuns() []RunCommand { return p.runsIn(RunScopeGlobal) }
+
+// SliceRuns are the project's runs offered on a handed-back slice, in the
+// order written — the first being the default.
+func (p ProjectConfig) SliceRuns() []RunCommand { return p.runsIn(RunScopeSlice) }
+
+// runsIn filters the runs to those of one scope, a scopeless run being both.
+func (p ProjectConfig) runsIn(scope string) []RunCommand {
+	var out []RunCommand
+	for _, r := range p.Runs {
+		if r.Scope == "" || r.Scope == scope {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// ValidRuns says whether a list of run commands is one the config would keep:
+// every label and command non-empty, every scope one of the two words or none,
+// and no label offered twice in one place — case ignored, since two buttons
+// reading Run and run are one too many. A scopeless run is offered in both
+// places, so a label may appear once scopeless, or once per scope: the scoped
+// pair is how a run says it does something different in a slice's worktree.
+func ValidRuns(runs []RunCommand) error {
+	seen := map[string]bool{}
+	for i, r := range runs {
+		label := strings.TrimSpace(r.Label)
+		switch {
+		case label == "":
+			return fmt.Errorf("run %d has no label", i+1)
+		case strings.TrimSpace(r.Command) == "":
+			return fmt.Errorf("run %q has no command", label)
+		case r.Scope != "" && r.Scope != RunScopeGlobal && r.Scope != RunScopeSlice:
+			return fmt.Errorf("run %q has scope %q: want %s, %s or none (both)", label, r.Scope, RunScopeGlobal, RunScopeSlice)
+		}
+		for _, scope := range []string{RunScopeGlobal, RunScopeSlice} {
+			if r.Scope != "" && r.Scope != scope {
+				continue
+			}
+			key := scope + "\x00" + strings.ToLower(label)
+			if seen[key] {
+				return fmt.Errorf("two %s runs are labelled %q: a label names one run in each place", scope, label)
+			}
+			seen[key] = true
+		}
+	}
+	return nil
 }
 
 // The three places a plan can live.

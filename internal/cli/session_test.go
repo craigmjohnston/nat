@@ -58,6 +58,9 @@ type fakeSessionWorktrees struct {
 	existingPath string
 	// createErr, when set, is what Create refuses with.
 	createErr error
+	// resets are the hard resets asked for, and resetErr what they fail with.
+	resets   []struct{ path, ref string }
+	resetErr error
 }
 
 func (f *fakeSessionWorktrees) Path(dir, branch string) (string, error) {
@@ -78,6 +81,11 @@ func (f *fakeSessionWorktrees) Create(dir, branch, base string) (string, error) 
 func (f *fakeSessionWorktrees) Remove(dir, branch string) error {
 	f.removed = append(f.removed, struct{ dir, branch string }{dir, branch})
 	return nil
+}
+
+func (f *fakeSessionWorktrees) Reset(path, ref string) error {
+	f.resets = append(f.resets, struct{ path, ref string }{path, ref})
+	return f.resetErr
 }
 
 // fakeSessionRepo stands in for git's own reads: the actions.Repo half of

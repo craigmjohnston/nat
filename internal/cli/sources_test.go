@@ -172,7 +172,7 @@ func TestProjectCreateSourceWritesThePlanThenTheConfig(t *testing.T) {
 	// itself.
 	entry := sp.saved.Projects[sp.id]
 	want := config.ProjectConfig{Backend: config.BackendSource, Source: "demo", PlanDir: sp.planDir}
-	if entry != want {
+	if !reflect.DeepEqual(entry, want) {
 		t.Errorf("config entry = %+v, want %+v", entry, want)
 	}
 	sp.planPath(t)

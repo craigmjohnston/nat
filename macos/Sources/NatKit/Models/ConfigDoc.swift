@@ -56,6 +56,9 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
     public let planDir: String?
     /// The task-source plugin's name, where the backend is `source`.
     public let source: String?
+    /// The project's run commands, each with its scope; none where `nat`
+    /// lists none — an older one included.
+    public let runs: [RunCommand]
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -63,16 +66,19 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
         case backend
         case planDir = "plan_dir"
         case source
+        case runs
     }
 
     public init(
-        name: String, workingDir: String, backend: PlanBackend = .notion, planDir: String? = nil, source: String? = nil
+        name: String, workingDir: String, backend: PlanBackend = .notion, planDir: String? = nil, source: String? = nil,
+        runs: [RunCommand] = []
     ) {
         self.name = name
         self.workingDir = workingDir
         self.backend = backend
         self.planDir = planDir
         self.source = source
+        self.runs = runs
     }
 
     public init(from decoder: Decoder) throws {
@@ -82,6 +88,7 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
         backend = PlanBackend(word: try? c.decodeIfPresent(String.self, forKey: .backend))
         planDir = try c.decodeIfPresent(String.self, forKey: .planDir)
         source = try c.decodeIfPresent(String.self, forKey: .source)
+        runs = try c.decodeIfPresent([RunCommand].self, forKey: .runs) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -91,5 +98,6 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
         try c.encode(backend.rawValue, forKey: .backend)
         try c.encodeIfPresent(planDir, forKey: .planDir)
         try c.encodeIfPresent(source, forKey: .source)
+        if !runs.isEmpty { try c.encode(runs, forKey: .runs) }
     }
 }

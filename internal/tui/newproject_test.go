@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -271,7 +272,7 @@ func TestAppNewProjectFlowWritesConfigAndReloads(t *testing.T) {
 	want := config.ProjectConfig{
 		Name: "tracker two", SlicesDSID: "s-ds", WorkingDir: dir,
 	}
-	if got := saved.Projects["p2"]; got != want {
+	if got := saved.Projects["p2"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("saved project = %+v, want %+v", got, want)
 	}
 	if saved.ActiveProjectID != "p2" {
@@ -442,7 +443,7 @@ func TestAppRecordsALocalProjectAsLocal(t *testing.T) {
 	app.busy = true
 	app.projectCreated(projectCreatedMsg{localID: "loc-1", name: "mine", workdir: "/work"})
 	want := config.ProjectConfig{Name: "mine", WorkingDir: "/work", Backend: config.BackendLocal}
-	if got := saved.Projects["loc-1"]; got != want {
+	if got := saved.Projects["loc-1"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("entry = %+v, want %+v", got, want)
 	}
 	if saved.ActiveProjectID != "loc-1" || app.busy {
@@ -681,7 +682,7 @@ func TestAppSwitchProjectOpensOneItHasNeverSeen(t *testing.T) {
 		t.Fatalf("resolved %v, want the picked page read", got)
 	}
 	want := config.ProjectConfig{Name: "opened", SlicesDSID: "p9-sl"}
-	if got := saved.Projects["p9"]; got != want {
+	if got := saved.Projects["p9"]; !reflect.DeepEqual(got, want) {
 		t.Errorf("recorded %+v, want %+v — and no working directory", got, want)
 	}
 	if saved.ActiveProjectID != "p9" || app.cfg.ActiveProjectID != "p9" {

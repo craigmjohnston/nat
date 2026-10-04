@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -64,7 +65,7 @@ func TestProjectCreateLocalTouchesNotionNowhere(t *testing.T) {
 	}
 	entry := saved.Projects[id]
 	want := config.ProjectConfig{Name: "Mine", WorkingDir: "/src/mine", Backend: "local", PlanDir: planDir}
-	if entry != want {
+	if !reflect.DeepEqual(entry, want) {
 		t.Errorf("config entry = %+v, want %+v", entry, want)
 	}
 	if entries, _ := os.ReadDir(planDir); len(entries) == 0 {

@@ -95,11 +95,12 @@ enum AppStories {
         _ sliceID: String, agents: [AgentStatus] = Fixtures.agentStatuses, plan: ProjectInfo = Fixtures.projectInfo,
         prStatus: PRStatusDoc = Fixtures.prStatusDoc, pr: PRDetail = Fixtures.prGreen,
         details: [String: SliceDetail] = Fixtures.sliceDetails, focus: NavigatorFocus? = nil,
+        config: NatProjectConfig = Fixtures.twoProjectConfig,
         configure: @MainActor (AppModel) async -> Void = { _ in }
     ) async -> some View {
         let appModel = await Fixtures.startedAppModel(
             client: FixtureNatClient(plan: plan, agents: agents, pr: pr, details: details, prStatus: prStatus),
-            config: Fixtures.twoProjectConfig)
+            config: config)
         appModel.selectedSliceID = sliceID
         for _ in 0..<50 where !agents.isEmpty && appModel.activityStore?.agents.isEmpty != false {
             try? await Task.sleep(nanoseconds: 20_000_000)
@@ -217,6 +218,29 @@ enum AppStories {
                 openPicker: .constant(nil)
             ) { _ in EmptyView() }
         }
+    }
+
+    /// The sidebar's own titlebar segment over a project with runs — and,
+    /// where `treeOpen`, the run tree drawn under the play button, since a
+    /// real popover is a window of its own no render of this one can show.
+    private static func titlebarRun(treeOpen: Bool) async -> some View {
+        let appModel = await Fixtures.startedAppModel(config: Fixtures.runsConfig)
+        return VStack(alignment: .leading, spacing: 0) {
+            SidebarView(appModel: appModel, showsTitlebar: true)
+                .frame(width: 260, height: GnatMetrics.titlebarHeight, alignment: .top)
+                .clipped()
+                .environment(\.pulsesPaused, true)
+            if treeOpen {
+                RunTreePicker(projects: appModel.runProjects, openProjectID: Fixtures.projectID) { _, _ in }
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(DesignTokens.rule(.separator, on: .header), lineWidth: 1))
+                    .padding(.top, 6)
+                    .padding(.leading, 12)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .surface(.window)
     }
 
     /// A slice's crumbs in the fixture project, under M2.
@@ -1643,6 +1667,62 @@ enum AppStories {
         },
 
         // MARK: - Follow-ups
+
+        // MARK: - Run commands
+
+        Story(
+            name: "titlebar-run",
+            summary: "The sidebar\u{2019}s titlebar segment while a project has runs: the play button beside "
+                + "Settings and +.",
+            size: CGSize(width: 260, height: GnatMetrics.titlebarHeight)
+        ) {
+            await titlebarRun(treeOpen: false)
+        },
+
+        Story(
+            name: "titlebar-run-menu",
+            summary: "The play button\u{2019}s run tree open, the breadcrumb tree picker\u{2019}s shape: projects "
+                + "with runs in one column, the open project\u{2019}s runs and their commands in the next, the "
+                + "first marked default.",
+            size: CGSize(width: 500, height: 300)
+        ) {
+            await titlebarRun(treeOpen: true)
+        },
+
+        Story(
+            name: "window-run-heading",
+            summary: "A handed-back slice of a project with runs: the Run heading under the Task log, above "
+                + "Changes \u{2014} no section, no fold \u{2014} its split button full bleed; the play "
+                + "button in the sidebar\u{2019}s titlebar segment.",
+            size: window
+        ) {
+            await slicePane(Fixtures.mergeBoxSliceID, config: Fixtures.runsConfig)
+        },
+
+        Story(
+            name: "window-run-heading-merged",
+            summary: "The same slice once merged: the Run heading greyed and its button disabled, the worktree "
+                + "being gone.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.mergeBoxSliceID, plan: Fixtures.mergedReviewProjectInfo, config: Fixtures.runsConfig)
+        },
+
+        Story(
+            name: "window-run-tab",
+            summary: "A slice-scoped run started: the Run tab beside Terminal, picked, the run\u{2019}s session "
+                + "attached in the main pane (the terminal stubbed).",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.mergeBoxSliceID, focus: NavigatorFocus(open: [.changes], main: .run),
+                config: Fixtures.runsConfig
+            ) { appModel in
+                appModel.runSessionExists = { _ in true }
+                await appModel.startRun(projectID: Fixtures.projectID, sliceID: Fixtures.mergeBoxSliceID)
+            }
+        },
 
         // MARK: - Settings
 

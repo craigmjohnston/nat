@@ -1031,6 +1031,26 @@ public final class NatClient: Sendable {
         return try decodeJSON(SessionLaunchResult.self, from: output)
     }
 
+    /// Start one of the project's run commands — `nat run`, which picks the
+    /// run, finds the directory (the slice's worktree, or nat's run checkout
+    /// at origin/main without a slice) and starts it in a tmux session of its
+    /// own. Nothing here resolves either: `label` nil is nat's default.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's page ID
+    ///   - sliceRef: The slice whose worktree a slice-scoped run runs in; nil
+    ///     for a global run
+    ///   - label: The run to start; nil for the scope's first
+    /// - Returns: The session the run is in, to attach to
+    /// - Throws: NatError with nat's own refusal
+    public func run(projectID: String, sliceRef: String?, label: String?) async throws -> RunResult {
+        var arguments = ["run", "--project", projectID, "--json"]
+        if let sliceRef { arguments.append(contentsOf: ["--slice", sliceRef]) }
+        if let label { arguments.append(contentsOf: ["--label", label]) }
+        let output = try await runNat(arguments: arguments)
+        return try decodeJSON(RunResult.self, from: output)
+    }
+
     /// Every ad hoc session on the project, tmux and pull-request readings
     /// folded in — `nat session-list`, the rail's own reading of what to
     /// draw in ACTIVE and DONE.

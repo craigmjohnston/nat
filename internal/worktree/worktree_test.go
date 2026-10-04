@@ -497,3 +497,21 @@ func TestARealRepositoryReusesABranch(t *testing.T) {
 		t.Errorf("the worktree is on %q, want the branch it already had", got)
 	}
 }
+
+func TestResetHardResetsThePathToTheRef(t *testing.T) {
+	runner := &fakeRunner{}
+	if err := NewWithRunner(runner).Reset("/repos/nat.worktrees/run-main", "origin/main"); err != nil {
+		t.Fatalf("Reset() = %v", err)
+	}
+	if len(runner.calls) != 1 || runner.calls[0].dir != "/repos/nat.worktrees/run-main" ||
+		!reflect.DeepEqual(runner.calls[0].args, []string{"reset", "--hard", "origin/main"}) {
+		t.Errorf("calls = %+v", runner.calls)
+	}
+}
+
+func TestResetReportsARefusal(t *testing.T) {
+	runner := &fakeRunner{replies: []reply{{err: &ExitError{Code: 128, Stderr: "fatal: bad ref"}}}}
+	if err := NewWithRunner(runner).Reset("/p", "origin/main"); err == nil {
+		t.Fatal("Reset() = nil, want git's refusal")
+	}
+}

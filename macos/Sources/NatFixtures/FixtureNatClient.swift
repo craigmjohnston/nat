@@ -561,6 +561,16 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         )
     }
 
+    public func run(projectID: String, sliceRef: String?, label: String?) async throws -> RunResult {
+        try await record("run \(sliceRef ?? "") \(label ?? "")")
+        let runs = Fixtures.runs
+        let offered = sliceRef == nil ? runs.globalRuns : runs.sliceRuns
+        let run = offered.first { $0.label == label } ?? offered.first ?? RunCommand(label: label ?? "Run", command: "make run")
+        return RunResult(
+            session: "nat-run-f1x7ure5-\(run.label.lowercased())", label: run.label, command: run.command,
+            dir: sliceRef == nil ? "/repos/nat.worktrees/run-main" : "/repos/nat.worktrees/slice-\(sliceRef ?? "")")
+    }
+
     public func sessionList(projectID: String) async throws -> [Session] {
         try await answer(sessionsList)
     }

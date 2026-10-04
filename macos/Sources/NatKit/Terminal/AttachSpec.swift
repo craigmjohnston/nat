@@ -71,6 +71,25 @@ public enum TmuxSession {
         return prefix + hexTail(slicePageID)
     }
 
+    /// Whether tmux has a session of exactly this name — `has-session` on
+    /// `=name`, since a bare target falls back to a prefix match. It waits
+    /// on a subprocess: `exists` is the same question off the main thread.
+    public static func existsNow(_ session: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: AttachSpec.resolvedExecutable())
+        process.arguments = ["-u", "has-session", "-t", "=" + session]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return false }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
+    /// `existsNow`, asked off the main thread.
+    public static func exists(_ session: String) async -> Bool {
+        await Task.detached { existsNow(session) }.value
+    }
+
     /// The last eight hex digits of an ID, with the UUID dashes — and anything
     /// else that is not hex — skipped rather than trusted.
     private static func hexTail(_ id: String) -> String {

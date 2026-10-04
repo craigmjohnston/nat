@@ -281,6 +281,8 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
     /// The task-source plugin a `source` project's containers come from, by
     /// name; nil for every other project.
     public let source: String?
+    /// The project's run commands — none where its entry names none.
+    public let runs: [RunCommand]
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -289,6 +291,7 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         case backend
         case planDir = "plan_dir"
         case source
+        case runs
     }
 
     public init(
@@ -297,7 +300,8 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         workingDir: String,
         backend: PlanBackend = .notion,
         planDir: String? = nil,
-        source: String? = nil
+        source: String? = nil,
+        runs: [RunCommand] = []
     ) {
         self.name = name
         self.slicesDSID = slicesDSID
@@ -305,6 +309,7 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         self.backend = backend
         self.planDir = planDir
         self.source = source
+        self.runs = runs
     }
 
     public init(from decoder: Decoder) throws {
@@ -319,10 +324,11 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         backend = PlanBackend(word: try? c.decodeIfPresent(String.self, forKey: .backend))
         planDir = try c.decodeIfPresent(String.self, forKey: .planDir)
         source = try c.decodeIfPresent(String.self, forKey: .source)
+        runs = try c.decodeIfPresent([RunCommand].self, forKey: .runs) ?? []
     }
 
-    /// Written the way nat writes it: the backend, plan directory and source
-    /// only where they mean something, so an entry for a Notion project
+    /// Written the way nat writes it: the backend, plan directory, source and
+    /// runs only where they mean something, so an entry for a Notion project
     /// round-trips unchanged.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -332,6 +338,7 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         if backend != .notion { try c.encode(backend.rawValue, forKey: .backend) }
         try c.encodeIfPresent(planDir, forKey: .planDir)
         try c.encodeIfPresent(source, forKey: .source)
+        if !runs.isEmpty { try c.encode(runs, forKey: .runs) }
     }
 }
 

@@ -404,11 +404,12 @@ struct SidebarView: View {
     // MARK: - Titlebar
 
     /// The sidebar's segment of the window titlebar: past the traffic
-    /// lights, Settings and the `+`, at its trailing edge over the project
-    /// rows' own.
+    /// lights, at its trailing edge over the project rows' own: the run
+    /// button where any project has runs, Settings and the `+`.
     private func titlebar(_ model: SidebarModel) -> some View {
         GnatTitlebar(leading: GnatMetrics.lightsInset) {
             Spacer(minLength: 0)
+            TitlebarRunButton(appModel: appModel)
             SettingsLink {
                 Image(systemName: "gearshape")
                     .font(.system(size: 13))

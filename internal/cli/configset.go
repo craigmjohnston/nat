@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -12,7 +13,7 @@ import (
 )
 
 // The keys config-set answers to: the settings form's own fields, plus one
-// project's working directory addressed by its page ID. Nothing else in the
+// project's working directory and run commands, addressed by its page ID. Nothing else in the
 // file is reachable this way — see configShow's doc comment for why.
 const (
 	keySplitPercent     = "agent_split_percent"
@@ -23,6 +24,7 @@ const (
 	keySliceEffort      = "slice_agent.effort"
 	projectKeyPrefix    = "project."
 	workingDirKeySuffix = ".working_dir"
+	runsKeySuffix       = ".runs"
 )
 
 // configSet writes one local config key. There is no --project flag: a
@@ -100,6 +102,8 @@ func applyConfigSet(cfg *config.Config, key, value string) error {
 		cfg.SliceAgent.Effort = value
 	case strings.HasPrefix(key, projectKeyPrefix) && strings.HasSuffix(key, workingDirKeySuffix):
 		return applyProjectWorkingDir(cfg, key, value)
+	case strings.HasPrefix(key, projectKeyPrefix) && strings.HasSuffix(key, runsKeySuffix):
+		return applyProjectRuns(cfg, key, value)
 	default:
 		return usageErrorf("config-set: unknown key %q", key)
 	}
@@ -120,6 +124,36 @@ func applyProjectWorkingDir(cfg *config.Config, key, value string) error {
 	}
 	p := cfg.Projects[pid]
 	p.WorkingDir = value
+	cfg.Projects[pid] = p
+	return nil
+}
+
+// applyProjectRuns writes value — a JSON array of run commands, the whole
+// list at once — as the runs of the project project.<id>.runs names, by the
+// same addressing [applyProjectWorkingDir] uses. The empty string unsets them,
+// the key space's one rule for every field; a list the config would not keep
+// ([config.ValidRuns]) is refused here, where it is written.
+func applyProjectRuns(cfg *config.Config, key, value string) error {
+	id := strings.TrimSuffix(strings.TrimPrefix(key, projectKeyPrefix), runsKeySuffix)
+	pid, err := projectKeyFor(*cfg, id)
+	if err != nil {
+		return err
+	}
+	var runs []config.RunCommand
+	if strings.TrimSpace(value) != "" {
+		if err := json.Unmarshal([]byte(value), &runs); err != nil {
+			return usageErrorf("config-set: %s wants a JSON array of runs, like "+
+				`[{"label":"Run","command":"make run","scope":"slice"}]: %v`, key, err)
+		}
+		if err := config.ValidRuns(runs); err != nil {
+			return fmt.Errorf("config-set: %w", err)
+		}
+	}
+	p := cfg.Projects[pid]
+	p.Runs = nil
+	if len(runs) > 0 {
+		p.Runs = runs
+	}
 	cfg.Projects[pid] = p
 	return nil
 }
