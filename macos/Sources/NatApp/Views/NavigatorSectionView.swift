@@ -23,6 +23,10 @@ struct NavSectionView<Actions: View, Content: View>: View {
     /// A status badge just after the label, drawn open or folded — the PR
     /// section's Merged.
     var status: NavSectionStatus?
+    /// A warning after the label and status, drawn open or folded as a small
+    /// danger icon whose tooltip is its text — the PR section's failing
+    /// checks. Nil draws nothing.
+    var warning: String?
     let onHead: () -> Void
     var onFold: (() -> Void)?
     @ViewBuilder var actions: () -> Actions
@@ -66,6 +70,12 @@ struct NavSectionView<Actions: View, Content: View>: View {
                 if let status {
                     Chip(status.label, tone: status.tone, size: .small).fixedSize()
                 }
+                if let warning {
+                    Image(systemName: "xmark.octagon")
+                        .font(.system(size: 12, weight: .medium))
+                        .ink(.danger)
+                        .help(warning)
+                }
             }
             .frame(minWidth: 58, alignment: .leading)
             if status == nil, let meta, !open {
@@ -86,10 +96,12 @@ struct NavSectionView<Actions: View, Content: View>: View {
 extension NavSectionView where Actions == EmptyView {
     init(
         label: String, open: Bool, selected: Bool = false, meta: String? = nil, status: NavSectionStatus? = nil,
-        onHead: @escaping () -> Void, onFold: (() -> Void)? = nil, @ViewBuilder content: @escaping () -> Content
+        warning: String? = nil, onHead: @escaping () -> Void, onFold: (() -> Void)? = nil,
+        @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
-            label: label, open: open, selected: selected, meta: meta, status: status, onHead: onHead, onFold: onFold,
+            label: label, open: open, selected: selected, meta: meta, status: status, warning: warning,
+            onHead: onHead, onFold: onFold,
             actions: { EmptyView() }, content: content)
     }
 }
@@ -170,7 +182,10 @@ struct ThreadEventCard: View {
 
     var body: some View {
         LogItem(
-            symbol: event.kind.symbol, iconRole: iconRole, who: event.who, meta: event.meta, metaRole: tone,
+            // An action reads as one plain sentence ("Agent handed back"); a
+            // meta that is a separate fact (a comment's time) stays beside it.
+            symbol: event.kind.symbol, iconRole: iconRole,
+            who: event.metaIsAction ? event.title : event.who, meta: event.metaIsAction ? nil : event.meta,
             when: event.when.map { threadTimestamp($0, now: clock()) }, connector: connector
         ) {
             VStack(alignment: .leading, spacing: 0) {
@@ -281,42 +296,6 @@ private extension View {
 }
 
 /// A one-line notice in a section body: a refusal, a warning, a stale read.
-/// The notice a pull request failing its checks puts at the head of the
-/// section the pane lands on (`checksNotice`): the checks by name, then the
-/// fix launch where there is one to make — none where the failure was already
-/// sent to the agent.
-struct ChecksNoticeView: View {
-    let notice: ChecksNotice
-    var isLaunching = false
-    var launchEnabled = true
-    let onLaunchFix: () -> Void
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "xmark.octagon")
-                .font(.system(size: 12, weight: .medium))
-                .ink(.danger)
-            Text(notice.text)
-                .font(.system(size: Typo.scaled(13)))
-                .ink(.danger)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-            Spacer(minLength: 0)
-            if notice.action == .launchFix {
-                Button(action: onLaunchFix) {
-                    HeaderActionLabel(title: "Launch fix agent", systemImage: "arrow.right", isBusy: isLaunching)
-                }
-                .buttonStyle(GnatButtonStyle(primary: true))
-                .disabled(!launchEnabled)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .help(notice.checks.joined(separator: "\n"))
-    }
-}
-
 struct NavNotice: View {
     let text: String
     var role: InkRole = .danger

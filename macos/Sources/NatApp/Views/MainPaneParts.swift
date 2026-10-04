@@ -159,7 +159,7 @@ struct TitlebarBreadcrumb<Picker: View>: View {
                                     FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
                                         .frame(height: CrumbLine.height)
                                 }
-                                Text(parent).ink(.secondary)
+                                Text(parent).ink(.primary)
                             }
                         }
                     case .project:
@@ -222,7 +222,7 @@ private struct ProjectCrumbLabel: View {
                 color: DesignTokens.ink(.tertiary, on: .header),
                 backColor: DesignTokens.ink(.tertiary, on: .header))
                 .frame(height: CrumbLine.height)
-            Text(name).ink(.secondary)
+            Text(name).ink(.primary)
         }
     }
 }

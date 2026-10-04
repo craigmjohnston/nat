@@ -512,7 +512,10 @@ private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Mile
         // One nat filed for a red pull request names where it came from in
         // `by` (CI), where a review's own comments name nobody: they are yours.
         if event.by.map({ !$0.isEmpty }) ?? false {
-            return ThreadEvent(.sentBack, who: "Checks failed", meta: "— sent to the agent", tone: .accent, body: note)
+            // The sending is a line of the body, under the note as recorded.
+            let sent = "Sent to the agent to fix."
+            return ThreadEvent(
+                .sentBack, who: "Checks failed", tone: .accent, body: note.map { "\($0)\n\n\(sent)" } ?? sent)
         }
         return ThreadEvent(.sentBack, who: "You", meta: "sent back with comments", tone: .accent, body: note)
     case .released:
@@ -523,7 +526,7 @@ private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Mile
     case .relaunched:
         return ThreadEvent(.relaunched, who: "Relaunched on the work so far")
     case .checksFailed:
-        return ThreadEvent(.checksFailed, who: "Checks", meta: "failed", tone: .hot, body: note)
+        return ThreadEvent(.checksFailed, who: "Checks failed", tone: .hot, body: note)
     case .blocked:
         return ThreadEvent(.blocked, who: "Agent", meta: "blocked", tone: .hot, body: note)
     case .summary:

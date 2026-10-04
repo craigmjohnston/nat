@@ -570,17 +570,17 @@ enum AppStories {
 
         Story(
             name: "window-pr-checks-failing",
-            summary: "An approved slice whose pull request reads checks failing, no agent on it: the notice names the check and offers Launch fix agent.",
+            summary: "An approved slice whose pull request reads checks failing, no agent on it, its PR section open: a danger icon on the PR header whose tooltip names the check; no notice in the PR body, and the header still offers Launch fix agent.",
             size: window
         ) {
             await slicePane(
                 Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusChecksFailing, pr: Fixtures.prFailingChecks,
-                details: Fixtures.checksFailedSliceDetails)
+                details: Fixtures.checksFailedSliceDetails, focus: NavigatorFocus(open: [.pr], main: .pr))
         },
 
         Story(
             name: "window-pr-checks-agent-told",
-            summary: "The same red pull request with its fix agent live and the nudge on record: the notice says the failing check was sent to the agent to fix, with no button; the task log item reads Checks failed — sent to the agent.",
+            summary: "The same red pull request with its fix agent live and the nudge on record: the PR header's danger icon, whose tooltip says the failing check was sent to the agent to fix; no notice over the Task log, whose item reads Checks failed and ends its body Sent to the agent to fix.",
             size: window
         ) {
             await slicePane(
@@ -590,7 +590,7 @@ enum AppStories {
 
         Story(
             name: "window-task-log-checks-failed",
-            summary: "An approved slice's Task log with a Checks failed entry: its own glyph in danger, the failed check and its run.",
+            summary: "An approved slice's Task log with a Checks failed entry: its own glyph in danger, the failed check and its run; no notice over the log, and the folded PR header carries the danger icon.",
             size: window
         ) {
             await slicePane(

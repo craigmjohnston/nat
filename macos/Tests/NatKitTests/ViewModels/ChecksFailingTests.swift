@@ -102,7 +102,8 @@ final class ChecksFailingTests: XCTestCase {
             slice: slice(), agent: nil, brief: nil,
             events: [TaskLogEvent(.checksFailed, note: "- test: https://ci/1"), TaskLogEvent(.approved, pr: "u")])
         let card = log.first { $0.kind == .checksFailed }
-        XCTAssertEqual(card?.title, "Checks failed")
+        XCTAssertEqual(card?.who, "Checks failed")
+        XCTAssertNil(card?.meta)
         XCTAssertEqual(card?.body, "- test: https://ci/1")
         XCTAssertEqual(card?.tone, .hot)
     }
@@ -116,7 +117,17 @@ final class ChecksFailingTests: XCTestCase {
                 TaskLogEvent(.sentBack, note: "Rename the helper."),
                 TaskLogEvent(.sentBack, note: "- test: https://ci/1", by: "CI"),
             ])
-        let sentBack = log.filter { $0.kind == .sentBack }.map(\.title)
-        XCTAssertEqual(sentBack, ["You sent back with comments", "Checks failed — sent to the agent"])
+        let sentBack = log.filter { $0.kind == .sentBack }
+        XCTAssertEqual(sentBack.map(\.title), ["You sent back with comments", "Checks failed"])
+        XCTAssertNil(sentBack[1].meta)
+        XCTAssertEqual(sentBack[1].tone, .accent)
+        XCTAssertEqual(sentBack[1].body, "- test: https://ci/1\n\nSent to the agent to fix.")
+    }
+
+    /// A nudge with no note recorded is the sending alone.
+    func testANudgeWithNoNoteSaysOnlyItWasSent() {
+        let log = buildThreadEvents(
+            slice: slice(), agent: nil, brief: nil, events: [TaskLogEvent(.sentBack, note: "", by: "CI")])
+        XCTAssertEqual(log.first { $0.kind == .sentBack }?.body, "Sent to the agent to fix.")
     }
 }
