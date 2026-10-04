@@ -115,7 +115,7 @@ struct VisualHeader: View {
                 DisclosureChevron(open: !store.isCollapsed(sliceID: slice.id, index: visual.index))
                     .transaction { $0.animation = nil }
                 Text(visual.name)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: Typo.scaled(13), weight: .medium))
                     .ink(.primary)
                     .lineLimit(1)
                     .layoutPriority(1)
@@ -320,7 +320,7 @@ struct VisualImageSection: View {
                 .truncationMode(.middle)
                 .textSelection(.enabled)
             Text("couldn't be opened")
-                .font(.system(size: 12))
+                .font(.system(size: Typo.subhead))
                 .ink(.tertiary)
         }
         .padding(.horizontal, 16)

@@ -56,6 +56,22 @@ final class TypeSizeTests: XCTestCase {
         XCTAssertEqual(Typo.caption, 14)    // 11 × 18/14 = 14.14
     }
 
+    /// A size off the ramp draws at exactly itself at the default, half
+    /// points included, and follows the UI size like the ramp does.
+    func testScaledSizesOffTheRamp() {
+        XCTAssertEqual(Typo.scaled(13), 13)
+        XCTAssertEqual(Typo.scaled(13.5), 13.5)
+        XCTAssertEqual(Typo.scaled(32), 32)
+
+        TypeSizeSelection.shared.select(TypeSize(ui: 18, mono: 14))
+        XCTAssertEqual(Typo.scaled(13), 17)     // 13 × 18/14 = 16.71
+        XCTAssertEqual(Typo.scaled(13.5), 17.5) // 13.5 × 18/14 = 17.36
+        XCTAssertEqual(Typo.scaled(12.5), 16)   // 12.5 × 18/14 = 16.07
+
+        TypeSizeSelection.shared.select(TypeSize(ui: 14, mono: 20))
+        XCTAssertEqual(Typo.scaled(13), 13)
+    }
+
     /// Each field moves only its own half: code ignores the UI size, and
     /// the proportional ramp ignores the code size.
     func testTheTwoSizesAreIndependent() {

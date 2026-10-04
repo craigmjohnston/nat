@@ -1589,7 +1589,7 @@ enum AppStories {
 
                 All **green** — `PRStoreTests` passed on retry.
                 </details>
-                """, size: 13.5)
+                """, size: Typo.scaled(13.5))
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .surface(.window)
@@ -1740,7 +1740,7 @@ private struct MarkdownTableStoryBody: View {
             ForEach(Array(markdownBlocks(text).enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .text(let prose):
-                    Text(prose.trimmingCharacters(in: .newlines)).font(.system(size: 13.5)).ink(.primary)
+                    Text(prose.trimmingCharacters(in: .newlines)).font(.system(size: Typo.scaled(13.5))).ink(.primary)
                 case .table(let table): MarkdownTableView(table: table, size: 13.5, initiallyExpanded: expanded)
                 case .details(let details): MarkdownDetailsView(details: details, size: 13.5, ink: .primary)
                 }
@@ -1847,7 +1847,7 @@ private struct StateDotsStory: View {
                 HStack(spacing: 7) {
                     StateDot(state: row.1, live: row.2).frame(width: 16)
                     Text(row.0)
-                        .font(.system(size: 14))
+                        .font(.system(size: Typo.body))
                         .strikethrough(row.1 == .done)
                         .ink(row.1 == .blocked ? .quaternary : (row.1 == .done ? .tertiary : .primary))
                     Spacer(minLength: 0)
@@ -1856,7 +1856,7 @@ private struct StateDotsStory: View {
                 .frame(height: GnatMetrics.sidebarRowHeight)
             }
             HStack(spacing: 7) {
-                Text("folded project, needs you").font(.system(size: 14)).ink(.primary)
+                Text("folded project, needs you").font(.system(size: Typo.body)).ink(.primary)
                 Spacer(minLength: 0)
                 Circle().fill(DesignTokens.hot).frame(width: 6, height: 6)
             }

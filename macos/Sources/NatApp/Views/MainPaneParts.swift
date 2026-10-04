@@ -270,7 +270,7 @@ struct AgentModelHeading: View {
                     Text(context.text).ink(context.warning ? .hot : .tertiary)
                 }
             }
-            .font(Typo.mono(size: 11))
+            .font(Typo.mono(size: Typo.caption))
             .monospacedDigit()
             .lineLimit(1)
             .fixedSize()
@@ -300,7 +300,7 @@ struct PROpenInGitHubButton: View {
 /// The size the PR view sets its prose in — the description and every
 /// comment alike.
 enum PRConversationMetrics {
-    static let textSize: CGFloat = 15
+    static var textSize: CGFloat { Typo.headline }
 }
 
 /// A pull request's description and conversation, with the comment box at
@@ -340,7 +340,7 @@ struct PRConversationPane: View {
                     Text(pr.title).ink(.primary)
                     Text("#\(pr.number)").ink(.tertiary).fixedSize()
                 }
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: Typo.scaled(20), weight: .semibold))
                 .textSelection(.enabled)
                 NavHeading(text: "Description")
                 if described.isEmpty {

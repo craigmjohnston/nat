@@ -54,11 +54,11 @@ struct MainPaneEmptyState: View {
             ForEach(Self.shortcuts, id: \.action) { shortcut in
                 GridRow {
                     Text(shortcut.action)
-                        .font(.system(size: 12.5))
+                        .font(.system(size: Typo.scaled(12.5)))
                         .ink(.tertiary)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     Text(shortcut.keys)
-                        .font(Typo.mono(size: 12))
+                        .font(Typo.mono(size: Typo.subhead))
                         .tracking(1.5)
                         .ink(.quaternary)
                         .frame(maxWidth: .infinity, alignment: .leading)

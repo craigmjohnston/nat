@@ -16,13 +16,14 @@ enum GnatMetrics {
     static let statusBarHeight: CGFloat = 32
     static let sidebarWidth: Double = 260
     static let navigatorWidth: Double = 330
-    /// The design's mono `xs` and its body sizes. The body is the ramp's —
-    /// a sidebar slice row is drawn at it, and so it is the size the user's
-    /// UI size setting names.
-    static let xs: CGFloat = 12
+    /// The design's mono `xs` and its body sizes, both the ramp's and so
+    /// both following the user's text size: `xs` is the subhead (counts,
+    /// tallies, the status bar), and the body is what a sidebar slice row is
+    /// drawn at — the size that setting names.
+    static var xs: CGFloat { Typo.subhead }
     static var body: CGFloat { Typo.body }
     /// The window titlebar's text — a step under the body.
-    static let titlebarText: CGFloat = 13
+    static var titlebarText: CGFloat { Typo.scaled(13) }
     /// Where a traffic-light window's titlebar content starts: past the lights.
     static let lightsInset: CGFloat = 72
 }
@@ -161,7 +162,7 @@ extension View {
         modifier(GnatRowWash(selected: selected, hoverable: hoverable))
     }
 
-    /// The design's mono `xs`: 12pt in the app's monospaced face.
+    /// The design's mono `xs`: `GnatMetrics.xs` in the app's monospaced face.
     func monoXS(weight: Font.Weight = .regular) -> some View {
         font(Typo.mono(size: GnatMetrics.xs, weight: weight))
     }
@@ -258,7 +259,7 @@ struct GnatButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
-                .font(.system(size: 13))
+                .font(.system(size: Typo.scaled(13)))
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(height: 22)
@@ -293,7 +294,7 @@ struct GnatLinkButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
-                .font(.system(size: 13))
+                .font(.system(size: Typo.scaled(13)))
                 .underline(hovering)
                 .ink(isEnabled ? .accent : .tertiary)
                 .opacity(configuration.isPressed ? 0.7 : 1)
@@ -356,7 +357,7 @@ struct GnatHeaderButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         HoverReader { hovering in
             configuration.label
-                .font(.system(size: 13))
+                .font(.system(size: Typo.scaled(13)))
                 .lineLimit(1)
                 .padding(.horizontal, 12)
                 .frame(maxHeight: .infinity)

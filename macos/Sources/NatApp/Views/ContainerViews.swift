@@ -127,7 +127,7 @@ struct ContainerNavigatorView: View {
                     .padding(.vertical, 4)
             case .prose:
                 NavProse {
-                    MarkdownView(text: section.body ?? "", size: 13.5)
+                    MarkdownView(text: section.body ?? "", size: Typo.scaled(13.5))
                 }
             case .unknown:
                 EmptyView()
@@ -195,7 +195,7 @@ struct ContainerPane: View {
     @State private var isSending = false
     @State private var commentError: String?
 
-    private static let textSize: CGFloat = 15
+    private static var textSize: CGFloat { Typo.headline }
 
     var body: some View {
         let state = containerState(appModel, containerID)
@@ -288,7 +288,7 @@ struct ContainerPane: View {
 /// name and when — the plugin's own words for it — over the markdown.
 struct SourceCommentView: View {
     let comment: SourceComment
-    var textSize: CGFloat = 15
+    var textSize: CGFloat = Typo.headline
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

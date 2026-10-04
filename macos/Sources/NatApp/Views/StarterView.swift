@@ -56,7 +56,7 @@ struct StarterView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Text(StarterCard.title)
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: Typo.scaled(22), weight: .semibold))
                     .ink(.primary)
                     .padding(.bottom, 6)
 

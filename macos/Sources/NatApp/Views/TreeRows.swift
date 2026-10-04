@@ -30,7 +30,7 @@ struct ActiveIdentityLabel: View {
 func identityTag(_ tag: String, on ground: Ground) -> Text {
     guard !tag.isEmpty else { return Text("") }
     return Text(tag)
-        .font(Typo.mono(size: 10, weight: .medium))
+        .font(Typo.mono(size: Typo.scaled(10), weight: .medium))
         .tracking(1)
         // Raised off the shared baseline so the small capitals sit
         // on the title's middle rather than its foot.

@@ -46,7 +46,7 @@ struct VisualsSectionBody: View {
             VisualThumbnail(image: store.image(for: visual.uri))
             VStack(alignment: .leading, spacing: 1) {
                 Text(visual.name)
-                    .font(.system(size: 13))
+                    .font(.system(size: Typo.scaled(13)))
                     .ink(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)

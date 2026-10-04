@@ -280,11 +280,11 @@ struct ContentView: View {
 
             VStack(spacing: 16) {
                 Text("nat")
-                    .font(.system(size: 32, weight: .semibold))
+                    .font(.system(size: Typo.scaled(32), weight: .semibold))
                     .ink(.primary)
 
                 Text("board loading will land here")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.system(size: Typo.body, weight: .regular))
                     .ink(.secondary)
             }
         }

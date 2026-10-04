@@ -127,7 +127,7 @@ struct LaunchCard: View {
             .padding(.top, 6)
 
             explanation
-                .font(.system(size: 13))
+                .font(.system(size: Typo.scaled(13)))
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 10)
@@ -272,7 +272,7 @@ struct DependencyDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(slice.name)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: Typo.scaled(13), weight: .semibold))
                 .ink(.primary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 6) {
@@ -299,10 +299,10 @@ struct DependencyDetailView: View {
             }
             .monoXS()
             Text("Click to open the task.")
-                .font(.system(size: 12))
+                .font(.system(size: Typo.subhead))
                 .ink(.tertiary)
         }
-        .font(.system(size: 13))
+        .font(.system(size: Typo.scaled(13)))
         .padding(12)
         .frame(width: 260, alignment: .leading)
     }

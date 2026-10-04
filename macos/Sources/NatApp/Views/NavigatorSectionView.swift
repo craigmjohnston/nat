@@ -146,7 +146,7 @@ struct NavHeading: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 12))
+            .font(.system(size: Typo.subhead))
             .tracking(0.7)
             .ink(.secondary)
             .padding(.top, 4)
@@ -190,8 +190,8 @@ struct ThreadEventCard: View {
 
             if let body = event.body {
                 Excerpt(text: body) { shown in
-                    Text(markdownAttributed(shown, size: 13.5))
-                        .font(.system(size: 13.5))
+                    Text(markdownAttributed(shown, size: Typo.scaled(13.5)))
+                        .font(.system(size: Typo.scaled(13.5)))
                         .lineSpacing(2)
                         .ink(.primary)
                         .textSelection(.enabled)
@@ -331,7 +331,7 @@ struct NavNotice: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 13))
+            .font(.system(size: Typo.scaled(13)))
             .ink(role)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)

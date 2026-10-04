@@ -134,12 +134,12 @@ struct FollowUpCards: View {
             ForEach(Array(followUps.enumerated()), id: \.element.index) { offset, followUp in
                 VStack(alignment: .leading, spacing: 6) {
                     Text(followUp.title)
-                        .font(.system(size: 13.5))
+                        .font(.system(size: Typo.scaled(13.5)))
                         .ink(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                     Excerpt(text: followUp.brief) { shown in
                         Text(shown)
-                            .font(.system(size: 13))
+                            .font(.system(size: Typo.scaled(13)))
                             .ink(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
@@ -156,7 +156,7 @@ struct FollowUpCards: View {
             VStack(alignment: .leading, spacing: 8) {
                 if let notice {
                     Text(notice.text)
-                        .font(.system(size: 13))
+                        .font(.system(size: Typo.scaled(13)))
                         .ink(notice.role)
                         .fixedSize(horizontal: false, vertical: true)
                 }

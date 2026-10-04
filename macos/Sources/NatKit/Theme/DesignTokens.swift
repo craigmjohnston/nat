@@ -484,6 +484,16 @@ public enum Typo {
         scaled(base, by: TypeSizeSelection.shared.current.ui, over: TypeSize.defaultUI)
     }
 
+    /// A proportional size the ramp has no step for (a 13-point button
+    /// label, 13.5-point prose, a 32-point title), at the user's UI size:
+    /// `base` is what it is drawn at by default. A whole-point base rounds to
+    /// whole points, as the ramp does; a half-point one to half points, so
+    /// that at the default it is drawn at exactly `base`.
+    public static func scaled(_ base: CGFloat) -> CGFloat {
+        let step: CGFloat = base.rounded() == base ? 1 : 0.5
+        return ui(base / step) * step
+    }
+
     /// A monospaced size in the terminal or the diff that sits beside the
     /// code rather than being it (a hunk break, a comment box), at the
     /// user's monospace size: `base` is what it was drawn at beside the old
