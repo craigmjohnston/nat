@@ -572,16 +572,19 @@ final class AppModelTests: XCTestCase {
     /// A model whose launches are the given closure's. `planningAgentAppears`
     /// is whether the activity poll behind it ever reports the session a
     /// launch starts — false is a launch nothing comes of, which is what the
-    /// settle wait gives up on. That wait is 10ms here, so a test never
-    /// spends thirty seconds finding out (1.2s across the attempts at most),
-    /// yet real time rather than a yield: a loaded full-suite run does not
-    /// always land the poll within the attempts' worth of yields.
+    /// settle wait gives up on. The wait is real time rather than a yield,
+    /// since the poll runs on a real `ActivityStore` task: 50ms where the
+    /// session appears (6s across the attempts, so only a poll that never
+    /// lands fails — a loaded full-suite run once took 1.5s to land it), and
+    /// 10ms where it never does, so a give-up costs 1.2s rather than 6s.
     @MainActor
     private func workshopModel(
         planningAgentAppears: Bool = false,
-        settleWait: @escaping @MainActor @Sendable () async -> Void = { try? await Task.sleep(for: .milliseconds(10)) },
+        settleWait: (@MainActor @Sendable () async -> Void)? = nil,
         launcher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult
     ) async -> AppModel {
+        let pause: Duration = planningAgentAppears ? .milliseconds(50) : .milliseconds(10)
+        let settleWait = settleWait ?? { try? await Task.sleep(for: pause) }
         let testConfig = NatProjectConfig(
             projects: [
                 "proj-a": ProjectConfig(name: "A Project", slicesDSID: "ds-a", workingDir: "/path/a"),
