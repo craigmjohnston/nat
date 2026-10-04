@@ -59,9 +59,16 @@ public protocol NatClientProtocol: Sendable {
     func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult
     func projectCreate(name: String, repo: String?, description: String?, source: String?) async throws -> CreatedProject
     func run(projectID: String, sliceRef: String?, label: String?) async throws -> RunResult
+    func natVersion() async throws -> String
 }
 
 extension NatClientProtocol {
+    /// nat's own version, for Settings ▸ About: only `NatClient` and the
+    /// fixture client implement it, the same reasoning as `workspaceLaunch`.
+    public func natVersion() async throws -> String {
+        throw NatError.commandFailed("--version: not supported by this client")
+    }
+
     /// A plan read that may refresh the replica first: a conformer with no
     /// replica to refresh — every test double and the fixture client —
     /// answers it as the plain read, so none of them need say so.

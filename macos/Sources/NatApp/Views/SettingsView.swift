@@ -2,12 +2,12 @@ import AppKit
 import SwiftUI
 import NatKit
 
-/// The Settings scene (⌘,), built as a macOS settings window is built: a
-/// `TabView` of toolbar tabs over grouped forms of stock controls, sized by
-/// what it holds rather than to a frame of its own — so it is the shape the
-/// user already knows from every other settings window on the Mac, and the
-/// app's own chrome (`DesignTokens`, `Typo`, hand-drawn dividers) stops at
-/// its door.
+/// The Settings scene (⌘,), laid out as 1Password's settings are: a sidebar
+/// of sections down the left, each a tinted tile beside its name, and the
+/// chosen section's form on the plain window ground to its right — bold
+/// group headings over left-aligned labelled stock controls. The window is
+/// one fixed size whichever section is up (`SettingsLayout`); a section
+/// taller than it scrolls.
 ///
 /// Underneath it is the same config file the hand-built form edited: fields
 /// read from `nat config-show`, and a write of exactly the keys that changed,
@@ -30,10 +30,47 @@ import NatKit
 /// rather than a paragraph per row, since three rows of one section rarely
 /// have three different things to say and a caption in the value column
 /// drags the control out of its column and wraps it right-aligned.
-/// The scene's four tabs, named so a story can open on one other than
-/// General — the tab builder's own `TabView` selection has no other seam.
-enum SettingsTab: Hashable {
-    case general, agents, projects, sources
+/// The window's sections, in sidebar order, named so a story can open on one
+/// other than General.
+enum SettingsTab: Hashable, CaseIterable, Identifiable {
+    case general, agents, projects, sources, about
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .agents: "Agents"
+        case .projects: "Projects"
+        case .sources: "Sources"
+        case .about: "About"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape.fill"
+        case .agents: "sparkles"
+        case .projects: "folder.fill"
+        case .sources: "puzzlepiece.extension.fill"
+        case .about: "info"
+        }
+    }
+
+    /// The tile's tint, one per section so the column reads at a glance as
+    /// the reference's does.
+    var tint: Color {
+        switch self {
+        case .general: DesignTokens.systemGray
+        case .agents: DesignTokens.systemOrange
+        case .projects: DesignTokens.systemBlue
+        case .sources: DesignTokens.systemGreen
+        case .about: DesignTokens.systemTeal
+        }
+    }
+
+    /// About stands apart from the settings proper, a rule above it.
+    var startsGroup: Bool { self == .about }
 }
 
 struct SettingsView: View {
@@ -45,20 +82,24 @@ struct SettingsView: View {
     /// against whatever machine is rendering it.
     var client: NatClientProtocol = NatClient()
 
+    /// Sparkle, for About's Check for Updates — the app's own; a story has
+    /// none, and draws the button disabled as a dev build's is.
+    var updater: UpdaterViewModel?
+
     @State private var selectedTab: SettingsTab
 
     /// - Parameters:
-    ///   - initialTab: Which tab the scene opens on — General for the window
-    ///     itself, and whichever tab's own story wants to show for a gallery
-    ///     capture.
-    ///   - plugins: The Sources tab's model, already driven — a story's, to
-    ///     draw what a Save came to; the window makes its own.
+    ///   - initialTab: Which section the window opens on — General for the
+    ///     window itself, and whichever section a story wants to show.
+    ///   - plugins: The Sources section's model, already driven — a story's,
+    ///     to draw what a Save came to; the window makes its own.
     init(
-        appModel: AppModel, client: NatClientProtocol = NatClient(), initialTab: SettingsTab = .general,
-        plugins: PluginsModel? = nil
+        appModel: AppModel, client: NatClientProtocol = NatClient(), updater: UpdaterViewModel? = nil,
+        initialTab: SettingsTab = .general, plugins: PluginsModel? = nil
     ) {
         self.appModel = appModel
         self.client = client
+        self.updater = updater
         _selectedTab = State(initialValue: initialTab)
         _plugins = State(initialValue: plugins ?? PluginsModel(
             client: client, projectsUsing: { [appModel] in appModel.sourceProjectNames(of: $0) }
@@ -102,29 +143,24 @@ struct SettingsView: View {
     /// The Sources tab: `nat plugin-list` and the buttons over it.
     @State private var plugins: PluginsModel
 
+    /// nat's own version for About, read once that section is first shown:
+    /// nil until then, and `natVersionFailed` where the read was refused.
+    @State private var natVersion: String?
+    @State private var natVersionFailed = false
+
     var body: some View {
-        // The macOS 15 tab builder rather than `.tabItem`, which is the
-        // current spelling of the same thing: the settings window's toolbar
-        // comes out `.preference` either way — read off `NSApp`'s own window
-        // at runtime — so the tabs already have the per-item metrics
-        // Safari's do, and there is no style to force.
-        TabView(selection: $selectedTab) {
-            Tab("General", systemImage: "gearshape", value: SettingsTab.general) {
-                generalTab
-            }
-            Tab("Agents", systemImage: "sparkles", value: SettingsTab.agents) {
-                agentsTab
-            }
-            Tab("Projects", systemImage: "folder", value: SettingsTab.projects) {
-                projectsTab
-            }
-            Tab("Sources", systemImage: "puzzlepiece.extension", value: SettingsTab.sources) {
-                sourcesTab
-            }
+        // One fixed size rather than each section's own height: a split
+        // window resizing under the pointer as the sidebar is clicked down
+        // is not what a sidebar-list settings window does.
+        HStack(spacing: 0) {
+            SettingsSidebar(selection: $selectedTab)
+                .frame(width: SettingsLayout.sidebarWidth)
+            Divider()
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        // Width alone: the height is the tab's own, which is what makes the
-        // window resize to each tab the way a settings window does.
-        .frame(width: 520)
+        .frame(width: SettingsLayout.windowSize.width, height: SettingsLayout.windowSize.height)
+        .navigationTitle("Settings")
         .task { await load() }
         .task { agentOptions = await AgentOptionsCache.shared.resolve() }
         // A window closed on a field still focused would otherwise take that
@@ -135,9 +171,23 @@ struct SettingsView: View {
 
     // MARK: - Tabs
 
+    @ViewBuilder
+    private var detail: some View {
+        switch selectedTab {
+        case .general: generalTab
+        case .agents: agentsTab
+        case .projects: projectsTab
+        case .sources: sourcesTab
+        case .about: aboutTab
+        }
+    }
+
     private var generalTab: some View {
-        Form {
-            Section {
+        VStack(alignment: .leading, spacing: SettingsLayout.groupSpacing) {
+            settingsGroup(
+                "Appearance",
+                footer: "The palettes the app draws with, the agent terminal included. System switches between the two as the Mac does. Applies at once."
+            ) {
                 settingRow(title: "Theme") {
                     Picker("Theme", selection: themeBinding) {
                         ForEach(Theme.allCases) { theme in
@@ -146,30 +196,27 @@ struct SettingsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
-                    // Wide enough for its three words and no wider: a stock
-                    // segmented control in a grouped form is the width of
-                    // what it holds, trailing-aligned in the value column,
-                    // rather than stretched across it.
+                    // Wide enough for its three words and no wider, rather
+                    // than stretched across the value column.
                     .fixedSize()
                 }
                 paletteRow(title: "Light theme", dark: false, stored: $storedLightPalette)
                 paletteRow(title: "Dark theme", dark: true, stored: $storedDarkPalette)
-            } footer: {
-                sectionFootnote("The palettes the app draws with, the agent terminal included. System switches between the two as the Mac does. Applies at once.")
             }
 
-            Section {
+            settingsGroup(
+                "Text",
+                footer: "Text size is a sidebar row's, and the rest of the app's type follows it in proportion. Code size is the agent terminal's and the diff's. Applies at once."
+            ) {
                 sizeRow(title: "Text size", range: TypeSize.uiRange, stored: $storedUISize)
                 sizeRow(title: "Code size", range: TypeSize.monoRange, stored: $storedMonoSize)
-            } footer: {
-                sectionFootnote("Text size is a sidebar row's, and the rest of the app's type follows it in proportion. Code size is the agent terminal's and the diff's. Applies at once.")
             }
         }
         .settingsForm()
     }
 
     private var agentsTab: some View {
-        Form {
+        VStack(alignment: .leading, spacing: SettingsLayout.groupSpacing) {
             configSection(
                 "Task agent",
                 footer: "Which Claude Code a task's agent runs as, and how hard it thinks, unless the launch itself overrides them. Applies at the next launch."
@@ -198,7 +245,7 @@ struct SettingsView: View {
     }
 
     private var projectsTab: some View {
-        Form {
+        VStack(alignment: .leading, spacing: SettingsLayout.groupSpacing) {
             configSection(
                 "Working directories",
                 footer: "Where a project's agents start, unless a task names its own repo. Applies at the next launch."
@@ -221,25 +268,21 @@ struct SettingsView: View {
     /// first time the tab is shown and again after every button, each of
     /// which is one `nat plugin-*` call (`PluginsModel`).
     private var sourcesTab: some View {
-        Form {
+        VStack(alignment: .leading, spacing: SettingsLayout.groupSpacing) {
             if let listing = plugins.listing {
                 if let error = plugins.actionError {
-                    Section {
-                        errorLabel(error)
-                    }
+                    errorLabel(error)
                 }
                 installedSection(listing)
                 availableSection(listing)
                 pluginSourcesSection(listing)
             } else {
-                Section {
+                settingsGroup("Task sources") {
                     if let error = plugins.loadError {
                         errorLabel(error)
                     } else {
                         SettingsLoadingRow(text: "Looking for plugins…")
                     }
-                } header: {
-                    Text("Task sources")
                 }
             }
         }
@@ -264,7 +307,12 @@ struct SettingsView: View {
     }
 
     private func installedSection(_ listing: PluginListing) -> some View {
-        Section {
+        settingsGroup(
+            "Installed",
+            footer: "Connecting a plugin \u{2014} setting what it asks for here \u{2014} adds its section to the sidebar, "
+                + "its cards from that service. Updates come from the sources below. A plugin marked manual or on "
+                + "PATH was installed outside gnat and is left as you put it."
+        ) {
             if listing.installed.isEmpty {
                 Text("No task-source plugins installed.")
                     .ink(.secondary)
@@ -289,13 +337,6 @@ struct SettingsView: View {
                     }
                 }
             }
-        } header: {
-            Text("Installed")
-        } footer: {
-            sectionFootnote(
-                "Connecting a plugin \u{2014} setting what it asks for here \u{2014} adds its section to the sidebar, "
-                    + "its cards from that service. Updates come from the sources below. A plugin marked manual or on "
-                    + "PATH was installed outside gnat and is left as you put it.")
         }
     }
 
@@ -364,7 +405,7 @@ struct SettingsView: View {
     }
 
     private func availableSection(_ listing: PluginListing) -> some View {
-        Section {
+        settingsGroup("Available") {
             if listing.available.isEmpty {
                 Text("No plugin source offers a plugin yet.")
                     .ink(.secondary)
@@ -376,13 +417,14 @@ struct SettingsView: View {
                     install: { Task { await plugins.install(plugin) } }
                 )
             }
-        } header: {
-            Text("Available")
         }
     }
 
     private func pluginSourcesSection(_ listing: PluginListing) -> some View {
-        Section {
+        settingsGroup(
+            "Plugin sources",
+            footer: "GitHub repositories that publish plugins. nat's own is always checked first."
+        ) {
             ForEach(listing.sources) { source in
                 PluginSourceRow(
                     source: source,
@@ -402,10 +444,57 @@ struct SettingsView: View {
                 Button("Add") { Task { await plugins.addSource() } }
                     .disabled(!plugins.canAddSource)
             }
-        } header: {
-            Text("Plugin sources")
-        } footer: {
-            sectionFootnote("GitHub repositories that publish plugins. nat's own is always checked first.")
+        }
+    }
+
+    /// gnat itself: the icon, the name, its version and build, the embedded
+    /// nat's version under them, Check for Updates through Sparkle and the
+    /// repository. Nothing here is editable.
+    private var aboutTab: some View {
+        VStack(spacing: 6) {
+            AppIconImage()
+                .frame(width: 128, height: 128)
+                .padding(.bottom, 6)
+            Text("gnat")
+                .font(.title.bold())
+            Text(AppVersion(infoDictionary: Bundle.main.infoDictionary).label)
+                .ink(.secondary)
+                .textSelection(.enabled)
+            Text(natVersionLine)
+                .ink(.secondary)
+                .textSelection(.enabled)
+            Group {
+                if let updater {
+                    CheckForUpdatesView(model: updater, title: "Check for Updates\u{2026}")
+                } else {
+                    Button("Check for Updates\u{2026}") {}
+                        .disabled(true)
+                }
+            }
+            .padding(.top, 12)
+            Link("github.com/craigmjohnston/nat", destination: SettingsLayout.repositoryURL)
+                .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(SettingsLayout.detailInsets)
+        .task { await loadNatVersion() }
+    }
+
+    /// The embedded nat's version — blank while the read is out (it is one
+    /// short process), and saying so where nat would not answer.
+    private var natVersionLine: String {
+        if natVersionFailed { return "nat version unknown" }
+        guard let natVersion else { return " " }
+        return "nat \(natVersion)"
+    }
+
+    private func loadNatVersion() async {
+        guard natVersion == nil else { return }
+        do {
+            natVersion = try await client.natVersion()
+            natVersionFailed = false
+        } catch {
+            natVersionFailed = true
         }
     }
 
@@ -420,13 +509,14 @@ struct SettingsView: View {
     /// The rows of a section that edits the config file, or — while that read
     /// is in flight or after it failed — what became of it instead, since a
     /// section of empty fields would read as a config with nothing in it.
-    @ViewBuilder
     private func configSection(
         _ title: String,
         footer: String? = nil,
         @ViewBuilder content: () -> some View
     ) -> some View {
-        Section {
+        // Nothing to footnote while the section is holding a wait or a
+        // refusal instead of the fields the footnote is about.
+        settingsGroup(title, footer: isLoading || loadError != nil ? nil : footer) {
             if isLoading {
                 SettingsLoadingRow()
             } else if let loadError {
@@ -436,15 +526,26 @@ struct SettingsView: View {
             } else {
                 content()
             }
-        } header: {
+        }
+    }
+
+    /// One group of a section: its heading in bold body text, the reference's
+    /// `Defaults` and `Keyboard Shortcuts`, its rows left-aligned under it,
+    /// then the footnote saying what the rows mean beyond their own names.
+    private func settingsGroup(
+        _ title: String,
+        footer: String? = nil,
+        @ViewBuilder content: () -> some View
+    ) -> some View {
+        VStack(alignment: .leading, spacing: SettingsLayout.rowSpacing) {
             Text(title)
-        } footer: {
-            // Nothing to footnote while the section is holding a wait or a
-            // refusal instead of the fields the footnote is about.
-            if let footer, !isLoading, loadError == nil {
+                .font(.body.bold())
+            content()
+            if let footer {
                 sectionFootnote(footer)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// What a section's fields mean beyond their own names: footnote-sized,
@@ -454,23 +555,26 @@ struct SettingsView: View {
         Text(text)
             .font(.footnote)
             .ink(.secondary)
-            // A grouped form sets its footers' multi-line alignment trailing;
-            // a caption that wraps reads ragged-right, as System Settings'.
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// One row of a grouped form: the field's name in the left column and
-    /// its control alone in the right, on one line — and, only where the
-    /// last write of this key was refused, what `nat` said about it under
-    /// the control it was refused from.
+    /// One row of a group: the field's name in a fixed label column and its
+    /// control left-aligned after it, on one line — and, only where the last
+    /// write of this key was refused, what `nat` said about it under the
+    /// control it was refused from.
     private func settingRow(
         title: String,
         key: String? = nil,
         @ViewBuilder control: () -> some View
     ) -> some View {
-        LabeledContent {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(title)
+                .frame(width: SettingsLayout.labelWidth, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 control()
                 if let key, let error = fieldErrors[key] {
@@ -480,8 +584,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-        } label: {
-            Text(title)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -492,8 +595,8 @@ struct SettingsView: View {
         model: Binding<String>,
         effort: Binding<String>
     ) -> some View {
-        // Both pickers, in both agents' groups, in one frame and set to its
-        // trailing edge, so all four end on one right edge.
+        // Both pickers, in both agents' groups, in one frame, so all four
+        // are one width.
         settingRow(title: "Model", key: modelKey) {
             ModelPicker(value: model, options: agentOptions.models, commit: commit) { text in
                 commitField(text, width: FieldWidth.model)
@@ -520,12 +623,9 @@ struct SettingsView: View {
         ) {
             HStack(spacing: 8) {
                 commitField(path)
-                    // An ideal width well short of any real path, so the
-                    // row's own label and control stay on one line — a
-                    // field asking for the width of what it holds is what
-                    // sends `LabeledContent` into its stacked layout — and
-                    // then all the width the value column has left.
-                    .frame(minWidth: 0, idealWidth: 160, maxWidth: .infinity)
+                    // All the width the value column has, whatever the path:
+                    // the tooltip says the rest.
+                    .frame(minWidth: 0, maxWidth: .infinity)
                     .help(path.wrappedValue)
                 Button("Choose…") { chooseDirectory(into: path) }
             }
@@ -729,14 +829,111 @@ struct SettingsView: View {
     }
 }
 
+/// The window's metrics, read off the reference: a 200pt sidebar of 32pt
+/// tiles in a 760×560 window, and the detail pane's generous insets.
+enum SettingsLayout {
+    static let windowSize = CGSize(width: 760, height: 560)
+    static let sidebarWidth: CGFloat = 200
+    static let tileSize: CGFloat = 32
+    static let tileCornerRadius: CGFloat = 8
+    static let rowCornerRadius: CGFloat = 8
+    static let detailInsets = EdgeInsets(top: 28, leading: 32, bottom: 28, trailing: 32)
+    static let groupSpacing: CGFloat = 28
+    static let rowSpacing: CGFloat = 10
+    static let labelWidth: CGFloat = 150
+    static let repositoryURL = URL(string: "https://github.com/craigmjohnston/nat")!
+}
+
 /// The one width a control here is pinned to. Everything else sizes to its
-/// own content and trailing-aligns in the value column, as a stock control
-/// in a grouped form does; a small numeric field is the exception, since a
-/// field for two digits drawn the width of the column is what no settings
-/// window has.
+/// own content, left-aligned in the value column; a small numeric field is
+/// the exception, since a field for two digits drawn the width of the
+/// column is what no settings window has.
 private enum FieldWidth {
     static let size: CGFloat = 44
     static let model: CGFloat = 160
+}
+
+/// The column of sections down the window's left: a tinted tile and the
+/// section's name per row, the selected row filled in the accent with its
+/// name in the accent's own ink, the one under the pointer washed — and a
+/// rule above About, which is about the app rather than a setting of it.
+private struct SettingsSidebar: View {
+    @Binding var selection: SettingsTab
+    @State private var hovered: SettingsTab?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(SettingsTab.allCases) { tab in
+                if tab.startsGroup {
+                    Divider()
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 6)
+                }
+                row(tab)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 12)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(SidebarMaterial())
+    }
+
+    private func row(_ tab: SettingsTab) -> some View {
+        let selected = tab == selection
+        return Button { selection = tab } label: {
+            HStack(spacing: 10) {
+                Image(systemName: tab.symbol)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(DesignTokens.tileGlyph)
+                    .frame(width: SettingsLayout.tileSize, height: SettingsLayout.tileSize)
+                    .background(tab.tint, in: RoundedRectangle(cornerRadius: SettingsLayout.tileCornerRadius))
+                Text(tab.title)
+                    .foregroundStyle(selected ? DesignTokens.accentText : DesignTokens.label)
+                Spacer(minLength: 0)
+            }
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: SettingsLayout.rowCornerRadius)
+                    .fill(rowFill(tab, selected: selected)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 ? tab : (hovered == tab ? nil : hovered) }
+    }
+
+    private func rowFill(_ tab: SettingsTab, selected: Bool) -> Color {
+        if selected { return DesignTokens.accent }
+        if hovered == tab { return DesignTokens.rowWash(selected: false, on: .chrome) }
+        return Color.clear
+    }
+}
+
+/// The sidebar's ground: AppKit's own sidebar material, as a source list
+/// stands on.
+private struct SidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
+/// The app's icon as the dock shows it — the paper icon in light, the
+/// dark-navy one in dark (`NatApp.iconImage`), else whatever AppKit holds.
+private struct AppIconImage: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Image(nsImage: NatApp.iconImage(dark: colorScheme == .dark) ?? NSApplication.shared.applicationIconImage)
+            .resizable()
+            .interpolation(.high)
+            .aspectRatio(contentMode: .fit)
+    }
 }
 
 /// The wait on the config read, as one row of the form rather than a hole
@@ -922,8 +1119,6 @@ private struct CommitTextField: View {
             // window on the Mac sets its own in — at the ramp's input size,
             // the one every field in the app shares.
             .font(.system(size: Typo.input))
-            // The value column is trailing-aligned, and a field left to
-            // inherit that alignment right-aligns the text inside itself.
             .multilineTextAlignment(.leading)
             .frame(width: width)
             .focused($isFocused)
@@ -935,12 +1130,16 @@ private struct CommitTextField: View {
 }
 
 private extension View {
-    /// What every one of the tabs' forms is: the platform's grouped form,
-    /// scrolling only where the pane it is in is too small to hold it — the
-    /// window sizes to the form, so usually it is not.
+    /// What every section's form is: its groups on the plain window ground,
+    /// at the reference's insets, scrolling only where the section is taller
+    /// than the fixed window.
     func settingsForm() -> some View {
-        formStyle(.grouped)
-            .scrollBounceBehavior(.basedOnSize)
+        ScrollView {
+            padding(SettingsLayout.detailInsets)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .thinScrollers()
     }
 }
 

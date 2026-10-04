@@ -108,6 +108,10 @@ public enum DesignTokens {
     /// Text color for content on accent background.
     public static let accentText = token(\.accentText)
 
+    /// The glyph on a Settings sidebar tile: white on every tint, as the
+    /// tiles of System Settings' and 1Password's sidebars draw theirs.
+    public static let tileGlyph = Color.white
+
     /// The gnat mark drawn on its own, in the ink the app icon draws it in
     /// for the same appearance: the paper icon's blue (the accent) in light,
     /// the dark-navy icon's cream (`gnat-paper-dark-navy.svg`) in dark.

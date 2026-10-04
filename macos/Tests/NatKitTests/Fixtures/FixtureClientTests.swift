@@ -98,7 +98,13 @@ final class FixtureClientTests: XCTestCase {
         await assertRefuses { try await client.agentKillWorkspace(workspaceID: "w") }
         await assertRefuses { _ = try await client.sliceAdd(projectID: "p", title: "t", milestone: "m", description: nil) }
         await assertRefuses { try await client.configSet(key: "k", value: "v") }
+        await assertRefuses { _ = try await client.natVersion() }
         XCTAssertTrue(client.writes.isEmpty)
+    }
+
+    func testAnsweringClientGivesAReleaseShapedNatVersion() async throws {
+        let version = try await FixtureNatClient().natVersion()
+        XCTAssertEqual(version, "0.48.0")
     }
 
     /// The client the skeleton stories are drawn over: every call waits, and

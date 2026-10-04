@@ -68,6 +68,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case scratchOpenCreated
         case doneClearSuccess
         case doneClearRefused
+        case natVersion
+        case natVersionSilent
     }
 
     private var fixture: Fixture
@@ -208,6 +210,11 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return ("{\"slices\": [\"a\", \"b\"], \"sessions\": [\"s1\"], \"milestones\": []}\n".data(using: .utf8)!, Data(), 0)
         case .doneClearRefused:
             return (Data(), "done-clear: \"Real\" has a workspace behind it".data(using: .utf8)!, 1)
+        case .natVersion:
+            // `nat --version` is plain text, one line.
+            return ("0.48.0\n".data(using: .utf8)!, Data(), 0)
+        case .natVersionSilent:
+            return (Data(), Data(), 0)
         case .configShowSuccess:
             return (fixtureConfigShow.data(using: .utf8)!, Data(), 0)
         case .configSetSuccess:
