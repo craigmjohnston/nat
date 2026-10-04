@@ -53,7 +53,8 @@ for META in "$REPO_ROOT"/plugins/*/plugin.json; do
     fi
     ASSET="nat-source-$NAME"
     echo "Building $ASSET (universal)..."
-    # Per-arch and lipo'd, exactly as make-app.sh builds nat.
+    # Per-arch and lipo'd. (make-app.sh builds nat for arm64 alone now; the
+    # plugins stay universal.)
     (cd "$REPO_ROOT" && GOOS=darwin GOARCH=arm64 go build -ldflags "$LDFLAGS" -o "$PLUGINS_DIR/per-arch/$ASSET-arm64" "./plugins/$NAME")
     (cd "$REPO_ROOT" && GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "$PLUGINS_DIR/per-arch/$ASSET-amd64" "./plugins/$NAME")
     lipo -create -output "$PLUGINS_DIR/$ASSET" \

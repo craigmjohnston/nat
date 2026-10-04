@@ -274,8 +274,10 @@ This creates `macos/.build/gnat.app`, which can be run with:
 open macos/.build/gnat.app
 ```
 
-The bundle carries its own `nat`, built universal (arm64 + x86_64) from the
-same checkout, so the app and the nat it runs are never out of step and
+The bundle is Apple silicon only — gnat and its `nat` are both arm64, and
+both stripped (the unstripped gnat is kept beside the bundle, and published
+with each release, for symbolicating crash reports). It carries its own
+`nat`, built from the same checkout, so the app and the nat it runs are never out of step and
 nobody go-installs the same tool twice — building the bundle therefore needs
 the Go toolchain as well as Swift's. At startup the app composes its PATH
 from the bundled nat's directory, the login shell's PATH, and whatever
@@ -324,7 +326,7 @@ macos/
 ├── Tests/
 │   └── NatKitTests/              — unit tests; views are not tested for pixel perfection, only logic
 ├── Scripts/
-│   └── make-app.sh               — release build script (builds a universal gnat + bundles a universal nat)
+│   └── make-app.sh               — release build script (builds an arm64 gnat + bundles an arm64 nat)
 └── README.md                     — this file
 ```
 
