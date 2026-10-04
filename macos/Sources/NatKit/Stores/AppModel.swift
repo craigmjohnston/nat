@@ -61,6 +61,10 @@ public final class AppModel {
     /// The Plan tab's last ask to scroll to a proposed slice's box.
     public private(set) var workshopPlanScroll: WorkshopPlanScroll?
 
+    /// The edits in the Plan section whose new brief is unfolded, by the
+    /// edited task's title.
+    public var expandedProposalEdits: Set<String> = []
+
     /// The projects whose workshop has been opened and not yet launched or
     /// dismissed — each holding a "Workshop the plan" row in Active while the
     /// user is elsewhere, so clicking away loses neither the row nor the
@@ -1559,6 +1563,12 @@ public final class AppModel {
     public func showWorkshopTab(_ tab: WorkshopTab) {
         guard let id = activeProjectID, workshopTabs.contains(tab) else { return }
         workshopTabPicks[id] = tab
+    }
+
+    /// An edit row in the Plan section: its new brief unfolded, or folded
+    /// again.
+    public func toggleProposalEdit(_ name: String) {
+        if expandedProposalEdits.remove(name) == nil { expandedProposalEdits.insert(name) }
     }
 
     /// A slice row in the Plan section: the Plan tab up, scrolled to that

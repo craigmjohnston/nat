@@ -381,6 +381,9 @@ struct WorkshopNavigatorView: View {
                     Text(appModel.proposalError ?? ProposalText.projectAcceptCaption(project: projectName))
                         .ink(appModel.proposalError == nil ? .secondary : .danger)
                 }
+                if !proposal.removals.isEmpty {
+                    Text(ProposalText.removalWarning(count: proposal.removals.count)).ink(.warning)
+                }
             }
             ForEach(proposal.folders, id: \.milestoneID) { folder in
                 TreeMilestoneLine(
@@ -390,8 +393,104 @@ struct WorkshopNavigatorView: View {
                         .onTapGesture { appModel.showProposedSlice(slice.sliceID) }
                 }
             }
+            if proposal.changesBoard { boardChanges(proposal) }
         }
         .padding(.bottom, 8)
+    }
+
+    /// What the proposal does to tasks already planned, under what it
+    /// creates: a struck-through row per removal, a row per move naming
+    /// where it goes, a row per edit that unfolds its new brief.
+    @ViewBuilder
+    private func boardChanges(_ proposal: PlanProposal) -> some View {
+        NavProse { NavHeading(text: ProposalText.boardChangesHeading) }
+        if !proposal.removals.isEmpty {
+            ProposalChangeGroupLine(label: ProposalText.removeLabel, systemImage: "trash", count: proposal.removals.count)
+            ForEach(proposal.removals, id: \.self) { name in
+                ProposalChangeLine(title: name, struck: true)
+            }
+        }
+        if !proposal.moves.isEmpty {
+            ProposalChangeGroupLine(label: ProposalText.moveLabel, systemImage: "arrow.right", count: proposal.moves.count)
+            ForEach(proposal.moves, id: \.name) { move in
+                ProposalChangeLine(title: move.name)
+                Text(ProposalText.moveDestination(move.milestone))
+                    .monoXS().ink(.tertiary).lineLimit(1)
+                    .padding(.leading, 38)
+                    .padding(.trailing, 10)
+                    .padding(.bottom, 6)
+            }
+        }
+        if !proposal.edits.isEmpty {
+            ProposalChangeGroupLine(label: ProposalText.editLabel, systemImage: "pencil", count: proposal.edits.count)
+            ForEach(proposal.edits, id: \.name) { edit in
+                let open = appModel.expandedProposalEdits.contains(edit.name)
+                ProposalChangeLine(title: edit.name, disclosure: open)
+                    .onTapGesture { appModel.toggleProposalEdit(edit.name) }
+                if open {
+                    MarkdownView(text: edit.brief, size: GnatMetrics.body)
+                        .padding(.leading, 38)
+                        .padding(.trailing, 12)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+}
+
+/// The head of one kind of change in the Plan section — Remove, Move or
+/// Edit — in a milestone line's place: its glyph, its label, its count.
+private struct ProposalChangeGroupLine: View {
+    let label: String
+    let systemImage: String
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11))
+                .ink(.tertiary)
+                .frame(width: 16)
+            Text(label)
+                .font(.system(size: GnatMetrics.body))
+                .ink(.secondary)
+            Spacer(minLength: 0)
+            Text("\(count)").monoXS().ink(.tertiary)
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+    }
+}
+
+/// One task already planned that the proposal changes, as a slice line of
+/// the tree: struck through where it is removed, a disclosure chevron where
+/// its brief is replaced.
+private struct ProposalChangeLine: View {
+    let title: String
+    var struck = false
+    var disclosure: Bool?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            StateDot(state: .todo).frame(width: 12)
+            Text(title)
+                .font(.system(size: GnatMetrics.body))
+                .strikethrough(struck)
+                .ink(struck ? .tertiary : .secondary)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            if let disclosure {
+                Image(systemName: disclosure ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .ink(.tertiary)
+            }
+        }
+        .padding(.leading, 20)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+        .contentShape(Rectangle())
     }
 }
 

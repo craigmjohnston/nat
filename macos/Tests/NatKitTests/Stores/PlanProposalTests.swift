@@ -79,6 +79,37 @@ final class PlanProposalModelTests: XCTestCase {
         XCTAssertEqual(proposal.folders.map(\.isNew), [true, false, false], "only the milestone accepting creates is new")
     }
 
+    /// A project's proposal that supersedes work already planned carries
+    /// what it removes, moves and edits, trimmed as everything else is.
+    func testTheProposalCarriesItsRemovalsMovesAndEdits() throws {
+        let proposal = try JSONDecoder().decode(PlanProposal.self, from: Data("""
+        {"project": "p-1", "name": "", "plan": {"milestones": [{"name": "M9: New"}], "slices": [],
+          "remove": [" Old work "],
+          "move": [{"slice": "Wandering", "milestone": " M9: New "}],
+          "edit": [{"slice": "Rewritten", "description": "  A new **brief**.\\n"}]
+        }}
+        """.utf8))
+
+        XCTAssertEqual(proposal.removals, ["Old work"])
+        XCTAssertEqual(proposal.moves, [.init(name: "Wandering", milestone: "M9: New")])
+        XCTAssertEqual(proposal.edits, [.init(name: "Rewritten", brief: "A new **brief**.")])
+        XCTAssertTrue(proposal.changesBoard)
+        XCTAssertEqual(ProposalText.removalWarning(count: 1), "Accepting also removes 1 task already planned.")
+        XCTAssertEqual(ProposalText.removalWarning(count: 2), "Accepting also removes 2 tasks already planned.")
+        XCTAssertEqual(ProposalText.moveDestination("M9: New"), "→ M9: New")
+    }
+
+    func testAProposalWithoutTheListsChangesNothingOnTheBoard() throws {
+        let proposal = try JSONDecoder().decode(PlanProposal.self, from: Data("""
+        {"project": "p-1", "name": "", "plan": {"milestones": [{"name": "M9"}], "slices": []}}
+        """.utf8))
+
+        XCTAssertEqual(proposal.removals, [])
+        XCTAssertEqual(proposal.moves, [])
+        XCTAssertEqual(proposal.edits, [])
+        XCTAssertFalse(proposal.changesBoard)
+    }
+
     func testAProposalCreatingNoMilestoneStillHoldsItsSlices() throws {
         let proposal = try JSONDecoder().decode(PlanProposal.self, from: Data("""
         {"project": "p-1", "name": "", "plan": {"milestones": [], "slices": [
@@ -682,6 +713,15 @@ final class WorkshopTabFlowTests: XCTestCase {
 
         appModel.showProposedSlice("proposed-0-1")
         XCTAssertEqual(appModel.workshopPlanScroll?.token, 2, "asking for the same slice again still scrolls")
+    }
+
+    func testAnEditRowUnfoldsAndFoldsItsBrief() async {
+        let appModel = await model(client: ProposingClient())
+
+        appModel.toggleProposalEdit("Rewritten")
+        XCTAssertEqual(appModel.expandedProposalEdits, ["Rewritten"])
+        appModel.toggleProposalEdit("Rewritten")
+        XCTAssertEqual(appModel.expandedProposalEdits, [])
     }
 
     func testAPlanRowWithNoPlanTabAsksForNoScroll() async {

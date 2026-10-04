@@ -636,4 +636,27 @@ extension Fixtures {
                 """),
         ], isNew: false),
     ])
+
+    /// A tracked project's proposal that supersedes work already planned: a
+    /// new milestone with its replacement task, and one Todo task of the
+    /// fixture plan removed, one moved under the new milestone and one
+    /// rewritten.
+    public static let supersedingProposal = PlanProposal(
+        name: "",
+        milestones: [
+            .init(name: "M4: Gallery runner", slices: [
+                .init(name: "Render every story from one command", brief: """
+                    `gnat --all` renders each story to a PNG under `--out`, replacing the old gallery runner.
+                    """),
+            ]),
+        ],
+        removals: ["Run the gallery from the fixtures"],
+        moves: [.init(name: "Build a fixture library of canned app states", milestone: "M4: Gallery runner")],
+        edits: [.init(name: "Cache the plan on disk", brief: """
+            Keep the last `nat info` reading per project on disk and draw it first on launch.
+
+            - Written after every successful read.
+            - A read that fails leaves the cache as it was.
+            """)]
+    )
 }

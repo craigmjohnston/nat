@@ -154,7 +154,8 @@ func (c *claimedProposal) drop() {
 // nothing but the agent's session, and where the project's code lives is
 // Settings' to say. --name is required and --project is not given.
 //
-// --project applies the proposal's plan to a project that already exists —
+// --project applies the proposal's plan — remove, move and edit lists
+// included, in plan-apply's order — to a project that already exists —
 // no --name, which the project already has — validated against that
 // project's *current* plan with the same [validateAgainstProject] plan-apply
 // and plan-propose both run, so a plan the live project has since outgrown
@@ -314,7 +315,8 @@ func acceptIntoProject(ctx context.Context, env Env, projectRef string, asJSON b
 	// the proposal dropped together.
 	env.nudged()
 	logging.Action("plan accepted", "project", projectID,
-		"milestones", len(applied.Milestones), "slices", len(applied.Slices))
+		"milestones", len(applied.Milestones), "slices", len(applied.Slices),
+		"edited", len(applied.Edited), "moved", len(applied.Moved), "removed", len(applied.Removed))
 
 	if asJSON {
 		return writeJSON(env.Out, planAcceptedJSON{
@@ -325,17 +327,26 @@ func acceptIntoProject(ctx context.Context, env Env, projectRef string, asJSON b
 			},
 			Milestones: len(applied.Milestones),
 			Slices:     len(applied.Slices),
+			Edited:     len(applied.Edited),
+			Moved:      len(applied.Moved),
+			Removed:    len(applied.Removed),
 		})
 	}
-	_, err = fmt.Fprintf(env.Out, "Accepted %s into %q (project %s).\n",
-		counts(len(applied.Milestones), len(applied.Slices)), project.Name, projectID)
+	_, err = fmt.Fprintf(env.Out, "Accepted %s into %q (project %s)%s.\n",
+		counts(len(applied.Milestones), len(applied.Slices)), project.Name, projectID,
+		changesClause(len(applied.Edited), len(applied.Moved), len(applied.Removed)))
 	return err
 }
 
 // planAcceptedJSON is plan-accept's structured output: the project as
-// project-create --local reports it, and how much of the plan went in.
+// project-create --local reports it, how much of the plan went in, and how
+// many slices already on the board it edited, moved and removed (always 0 for
+// a new project, which has none).
 type planAcceptedJSON struct {
 	Project    createdProjectJSON `json:"project"`
 	Milestones int                `json:"milestones"`
 	Slices     int                `json:"slices"`
+	Edited     int                `json:"edited"`
+	Moved      int                `json:"moved"`
+	Removed    int                `json:"removed"`
 }

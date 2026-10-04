@@ -169,6 +169,10 @@ briefs.
    `repo` and `depends_on` are optional; nothing else is, and any other key is
    rejected. The whole document is validated before the first page is created.
 
+   The plan document's `dependencies`, `remove`, `move` and `edit` lists are
+   for a project that already has slices on its board, which a new one does
+   not: leave them out here.
+
    The order of the `slices` list is the order the slices land on the board, so
    write them in the order they should be worked; `milestones` is likewise the
    order the plan's phases are written in. `depends_on` names slices by title —

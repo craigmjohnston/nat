@@ -30,7 +30,7 @@ import (
 // only reach a slice the document itself creates. Its top-level dependencies
 // list exists only to reach a slice already on a board — there is none yet
 // — so it is refused outright rather than silently accepted and later
-// ignored. --project's plan is validated exactly as plan-apply validates
+// ignored, and so are its remove, move and edit lists, for the same reason. --project's plan is validated exactly as plan-apply validates
 // one, against that project's current shape and (where the plan depends on
 // anything) its slices — [validateAgainstProject] is the one implementation
 // both this and plan-apply run, so the two can never drift apart.
@@ -89,6 +89,12 @@ func planPropose(ctx context.Context, args []string, env Env) error {
 				"slice already on a project's board — there is no project yet for it to reach. Put what a new " +
 				"slice waits on in its own `depends_on` instead")
 		}
+		// remove, move and edit name slices already on a board, and there is
+		// none yet for them to change.
+		if p.changesAnything() {
+			return fmt.Errorf("plan-propose: the plan holds a `remove`, `move` or `edit` list, which changes " +
+				"slices already on a project's board — there is no project yet for it to change")
+		}
 		// No existing project means no existing milestones or slices to resolve
 		// against: every milestone a slice names, and everything it depends on,
 		// has to be something this same document creates.
@@ -131,7 +137,8 @@ func planPropose(ctx context.Context, args []string, env Env) error {
 	if *asJSON {
 		return writeJSON(env.Out, doc)
 	}
-	_, err = fmt.Fprintf(env.Out, "Proposed %s to %s as %q.\n", counts(len(p.Milestones), len(p.Slices)), label, suggested)
+	_, err = fmt.Fprintf(env.Out, "Proposed %s to %s as %q%s.\n", counts(len(p.Milestones), len(p.Slices)), label, suggested,
+		changesClause(len(p.Edit), len(p.Move), len(p.Remove)))
 	return err
 }
 
@@ -194,4 +201,13 @@ func writeProposalFile(path string, data []byte) error {
 		return fmt.Errorf("rename the temp file into place: %w", err)
 	}
 	return nil
+}
+
+// changesClause is the tail of a one-line report that says what a plan does to
+// slices already on the board, and nothing where it does nothing to them.
+func changesClause(edited, moved, removed int) string {
+	if edited+moved+removed == 0 {
+		return ""
+	}
+	return "; of the slices already there, " + changeCounts(edited, moved, removed)
 }
