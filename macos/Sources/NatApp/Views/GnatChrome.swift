@@ -142,6 +142,7 @@ struct GnatRowWash: ViewModifier {
     @Environment(\.ground) private var ground
     let selected: Bool
     var hoverable: Bool = true
+    @Environment(\.hoverForced) private var forced
     @State private var hovering = false
 
     func body(content: Content) -> some View {
@@ -152,7 +153,7 @@ struct GnatRowWash: ViewModifier {
 
     private var fill: Color {
         if selected { return DesignTokens.rowWash(selected: true, on: ground) }
-        if hoverable && hovering { return DesignTokens.rowWash(selected: false, on: ground) }
+        if hoverable && (hovering || forced) { return DesignTokens.rowWash(selected: false, on: ground) }
         return .clear
     }
 }

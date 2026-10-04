@@ -24,6 +24,9 @@ struct SidebarView: View {
     /// Where the Projects tree's scroll starts — nil, its top, everywhere
     /// but a story that shows a project's header pinned over its rows.
     var treeAnchor: UnitPoint?
+    /// A slice row of the tree to draw under the pointer — a story's, since
+    /// a render has no pointer; nil, `.onHover` alone decides.
+    var hoveredSlice: String?
     /// View ▸ Show/Hide Done Items.
     @Environment(\.showsDoneItems) private var showsDoneItems
 
@@ -74,16 +77,19 @@ struct SidebarView: View {
     ///     story's, since a render has no pointer.
     ///   - hoveredGroup: a source group's row to draw under the pointer, the
     ///     same way (a container, where both are given, wins).
+    ///   - hoveredSlice: a slice row to draw under the pointer, by slice ID.
     init(
         appModel: AppModel, onNewProject: @escaping () -> Void = {}, showsTitlebar: Bool = false,
         folded: [String: Bool] = [:], treeAnchor: UnitPoint? = nil,
         hoveredContainer: (projectID: String, containerID: String)? = nil,
-        hoveredGroup: (projectID: String, groupID: String)? = nil
+        hoveredGroup: (projectID: String, groupID: String)? = nil,
+        hoveredSlice: String? = nil
     ) {
         self.appModel = appModel
         self.onNewProject = onNewProject
         self.showsTitlebar = showsTitlebar
         self.treeAnchor = treeAnchor
+        self.hoveredSlice = hoveredSlice
         _fold = State(initialValue: folded)
         _hoveredSourceRow = State(initialValue: hoveredContainer.map {
             Self.sourceRowKey($0.projectID, container: $0.containerID)
@@ -1203,6 +1209,7 @@ struct SidebarView: View {
     private func sliceRow(_ row: SidebarSliceRow, indent: CGFloat = 34) -> some View {
         let selected = appModel.activeProjectID == row.projectID && appModel.selectedSliceID == row.sliceID
         return sliceLine(title: row.title, state: row.state, live: row.live, selected: selected, indent: indent)
+            .transformEnvironment(\.hoverForced) { if row.sliceID == hoveredSlice { $0 = true } }
             .onTapGesture { Task { await appModel.selectSlice(row.sliceID, inProject: row.projectID) } }
             .contextMenu {
                 sliceMenu(row, milestone: appModel.plan(projectID: row.projectID)?

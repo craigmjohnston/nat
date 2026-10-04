@@ -1016,6 +1016,18 @@ enum AppStories {
         },
 
         Story(
+            name: "sidebar-slice-hover",
+            summary: "The loaded sidebar with one slice row of the tree under the pointer: the hover wash, "
+                + "square and edge to edge, a step lighter than the selected row's.",
+            size: sidebar
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            return SidebarView(appModel: appModel, hoveredSlice: Fixtures.commentsSliceID)
+                .environment(\.pulsesPaused, true)
+        },
+
+        Story(
             name: "sidebar-scrolled",
             summary: "The sidebar, short, its Projects tree scrolled down: the active project's row pinned at the "
                 + "top of the tree over its milestones, the rows scrolling under it hidden behind it.",
