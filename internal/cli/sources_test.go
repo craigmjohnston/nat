@@ -168,8 +168,10 @@ func TestDefaultNewSourceReportsAFailedLookup(t *testing.T) {
 func TestProjectCreateSourceWritesThePlanThenTheConfig(t *testing.T) {
 	sp := newSourceProject(t, &source.Fake{})
 
+	// No name is written: a source project is called what its plugin calls
+	// itself.
 	entry := sp.saved.Projects[sp.id]
-	want := config.ProjectConfig{Name: "Work", Backend: config.BackendSource, Source: "demo", PlanDir: sp.planDir}
+	want := config.ProjectConfig{Backend: config.BackendSource, Source: "demo", PlanDir: sp.planDir}
 	if entry != want {
 		t.Errorf("config entry = %+v, want %+v", entry, want)
 	}
@@ -185,8 +187,9 @@ func TestProjectCreateSourceWritesThePlanThenTheConfig(t *testing.T) {
 	if err := json.Unmarshal(sp.out.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Project.Backend != "source" || got.Project.Source != "demo" || got.Project.PlanDir != sp.planDir {
-		t.Errorf("reported %+v", got.Project)
+	if got.Project.Backend != "source" || got.Project.Source != "demo" || got.Project.PlanDir != sp.planDir ||
+		got.Project.Name != "Demo source" {
+		t.Errorf("reported %+v, want it named by the plugin's title", got.Project)
 	}
 
 	// The text form names the plugin by its title, or its name with none.
@@ -195,8 +198,10 @@ func TestProjectCreateSourceWritesThePlanThenTheConfig(t *testing.T) {
 		t.Errorf("text = %q", out)
 	}
 	sp.fake.DescribeResult.Title = ""
-	if out := sp.run(t, "project-create", "Fourth", "--source", "demo"); !strings.Contains(out, "under demo's containers") ||
-		strings.Contains(out, "Plan directory") {
+	// With no title, and no name given (none is needed with --source), the
+	// plugin's own name.
+	if out := sp.run(t, "project-create", "--source", "demo"); !strings.Contains(out, "under demo's containers") ||
+		strings.Contains(out, "Plan directory") || !strings.HasPrefix(out, "# demo\n") {
 		t.Errorf("text = %q", out)
 	}
 }
@@ -607,14 +612,70 @@ func TestSliceShowCarriesTheContainer(t *testing.T) {
 	}
 }
 
+// A source project is called what its plugin calls itself wherever nat
+// names it — info, config-show, the known-projects list — whatever name its
+// config entry or its plan file carries; a plugin that will not describe
+// lends its own name.
+func TestASourceProjectIsNamedByItsPlugin(t *testing.T) {
+	sp := newSourceProject(t, &source.Fake{})
+	// An entry and a plan made before the rule, both naming it "Test".
+	entry := sp.saved.Projects[sp.id]
+	entry.Name = "Test"
+	sp.saved.Projects[sp.id] = entry
+	sp.saved.Projects["local-1"] = config.ProjectConfig{Name: "Mine", Backend: config.BackendLocal, PlanDir: sp.planDir}
+	db, err := sql.Open("sqlite3", "file:"+sp.planPath(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE project SET name = 'Test'`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	var info infoJSON
+	if err := json.Unmarshal([]byte(sp.run(t, "info", "--project", sp.id, "--json")), &info); err != nil {
+		t.Fatal(err)
+	}
+	if info.Project.Name != "Demo source" {
+		t.Errorf("info name = %q, want the plugin's title", info.Project.Name)
+	}
+
+	var doc configDoc
+	if err := json.Unmarshal([]byte(sp.run(t, "config-show", "--json")), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Projects[sp.id].Name != "Demo source" || doc.Projects["local-1"].Name != "Mine" {
+		t.Errorf("config-show projects = %+v", doc.Projects)
+	}
+	if sp.saved.Projects[sp.id].Name != "Test" {
+		t.Error("naming it wrote the config")
+	}
+	if err := sp.fail(t, "info", "--project", "nope"); !strings.Contains(err.Error(), sp.id+" (Demo source)") {
+		t.Errorf("unknown project = %v", err)
+	}
+
+	// A plugin that will not describe, or no way to run one: its name.
+	sp.fake.DescribeErr = errors.New("broken")
+	if err := json.Unmarshal([]byte(sp.run(t, "config-show", "--json")), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.Projects[sp.id].Name != "demo" {
+		t.Errorf("config-show with a broken plugin = %+v", doc.Projects[sp.id])
+	}
+	sp.env.NewSource = nil
+	if err := sp.fail(t, "info"); !strings.Contains(err.Error(), sp.id+" (demo)") {
+		t.Errorf("no project = %v", err)
+	}
+}
+
 func TestSourceProjectRefusalsAndLocalPaths(t *testing.T) {
 	sp := newSourceProject(t, &source.Fake{Details: map[string]source.ContainerDetail{"c1": {Title: "C"}}})
 	task := sp.addTask(t, "A", "c1")
 
-	if err := sp.fail(t, "project-mirror", "--parent", "p", "--parent-kind", "page", "--project", sp.id); !strings.Contains(err.Error(), `"Work" is a source project`) {
+	if err := sp.fail(t, "project-mirror", "--parent", "p", "--parent-kind", "page", "--project", sp.id); !strings.Contains(err.Error(), `"Demo source" is a source project`) {
 		t.Errorf("project-mirror = %v", err)
 	}
-	if err := sp.fail(t, "done-clear", "--project", sp.id); !strings.Contains(err.Error(), `"Work" is a source project`) {
+	if err := sp.fail(t, "done-clear", "--project", sp.id); !strings.Contains(err.Error(), `"Demo source" is a source project`) {
 		t.Errorf("done-clear = %v", err)
 	}
 	if out := sp.run(t, "slice-status", task, "--project", sp.id); out != "Todo\n" {

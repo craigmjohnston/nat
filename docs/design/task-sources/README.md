@@ -63,13 +63,16 @@ source (SHORTCUT)                 its own top-level sidebar section, headed by t
 
 Doing is the user's started stories; each segment, a top-level group of its
 own, its unstarted stories by a filter of team, Shortcut project, epic and
-labels; Done the user's stories completed this week (Monday on). The section
-header has a filter of its own that narrows every list, and a segment's
-filter overrides it field by field.
+labels — or, where its filter names a workflow state, that state's stories,
+started or not; Done the user's stories completed this week (Monday on). The
+section header has a filter of its own that narrows every list, and a
+segment's filter overrides it field by field; the state is a segment's
+alone, the section's filter having none.
 
 A card shows its id (`sc-4821`), title, Shortcut project (code + colour
-tag), workflow state, type, estimate, epic, labels, owner, requester,
-created, updated and iteration; its story body; comments (by, when, text)
+tag — its only badge; a story with no project has none), workflow state,
+type, estimate, epic, labels, owner, requester, created, updated and
+iteration; its story body; comments (by, when, text)
 with a composer; links (PRs with open/merged state, external docs); and
 its tasks, `n/m done`.
 
@@ -334,7 +337,7 @@ Response:
           "meta": "3 pts" },
         { "id": "4790", "title": "Board mouse support",
           "external_url": "https://app.shortcut.com/acme/story/4790",
-          "badges": [ { "text": "BD", "color": "#2a9d8f", "title": "Board" } ],
+          "badges": [ { "text": "WEB", "color": "#3d6fd9", "title": "Web App" } ],
           "meta": "2 pts" }
       ] },
     { "id": "ready/ready", "label": "Ready", "count": 1,
@@ -348,6 +351,9 @@ Response:
           { "id": "project", "label": "Project", "options": [
               { "id": "30", "label": "Mobile App", "color": "#e5732a" } ],
             "value": [], "inherited": "Mobile App" },
+          { "id": "state", "label": "State", "options": [
+              { "id": "500000012", "label": "Ready for Dev" } ],
+            "value": [] },
           { "id": "epic", "label": "Epic", "options": [], "value": [], "loading": true },
           { "id": "labels", "label": "Labels", "multi": true, "options": [
               { "id": "bug", "label": "bug", "color": "#d64545" } ],
@@ -356,7 +362,7 @@ Response:
       ],
       "containers": [
         { "id": "4802", "title": "Kanban column view",
-          "badges": [ { "text": "BD", "color": "#2a9d8f", "title": "Board" } ], "meta": "3 pts" }
+          "badges": [ { "text": "WEB", "color": "#3d6fd9", "title": "Web App" } ], "meta": "3 pts" }
       ] },
     { "id": "done", "label": "Done", "count": 36, "lazy": true,
       "containers": [
@@ -659,13 +665,17 @@ project.
 ### `project-create --source`
 
 ```
-nat project-create <name> --source <plugin name> [--plan-dir <dir>] [--description -] …
+nat project-create [<name>] --source <plugin name> [--plan-dir <dir>] [--description -] …
 ```
 
 In order: the plugin must be discovered and `describe` with protocol 1
 (refused otherwise, before any write); then the plan file is written; then
 the config entry (backend `source`, `source: <plugin name>`, `plan_dir`
-as for a local project). Mutually exclusive with `--local`. Needs no
+as for a local project, **no `name`**). A source project is called what its
+plugin calls itself — its `describe` `title`, else the plugin's name — read
+fresh wherever nat names it (`info`'s `project.name`, `config-show`, every
+message), so `<name>` is optional here and never recorded, and a `name` an
+older entry carries is ignored. Mutually exclusive with `--local`. Needs no
 Notion token. **A source project has no working directory** — its cards
 come from anywhere, so the repository is each task's own (`Repo`) — and
 `--repo` is refused with `--source`.
@@ -861,8 +871,15 @@ never overwrites what someone placed themselves. A plugin found on PATH is a
 **path** install.
 
 `nat plugin-uninstall <name>` removes `<config dir>/plugins/<name>/`, managed
-or manual. It is refused while any project is a source project of that
-plugin (naming them), and for a plugin found only on PATH (naming where).
+or manual. It is refused for a plugin found only on PATH (naming where), and
+while any project is a source project of that plugin (naming them, and
+`--delete-projects`). With `--delete-projects` it deletes each of those
+projects first — its plan file (and SQLite's `-wal`/`-shm` beside it; one
+already gone is fine), then its config entry, saved, clearing the active
+project where it was one — the reverse of `project-create`'s plan-then-config
+order, so a plan the OS refuses to remove stops the uninstall with that
+project whole and the plugin still installed. gnat asks before passing it,
+naming the projects.
 
 An installed managed plugin has an **update** when its source's latest
 release carries it at a newer version, versions compared as dotted integers;
@@ -882,7 +899,9 @@ a version that doesn't read that way is never newer.
   that name is installed by any means.
 - `plugin-install <name> [--source owner/repo] [--version V] --json` → the
   record above plus `name` and `path`.
-- `plugin-uninstall <name> --json` → `{"name", "path"}`.
+- `plugin-uninstall <name> [--delete-projects] --json` →
+  `{"name", "path", "projects_deleted": [{"id", "name"}]}` (`projects_deleted`
+  always an array, empty without the flag).
 - `plugin-source-add <owner/repo>` / `plugin-source-remove <owner/repo>`
   (`--json` → `{"sources": [...]}`, every source in reading order).
   Removing nat's own is refused, as is anything not shaped `owner/repo`.
@@ -940,14 +959,19 @@ a version that doesn't read that way is never newer.
 - **No `+` entry: connecting makes the section.** Once a plugin's `describe`
   says every `setup` field is set (`set` never `false`; for Shortcut, the
   token), gnat makes exactly one source project for it — `project-create
-  --source`, named after the plugin's `title`, with no working directory —
+  --source`, which is always named by the plugin's `title` (never by
+  config), with no working directory —
   and its section appears. Checked whenever the plugins are read: at start
   and after Settings ▸ Sources installs or sets one up. A plugin with a
   project already gets nothing more.
 - **The section heading is the plugin's `title`**, upper-cased, never the
   project's name, and nothing renames it; Rename and the filter editor are a
-  segment's. The header menu's Filter… and a segment's open the filter editor
-  as a popover anchored to the row.
+  segment's. A `filter` action is never a menu item: it is a filter (funnel)
+  button beside the menu — always on the section header, under the pointer
+  on a segment's row — filled in the accent while any field has a saved
+  value, and it opens the filter editor as a popover anchored to itself.
+  A single-choice field is a menu of checkmarks, never a pop-up picker, so a
+  field of hundreds of options (Shortcut's epics) costs nothing until opened.
 - **Container selected.** A third selection kind beside slices and
   sessions, mutually exclusive with both. Navigator: titlebar icon + tag +
   title; a facts card with **New task**; one section per `sections` entry

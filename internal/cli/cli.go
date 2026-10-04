@@ -397,10 +397,11 @@ usage:
                       install it under nat's plugins directory. Over an
                       install of nat's own this is the update; over one put
                       there by hand it is refused
-  nat plugin-uninstall <name> [--json]
+  nat plugin-uninstall <name> [--delete-projects] [--json]
                       remove a plugin from nat's plugins directory; refused
-                      while a project is a source project of it, and for a
-                      plugin found only on PATH
+                      while a project is a source project of it unless
+                      --delete-projects deletes those projects (plan file and
+                      config entry) first, and for a plugin found only on PATH
   nat plugin-source-add <owner/repo> [--json]
   nat plugin-source-remove <owner/repo> [--json]
                       add or remove a GitHub repository plugins may be
@@ -730,7 +731,7 @@ func Run(ctx context.Context, args []string, env Env) error {
 	case "plugin-install":
 		return pluginInstall(ctx, args[1:], env)
 	case "plugin-uninstall":
-		return pluginUninstall(args[1:], env)
+		return pluginUninstall(ctx, args[1:], env)
 	case "plugin-source-add":
 		return pluginSourceAdd(args[1:], env)
 	case "plugin-source-remove":
@@ -774,6 +775,11 @@ func (e Env) projectFor(id string) (config.Config, string, config.ProjectConfig,
 	cfg, key, project, err := e.namedProject(strings.TrimSpace(id))
 	if err == nil {
 		cfg.AssigneeUserID, cfg.AssigneeUserName = cfg.AssigneeFor(project)
+		// A source project is called what its plugin calls itself, never what
+		// its entry says.
+		if project.IsSource() {
+			project.Name = sourceProjectName(context.Background(), e, project.Source)
+		}
 	}
 	return cfg, key, project, err
 }
@@ -786,7 +792,8 @@ func (e Env) projectFor(id string) (config.Config, string, config.ProjectConfig,
 func (e Env) noProject() (config.Config, string, config.ProjectConfig, error) {
 	cfg, _, _ := e.Load()
 	return cfg, "", config.ProjectConfig{}, fmt.Errorf(
-		"no project given: pass --project with a project's page ID%s", knownProjects(cfg))
+		"no project given: pass --project with a project's page ID%s",
+		knownProjects(withSourceNames(context.Background(), e, cfg)))
 }
 
 // namedProject resolves one project of the config file by its ID — a key of the
@@ -815,7 +822,8 @@ func (e Env) namedProject(id string) (config.Config, string, config.ProjectConfi
 			return cfg, key, p, nil
 		}
 	}
-	return cfg, "", config.ProjectConfig{}, fmt.Errorf("no project %s in the config file%s", id, knownProjects(cfg))
+	return cfg, "", config.ProjectConfig{}, fmt.Errorf("no project %s in the config file%s", id,
+		knownProjects(withSourceNames(context.Background(), e, cfg)))
 }
 
 // knownProjects lists what the config file does hold, for the error that says

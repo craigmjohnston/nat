@@ -59,14 +59,45 @@ public final class PluginsModel {
         case setup(SetupKey)
     }
 
+    /// An uninstall waiting on the user's word: the plugin is the source of
+    /// these projects, by name, and uninstalling it deletes them. The view
+    /// draws it as an alert; `confirmUninstall` or `cancelUninstall` clears it.
+    public private(set) var pendingUninstall: PendingUninstall?
+
+    /// One uninstall that would delete projects.
+    public struct PendingUninstall: Equatable, Sendable {
+        public let plugin: InstalledPlugin
+        public let projects: [String]
+    }
+
+    /// What changed about one plugin: which, and the projects nat deleted
+    /// with it (an uninstall's `projects_deleted`; empty for anything else).
+    public struct PluginChange: Equatable, Sendable {
+        public let plugin: String
+        public let deletedProjectIDs: [String]
+
+        public init(plugin: String, deletedProjectIDs: [String] = []) {
+            self.plugin = plugin
+            self.deletedProjectIDs = deletedProjectIDs
+        }
+    }
+
     @ObservationIgnored private let client: NatClientProtocol
+    /// The names of the projects a plugin is the source of — the app model's
+    /// config, read when an uninstall is asked for.
+    @ObservationIgnored private let projectsUsing: @MainActor (String) -> [String]
     /// Told after a plugin is installed, taken away or set up, so what else
     /// reads the installed plugins — the app model, which makes a connected
-    /// plugin's section — reads them again.
-    @ObservationIgnored private let pluginsChanged: @MainActor () async -> Void
+    /// plugin's section and draws its projects — reads them again.
+    @ObservationIgnored private let pluginsChanged: @MainActor (PluginChange) async -> Void
 
-    public init(client: NatClientProtocol, pluginsChanged: @escaping @MainActor () async -> Void = {}) {
+    public init(
+        client: NatClientProtocol,
+        projectsUsing: @escaping @MainActor (String) -> [String] = { _ in [] },
+        pluginsChanged: @escaping @MainActor (PluginChange) async -> Void = { _ in }
+    ) {
         self.client = client
+        self.projectsUsing = projectsUsing
         self.pluginsChanged = pluginsChanged
     }
 
@@ -95,21 +126,48 @@ public final class PluginsModel {
     }
 
     public func install(_ plugin: AvailablePlugin) async {
-        await run(.install(source: plugin.source, name: plugin.name), changesPlugins: true) {
+        await run(.install(source: plugin.source, name: plugin.name), changing: plugin.name) {
             _ = try await self.client.pluginInstall(name: plugin.name, source: plugin.source, version: nil)
+            return []
         }
     }
 
     /// An update is an install from the source it came from, at its latest.
     public func update(_ plugin: InstalledPlugin) async {
-        await run(.update(name: plugin.name), changesPlugins: true) {
+        await run(.update(name: plugin.name), changing: plugin.name) {
             _ = try await self.client.pluginInstall(name: plugin.name, source: plugin.source, version: nil)
+            return []
         }
     }
 
+    /// Uninstalls straight away where no project uses the plugin; where any
+    /// does, asks first (`pendingUninstall`), since the uninstall deletes them.
     public func uninstall(_ plugin: InstalledPlugin) async {
-        await run(.uninstall(name: plugin.name), changesPlugins: true) {
-            _ = try await self.client.pluginUninstall(name: plugin.name)
+        let using = projectsUsing(plugin.name)
+        guard using.isEmpty else {
+            pendingUninstall = PendingUninstall(plugin: plugin, projects: using)
+            return
+        }
+        await uninstall(plugin, deleteProjects: false)
+    }
+
+    /// The user said yes to `pending`: uninstall, deleting the projects
+    /// named. It is handed in rather than read back, since the alert that
+    /// asked has already cleared `pendingUninstall` by the time this runs.
+    public func confirmUninstall(_ pending: PendingUninstall) async {
+        pendingUninstall = nil
+        await uninstall(pending.plugin, deleteProjects: true)
+    }
+
+    /// The user said no: nothing is run.
+    public func cancelUninstall() {
+        pendingUninstall = nil
+    }
+
+    private func uninstall(_ plugin: InstalledPlugin, deleteProjects: Bool) async {
+        await run(.uninstall(name: plugin.name), changing: plugin.name) {
+            try await self.client.pluginUninstall(name: plugin.name, deleteProjects: deleteProjects)
+                .projectsDeleted.map(\.id)
         }
     }
 
@@ -117,15 +175,17 @@ public final class PluginsModel {
     public func addSource() async {
         let repo = newSource.trimmingCharacters(in: .whitespaces)
         guard canAddSource else { return }
-        await run(.addSource, changesPlugins: false) {
+        await run(.addSource, changing: nil) {
             _ = try await self.client.pluginSourceAdd(repo: repo)
             self.newSource = ""
+            return []
         }
     }
 
     public func removeSource(_ repo: String) async {
-        await run(.removeSource(repo: repo), changesPlugins: false) {
+        await run(.removeSource(repo: repo), changing: nil) {
             _ = try await self.client.pluginSourceRemove(repo: repo)
+            return []
         }
     }
 
@@ -159,24 +219,28 @@ public final class PluginsModel {
         running.remove(.setup(key))
         // A value set may be what connects the plugin, and connecting it is
         // what makes its sidebar section (AppModel.ensureSourceProjects).
-        if saved { await pluginsChanged() }
+        if saved { await pluginsChanged(PluginChange(plugin: plugin)) }
     }
 
     /// One action: its spinner up while nat runs, its refusal kept, and the
     /// listing read again either way — a refusal may still have changed
     /// something, and the tab draws only what nat says now.
-    private func run(_ action: Action, changesPlugins: Bool, _ body: @MainActor () async throws -> Void) async {
+    /// `changing` names the plugin the action is about, nil for a source
+    /// edit, which changes no plugin; `body` answers the projects nat
+    /// deleted, if any.
+    private func run(_ action: Action, changing plugin: String?, _ body: @MainActor () async throws -> [String]) async {
         guard !running.contains(action) else { return }
         running.insert(action)
         actionError = nil
+        var deleted: [String] = []
         do {
-            try await body()
+            deleted = try await body()
         } catch {
             actionError = Self.message(error)
         }
         await load()
         running.remove(action)
-        if changesPlugins { await pluginsChanged() }
+        if let plugin { await pluginsChanged(PluginChange(plugin: plugin, deletedProjectIDs: deleted)) }
     }
 
     private static func message(_ error: Error) -> String {

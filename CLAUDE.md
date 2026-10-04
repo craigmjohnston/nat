@@ -314,7 +314,10 @@ directory with no worktree or git read, and its prompt sends the agent to
 work the repository out from the card, ask the user where it cannot tell,
 record it with `nat slice-repo`, and cut its worktree by nat's own naming;
 from then on every path finds it through `actions.WorkdirFor`. A new task on
-a card starts from the repository of the card's latest task with one. gnat
+a card starts from the repository of the card's latest task with one. **A
+source project's name is its plugin's `describe` title** (else the plugin's
+name), read fresh wherever nat or gnat names it — config holds none, and a
+`name` an older entry carries is ignored. gnat
 makes a plugin's one source project itself the moment the plugin is
 connected (every `describe` setup field set) — there is no new-project entry
 for one. The protocol and the `nat` contract are specified in
@@ -325,7 +328,9 @@ for one. The protocol and the `nat` contract are specified in
 plugin source's release, checked against its manifest's sha256, with an
 `installed.json` beside it. A plugin directory with no such record was put
 there by hand and is **never overwritten**; uninstall is **refused while any
-project uses the plugin** (naming them) and for one found only on PATH. nat's
+project uses the plugin** (naming them) unless `--delete-projects` — which
+gnat passes only once the user confirms, naming them — deletes those projects
+(plan file, then config entry), and for one found only on PATH. nat's
 own repo is always the first source and **can't be removed**; a source that
 can't be read is its `error`, never "no plugins". Format and contract:
 `docs/design/task-sources/README.md`, "Installing plugins".

@@ -253,8 +253,9 @@ struct WindowShellView: View {
     }
 
     /// Where the selection sits, read left to right: a slice's project and
-    /// milestone, a source task's container, a workshop's or session's
-    /// project, a container's project — then the selection itself.
+    /// milestone, a source task's container (and no project — a source's
+    /// trail is card, then task), a workshop's or session's project — then
+    /// the selection itself.
     private var crumbs: TitlebarCrumbs {
         if appModel.activeTabIsUntitled && !appModel.untitledWorkshopVisible {
             return TitlebarCrumbs(title: projectName)
@@ -276,9 +277,9 @@ struct WindowShellView: View {
             return TitlebarCrumbs(project: projectName, parent: milestoneName(of: slice), title: slice.name)
         }
         if let containerID = appModel.selectedContainerID {
-            return TitlebarCrumbs(
-                project: projectName,
-                title: appModel.containerTitle(containerID, inProject: appModel.activeProjectID ?? ""))
+            // A container alone: no project crumb before it, as a source
+            // task's trail starts at its container.
+            return TitlebarCrumbs(title: appModel.containerTitle(containerID, inProject: appModel.activeProjectID ?? ""))
         }
         // Nothing selected: no breadcrumb at all.
         return .none

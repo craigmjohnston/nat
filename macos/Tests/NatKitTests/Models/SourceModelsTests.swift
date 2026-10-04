@@ -100,6 +100,25 @@ final class SourceModelsTests: XCTestCase {
         XCTAssertEqual(again, action)
     }
 
+    /// A filter is a button of its own, never a menu item, and it reads as
+    /// on while any field has a saved choice.
+    func testTheFilterIsDrawnApartAndSaysWhetherItNarrows() {
+        let field = { (value: [String]) in SourceFilterField(id: "team", label: "Team", value: value) }
+        let off = SourceAction(id: "filter", label: "Filter…", input: .filter, fields: [field([]), field([])])
+        let on = SourceAction(id: "filter", label: "Filter…", input: .filter, fields: [field([]), field(["board"])])
+        XCTAssertFalse(off.isNarrowing)
+        XCTAssertTrue(on.isNarrowing)
+        XCTAssertFalse(SourceAction(id: "x", label: "X", input: .text, fields: [field(["a"])]).isNarrowing,
+                       "only a filter narrows")
+
+        let rename = SourceAction(id: "rename", label: "Rename…", input: .text)
+        let menu = [rename, on, SourceAction(id: "remove", label: "Remove", destructive: true)]
+        XCTAssertEqual(menu.filterAction, on)
+        XCTAssertEqual(menu.menuItems.map(\.id), ["rename", "remove"])
+        XCTAssertNil([rename].filterAction)
+        XCTAssertEqual([on].menuItems, [], "a menu of only a filter draws no menu")
+    }
+
     func testDescribeSaysWhetherThePluginIsConnected() throws {
         let unset = try decode(SourceDescribe.self, #"{"name":"sc","setup":[{"id":"token","label":"API token","input":"secret","set":false}]}"#)
         XCTAssertFalse(unset.isConnected)

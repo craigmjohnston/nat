@@ -97,6 +97,22 @@ public struct SourceAction: Codable, Equatable, Sendable, Identifiable {
         fields = (try? c.list(SourceFilterField.self, .fields)) ?? []
         destructive = ((try? c.decodeIfPresent(Bool.self, forKey: .destructive)) ?? nil) ?? false
     }
+
+    /// Whether a `filter` action narrows anything now: some field has a
+    /// saved choice. What tints the filter button as on.
+    public var isNarrowing: Bool {
+        input == .filter && fields.contains { !$0.value.isEmpty }
+    }
+}
+
+extension Array where Element == SourceAction {
+    /// The `filter` action among these, which the sidebar draws as a button
+    /// of its own beside the menu rather than as one of its items.
+    public var filterAction: SourceAction? { first { $0.input == .filter } }
+
+    /// What a menu of these lists: everything but the `filter` action, which
+    /// has its button.
+    public var menuItems: [SourceAction] { filter { $0.input != .filter } }
 }
 
 /// One choice of a filter field; `color` (`#rrggbb`) tints it.

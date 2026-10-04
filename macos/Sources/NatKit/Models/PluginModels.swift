@@ -213,14 +213,41 @@ public struct PluginInstalled: Codable, Equatable, Sendable {
     }
 }
 
-/// `nat plugin-uninstall --json`: the directory taken away.
+/// `nat plugin-uninstall --json`: the directory taken away, and the source
+/// projects of the plugin deleted with it (`--delete-projects`; empty
+/// without, and read as empty from a nat too old to send it).
 public struct PluginUninstalled: Codable, Equatable, Sendable {
     public let name: String
     public let path: String
+    public let projectsDeleted: [DeletedProject]
 
-    public init(name: String, path: String) {
+    /// One source project an uninstall deleted.
+    public struct DeletedProject: Codable, Equatable, Sendable {
+        public let id: String
+        public let name: String
+
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case name, path
+        case projectsDeleted = "projects_deleted"
+    }
+
+    public init(name: String, path: String, projectsDeleted: [DeletedProject] = []) {
         self.name = name
         self.path = path
+        self.projectsDeleted = projectsDeleted
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        path = try c.decode(String.self, forKey: .path)
+        projectsDeleted = try c.decodeIfPresent([DeletedProject].self, forKey: .projectsDeleted) ?? []
     }
 }
 

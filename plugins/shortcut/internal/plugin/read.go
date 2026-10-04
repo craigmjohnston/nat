@@ -78,12 +78,11 @@ func (a *app) sidebar(ctx context.Context) ([]byte, error) {
 	})
 }
 
-// buildSidebar reads who the token is and the names of the segments' epics
-// (which a segment is searched by), then everything else the tree needs in
-// one parallel round — workflows, teams, projects, labels and every group's
-// search — then the epics of any story with no project or team (for its
-// badge, through the long cache), and draws it. The epic list the filter
-// editor offers is never fetched here: see cachedEpics.
+// buildSidebar reads who the token is, the workflows and the names of the
+// segments' epics (a segment is searched by an epic's name and a state's),
+// then everything else the tree needs in one parallel round — teams,
+// projects, labels and every group's search — and draws it. The epic list the
+// filter editor offers is never fetched here: see cachedEpics.
 func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse, error) {
 	_, proj, err := a.settings()
 	if err != nil {
@@ -102,6 +101,7 @@ func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse,
 	var r refs
 	if err := parallel(
 		func() (err error) { me, err = a.sc.Me(ctx); return err },
+		into(ctx, &r.workflows, a.sc.Workflows),
 		func() error { r.epics = lookup(ctx, a, "epic", segEpics, a.sc.Epic); return nil },
 	); err != nil {
 		return sidebarResponse{}, err
@@ -112,11 +112,10 @@ func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse,
 	var doneTotal int
 	segs := make([][]shortcut.Story, len(proj.Segments))
 	fns := []func() error{
-		into(ctx, &r.workflows, a.sc.Workflows),
 		into(ctx, &r.groups, a.sc.Groups),
 		// Projects are a badge and a filter's options, nothing the tree
 		// needs to be drawn: a workspace that won't list them (Shortcut
-		// calls them deprecated) badges by team instead.
+		// calls them deprecated) draws no badges.
 		func() error { r.projects, _ = a.sc.Projects(ctx); return nil },
 		func() error { r.labels = listed(ctx, a, "labels", a.sc.Labels); return nil },
 		func() (err error) {
@@ -143,15 +142,6 @@ func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse,
 	if err := parallel(fns...); err != nil {
 		return sidebarResponse{}, err
 	}
-	var epicIDs []int64
-	for _, st := range slices.Concat(append(segs, doing, done)...) {
-		_, inProject := r.project(st.ProjectID)
-		if _, inTeam := r.group(st.GroupID); !inProject && !inTeam {
-			epicIDs = append(epicIDs, st.EpicID)
-		}
-	}
-	r.epics = append(r.epics, lookup(ctx, a, "epic", epicIDs, a.sc.Epic)...)
-
 	byPosition := func(x, y shortcut.Story) int { return compare(x.Position, y.Position) }
 
 	slices.SortStableFunc(doing, byPosition)
@@ -165,9 +155,14 @@ func (a *app) buildSidebar(ctx context.Context, doneOpen bool) (sidebarResponse,
 	groups := []source.Group{doingGroup}
 	for i, s := range proj.Segments {
 		g := source.Group{ID: s.GroupID(), Label: s.Name, Menu: r.segmentMenu(s.Filter, proj.Filter)}
-		stories := slices.DeleteFunc(segs[i], func(st shortcut.Story) bool {
-			return r.stateType(st.WorkflowStateID) != shortcut.StateUnstarted
-		})
+		// A segment lists unstarted stories — unless it names its state, in
+		// which case the user said exactly which, and the search has it.
+		stories := segs[i]
+		if s.Filter.State == "" {
+			stories = slices.DeleteFunc(stories, func(st shortcut.Story) bool {
+				return r.stateType(st.WorkflowStateID) != shortcut.StateUnstarted
+			})
+		}
 		slices.SortStableFunc(stories, byPosition)
 		for _, st := range stories {
 			g.Containers = append(g.Containers, r.row(st))

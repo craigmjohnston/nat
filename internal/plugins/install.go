@@ -17,6 +17,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/source"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // maxBinary caps a download: a plugin is a Go binary of some megabytes, two
@@ -202,39 +203,94 @@ func (m *Manager) download(ctx context.Context, url string, w io.Writer) (string
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// DeletedProject is a source project an uninstall deleted with its plugin.
+type DeletedProject struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Uninstalled is what an uninstall took away: the plugin's directory, and
+// the source projects of it deleted beside it (empty unless asked for).
+type Uninstalled struct {
+	Path            string
+	ProjectsDeleted []DeletedProject
+}
+
 // Uninstall takes the plugin of the name away: its whole directory under
-// plugins/, managed or put there by hand — the user asked. It is refused
-// while any project is a source project of it, naming them, since that
-// project's sidebar would lose its plugin; and refused for a plugin found
-// only on PATH, which is not nat's to remove. It answers the directory it
-// removed.
-func (m *Manager) Uninstall(name string, cfg config.Config) (string, error) {
+// plugins/, managed or put there by hand — the user asked. While any project
+// is a source project of it, it is refused, naming them, since that
+// project's sidebar would lose its plugin — unless deleteProjects says to
+// delete them first. It is refused for a plugin found only on PATH, which is
+// not nat's to remove, before any project is touched. Its projects are named
+// title — a source project is called what its plugin calls itself, never
+// what its entry says.
+//
+// Each project goes as project-create made it, in reverse: its plan file
+// (and SQLite's -wal/-shm beside it; a file already gone is fine) first, then
+// its config entry, saved through save — so a removal the OS refuses stops
+// with that project still whole, and no entry ever names a plan that is
+// gone. The active project is cleared where it was one of them.
+func (m *Manager) Uninstall(name, title string, cfg config.Config, deleteProjects bool, save func(config.Config) error) (Uninstalled, error) {
 	if err := ValidName(name); err != nil {
-		return "", err
+		return Uninstalled{}, err
 	}
-	var using []string
+	var ids, using []string
 	for id, p := range cfg.Projects {
 		if p.IsSource() && p.Source == name {
-			using = append(using, fmt.Sprintf("%s (%s)", p.Name, id))
+			ids = append(ids, id)
 		}
 	}
-	if len(using) > 0 {
-		slices.Sort(using)
-		return "", fmt.Errorf("plugin %s is the source of %s: delete or move those projects first", name, strings.Join(using, ", "))
+	slices.Sort(ids)
+	for _, id := range ids {
+		using = append(using, fmt.Sprintf("%s (%s)", title, id))
+	}
+	slices.Sort(using)
+	if len(using) > 0 && !deleteProjects {
+		return Uninstalled{}, fmt.Errorf("plugin %s is the source of %s: delete or move those projects first, or pass --delete-projects", name, strings.Join(using, ", "))
 	}
 	dir := m.pluginDir(name)
-	if _, err := os.Lstat(dir); err == nil {
-		if err := os.RemoveAll(dir); err != nil {
-			return "", err
+	if _, err := os.Lstat(dir); err != nil {
+		p, found, err := source.Find(m.ConfigDir, name)
+		if err != nil {
+			return Uninstalled{}, err
 		}
-		return dir, nil
+		if found {
+			return Uninstalled{}, fmt.Errorf("plugin %s is on PATH at %s, not installed by nat: remove it there", name, p.Path)
+		}
+		return Uninstalled{}, fmt.Errorf("no plugin %s is installed", name)
 	}
-	p, found, err := source.Find(m.ConfigDir, name)
+	out := Uninstalled{Path: dir, ProjectsDeleted: []DeletedProject{}}
+	for _, id := range ids {
+		p := cfg.Projects[id]
+		if err := removePlan(store.ProjectOf(id, p)); err != nil {
+			return out, fmt.Errorf("delete project %s (%s): %w", title, id, err)
+		}
+		delete(cfg.Projects, id)
+		if cfg.ActiveProjectID == id {
+			cfg.ActiveProjectID = ""
+		}
+		if err := save(cfg); err != nil {
+			return out, fmt.Errorf("delete project %s (%s): save config: %w", title, id, err)
+		}
+		out.ProjectsDeleted = append(out.ProjectsDeleted, DeletedProject{ID: id, Name: title})
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// removePlan deletes a project's plan file and the SQLite journal files
+// beside it. One that is not there is already deleted.
+func removePlan(p store.Project) error {
+	path, err := store.PlanPath(p)
 	if err != nil {
-		return "", err
+		return err
 	}
-	if found {
-		return "", fmt.Errorf("plugin %s is on PATH at %s, not installed by nat: remove it there", name, p.Path)
+	for _, f := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 	}
-	return "", fmt.Errorf("no plugin %s is installed", name)
+	return nil
 }

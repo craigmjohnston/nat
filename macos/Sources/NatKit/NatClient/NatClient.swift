@@ -159,9 +159,14 @@ public final class NatClient: Sendable {
     }
 
     /// Remove one plugin from nat's plugins directory — `nat
-    /// plugin-uninstall`, refused while a project uses it.
-    public func pluginUninstall(name: String) async throws -> PluginUninstalled {
-        let output = try await runNat(arguments: ["plugin-uninstall", name, "--json"])
+    /// plugin-uninstall`, refused while a project uses it unless
+    /// `deleteProjects` (`--delete-projects`) deletes those projects first —
+    /// passed only once the user has confirmed it.
+    public func pluginUninstall(name: String, deleteProjects: Bool) async throws -> PluginUninstalled {
+        var arguments = ["plugin-uninstall", name]
+        if deleteProjects { arguments.append("--delete-projects") }
+        arguments.append("--json")
+        let output = try await runNat(arguments: arguments)
         return try decodeJSON(PluginUninstalled.self, from: output)
     }
 

@@ -38,8 +38,16 @@ fuller structure and theme system.
   other `plugin-*` answers; Settings ▸ Sources draws them through
   `PluginsModel` (Installed, Available, Plugin sources), each button one
   `nat plugin-*` call and then a fresh `plugin-list`, and an install,
-  uninstall or setup Save re-reads `AppModel.sourcePlugins` — which is how
-  a plugin just connected gets its section (see **Task sources**). An
+  update, uninstall or setup Save is `AppModel.pluginChanged` (a
+  `PluginChange` naming the plugin): it re-reads `AppModel.sourcePlugins` —
+  which is how a plugin just connected gets its section (see **Task
+  sources**) — and then that plugin's source projects' plans (`rereadSource`;
+  `info` asks the plugin every read, so the new binary's tree, menus and
+  filter fields show at once). Uninstalling a plugin a project uses asks
+  first (`PluginsModel.pendingUninstall`, an alert naming the projects);
+  only "Delete and Uninstall" sends `--delete-projects`, and the projects
+  nat answers it deleted lose their tabs and stores (`projectsDeleted`), the
+  plugin free to make a fresh one if installed again. An
   installed row draws its `describe_error` as a warning line and its
   `setup` fields beneath it (`SecureField` for `secret`; `set == false` a
   "<label> not set" warning over it, `true` a quiet "<label> set" ✓ and a
@@ -249,8 +257,10 @@ explicit frame; keep it so. Stories: `window-visuals`,
 
 **Task sources.** There is no new-project entry for one: **connecting a
 plugin makes its section.** `AppModel.ensureSourceProjects` makes exactly one
-source project — `project-create --source`, named after the plugin's title,
-no working directory — for each plugin whose `describe` is connected
+source project — `project-create --source`, no working directory, and named
+by the plugin wherever gnat names it (`AppModel.tabName`: the plugin's
+`displayTitle` from `sourcePlugins`, else the plugin's name; never config's
+`name`) — for each plugin whose `describe` is connected
 (`SourceDescribe.isConnected`: no setup field `set == false`), takes it into
 the sidebar without opening it, and makes it once per run whatever a config
 re-read says. It runs after each reading of `source-list` and once config is
@@ -265,16 +275,24 @@ and Scratch (`SidebarModel.sources`, `SidebarSource`): the plugin's icon
 plugin's **title**, never the project's name (nothing renames the section),
 and the header `menu` (the `sidebar` response's where it sent one); then the
 plugin's groups (one level of children), container rows (`SidebarContainer`
-— badges; under the pointer the `meta` and a `+` that takes the badges'
-trailing slot, hiding them, so nothing shifts; `menu`, Open in <source>) and
+— the stacked-card glyph with tasks under it, `SourceGlyph.emptyContainer`
+(one card) with none; badges, each one fixed width (`SourceBadgeView.width`,
+three mono characters, longer text shrinks); under the pointer the `meta` and
+a `+` centred in the badge's slot, hiding them, so nothing shifts; `menu`,
+Open in <source>) and
 each container's tasks, the
 plan's slices whose `milestoneID` is the container's id, through
 `displayState(for:)` like every row (Hide Done applies; a container in two
 groups is one container). A lazy group's fold is `AppModel.sourceExpanded`,
 passed on every read as `info --expand` (`ProjectStore.expand`). Plugin
 actions run through `AppModel.runSourceAction` (`text` asks in a sheet,
-`choice` is a submenu, `filter` opens `SourceFilterPopover` — a `.popover`
-anchored to the header or the segment's row, its choices a
+`choice` is a submenu; `filter` is no menu item (`[SourceAction].menuItems`
+drops it) but `SidebarView.filterButton` beside the ellipsis — always on the
+header, on hover on a segment's row, filled in the accent while
+`SourceAction.isNarrowing` — opening `SourceFilterPopover`, a `.popover`
+anchored to the button, its single-choice fields menus wrapping an inline
+picker (a `.menu` picker builds every option before the popover can show:
+~0.2 s for 400 epics, ~1 s for 2,000), its choices a
 `SourceFilterDraft`, "Any" naming what it falls through to, a `loading`
 field read once more through `AppModel.rereadSource` — `destructive` is
 confirmed), then re-read the plan. Every section but Active, folded, pins to
@@ -288,14 +306,19 @@ project and, like the PR screen, keeps a stale reading on a failed re-read.
 facts and tasks, then comments/links; unknown kinds skipped) and
 `ContainerFocus` what is open and what `ContainerPane` shows. A task under a
 container shows the container and its `facts` in place of the milestone,
-the PR section its `task_note`, and the breadcrumb `<container> / <task>`;
-`CrumbTree` has a group → container level for source projects.
+the PR section its `task_note`, and the breadcrumb `<container> / <task>` —
+no project or group (segment) crumb, a selected container its own crumb
+alone; `CrumbTree`'s middle column for a source project is its containers
+(each once, in fold order), no group column. Stories:
+`crumb-tree-picker-source`, `titlebar-band-source-task`,
+`titlebar-band-container`.
 `DesignTokens.wireTint`/`wireBadge` are the one place a plugin's `#rrggbb`
 becomes a `Color` (as a hue through the palette's rules). Stories:
 `sidebar-source`, `sidebar-source-error`, `window-container`,
 `window-container-links`, `window-source-task-brief`,
 `window-source-task-pr`, `sidebar-source-hover`, `sidebar-source-projects-open`,
-`sidebar-source-folded`, `sidebar-source-all-folded`, `source-filter-popover`,
+`sidebar-source-folded`, `sidebar-source-all-folded`, `sidebar-source-segment-hover`,
+`source-filter-popover`,
 `source-filter-popover-section`, `source-filter-popover-loading`.
 
 ## The diff is AppKit, laid out exactly

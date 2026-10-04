@@ -70,18 +70,19 @@ enum AppStories {
     /// unless `folded` says otherwise — the first card selected.
     private static func sourceSidebar(
         client: FixtureNatClient = FixtureNatClient(), folded: [String: Bool] = ["work": true],
-        hoveredContainer: String? = nil
+        hoveredContainer: String? = nil, hoveredGroup: String? = nil
     ) async -> some View {
         let appModel = await Fixtures.startedAppModel(client: client, config: Fixtures.sourceConfig)
         await appModel.selectContainer(Fixtures.sourceCardID, inProject: Fixtures.sourceProjectID)
         return SidebarView(
             appModel: appModel, folded: folded,
-            hoveredContainer: hoveredContainer.map { (Fixtures.sourceProjectID, $0) })
+            hoveredContainer: hoveredContainer.map { (Fixtures.sourceProjectID, $0) },
+            hoveredGroup: hoveredGroup.map { (Fixtures.sourceProjectID, $0) })
             .environment(\.pulsesPaused, true)
     }
 
-    /// The filter editor as it opens from a menu, alone — a real popover is a
-    /// window of its own, which no render of the main one can show.
+    /// The filter editor as it opens from its button, alone — a real popover
+    /// is a window of its own, which no render of the main one can show.
     private static func filterPopover(_ action: SourceAction?) -> some View {
         SourceFilterPopover(action: action ?? Fixtures.sourceFilterAction([:]), onCancel: {}, onApply: { _ in })
             .surface(.window)
@@ -305,6 +306,17 @@ enum AppStories {
         FixtureNatClient(otherPlans: [
             Fixtures.secondProjectID: Fixtures.secondProjectInfo, Fixtures.scratchProjectID: scratchPlan,
         ])
+    }
+
+    /// The breadcrumb's tree picker as a source task's container crumb opens
+    /// it: projects, the source project's cards (no segment column), the
+    /// card's tasks.
+    private static func sourceCrumbTreePicker() async -> some View {
+        let appModel = await Fixtures.startedAppModel(config: Fixtures.sourceConfig)
+        let tree = CrumbTree(
+            model: appModel.sidebarModel, projectID: Fixtures.sourceProjectID, container: Fixtures.sourceCardID)
+        return CrumbTreePicker(tree: tree, onPick: { _ in })
+            .environment(\.pulsesPaused, true)
     }
 
     /// The breadcrumb's tree picker, as a milestone crumb opens it.
@@ -702,6 +714,15 @@ enum AppStories {
             size: CGSize(width: 693, height: 320)
         ) {
             await crumbTreePicker()
+        },
+
+        Story(
+            name: "crumb-tree-picker-source",
+            summary: "The tree picker opened from a source task\u{2019}s card crumb: projects, the source "
+                + "project\u{2019}s cards \u{2014} every card once, no segment column \u{2014} then the card\u{2019}s tasks.",
+            size: CGSize(width: 693, height: 320)
+        ) {
+            await sourceCrumbTreePicker()
         },
 
         Story(
@@ -1114,9 +1135,11 @@ enum AppStories {
         Story(
             name: "sidebar-source",
             summary: "The Work source project's own fold, headed by the plugin's title, never the project's: "
-                + "its icon and header menu, Doing with its cards and their tasks, the Mine and Board segments "
-                + "as top-level groups (one card in both), the lazy Done folded with its count; the first card "
-                + "selected, and its badges where the + would be under the pointer. Projects, folded, pins to the foot.",
+                + "its icon, filter button (filled: the section narrows) and header menu, Doing with its cards "
+                + "and their tasks, the Mine and Board segments as top-level groups (one card in both), the lazy "
+                + "Done folded with its count; a card with tasks drawn as the stacked card, one with none as the "
+                + "single card; project badges one fixed width, a card with no project none; the first card "
+                + "selected. Projects, folded, pins to the foot.",
             size: sidebar
         ) {
             await sourceSidebar()
@@ -1124,11 +1147,20 @@ enum AppStories {
 
         Story(
             name: "sidebar-source-hover",
-            summary: "A card row under the pointer: its estimate shows, and the + takes the badge's place "
-                + "rather than pushing it left — the title does not move.",
+            summary: "A card row under the pointer: its estimate shows, and the + takes the badge's fixed "
+                + "slot, centred where the badge was, rather than pushing it left — the title does not move.",
             size: sidebar
         ) {
-            await sourceSidebar(hoveredContainer: Fixtures.sourceSecondCardID)
+            await sourceSidebar(hoveredContainer: Fixtures.sourceBoardCardID)
+        },
+
+        Story(
+            name: "sidebar-source-segment-hover",
+            summary: "A segment row under the pointer: its filter button (filled in the accent, the segment "
+                + "narrowing) beside its menu, both hidden otherwise.",
+            size: sidebar
+        ) {
+            await sourceSidebar(hoveredGroup: "ready/board")
         },
 
         Story(
@@ -1208,18 +1240,20 @@ enum AppStories {
 
         Story(
             name: "source-filter-popover",
-            summary: "A segment's Filter…: Team, Project, Epic and Labels over the workspace's choices, "
-                + "opened on the segment's own (team Board); where the section sets a field, Any names "
-                + "what it falls through to (\u{201C}Any (section\u{2019}s: Mobile App)\u{201D}).",
-            size: CGSize(width: 360, height: 240)
+            summary: "A segment's Filter…, opened from its row's filter button: Team, Project, State (a "
+                + "segment's alone), Epic and Labels over the workspace's choices, opened on the segment's own "
+                + "(team Board); where the section sets a field, Any names what it falls through to "
+                + "(\u{201C}Any (section\u{2019}s: Mobile App)\u{201D}).",
+            size: CGSize(width: 360, height: 280)
         ) {
             filterPopover(Fixtures.sourceGroups()[1].menu.first { $0.input == .filter })
         },
 
         Story(
             name: "source-filter-popover-section",
-            summary: "The section header's Filter…: the same four fields, narrowing every list the fold "
-                + "draws (here, the Mobile App project), with nothing wider to fall through to.",
+            summary: "The section header's Filter…, opened from the header's filter button: four fields, no "
+                + "State, narrowing every list the fold draws (here, the Mobile App project), with nothing "
+                + "wider to fall through to.",
             size: CGSize(width: 360, height: 240)
         ) {
             filterPopover(Fixtures.sourceInfo().menu.first { $0.input == .filter })
@@ -1228,8 +1262,8 @@ enum AppStories {
         Story(
             name: "source-filter-popover-loading",
             summary: "The editor opened before the plugin's background fetch of the epic list has landed: "
-                + "Epic says it is loading, and the other three fields work regardless.",
-            size: CGSize(width: 360, height: 240)
+                + "Epic says it is loading, and the other fields work regardless.",
+            size: CGSize(width: 360, height: 280)
         ) {
             filterPopover(Fixtures.sourceGroups(epicsLoading: true)[1].menu.first { $0.input == .filter })
         },
@@ -1300,13 +1334,14 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-container",
-            summary: "A container\u{2019}s band: the project crumb, then the source\u{2019}s icon and the "
-                + "container\u{2019}s title, no tag; no tabs and no trailing items.",
+            summary: "A container\u{2019}s band: no project crumb \u{2014} a source\u{2019}s trail starts at the "
+                + "card \u{2014} just the source\u{2019}s icon, tag and the container\u{2019}s title; no tabs and "
+                + "no trailing items.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(
                 tabs: [], selected: nil,
-                crumbs: TitlebarCrumbs(project: Fixtures.project.name, title: "Billing export"),
+                crumbs: TitlebarCrumbs(title: "Billing export"),
                 identity: .container(title: "Billing export", tag: "SC", icon: SourceIcon(symbol: "rectangle.stack")))
         },
 

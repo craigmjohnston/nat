@@ -55,6 +55,11 @@ func info(ctx context.Context, args []string, env Env) error {
 	}
 
 	p := plan.Project
+	// The plan file may hold a name for a source project (one made before
+	// the rule); its plugin's title, from projectFor, is the name.
+	if project.IsSource() {
+		p.Name = project.Name
+	}
 
 	if asJSON {
 		var src *sourceInfoJSON

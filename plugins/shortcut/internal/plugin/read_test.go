@@ -147,19 +147,19 @@ func TestSidebarDefault(t *testing.T) {
 	got := tree(t, h.call("sidebar", `"expand":[]`))
 	// Segments are top-level groups between Doing and Done; the default is
 	// Ready, every unstarted story. A story's badge is its Shortcut project
-	// (abbreviation, else a code from its name; its colour, else grey), else
-	// its team.
+	// (abbreviation, else a code from its name; its colour, else grey), and a
+	// story with none has no badge.
 	want := strings.Join([]string{
 		"doing Doing 1: 4821[MOB #e5732a Mobile App|3 pts]",
-		"ready/ready Ready 2 " + segMenu + ": 4811[WE #8e8e93 Web|] 4802[BO #2aa198 Board|1 pt]",
+		"ready/ready Ready 2 " + segMenu + ": 4811[WE #8e8e93 Web|] 4802[|1 pt]",
 		"done Done 1 lazy:",
 	}, "\n")
 	if got != want {
 		t.Errorf("sidebar:\n%s\nwant:\n%s", got, want)
 	}
-	// owner:me goes out as the token's mention name; every story has a
-	// project or a team, so no epic is looked up; and the epic list is never
-	// fetched on the sidebar's path.
+	// owner:me goes out as the token's mention name; no story's epic is
+	// looked up for a badge; and the epic list is never fetched on the
+	// sidebar's path.
 	wantGets := []string{
 		"/groups", "/labels", "/member", "/projects",
 		"/search/stories !is:done", "/search/stories " + doneThisWeek, "/search/stories owner:craig is:started",
@@ -245,14 +245,20 @@ func TestSidebarSegmentsAndTeam(t *testing.T) {
 		{ID: "parity", Name: "Parity", Filter: settings.Filter{Epic: "10"}},
 		{ID: "board", Name: "Board", Filter: settings.Filter{Team: "board"}},
 		{ID: "none", Name: "Nothing", Filter: settings.Filter{Labels: []string{"no such"}}},
+		// A segment naming its state lists that state's stories, started or
+		// not: the user said which; the unstarted trim is the default's.
+		{ID: "dev", Name: "Dev", Filter: settings.Filter{State: strconv.FormatInt(fakeshortcut.StateInDev, 10)}},
+		{ID: "gone", Name: "Gone", Filter: settings.Filter{State: "999"}},
 	}})
 	got := tree(t, h.call("sidebar", `"expand":[]`))
 	want := strings.Join([]string{
 		"doing Doing 1: 4821[MOB #e5732a Mobile App|3 pts]",
 		"ready/web Web 1 " + segMenu + ": 4811[WE #8e8e93 Web|]",
 		"ready/parity Parity 1 " + segMenu + ": 4811[WE #8e8e93 Web|]",
-		"ready/board Board 1 " + segMenu + ": 4802[BO #2aa198 Board|1 pt]",
+		"ready/board Board 1 " + segMenu + ": 4802[|1 pt]",
 		"ready/none Nothing 0 " + segMenu + ":",
+		"ready/dev Dev 1 " + segMenu + ": 4821[MOB #e5732a Mobile App|3 pts]",
+		"ready/gone Gone 0 " + segMenu + ":",
 		"done Done 1 lazy:",
 	}, "\n")
 	if got != want {
@@ -265,6 +271,9 @@ func TestSidebarSegmentsAndTeam(t *testing.T) {
 		`/search/stories epic:"Native app parity" !is:done`,
 		"/search/stories team:board !is:done",
 		`/search/stories label:"no such" !is:done`,
+		`/search/stories state:"In Development" !is:done`,
+		// A state the workflows no longer have goes out by its id.
+		`/search/stories state:"999" !is:done`,
 		"/epics/10",
 	} {
 		if !slices.Contains(h.gets(), q) {
@@ -286,23 +295,23 @@ func TestSidebarSegmentsAndTeam(t *testing.T) {
 	}
 }
 
-// A story with no project badges by its team, else its epic (coloured by the
-// epic's team), else nothing — the epic looked up only for such a story.
-func TestSidebarBadgeFallbacks(t *testing.T) {
+// Only a Shortcut project draws as a badge: a story with none has no badge
+// — not its team's, not its epic's — and no epic is looked up for one.
+func TestSidebarBadgeIsTheProjectAlone(t *testing.T) {
 	h := newHarness(t)
 	h.fake.Stories[fakeshortcut.StoryBug].ProjectID = 0
 	h.fake.Stories[fakeshortcut.StoryReady].ProjectID = fakeshortcut.ProjectLegacy // archived still badges
 	got := tree(t, h.call("sidebar", `"expand":[]`))
-	if !strings.Contains(got, "4811[NAP #2aa198 Native app parity|] 4802[LEG #123456 Legacy|1 pt]") {
+	if !strings.Contains(got, "4811[|] 4802[LEG #123456 Legacy|1 pt]") {
 		t.Errorf("sidebar:\n%s", got)
 	}
-	if !slices.Contains(h.gets(), "/epics/10") {
-		t.Errorf("the team-less story's epic was not looked up: %q", h.gets())
+	if slices.ContainsFunc(h.gets(), func(g string) bool { return strings.HasPrefix(g, "/epics") }) {
+		t.Errorf("an epic was looked up for a badge: %q", h.gets())
 	}
-	// A workspace that won't list projects badges by team instead.
+	// A workspace that won't list projects draws no badges.
 	h.fake.Fail = map[string]int{"GET /projects": 404}
 	h.now = h.now.Add(time.Minute)
-	if got := tree(t, h.call("sidebar", `"expand":[]`)); !strings.HasPrefix(got, "doing Doing 1: 4821[NA #2c3e7a Native App|3 pts]") {
+	if got := tree(t, h.call("sidebar", `"expand":[]`)); !strings.HasPrefix(got, "doing Doing 1: 4821[|3 pts]") {
 		t.Errorf("no projects:\n%s", got)
 	}
 }

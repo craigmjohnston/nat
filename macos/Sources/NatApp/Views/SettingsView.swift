@@ -60,8 +60,10 @@ struct SettingsView: View {
         self.appModel = appModel
         self.client = client
         _selectedTab = State(initialValue: initialTab)
-        _plugins = State(initialValue: plugins ?? PluginsModel(client: client) { [appModel] in
-            await appModel.reloadSourcePlugins()
+        _plugins = State(initialValue: plugins ?? PluginsModel(
+            client: client, projectsUsing: { [appModel] in appModel.sourceProjectNames(of: $0) }
+        ) { [appModel] change in
+            await appModel.pluginChanged(change)
         })
     }
 
@@ -241,6 +243,22 @@ struct SettingsView: View {
         }
         .settingsForm()
         .task { await plugins.loadIfNeeded() }
+        .alert(
+            plugins.pendingUninstall.map { "Uninstall \($0.plugin.name) and delete its projects?" } ?? "",
+            isPresented: Binding(
+                get: { plugins.pendingUninstall != nil },
+                set: { if !$0 { plugins.cancelUninstall() } }),
+            presenting: plugins.pendingUninstall
+        ) { pending in
+            // The alert's own dismissal clears the pending uninstall before a
+            // task runs, so the button hands over the one it was drawn for.
+            Button("Delete and Uninstall", role: .destructive) {
+                Task { await plugins.confirmUninstall(pending) }
+            }
+            Button("Cancel", role: .cancel) { plugins.cancelUninstall() }
+        } message: { pending in
+            Text("These projects and their tasks are deleted with it:\n" + pending.projects.joined(separator: "\n"))
+        }
     }
 
     private func installedSection(_ listing: PluginListing) -> some View {

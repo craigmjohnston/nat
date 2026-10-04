@@ -2,9 +2,9 @@ import SwiftUI
 import NatKit
 
 /// The titlebar breadcrumb's tree picker: projects, then the open project's
-/// milestones (its loose slices above them), then the open milestone's
-/// slices — a column apiece, a column view's way. Picking a slice selects it
-/// and closes the picker.
+/// milestones (its loose slices above them) — a source project's containers
+/// — then the open milestone's slices or container's tasks, a column apiece,
+/// a column view's way. Picking a slice selects it and closes the picker.
 struct CrumbTreePicker: View {
     @State private var tree: CrumbTree
     let onPick: (SidebarSliceRow) -> Void
@@ -49,23 +49,7 @@ struct CrumbTreePicker: View {
                         } action: {
                             tree.milestone = milestone.name
                         }
-                    case .group(let group):
-                        row(selected: group.id == tree.group, opens: true) {
-                            Text(group.label.uppercased())
-                                .font(.system(size: 11))
-                                .tracking(0.7)
-                        } action: {
-                            tree.open(group: group.id)
-                        }
-                    }
-                }
-            }
-            // A source project's containers, between its groups and a
-            // container's tasks.
-            if let containers = tree.containers {
-                divider
-                column {
-                    ForEach(containers) { container in
+                    case .container(let container):
                         row(selected: container.id == tree.container, opens: true) {
                             Image(systemName: SourceGlyph.container)
                                 .font(.system(size: 11))

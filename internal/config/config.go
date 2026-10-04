@@ -23,7 +23,11 @@ var marshalIndent = json.MarshalIndent
 
 // ProjectConfig describes one tracked project.
 type ProjectConfig struct {
-	Name string `json:"name"`
+	// Name is what the project is called — except a source project's, which
+	// is always its plugin's title (read by nat when it names one), so
+	// project-create --source writes none and one an older entry carries is
+	// never read. Omitted where empty.
+	Name string `json:"name,omitempty"`
 	// SlicesDSID is the Notion data source the plan is kept in. A project of
 	// nat's own has none, so it is omitted rather than written empty.
 	SlicesDSID string `json:"slices_ds_id,omitempty"`

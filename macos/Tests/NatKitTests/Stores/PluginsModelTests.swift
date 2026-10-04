@@ -100,10 +100,16 @@ final class PluginModelsTests: XCTestCase {
     }
 
     func testPluginUninstallAndSourceArguments() async throws {
+        // An older nat sends no projects_deleted: none.
         let gone = PluginStubRunner(stdout: #"{"name": "demo", "path": "/c/plugins/demo"}"#)
-        let uninstalled = try await NatClient(commandRunner: gone).pluginUninstall(name: "demo")
+        let uninstalled = try await NatClient(commandRunner: gone).pluginUninstall(name: "demo", deleteProjects: false)
         XCTAssertEqual(gone.lastArguments, ["plugin-uninstall", "demo", "--json"])
         XCTAssertEqual(uninstalled, PluginUninstalled(name: "demo", path: "/c/plugins/demo"))
+
+        let deleting = PluginStubRunner(stdout: #"{"name": "demo", "path": "/c/plugins/demo", "projects_deleted": [{"id": "p1", "name": "Work"}]}"#)
+        let deleted = try await NatClient(commandRunner: deleting).pluginUninstall(name: "demo", deleteProjects: true)
+        XCTAssertEqual(deleting.lastArguments, ["plugin-uninstall", "demo", "--delete-projects", "--json"])
+        XCTAssertEqual(deleted.projectsDeleted, [PluginUninstalled.DeletedProject(id: "p1", name: "Work")])
 
         let sources = PluginStubRunner(stdout: #"{"sources": ["craigmjohnston/nat", "a/b"]}"#)
         let client = NatClient(commandRunner: sources)
@@ -130,7 +136,7 @@ final class PluginModelsTests: XCTestCase {
         let calls: [(String, () async throws -> Void)] = [
             ("plugin-list", { _ = try await client.pluginList() }),
             ("plugin-install", { _ = try await client.pluginInstall(name: "x", source: nil, version: nil) }),
-            ("plugin-uninstall", { _ = try await client.pluginUninstall(name: "x") }),
+            ("plugin-uninstall", { _ = try await client.pluginUninstall(name: "x", deleteProjects: false) }),
             ("plugin-source-add", { _ = try await client.pluginSourceAdd(repo: "a/b") }),
             ("plugin-source-remove", { _ = try await client.pluginSourceRemove(repo: "a/b") }),
             ("source-setup", { _ = try await client.sourceSetup(plugin: "x", id: "token", value: "v") }),
@@ -153,7 +159,7 @@ final class PluginModelsTests: XCTestCase {
         XCTAssertEqual(listing, Fixtures.pluginListingEmpty)
         let installed = try await client.pluginInstall(name: "demo", source: nil, version: nil)
         XCTAssertEqual(installed.source, "craigmjohnston/nat")
-        _ = try await client.pluginUninstall(name: "demo")
+        _ = try await client.pluginUninstall(name: "demo", deleteProjects: false)
         let added = try await client.pluginSourceAdd(repo: "a/b")
         XCTAssertEqual(added.sources, ["craigmjohnston/nat", "a/b"])
         let removed = try await client.pluginSourceRemove(repo: "craigmjohnston/nat")
@@ -175,8 +181,8 @@ final class PluginModelsTests: XCTestCase {
 final class PluginsModelTests: XCTestCase {
     func testLoadOnceAndEveryAction() async {
         let client = FixtureNatClient()
-        var changed = 0
-        let model = PluginsModel(client: client) { changed += 1 }
+        var changed: [PluginsModel.PluginChange] = []
+        let model = PluginsModel(client: client, pluginsChanged: { changed.append($0) })
 
         await model.loadIfNeeded()
         XCTAssertEqual(model.listing, Fixtures.pluginListing)
@@ -188,7 +194,11 @@ final class PluginsModelTests: XCTestCase {
         await model.install(shortcut)
         await model.update(demo)
         await model.uninstall(demo)
-        XCTAssertEqual(changed, 3)
+        XCTAssertEqual(changed, [
+            PluginsModel.PluginChange(plugin: "shortcut"), PluginsModel.PluginChange(plugin: "demo"),
+            PluginsModel.PluginChange(plugin: "demo"),
+        ], "each names its plugin; no project used demo, so none was deleted")
+        XCTAssertNil(model.pendingUninstall, "nothing to ask with no project using it")
 
         XCTAssertFalse(model.canAddSource)
         model.newSource = " someone/plugins "
@@ -197,7 +207,7 @@ final class PluginsModelTests: XCTestCase {
         XCTAssertEqual(model.newSource, "")
         await model.addSource()
         await model.removeSource("someone/plugins")
-        XCTAssertEqual(changed, 3, "a source edit installs nothing")
+        XCTAssertEqual(changed.count, 3, "a source edit installs nothing")
 
         XCTAssertEqual(client.writes, [
             "plugin-install shortcut --source craigmjohnston/nat",
@@ -208,6 +218,36 @@ final class PluginsModelTests: XCTestCase {
         ])
         XCTAssertTrue(model.running.isEmpty)
         XCTAssertNil(model.actionError)
+    }
+
+    /// A plugin some project uses is not uninstalled on the click: the
+    /// projects are named and the user asked, and only a yes sends
+    /// `--delete-projects`. What nat deleted reaches whoever reads plugins.
+    func testUninstallingAPluginInUseAsksFirst() async {
+        let config = ConfigDoc(
+            agentSplitPercent: 45, pollSeconds: 60, workshopAgent: AgentModel(model: nil, effort: nil),
+            sliceAgent: AgentModel(model: nil, effort: nil),
+            projects: ["p1": ConfigDocProject(name: "Work", workingDir: "", backend: .source, source: "demo")])
+        let client = FixtureNatClient(config: config)
+        var changed: [PluginsModel.PluginChange] = []
+        let model = PluginsModel(client: client, projectsUsing: { $0 == "demo" ? ["Work"] : [] }) { changed.append($0) }
+        let demo = Fixtures.pluginListing.installed[0]
+
+        await model.uninstall(demo)
+        XCTAssertEqual(model.pendingUninstall, PluginsModel.PendingUninstall(plugin: demo, projects: ["Work"]))
+        XCTAssertTrue(client.writes.isEmpty, "nothing runs before the user says")
+        XCTAssertTrue(changed.isEmpty)
+
+        model.cancelUninstall()
+        XCTAssertNil(model.pendingUninstall)
+        XCTAssertTrue(client.writes.isEmpty, "cancel runs nothing")
+
+        await model.uninstall(demo)
+        guard let pending = model.pendingUninstall else { return XCTFail("not asked") }
+        await model.confirmUninstall(pending)
+        XCTAssertNil(model.pendingUninstall)
+        XCTAssertEqual(client.writes, ["plugin-uninstall demo --delete-projects"])
+        XCTAssertEqual(changed, [PluginsModel.PluginChange(plugin: "demo", deletedProjectIDs: ["p1"])])
     }
 
     func testRefusalsAreShownNotSwallowed() async {
@@ -261,13 +301,16 @@ final class PluginsModelTests: XCTestCase {
     /// plugins hears of it; a refusal changes nothing to hear of.
     func testSaveSetupTellsWhoeverReadsThePlugins() async {
         var told = 0
-        let model = PluginsModel(client: FixtureNatClient(plugins: Fixtures.pluginListingShortcut)) { told += 1 }
+        let model = PluginsModel(client: FixtureNatClient(plugins: Fixtures.pluginListingShortcut), pluginsChanged: {
+            XCTAssertEqual($0, PluginsModel.PluginChange(plugin: "shortcut"))
+            told += 1
+        })
         let key = PluginsModel.SetupKey(plugin: "shortcut", field: "token")
         model.setupValues[key] = "s3cret"
         await model.saveSetup(plugin: "shortcut", field: "token")
         XCTAssertEqual(told, 1)
 
-        let refusing = PluginsModel(client: FixtureNatClient(behaviour: .refusing("no"))) { told += 1 }
+        let refusing = PluginsModel(client: FixtureNatClient(behaviour: .refusing("no")), pluginsChanged: { _ in told += 1 })
         refusing.setupValues[key] = "wrong"
         await refusing.saveSetup(plugin: "shortcut", field: "token")
         XCTAssertEqual(told, 1)

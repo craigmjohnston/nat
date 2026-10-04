@@ -546,12 +546,28 @@ public final class AppModel {
     }
 
     /// Reads the task-source plugins, once: `sourcePlugins` stays empty on a
-    /// failed read.
+    /// failed read. The source projects' tabs take their plugins' titles.
     public func loadSourcePlugins() async {
         guard !sourcePluginsLoaded else { return }
         sourcePluginsLoaded = true
         sourcePlugins = (try? await clientFactory().sourceList()) ?? []
+        projectTabs = projectTabs.map { tab in
+            config?.projects[tab.id]?.backend == .source ? (id: tab.id, name: tabName(tab.id, fallback: tab.name)) : tab
+        }
         if makesSourceProjects { await ensureSourceProjects() }
+    }
+
+    /// What a project is called wherever gnat names it — its tab, its
+    /// sidebar row, the breadcrumb: a source project's plugin's title
+    /// (`sourcePlugins`' `displayTitle`, else the plugin's name), never the
+    /// `name` its config entry may carry; any other project's config name.
+    /// `fallback` where config has no such project.
+    public func tabName(_ id: String, fallback: String = "") -> String {
+        guard let entry = config?.projects[id] else { return fallback }
+        if entry.backend == .source, let plugin = entry.source {
+            return sourcePlugins.first { $0.name == plugin }?.displayTitle ?? plugin
+        }
+        return entry.name
     }
 
     /// Connecting a plugin makes its section: every plugin whose `describe`
@@ -575,7 +591,7 @@ public final class AppModel {
                     name: plugin.displayTitle, repo: nil, description: nil, source: plugin.name)
                 await reloadConfig()
                 if !projectTabs.contains(where: { $0.id == created.id }) {
-                    projectTabs.append((id: created.id, name: self.config?.projects[created.id]?.name ?? created.name))
+                    projectTabs.append((id: created.id, name: tabName(created.id, fallback: created.name)))
                 }
                 loadBackgroundProject(created.id)
             } catch {
@@ -589,6 +605,75 @@ public final class AppModel {
     public func reloadSourcePlugins() async {
         sourcePluginsLoaded = false
         await loadSourcePlugins()
+    }
+
+    /// The names of the projects a plugin is the source of, as config has
+    /// them — what Settings ▸ Sources names before an uninstall deletes them.
+    public func sourceProjectNames(of plugin: String) -> [String] {
+        (config?.projects ?? [:]).filter { $0.value.source == plugin }.map { tabName($0.key) }.sorted()
+    }
+
+    /// Settings ▸ Sources installed, updated, uninstalled or set up a plugin.
+    /// The projects nat deleted with it lose their tabs and stores first (and
+    /// the plugin may make a fresh one if it is installed again); then the
+    /// plugins are read again, and every source project of the plugin re-reads
+    /// its plan — `info` asks the plugin for its tree every time, so the
+    /// sidebar, menus and filter fields are the new binary's at once rather
+    /// than at the next poll. A Notion or local project has no plugin to ask
+    /// and is left alone.
+    public func pluginChanged(_ change: PluginsModel.PluginChange) async {
+        if !change.deletedProjectIDs.isEmpty {
+            await projectsDeleted(change.deletedProjectIDs)
+            sourceProjectsMade.remove(change.plugin)
+        }
+        await reloadSourcePlugins()
+        // `.replica` (rereadSource's) is enough: `nat info` describes the
+        // plugin and reads its sidebar on every read, `--refresh` or not —
+        // that flag only pulls a Notion replica.
+        let ids = (config?.projects ?? [:])
+            .filter { $0.value.source == change.plugin && !change.deletedProjectIDs.contains($0.key) }
+            .map(\.key).sorted()
+        for id in ids {
+            await rereadSource(projectID: id)
+        }
+    }
+
+    /// Projects nat deleted: config re-read, and each one's tab, store and
+    /// per-project state dropped, as a mirrored project's old ID is. The
+    /// active project moves to the tab beside where it was — the scratch tab
+    /// included, since it is a project like any other — and with no tab
+    /// left, the board stops reading one.
+    private func projectsDeleted(_ ids: [String]) async {
+        await reloadConfig()
+        let gone = Set(ids)
+        let activeIndex = projectTabs.firstIndex { $0.id == activeProjectID }
+        for id in ids { forgetProjectState(id) }
+        projectTabs.removeAll { gone.contains($0.id) }
+        guard let active = activeProjectID, gone.contains(active) else { return }
+        if projectTabs.isEmpty {
+            activeProjectID = nil
+            pollTask?.cancel()
+            pollTask = nil
+            nudgeWatcher?.stop()
+            nudgeWatcher = nil
+        } else {
+            await activateProject(projectTabs[min(activeIndex ?? 0, projectTabs.count - 1)].id)
+        }
+    }
+
+    /// Drops what the app holds for one project that is no longer this ID:
+    /// its store and every per-project reading keyed by it.
+    private func forgetProjectState(_ id: String) {
+        stores[id] = nil
+        containerStores[id] = nil
+        sourceExpanded[id] = nil
+        selectedSliceIDs[id] = nil
+        selectedSessionIDs[id] = nil
+        selectedContainerIDs[id] = nil
+        workshopSelectedProjects.remove(id)
+        workshopPinnedProjects.remove(id)
+        workshopDrafts[id] = nil
+        acceptedPlans[id] = nil
     }
 
     /// Start the app: load config, create project store, start timers.
@@ -633,7 +718,7 @@ public final class AppModel {
             if let scratch = scratchProjectID, let at = sortedProjects.firstIndex(where: { $0.key == scratch }) {
                 sortedProjects.insert(sortedProjects.remove(at: at), at: 0)
             }
-            self.projectTabs = sortedProjects.map { (id: $0.key, name: $0.value.name) }
+            self.projectTabs = sortedProjects.map { (id: $0.key, name: tabName($0.key, fallback: $0.value.name)) }
 
             // Create activity store (app-wide)
             let activityStore = activityStoreFactory()
@@ -853,9 +938,10 @@ public final class AppModel {
             isUntitledTab(untitled) ? projectTabs.firstIndex(where: { $0.id == untitled }) : nil
         }
         if !projectTabs.contains(where: { $0.id == id }) {
-            // The config's own name where it has one — it is what every other
-            // tab is labelled with — and what the command reported otherwise.
-            let tab = (id: id, name: config.projects[id]?.name ?? name)
+            // The config's own name where it has one (a source project's
+            // plugin's) — it is what every other tab is labelled with — and
+            // what the command reported otherwise.
+            let tab = (id: id, name: tabName(id, fallback: name))
             if let replaced {
                 projectTabs[replaced] = tab
             } else {
@@ -1600,15 +1686,8 @@ public final class AppModel {
         mirrorNudgeMemory.disarm(oldID)
         mirrorNudgePending.remove(oldID)
         await reloadConfig()
-        stores[oldID] = nil
-        selectedSliceIDs[oldID] = nil
-        selectedSessionIDs[oldID] = nil
-        selectedContainerIDs[oldID] = nil
-        workshopSelectedProjects.remove(oldID)
-        workshopPinnedProjects.remove(oldID)
-        workshopDrafts[oldID] = nil
-        acceptedPlans[oldID] = nil
-        let tab = (id: project.id, name: config?.projects[project.id]?.name ?? project.name)
+        forgetProjectState(oldID)
+        let tab = (id: project.id, name: tabName(project.id, fallback: project.name))
         if let index = projectTabs.firstIndex(where: { $0.id == oldID }) {
             if projectTabs.contains(where: { $0.id == project.id }) {
                 projectTabs.remove(at: index)

@@ -48,6 +48,12 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	src := strings.TrimSpace(*sourceName)
+	// A source project is named by its plugin, so a name given beside
+	// --source is not needed, and not recorded.
+	if src != "" && len(rest) == 0 {
+		rest = []string{src}
+	}
 	if len(rest) != 1 {
 		return usageErrorf("project-create: want exactly one project name, given %d", len(rest))
 	}
@@ -55,7 +61,6 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	if name == "" {
 		return usageErrorf("project-create: the project name is empty")
 	}
-	src := strings.TrimSpace(*sourceName)
 	if *local && src != "" {
 		return usageErrorf("project-create: --local and --source are mutually exclusive")
 	}
@@ -75,7 +80,7 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 		if *repo != "" {
 			return usageErrorf("project-create: --repo means nothing with --source: each of a source project's tasks names its own repository")
 		}
-		return projectCreateSource(ctx, env, src, name, info, *planDir, *asJSON)
+		return projectCreateSource(ctx, env, src, info, *planDir, *asJSON)
 	}
 	workdir, err := workingDir(*repo)
 	if err != nil {
@@ -193,13 +198,16 @@ func createPlanProject(ctx context.Context, env Env, entry config.ProjectConfig,
 // whose every container read fails from its first. Then the plan file, then
 // the config entry, in projectCreateLocal's order and for its reason. No
 // Notion token is read, and no working directory recorded: each task's
-// repository is its own.
-func projectCreateSource(ctx context.Context, env Env, srcName, name, conventions, planDir string, asJSON bool) error {
+// repository is its own. Nor is a name: a source project is called what its
+// plugin calls itself (its describe title, else its name), whatever name was
+// given.
+func projectCreateSource(ctx context.Context, env Env, srcName, conventions, planDir string, asJSON bool) error {
 	d, err := describePlugin(ctx, env, srcName)
 	if err != nil {
 		return fmt.Errorf("project-create: %w", err)
 	}
-	entry := config.ProjectConfig{Name: name, Backend: config.BackendSource, Source: srcName}
+	name := cmp.Or(strings.TrimSpace(d.Title), srcName)
+	entry := config.ProjectConfig{Backend: config.BackendSource, Source: srcName}
 	id, dir, err := createPlanProject(ctx, env, entry, conventions, planDir)
 	if err != nil {
 		return err
