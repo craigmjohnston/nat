@@ -159,7 +159,7 @@ struct TitlebarBreadcrumb<Picker: View>: View {
                                     FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
                                         .frame(height: CrumbLine.height)
                                 }
-                                Text(parent).ink(.primary)
+                                Text(parent).ink(.secondary)
                             }
                         }
                     case .project:
@@ -222,7 +222,7 @@ private struct ProjectCrumbLabel: View {
                 color: DesignTokens.ink(.tertiary, on: .header),
                 backColor: DesignTokens.ink(.tertiary, on: .header))
                 .frame(height: CrumbLine.height)
-            Text(name).ink(.primary)
+            Text(name).ink(.secondary)
         }
     }
 }
@@ -257,9 +257,9 @@ struct TitlebarIdentityLabel: View {
                 } else if let identity {
                     ActiveIdentityLabel(
                         tag: identity.tag, state: identity.state, live: identity.live, title: identity.title,
-                        size: GnatMetrics.titlebarText, titleInk: .primary)
+                        size: GnatMetrics.titlebarText)
                 } else {
-                    Text(title).ink(.primary)
+                    Text(title).ink(.secondary)
                 }
             }
             .layoutPriority(-1)
