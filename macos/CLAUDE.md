@@ -71,9 +71,15 @@ fuller structure and theme system.
 
 ## Settings and Done means merged
 
-`SettingsView` (⌘,) matches System Settings/Safari's shape (toolbar tabs,
-grouped stock forms), not the app's own chrome — reads `nat config-show`,
-writes one `nat config-set <key> <value>` per changed key. `WorkflowStage`
+`SettingsView` (⌘,) is laid out as 1Password's settings are: a sidebar of
+`SettingsTab` rows (tinted tile + name, the selection filled in the accent;
+About apart under a rule) beside the section's groups (bold heading,
+`settingRow`s left-aligned under it), one fixed 760×560 window whose
+sections scroll — reads `nat config-show`, writes one `nat config-set <key>
+<value>` per changed key. About reads `Bundle.main` (`AppVersion`, `dev`
+where unset) and `nat --version` (`NatClient.natVersion`). Stories:
+`settings`, `settings-agents*`, `settings-projects`, `settings-sources*`,
+`settings-about`. `WorkflowStage`
 (`stage(for:)`) is the one source of where a slice stands: the navigator's
 phase (`NavigatorModel`), the sidebar's dots (`displayState(for:)`) and
 `RailModel.isReviewSlice`/`isActiveSlice` all read it, and it mirrors

@@ -122,6 +122,13 @@ struct NatApp: App {
 
     private static func applyDockIcon() {
         let dark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        guard let image = iconImage(dark: dark) else { return }
+        NSApplication.shared.applicationIconImage = image
+    }
+
+    /// The paper icon, or the dark-navy one, wherever this build keeps it —
+    /// nil where it keeps neither. Settings ▸ About draws it too.
+    static func iconImage(dark: Bool) -> NSImage? {
         let file = dark ? "AppIconDark.icns" : "AppIcon.icns"
         let candidates = [
             // Beside the bare executable, where SwiftPM builds it.
@@ -129,9 +136,8 @@ struct NatApp: App {
             // A bundled app's own Resources.
             Bundle.main.resourceURL?.appendingPathComponent(file),
         ].compactMap { $0 }
-        guard let url = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
-              let image = NSImage(contentsOf: url) else { return }
-        NSApplication.shared.applicationIconImage = image
+        guard let url = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else { return nil }
+        return NSImage(contentsOf: url)
     }
 
     var body: some Scene {
@@ -191,7 +197,7 @@ struct NatApp: App {
         // The settings window takes the app's appearance (`NSApp.appearance`,
         // set above) like every other window, so it cannot disagree with main.
         Settings {
-            SettingsView(appModel: appModel)
+            SettingsView(appModel: appModel, updater: updaterViewModel)
         }
     }
 

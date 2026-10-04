@@ -811,6 +811,15 @@ public final class NatClient: Sendable {
         _ = try await runNat(arguments: ["config-set", key, value])
     }
 
+    /// Which build of nat this is — `nat --version`: one line of plain text
+    /// (the release's version, else `devel`), not JSON, handed back trimmed.
+    /// Takes no `--project`: it is about the binary, not any project.
+    ///
+    /// - Throws: NatError if nat fails or says nothing
+    public func natVersion() async throws -> String {
+        try await runNat(arguments: ["--version"]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     // MARK: - Projects
 
     /// The two halves of "which project": the ones this machine's config

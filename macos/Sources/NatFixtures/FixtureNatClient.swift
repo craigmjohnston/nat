@@ -215,6 +215,12 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await answer(sources)
     }
 
+    /// A release-shaped version, so Settings ▸ About draws what a shipped
+    /// app's does rather than a dev build's `devel`.
+    public func natVersion() async throws -> String {
+        try await answer("0.48.0")
+    }
+
     /// The listing, with every field `source-setup` has set reading `set`
     /// from then on — as the plugin's describe would.
     public func pluginList() async throws -> PluginListing {

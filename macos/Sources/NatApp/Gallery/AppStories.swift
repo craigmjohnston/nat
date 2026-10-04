@@ -1751,19 +1751,31 @@ enum AppStories {
 
         Story(
             name: "settings",
-            summary: "The settings window's General tab over the fixture config.",
-            size: CGSize(width: 520, height: 560),
+            summary: "The settings window on General over the fixture config: the sidebar of tinted "
+                + "section tiles, General selected in the accent, and its two groups under bold headings.",
+            size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
             SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient())
         },
 
         Story(
+            name: "settings-about",
+            summary: "The settings window on About: the gnat icon, its version and build (dev in a "
+                + "bare executable), the embedded nat's version, Check for Updates (disabled with no "
+                + "updater, as a dev build's is) and the repository link.",
+            size: CGSize(width: 760, height: 560),
+            colorScheme: .light
+        ) {
+            SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(), initialTab: .about)
+        },
+
+        Story(
             name: "settings-agents",
-            summary: "The settings window's Agents tab: the model field is a menu picker "
+            summary: "The settings window's Agents section: the model field is a menu picker "
                 + "now, over AgentOptions' own alias set, matching the effort picker's "
                 + "own shape.",
-            size: CGSize(width: 520, height: 360),
+            size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
             SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(), initialTab: .agents)
@@ -1771,9 +1783,9 @@ enum AppStories {
 
         Story(
             name: "settings-agents-custom-model",
-            summary: "The same tab with a full model ID already configured: the picker "
+            summary: "The same section with a full model ID already configured: the picker "
                 + "selects Custom on its own and shows the ID in the field beneath it.",
-            size: CGSize(width: 520, height: 360),
+            size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
             let client = FixtureNatClient(config: Fixtures.configDocWithCustomModel)
@@ -1781,11 +1793,21 @@ enum AppStories {
         },
 
         Story(
+            name: "settings-projects",
+            summary: "The settings window on Projects: each tracked project's working directory, "
+                + "a field the width of the value column and Choose\u{2026} beside it.",
+            size: CGSize(width: 760, height: 560),
+            colorScheme: .light
+        ) {
+            SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(), initialTab: .projects)
+        },
+
+        Story(
             name: "settings-sources",
-            summary: "The settings window's Sources tab: installed plugins (one with an update, "
+            summary: "The settings window's Sources section: installed plugins (one with an update, "
                 + "one manual, one on PATH), what the sources offer, and the sources themselves — "
                 + "nat's own marked Default, an extra that could not be read with nat's reason.",
-            size: CGSize(width: 520, height: 820),
+            size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
             SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(), initialTab: .sources)
@@ -1793,8 +1815,8 @@ enum AppStories {
 
         Story(
             name: "settings-sources-loading",
-            summary: "The Sources tab while plugin-list is still out.",
-            size: CGSize(width: 520, height: 200),
+            summary: "The Sources section while plugin-list is still out.",
+            size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
             SettingsView(
@@ -1804,8 +1826,8 @@ enum AppStories {
 
         Story(
             name: "settings-sources-error",
-            summary: "The Sources tab when plugin-list itself failed: nat's reason in place of the groups.",
-            size: CGSize(width: 520, height: 200),
+            summary: "The Sources section when plugin-list itself failed: nat's reason in place of the groups.",
+            size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
             SettingsView(
@@ -1817,8 +1839,8 @@ enum AppStories {
 
         Story(
             name: "settings-sources-empty",
-            summary: "The Sources tab on a machine with nothing installed and nothing on offer yet.",
-            size: CGSize(width: 520, height: 480),
+            summary: "The Sources section on a machine with nothing installed and nothing on offer yet.",
+            size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
             SettingsView(
@@ -1829,10 +1851,10 @@ enum AppStories {
 
         Story(
             name: "settings-sources-setup",
-            summary: "The Sources tab with Shortcut installed and no token: \u{201C}API token not set\u{201D} "
+            summary: "The Sources section with Shortcut installed and no token: \u{201C}API token not set\u{201D} "
                 + "over an empty secure field, Save disabled, the hint under it — beside a plugin whose "
                 + "describe failed, its reason as a warning line.",
-            size: CGSize(width: 520, height: 620),
+            size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
             SettingsView(
@@ -1843,10 +1865,10 @@ enum AppStories {
 
         Story(
             name: "settings-sources-setup-saved",
-            summary: "The same tab after a token was saved and plugin-list re-read: \u{201C}API token set\u{201D}, "
+            summary: "The same section after a token was saved and plugin-list re-read: \u{201C}API token set\u{201D}, "
                 + "the field cleared with a \u{201C}Replace …\u{201D} placeholder, and the plugin's "
                 + "\u{201C}Logged in to …\u{201D} under it with a green check.",
-            size: CGSize(width: 520, height: 620),
+            size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
             let client = FixtureNatClient(plugins: Fixtures.pluginListingShortcut)

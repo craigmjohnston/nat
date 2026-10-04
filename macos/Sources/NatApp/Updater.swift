@@ -41,12 +41,13 @@ final class UpdaterViewModel: ObservableObject {
 }
 
 /// The "Check for updates…" item NatApp adds to `CommandGroup(after:
-/// .appInfo)`.
+/// .appInfo)`, and Settings ▸ About's button (titled as a button is).
 struct CheckForUpdatesView: View {
     @ObservedObject var model: UpdaterViewModel
+    var title = "Check for updates…"
 
     var body: some View {
-        Button("Check for updates…") {
+        Button(title) {
             model.checkForUpdates()
         }
         .disabled(!model.canCheckForUpdates)

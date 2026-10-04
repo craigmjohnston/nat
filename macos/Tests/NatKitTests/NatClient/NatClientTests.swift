@@ -1065,6 +1065,34 @@ final class NatClientTests: XCTestCase {
         }
     }
 
+    func testNatVersionReadsTheTrimmedLine() async throws {
+        let fakeRunner = FakeRunner(fixture: .natVersion)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        let version = try await client.natVersion()
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["--version"])
+        XCTAssertEqual(version, "0.48.0")
+    }
+
+    func testNatVersionSayingNothingIsMissingOutput() async throws {
+        let client = NatClient(commandRunner: FakeRunner(fixture: .natVersionSilent))
+        do {
+            _ = try await client.natVersion()
+            XCTFail("Should have thrown")
+        } catch NatError.missingOutput {
+        }
+    }
+
+    func testNatVersionDefaultsToARefusal() async {
+        do {
+            _ = try await MockActivityClient(response: .agents([])).natVersion()
+            XCTFail("Should have thrown")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "nat: --version: not supported by this client")
+        }
+    }
+
     // MARK: - Projects
 
     func testProjectListBothHalves() async throws {
