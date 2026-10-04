@@ -133,6 +133,9 @@ public struct TaskLogEvent: Codable, Equatable, Sendable {
         case handedBack = "handed_back"
         case sentBack = "sent_back"
         case released
+        /// A fresh launch's own line — what the Launched item takes its time
+        /// from. Not drawn as an item of its own.
+        case launched
         case relaunched
         case blocked
         case summary

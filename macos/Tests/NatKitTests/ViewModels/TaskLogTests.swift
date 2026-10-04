@@ -170,8 +170,9 @@ final class TaskLogTests: XCTestCase {
             facts: [ThreadFact("task", "Bootstrap the SwiftUI shell", sliceID: shell?.id)], when: events[0].at))
         XCTAssertEqual(log[0].title, "Another agent left a note")
         XCTAssertEqual(log[4].facts, [ThreadFact("source", "Craig Johnston")], "a person is plain text")
-        XCTAssertEqual(log[2].when, events[1].at, "every recorded card carries its time")
-        XCTAssertNil(log[1].when, "the launch has no time source")
+        XCTAssertEqual(log[2].when, events[2].at, "every recorded card carries its time")
+        XCTAssertEqual(log[1].when, events[1].at, "Launched carries the recorded launch's time")
+        XCTAssertNotNil(log[1].when)
 
         let anonymous = buildThreadEvents(
             slice: slice(status: "In progress"), agent: nil, brief: nil, events: [TaskLogEvent(.note, note: "n")])
@@ -335,6 +336,157 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(followUpDecisionHeading(.queued), "Queued")
         XCTAssertEqual(followUpDecisionHeading(.folded), "Folded in")
         XCTAssertEqual(followUpDecisionHeading(.dropped), "Dismissed")
+    }
+
+    // MARK: - Launched
+
+    func testALaunchedEventDecodesWithItsTime() throws {
+        let json = """
+        {"id": "s", "name": "n", "url": "", "status": "In progress", "milestone": "M1", "assignee": "",
+         "blocked": false, "handed_back": false, "brief": "",
+         "events": [{"kind": "launched", "at": "2026-10-03T23:14:05+01:00"}, {"kind": "handed_back", "note": "h"}]}
+        """
+        let detail = try JSONDecoder().decode(SliceDetail.self, from: Data(json.utf8))
+        XCTAssertEqual(detail.events, [
+            TaskLogEvent(.launched, at: Date(timeIntervalSince1970: 1_791_065_645)),
+            TaskLogEvent(.handedBack, note: "h"),
+        ])
+    }
+
+    /// A recorded launch is the Launched item's time, not an item of its
+    /// own; a log with none has a Launched with no time.
+    func testLaunchedTakesTheRecordedLaunchsTime() {
+        let at = Date(timeIntervalSince1970: 1_791_065_645)
+        let log = buildThreadEvents(
+            slice: slice(status: "In progress"), agent: nil, brief: nil,
+            events: [TaskLogEvent(.launched, at: at), TaskLogEvent(.handedBack, note: "h")])
+        XCTAssertEqual(log.map(\.kind), [.launched, .handedBack])
+        XCTAssertEqual(log[0].when, at)
+        XCTAssertEqual(log[0].title, "Launched")
+
+        let legacy = buildThreadEvents(
+            slice: slice(status: "In progress"), agent: nil, brief: nil, events: [TaskLogEvent(.handedBack, note: "h")])
+        XCTAssertNil(legacy[0].when, "no recorded launch, no time")
+    }
+
+    /// A launch alone is history: the slice was launched, and its log opens.
+    func testALaunchAloneOpensTheLog() {
+        let log = buildThreadEvents(
+            slice: slice(status: "Todo"), agent: nil, brief: nil, events: [TaskLogEvent(.launched)])
+        XCTAssertEqual(log.map(\.kind), [.launched])
+    }
+
+    // MARK: - Relaunch
+
+    private func launched(at: Date? = Date(timeIntervalSince1970: 1_791_065_645)) -> TaskLogEvent {
+        TaskLogEvent(.launched, at: at)
+    }
+
+    /// Relaunch only where nat recorded a launch and no agent is live.
+    func testARelaunchNeedsARecordedLaunchAndNoLiveAgent() {
+        let inProgress = slice(status: "In progress")
+        func log(_ events: [TaskLogEvent], agent: AgentStatus? = nil) -> [ThreadEvent] {
+            buildThreadEvents(slice: inProgress, agent: agent, brief: nil, events: events)
+        }
+        XCTAssertFalse(launchIsRelaunch(log: log([]), hasLiveAgent: false), "in progress, nothing recorded: a launch")
+        XCTAssertTrue(launchIsRelaunch(log: log([launched()]), hasLiveAgent: false))
+        XCTAssertFalse(
+            launchIsRelaunch(log: log([launched(at: nil)]), hasLiveAgent: false),
+            "a launch with no time is no recorded launch")
+        XCTAssertFalse(
+            launchIsRelaunch(log: log([TaskLogEvent(.handedBack, note: "h"), TaskLogEvent(.sentBack)]), hasLiveAgent: false),
+            "a slice from before launches were recorded is launched, not relaunched")
+
+        let agent = AgentStatus(sliceID: "s", session: "nat-s", activity: .working)
+        XCTAssertFalse(launchIsRelaunch(log: log([launched()], agent: agent), hasLiveAgent: true))
+        XCTAssertFalse(
+            NavigatorModel(slice: inProgress, agent: .working).showsLaunch, "a live agent offers no launch at all")
+    }
+
+    // MARK: - Folds
+
+    func testTheQuietKindsFold() {
+        XCTAssertTrue(ThreadEvent(.note, who: "Note").isCollapsible)
+        XCTAssertTrue(ThreadEvent(.blocked, who: "Agent").isCollapsible)
+        XCTAssertTrue(ThreadEvent(.followUps, who: "Agent").isCollapsible, "a settled proposal folds")
+        XCTAssertTrue(ThreadEvent(.followUp, who: "Queued").isCollapsible, "and so do its decisions")
+        XCTAssertFalse(
+            ThreadEvent(.followUps, who: "Agent", awaitsTriage: true).isCollapsible, "a pending proposal never folds")
+        for kind in [
+            ThreadEventKind.launched, .agent, .handedBack, .sentBack, .released, .relaunched, .checksFailed,
+            .approved, .merged, .closed,
+        ] {
+            XCTAssertFalse(ThreadEvent(kind, who: "x").isCollapsible, "\(kind) stays open")
+        }
+    }
+
+    private let note = ThreadEvent(.note, who: "Note", body: "n")
+    private let handBack = ThreadEvent(.handedBack, who: "Agent", meta: "handed back")
+
+    func testTwoQuietItemsStayFoldedAlone() {
+        XCTAssertEqual(threadLogItems([note, note]), [.folded(note), .folded(note)])
+    }
+
+    func testThreeQuietItemsInARowGroup() {
+        let blocked = ThreadEvent(.blocked, who: "Agent", meta: "blocked")
+        XCTAssertEqual(
+            threadLogItems([handBack, note, blocked, note, handBack]),
+            [.card(handBack), .group([note, blocked, note]), .card(handBack)])
+    }
+
+    func testAnOpenItemBreaksARun() {
+        XCTAssertEqual(
+            threadLogItems([note, note, handBack, note, note]),
+            [.folded(note), .folded(note), .card(handBack), .folded(note), .folded(note)])
+    }
+
+    /// A proposal awaiting triage, the live agent, the approve and the merge
+    /// are never folded, and each breaks a run around it.
+    func testWhatAwaitsTheUserOrEndsTheLogNeverFolds() {
+        let pending = ThreadEvent(.followUps, who: "Agent", awaitsTriage: true, isLive: true)
+        let agent = ThreadEvent(.agent, who: "Agent", isLive: true)
+        let approved = ThreadEvent(.approved, who: "You", meta: "approved")
+        let merged = ThreadEvent(.merged, who: "Merged")
+        XCTAssertEqual(
+            threadLogItems([note, note, pending, note, agent, approved, merged]),
+            [.folded(note), .folded(note), .card(pending), .folded(note), .card(agent), .card(approved), .card(merged)])
+    }
+
+    func testTheGroupedFixtureFoldsItsQuietRunIntoOneGroup() {
+        let log = buildThreadEvents(
+            slice: slice(status: "In progress"), agent: nil, brief: nil, events: Fixtures.groupedTaskLogEvents)
+        let items = threadLogItems(log)
+        XCTAssertEqual(items.count, 5)
+        guard case .group(let group) = items[2] else { return XCTFail("want the quiet run grouped, got \(items[2])") }
+        XCTAssertEqual(group.map(\.kind), [.note, .note, .note, .blocked, .followUps, .followUp])
+        guard case .folded(let lone) = items[4] else { return XCTFail("want the lone note folded, got \(items[4])") }
+        XCTAssertEqual(lone.kind, .note)
+    }
+
+    func testTheGroupsTitleCountsItsItems() {
+        XCTAssertEqual(threadGroupTitle(count: 13), "13 other items")
+        XCTAssertEqual(threadGroupTitle(count: 1), "1 other item")
+    }
+
+    func testTheGroupsTimesAreItsFirstAndLast() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/London"))
+        let locale = Locale(identifier: "en_GB")
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 3, hour: 23, minute: 50)))
+        func at(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) throws -> Date {
+            try XCTUnwrap(calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)))
+        }
+        func range(_ dates: [Date]) -> String? {
+            threadTimestampRange(dates, now: now, calendar: calendar, locale: locale)
+        }
+
+        XCTAssertEqual(
+            range([try at(2026, 10, 3, 23, 40), try at(2026, 10, 3, 23, 14), try at(2026, 10, 3, 23, 20)]),
+            "23:14 – 23:40", "earliest to latest, whatever the order")
+        XCTAssertEqual(range([try at(2025, 12, 30, 9, 0), try at(2026, 1, 2, 9, 0)]), "30 Dec 2025 – 2 Jan")
+        XCTAssertEqual(range([try at(2026, 5, 1, 9, 0), try at(2026, 5, 1, 17, 0)]), "1 May", "one where both read the same")
+        XCTAssertEqual(range([try at(2026, 10, 3, 23, 14)]), "23:14")
+        XCTAssertNil(range([]), "no times, no range")
     }
 
     // MARK: - The label

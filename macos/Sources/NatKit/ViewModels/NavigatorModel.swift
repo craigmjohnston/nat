@@ -211,7 +211,8 @@ public struct NavigatorModel: Equatable, Sendable {
 
     /// Whether the Thread header offers Launch: a slice not yet launched (a
     /// blocked one drawn disabled, as the design draws it), one being worked
-    /// or fixed whose agent is gone — a relaunch — and one approved and at
+    /// or fixed whose agent is gone — a relaunch where nat recorded the first
+    /// launch (`launchIsRelaunch`), else a launch — and one approved and at
     /// its pull request, where it is a fix launch. A slice handed back, in
     /// review or done carries no Launch here, as in the design; the slice's
     /// menu still offers whatever `LaunchPlan` allows.
@@ -354,6 +355,85 @@ public struct ThreadEvent: Equatable, Sendable {
         guard metaIsAction, let meta else { return who }
         return "\(who) \(meta)"
     }
+
+    /// Whether the card is one of the log's quiet kinds, drawn folded to its
+    /// header until opened: a note, a blocked hand-in, and a proposal of
+    /// follow-ups already decided — its count line and each decided
+    /// follow-up after it, so a settled proposal folds whole. A proposal
+    /// still awaiting triage never folds: it is waiting on the user.
+    public var isCollapsible: Bool {
+        switch kind {
+        case .note, .blocked: return true
+        case .followUps, .followUp: return !awaitsTriage
+        default: return false
+        }
+    }
+}
+
+/// One item of the Task log as it is laid out: a card drawn open, a quiet
+/// card drawn folded (`ThreadEvent.isCollapsible`), or a run of three or more
+/// quiet cards in a row folded together into one.
+public enum ThreadLogItem: Equatable, Sendable {
+    case card(ThreadEvent)
+    case folded(ThreadEvent)
+    case group([ThreadEvent])
+}
+
+/// The fewest quiet cards in a row that fold together into one group.
+public let threadGroupMinimum = 3
+
+/// The log laid out for drawing: every card in its order, the quiet ones
+/// folded, and each run of `threadGroupMinimum` or more of them in a row one
+/// group. Any other card — a hand-back, an approve, the live agent, a
+/// proposal awaiting triage — breaks a run.
+public func threadLogItems(_ log: [ThreadEvent]) -> [ThreadLogItem] {
+    var items: [ThreadLogItem] = []
+    var run: [ThreadEvent] = []
+    func flush() {
+        if run.count >= threadGroupMinimum {
+            items.append(.group(run))
+        } else {
+            items += run.map(ThreadLogItem.folded)
+        }
+        run = []
+    }
+    for event in log {
+        if event.isCollapsible {
+            run.append(event)
+        } else {
+            flush()
+            items.append(.card(event))
+        }
+    }
+    flush()
+    return items
+}
+
+/// A group's title: how many quiet items it folds — "13 other items".
+public func threadGroupTitle(count: Int) -> String {
+    "\(count) other item\(count == 1 ? "" : "s")"
+}
+
+/// When a group's items happened, as its header says it: the earliest and
+/// the latest, each as `threadTimestamp` would put it, joined by an en dash
+/// ("23:14 – 23:40"); one alone where the two read the same, and nil where
+/// no item has a time.
+public func threadTimestampRange(
+    _ dates: [Date], now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current
+) -> String? {
+    guard let first = dates.min(), let last = dates.max() else { return nil }
+    let from = threadTimestamp(first, now: now, calendar: calendar, locale: locale)
+    let to = threadTimestamp(last, now: now, calendar: calendar, locale: locale)
+    return from == to ? from : "\(from) – \(to)"
+}
+
+/// Whether the Task log's launch is a relaunch: nat recorded an earlier
+/// launch — the log's Launched item carries a time, which only a recorded
+/// `launched` event gives it — and no agent is live. A slice set in progress
+/// some other way, or launched before nat recorded launches, is offered a
+/// plain launch.
+public func launchIsRelaunch(log: [ThreadEvent], hasLiveAgent: Bool) -> Bool {
+    !hasLiveAgent && log.contains { $0.kind == .launched && $0.when != nil }
 }
 
 /// When a Thread card happened, as its header says it: the time alone where
@@ -396,9 +476,9 @@ public func agentFacts(_ agent: AgentStatus?) -> (model: [ThreadFact], context: 
 /// statusline reading (model, effort, context), the slice's recorded branch,
 /// and `events` — `slice-show`'s ordered record of every hand-back, send-back,
 /// release, relaunch, note and proposal of follow-ups on the slice's page, then
-/// its approve and merge. The design's launch time, token count, files
-/// touched, current tool and merged-by have no source in nat yet, and are
-/// left out rather than made up.
+/// its approve and merge — and a recorded launch's time, on the Launched item.
+/// The design's token count, files touched, current tool and merged-by have
+/// no source in nat yet, and are left out rather than made up.
 ///
 /// With no `events` — the slice's detail not read yet, or a nat too old to
 /// report them — the log falls back to what the slice's properties and its
@@ -433,8 +513,12 @@ public func buildThreadEvents(
 
     let branch = (slice.branch ?? "").isEmpty ? nil : slice.branch
     let reading = agentFacts(agent)
+    // Launched takes the time of the launch nat recorded, where it recorded
+    // one — a slice launched before it did, or claimed some other way, has
+    // none.
     let launched = ThreadEvent(
-        .launched, who: "Launched", facts: reading.model + (branch.map { [ThreadFact("branch", $0)] } ?? []))
+        .launched, who: "Launched", facts: reading.model + (branch.map { [ThreadFact("branch", $0)] } ?? []),
+        when: events?.first { $0.kind == .launched }?.at)
     let agentCard = agent.map { agent in
         let waiting = AgentActivity(agent.activity) == .waiting
         return ThreadEvent(
@@ -449,15 +533,17 @@ public func buildThreadEvents(
     }
     // The notes ahead of every other recorded event go before Launched: a note
     // on a Todo slice was written before it launched, and so stays where it
-    // was shown before the launch rather than jumping past it. The page keeps
-    // no first-launch time, so the order of its sections is the only reading —
-    // a note sent to an agent before its first hand-back sits there too.
+    // was shown before the launch rather than jumping past it. A page with no
+    // recorded launch has only the order of its sections to go on — a note
+    // sent to an agent before its first hand-back sits there too.
     let leadingNotes = events.prefix { $0.kind == .note }
     var log = leadingNotes.flatMap(cards) + [launched]
-    // What the page records, in the order it was written; then the agent as
-    // it is now; then what the properties say came of it all.
+    // What the page records, in the order it was written — its launch already
+    // the Launched item; then the agent as it is now; then what the
+    // properties say came of it all.
     let closing: Set<TaskLogEvent.Kind> = [.approved, .merged]
-    log += events.dropFirst(leadingNotes.count).filter { !closing.contains($0.kind) }.flatMap(cards)
+    log += events.dropFirst(leadingNotes.count)
+        .filter { !closing.contains($0.kind) && $0.kind != .launched }.flatMap(cards)
     if let agentCard { log.append(agentCard) }
     log += events.filter { closing.contains($0.kind) }.flatMap(cards)
     return log
@@ -531,6 +617,10 @@ private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Mile
             return ThreadEvent(.released, who: "Released to Todo")
         }
         return ThreadEvent(.released, who: by, meta: "released to Todo")
+    case .launched:
+        // `buildThreadEvents` draws a recorded launch as its Launched item
+        // and never reaches here with one; this is that item as a record.
+        return ThreadEvent(.launched, who: "Launched")
     case .relaunched:
         return ThreadEvent(.relaunched, who: "Relaunched on the work so far")
     case .checksFailed:
