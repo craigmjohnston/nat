@@ -58,9 +58,9 @@ struct SourceBadgeView: View {
     @Environment(\.ground) private var ground
     let badge: SourceBadge
 
-    /// Three characters of the badge's mono face — 10.5 pt JetBrains Mono
-    /// Medium with 0.3 tracking measures 19.8 pt — and 4 pt either side.
-    static let width: CGFloat = 28
+    /// Three characters of the badge's mono face — 10.5 pt Fira Code
+    /// Medium with 0.3 tracking measures 20.3 pt — and 4 pt either side.
+    static let width: CGFloat = 29
 
     var body: some View {
         let colors = DesignTokens.wireBadge(badge.color, on: ground)

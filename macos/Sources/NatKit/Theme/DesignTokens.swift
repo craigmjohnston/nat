@@ -521,8 +521,8 @@ public enum Typo {
 
     // MARK: - The monospaced face
 
-    /// The font every monospaced thing in the app is set in: JetBrains Mono
-    /// at the size asked for, or the system's own monospaced face where the
+    /// The font every monospaced thing in the app is set in: Fira Code at
+    /// the size asked for, or the system's own monospaced face where the
     /// bundled one is not available.
     ///
     /// This is the one place the face is named — `MonoFont` holds the names

@@ -381,4 +381,4 @@ keeps colours it resolved per appearance, so a palette change that is not
 an appearance change repaints nothing otherwise. Adding a palette is a
 `Palette` static plus a `PaletteChoice` case; `PaletteTests`/`PairingTests`
 hold every case. Render one with `gnat --palette <id>`. The fonts are the
-app's own (system sans, JetBrains Mono), not the design's.
+app's own (system sans, Fira Code), not the design's.

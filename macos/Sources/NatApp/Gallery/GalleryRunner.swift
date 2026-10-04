@@ -36,7 +36,7 @@ enum GalleryRunner {
         }
 
         // The fonts, before any window draws: everything monospaced in the
-        // app resolves JetBrains Mono by name, and a face registered after
+        // app resolves Fira Code by name, and a face registered after
         // the first frame is a frame drawn in the fallback — which in a PNG
         // nobody re-renders is a wrong reference for good.
         MonoFont.register()

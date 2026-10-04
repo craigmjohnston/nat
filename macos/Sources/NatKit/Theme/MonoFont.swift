@@ -2,22 +2,23 @@ import AppKit
 import CoreText
 import SwiftUI
 
-/// The app's monospaced face: JetBrains Mono, shipped inside the app rather
-/// than asked of the Mac it runs on.
+/// The app's monospaced face: Fira Code, shipped inside the app rather than
+/// asked of the Mac it runs on.
 ///
 /// It is bundled for the same reason the palette is stated rather than taken
 /// from the system: a terminal, a diff and a code span are the surfaces this
 /// app is read on, and leaving their face to `design: .monospaced` means
 /// whatever SF Mono the OS release happens to carry — a different rhythm on
-/// a different machine, and one nobody here chose. Five static faces are
-/// carried (regular, medium, bold, and the regular and bold italics, ~1.4MB,
-/// OFL — the licence sits beside them in `Resources/Fonts`): a three-step
-/// weight ramp, and its two ends slanted. The variable font is not, because a
+/// a different machine, and one nobody here chose. Three static faces are
+/// carried (regular, medium, bold, ~870KB, OFL — the licence sits beside
+/// them in `Resources/Fonts`): the three-step weight ramp the app draws
+/// with. There is no italic, because Fira Code has none, and nothing in the
+/// app sets code in one. The variable font is not carried either, because a
 /// face registered per weight is a face that resolves by name.
 ///
 /// Nothing installs anything: `register` hands the files to CoreText for
-/// this process alone, so a machine without JetBrains Mono has it for as
-/// long as gnat is running and no longer. Everything that draws in it goes
+/// this process alone, so a machine without Fira Code has it for as long
+/// as gnat is running and no longer. Everything that draws in it goes
 /// through `Typo.mono`, which falls back to the monospaced system font
 /// wherever the face is not there to be had — a registration that failed, a
 /// bundle built without the resource — so the app is readable either way.
@@ -28,19 +29,17 @@ public enum MonoWeight: Equatable, Sendable {
 
 public enum MonoFont {
     /// The family, as the faces name themselves.
-    public static let family = "JetBrains Mono"
+    public static let family = "Fira Code"
 
     /// The PostScript names the faces resolve by. They are what `NSFont` and
     /// `Font.custom` are given: a family name leaves the choice of face to
     /// the text system, and the point of registering each is to say which.
-    public static let regularFace = "JetBrainsMono-Regular"
-    public static let mediumFace = "JetBrainsMono-Medium"
-    public static let boldFace = "JetBrainsMono-Bold"
-    public static let italicFace = "JetBrainsMono-Italic"
-    public static let boldItalicFace = "JetBrainsMono-BoldItalic"
+    public static let regularFace = "FiraCode-Regular"
+    public static let mediumFace = "FiraCode-Medium"
+    public static let boldFace = "FiraCode-Bold"
 
     /// Every face this bundles, in the order they are registered.
-    public static let faces = [regularFace, mediumFace, boldFace, italicFace, boldItalicFace]
+    public static let faces = [regularFace, mediumFace, boldFace]
 
     /// Registers the bundled faces with CoreText for this process.
     ///
@@ -57,29 +56,31 @@ public enum MonoFont {
     @discardableResult
     public static func register() -> Bool { registration }
 
-    /// The face to draw in, or `nil` where the family is not available and
-    /// the caller should fall back to the system's own monospaced font.
+    /// The face for a step of the weight ramp, or `nil` where the family is
+    /// not available and the caller should fall back to the system's own
+    /// monospaced font.
     ///
     /// Availability is asked of the text system rather than of the
     /// registration, because those are different questions: the face may be
     /// installed on the Mac already, and a registration that failed against
     /// an identical font already registered is not a font that is missing.
-    public static func face(bold: Bool = false, italic: Bool = false) -> String? {
-        face(weight: bold ? .bold : .regular, italic: italic)
+    public static func face(weight: MonoWeight) -> String? {
+        face(weight: weight, trial: trial)
     }
 
-    /// The face for a step of the weight ramp. Medium carries no italic of
-    /// its own, so a medium italic is the regular italic — the slant is the
-    /// thing asked for, and it is kept.
-    public static func face(weight: MonoWeight, italic: Bool = false) -> String? {
+    /// The above with the trial named rather than read off the environment
+    /// — the seam the tests drive it through, since the environment of a test
+    /// run is not one a test can set.
+    static func face(weight: MonoWeight, trial: Trial?) -> String? {
         register()
+        if let trial, let name = trial.face(weight: weight) {
+            return name
+        }
         let name: String
-        switch (weight, italic) {
-        case (.regular, false): name = regularFace
-        case (.medium, false): name = mediumFace
-        case (.bold, false): name = boldFace
-        case (.regular, true), (.medium, true): name = italicFace
-        case (.bold, true): name = boldItalicFace
+        switch weight {
+        case .regular: name = regularFace
+        case .medium: name = mediumFace
+        case .bold: name = boldFace
         }
         return isResolvable(name) ? name : nil
     }
@@ -92,12 +93,86 @@ public enum MonoFont {
         NSFont(name: name, size: NSFont.systemFontSize) != nil
     }
 
+    // MARK: - Trying another face on
+
+    /// A family tried on in place of the bundled one, read off the
+    /// environment once: `NAT_MONO_FAMILY=<family>` draws every monospaced
+    /// surface — the terminal, the diff, code spans, every input — in that
+    /// family at the weight asked for, and `NAT_MONO_FONT_DIR=<dir>`
+    /// registers every font file in that directory for the process first, so
+    /// a family need not be installed on the Mac to be tried. A dev and
+    /// gallery affordance beside `NAT_SNAPSHOT`: unset, nothing here runs.
+    ///
+    /// A family that is not there — misspelt, or its files not where the
+    /// directory said — falls back to the bundled face, never to the
+    /// system's, so a trial that failed draws the app as it ships rather than
+    /// as something nobody asked for.
+    public struct Trial: Equatable, Sendable {
+        public let family: String
+        public let fontDirectory: URL?
+
+        /// `nil` where the environment names no family, which is every run
+        /// but a trial.
+        public init?(environment: [String: String]) {
+            guard let family = environment["NAT_MONO_FAMILY"], !family.isEmpty else { return nil }
+            self.init(
+                family: family,
+                fontDirectory: environment["NAT_MONO_FONT_DIR"].map {
+                    URL(fileURLWithPath: $0, isDirectory: true)
+                })
+        }
+
+        init(family: String, fontDirectory: URL? = nil) {
+            self.family = family
+            self.fontDirectory = fontDirectory
+        }
+
+        /// The PostScript name of the family's face nearest the weight asked
+        /// for, or `nil` where the family is not there to be had.
+        /// `NSFontManager` does the nearest-match, which is what lets a
+        /// family with no medium answer with its regular, and a variable
+        /// font answer with a named instance.
+        func face(weight: MonoWeight) -> String? {
+            let step: Int
+            switch weight {
+            case .regular: step = 5
+            case .medium: step = 6
+            case .bold: step = 9
+            }
+            return NSFontManager.shared
+                .font(withFamily: family, traits: [], weight: step, size: NSFont.systemFontSize)?
+                .fontName
+        }
+
+        /// The font files in the directory, sorted by name so a registration
+        /// runs in one order; empty where there is no directory, or none
+        /// that can be read.
+        var fontURLs: [URL] {
+            guard let fontDirectory,
+                  let names = try? FileManager.default.contentsOfDirectory(atPath: fontDirectory.path)
+            else { return [] }
+            return names.sorted()
+                .filter { ["ttf", "otf", "ttc"].contains(($0 as NSString).pathExtension.lowercased()) }
+                .map { fontDirectory.appendingPathComponent($0) }
+        }
+    }
+
+    /// The trial this process runs under, if any.
+    static let trial = Trial(environment: ProcessInfo.processInfo.environment)
+
     // MARK: - Registration
 
     /// The one registration, run on first access. A `static let` is how this
     /// stays once-only and thread-safe without a lock of its own.
     private static let registration: Bool = {
-        for url in bundledFontURLs {
+        registerFiles(bundledFontURLs)
+        registerFiles(trial?.fontURLs ?? [])
+        return isResolvable(regularFace)
+    }()
+
+    /// Hands each file to CoreText for this process.
+    static func registerFiles(_ urls: [URL]) {
+        for url in urls {
             var error: Unmanaged<CFError>?
             // `.process` rather than `.persistent`: the face is gnat's for
             // as long as gnat runs, and an app that quietly installs fonts
@@ -107,12 +182,11 @@ public enum MonoFont {
                 // face already being registered — installed on the Mac, or
                 // a second call in a process that has already done this —
                 // and in both of those the font is there to be used. The
-                // resolvable check below is what actually answers.
+                // resolvable check in `registration` is what actually answers.
                 error?.release()
             }
         }
-        return isResolvable(regularFace)
-    }()
+    }
 
     /// The bundled TTFs inside the resource bundle, in `faces` order so a
     /// registration reads in the order the faces are declared.

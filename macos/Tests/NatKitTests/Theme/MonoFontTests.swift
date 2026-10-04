@@ -6,8 +6,8 @@ import XCTest
 
 /// The bundled face, and the rule that nothing breaks without it.
 ///
-/// The acceptance this stands for is "a machine without JetBrains Mono
-/// installed renders in JetBrains Mono", and the awkward part of asserting
+/// The acceptance this stands for is "a machine without Fira Code
+/// installed renders in Fira Code", and the awkward part of asserting
 /// it is that a machine *with* the family installed — every developer who
 /// already uses it, and never the CI runner — resolves every face whether
 /// anything shipped or not. So the two halves are asserted apart: that the
@@ -17,16 +17,14 @@ import XCTest
 final class MonoFontTests: XCTestCase {
     // MARK: - What ships
 
-    /// Four faces, and the names the call sites resolve them by. A face
+    /// Three faces, and the names the call sites resolve them by. A face
     /// renamed upstream is a silent fall back to the system font, which is
     /// precisely the thing this test is here to fail over.
     func testTheFacesAreDeclared() {
         XCTAssertEqual(MonoFont.faces, [
-            "JetBrainsMono-Regular",
-            "JetBrainsMono-Medium",
-            "JetBrainsMono-Bold",
-            "JetBrainsMono-Italic",
-            "JetBrainsMono-BoldItalic",
+            "FiraCode-Regular",
+            "FiraCode-Medium",
+            "FiraCode-Bold",
         ])
     }
 
@@ -34,7 +32,7 @@ final class MonoFontTests: XCTestCase {
         XCTAssertNotNil(MonoFont.resourceBundle)
     }
 
-    /// All four TTFs are in the bundle, in the order they are declared —
+    /// All three TTFs are in the bundle, in the order they are declared —
     /// which is what says `.copy("Resources/Fonts")` kept the directory and
     /// nothing was left out of the checkout.
     func testEveryDeclaredFaceIsBundled() {
@@ -56,7 +54,7 @@ final class MonoFontTests: XCTestCase {
 
     /// The bundled files themselves carry the faces the call sites name —
     /// asked of the bytes rather than of the text system, because a
-    /// developer machine with JetBrains Mono already installed would resolve
+    /// developer machine with Fira Code already installed would resolve
     /// every name whether anything shipped or not, and this is the assertion
     /// that shipping is what makes it resolve.
     func testEachBundledFileDeclaresItsFace() throws {
@@ -92,8 +90,8 @@ final class MonoFontTests: XCTestCase {
         XCTAssertFalse(MonoFont.isResolvable("NoSuchFace-Regular"))
     }
 
-    /// Every face the family declares resolves once registered — the bold
-    /// and the italics included, since SwiftUI asks for those by name too.
+    /// Every face the family declares resolves once registered — the medium
+    /// and the bold included, since SwiftUI asks for those by name too.
     func testEveryFaceResolves() {
         MonoFont.register()
         for face in MonoFont.faces {
@@ -101,25 +99,15 @@ final class MonoFontTests: XCTestCase {
         }
     }
 
-    /// The four corners of the family, each answering with its own face.
-    func testFaceNamesTheWeightAndSlantAskedFor() {
-        XCTAssertEqual(MonoFont.face(), MonoFont.regularFace)
-        XCTAssertEqual(MonoFont.face(bold: true), MonoFont.boldFace)
-        XCTAssertEqual(MonoFont.face(italic: true), MonoFont.italicFace)
-        XCTAssertEqual(MonoFont.face(bold: true, italic: true), MonoFont.boldItalicFace)
-    }
-
-    /// The ramp's middle step, and its slant — which, with no medium italic
-    /// bundled, is the regular italic.
-    func testFaceNamesTheMediumStep() {
-        XCTAssertEqual(MonoFont.face(weight: .medium), MonoFont.mediumFace)
-        XCTAssertEqual(MonoFont.face(weight: .medium, italic: true), MonoFont.italicFace)
+    /// Each step of the ramp answers with its own face.
+    func testFaceNamesTheWeightAskedFor() {
         XCTAssertEqual(MonoFont.face(weight: .regular), MonoFont.regularFace)
-        XCTAssertEqual(MonoFont.face(weight: .bold, italic: true), MonoFont.boldItalicFace)
+        XCTAssertEqual(MonoFont.face(weight: .medium), MonoFont.mediumFace)
+        XCTAssertEqual(MonoFont.face(weight: .bold), MonoFont.boldFace)
     }
 
-    /// The faces are the family's, which is what lets `NSFontManager` and
-    /// SwiftUI's own `.italic()` find their way between them.
+    /// The faces are the family's, which is what lets `NSFontManager` find
+    /// its way between them.
     func testTheFacesBelongToTheOneFamily() throws {
         MonoFont.register()
         let font = try XCTUnwrap(NSFont(name: MonoFont.regularFace, size: Typo.code))
