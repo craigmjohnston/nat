@@ -121,16 +121,30 @@ extension Fixtures {
     }
 
     /// A merged slice with a history: handed back three times, sent back
-    /// with comments between them twice, two follow-ups triaged on the way,
+    /// with comments between them twice, three follow-ups triaged on the way
+    /// (one queued, one folded in, one dropped),
     /// then approved and merged — `slice-show`'s `events` for it, in order.
     public static let taskLogEvents: [TaskLogEvent] = [
         TaskLogEvent(.handedBack, note: "The shell window and its three panes, empty states in each."),
         TaskLogEvent(.sentBack, note: "Sources/NatApp/NatApp.swift, line 42: the window should remember its frame."),
         TaskLogEvent(.handedBack, note: "Window frame autosaved under the scene's id."),
         TaskLogEvent(.followUps, followUps: [
-            TaskFollowUp(index: 1, title: "Restore the last selected project on launch", decision: .queued,
-                         link: "https://notion.so/f1x7queued"),
-            TaskFollowUp(index: 2, title: "Drop the unused toolbar style", decision: .dropped),
+            TaskFollowUp(
+                index: 1, title: "Cache the plan on disk",
+                brief: "Write each `nat info` reading to the app's caches directory and draw it at launch, "
+                    + "before the first read lands, so the window never opens empty.\n\n"
+                    + "Done when: a relaunch with no network draws the last plan read.",
+                decision: .queued, link: "https://notion.so/\(cacheSliceID)"),
+            TaskFollowUp(
+                index: 2, title: "Remember the window's frame between launches",
+                brief: "Autosave the main window's frame under the scene's id so it opens where it was left.\n\n"
+                    + "Done when: a moved and resized window reopens at that frame.",
+                decision: .folded),
+            TaskFollowUp(
+                index: 3, title: "Drop the unused toolbar style",
+                brief: "Remove `ShellToolbarStyle`, which nothing applies since the titlebar became the header band.\n\n"
+                    + "Done when: the type is gone and the app builds.",
+                decision: .dropped),
         ]),
         TaskLogEvent(.sentBack, note: "Sources/NatApp/Views/ShellView.swift, lines 10-14: use the design's 32pt titlebar."),
         TaskLogEvent(.handedBack, note: "Titlebar at 32pt, traffic lights recentred."),

@@ -21,13 +21,13 @@ final class AgentReadoutTests: XCTestCase {
     func testFullReading() {
         let readout = buildAgentReadout(from: agent(model: "Sonnet 5", effort: "high", context: 41.6, tokens: 83_200))
         XCTAssertEqual(readout, AgentReadout(
-            model: "Sonnet 5", effort: "high", context: AgentReadout.Context(text: "42%", warning: false),
+            model: "Sonnet 5", effort: "high", context: AgentReadout.Context(text: "context 42% (83k tokens)", warning: false),
             detail: "Sonnet 5 / high \u{00B7} context 42% (83k tokens)"))
     }
 
     func testContextWithoutTokensDrawsThePercentAlone() {
         let readout = buildAgentReadout(from: agent(context: 41.6))
-        XCTAssertEqual(readout?.context?.text, "42%")
+        XCTAssertEqual(readout?.context?.text, "context 42%")
         XCTAssertEqual(readout?.detail, "context 42%")
         XCTAssertNil(buildAgentReadout(from: agent(tokens: 500)))
     }
@@ -48,7 +48,7 @@ final class AgentReadoutTests: XCTestCase {
         XCTAssertEqual(buildAgentReadout(from: agent(effort: "max"))?.detail, "max")
         XCTAssertNil(buildAgentReadout(from: agent(effort: "max"))?.model)
         XCTAssertNil(buildAgentReadout(from: agent(context: 10))?.model)
-        XCTAssertEqual(buildAgentReadout(from: agent(context: 0))?.context?.text, "0%")
+        XCTAssertEqual(buildAgentReadout(from: agent(context: 0))?.context?.text, "context 0%")
     }
 
     func testHighContextWarnsAtThreshold() {

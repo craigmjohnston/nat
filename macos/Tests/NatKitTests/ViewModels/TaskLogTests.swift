@@ -67,21 +67,87 @@ final class TaskLogTests: XCTestCase {
     func testTheAcceptanceHistoryReadsInOrder() {
         let log = buildThreadEvents(
             slice: slice(status: "Done", branch: "b", pr: prURL), agent: nil, brief: nil,
-            events: Fixtures.taskLogEvents)
+            events: Fixtures.taskLogEvents, plan: Fixtures.slices, milestones: Fixtures.milestones)
 
         XCTAssertEqual(log.map(\.kind), [
-            .launched, .handedBack, .sentBack, .handedBack, .followUps, .sentBack, .handedBack, .approved, .merged,
+            .launched, .handedBack, .sentBack, .handedBack, .followUps, .followUp, .followUp, .followUp,
+            .sentBack, .handedBack, .approved, .merged,
         ])
         XCTAssertEqual(log.filter { $0.kind == .handedBack }.count, 3)
         XCTAssertEqual(log.filter { $0.kind == .sentBack }.count, 2)
         let followUps = log.first { $0.kind == .followUps }
-        XCTAssertEqual(followUps?.meta, "proposed 2 follow-ups")
-        XCTAssertEqual(followUps?.facts, [
-            ThreadFact("queued", "Restore the last selected project on launch"),
-            ThreadFact("dropped", "Drop the unused toolbar style"),
-        ])
+        XCTAssertEqual(followUps?.meta, "proposed 3 follow-ups")
+        XCTAssertEqual(followUps?.facts, [], "the proposal is the count line alone")
         XCTAssertEqual(followUps?.awaitsTriage, false)
+        XCTAssertEqual(followUps?.isLive, false, "a settled proposal is no longer live")
+        XCTAssertFalse(log.contains(where: \.isLive), "nothing in a merged slice's log is live")
         XCTAssertEqual(log.first { $0.kind == .approved }?.facts, [ThreadFact("pr", "#101"), ThreadFact("into", "main")])
+    }
+
+    /// Each decided follow-up is its own card after its proposal: its title,
+    /// its brief as the body, the decision as the meta, and the queued one's
+    /// slice as a task row.
+    func testEachDecidedFollowUpIsItsOwnCard() throws {
+        let event = try XCTUnwrap(Fixtures.taskLogEvents.first { $0.kind == .followUps })
+        let log = buildThreadEvents(
+            slice: slice(status: "Done", branch: "b", pr: prURL), agent: nil, brief: nil,
+            events: Fixtures.taskLogEvents, plan: Fixtures.slices, milestones: Fixtures.milestones)
+        let decided = log.filter { $0.kind == .followUp }
+
+        XCTAssertEqual(decided.map(\.title), event.followUps.map(\.title), "the follow-up's title alone heads it")
+        XCTAssertEqual(decided.map(\.meta), ["queued", "folded in", "dropped"])
+        XCTAssertEqual(decided.map(\.body), event.followUps.map(\.brief))
+        XCTAssertEqual(decided[0].facts, [ThreadFact("task", "Cache the plan on disk", sliceID: Fixtures.cacheSliceID)])
+        XCTAssertEqual(decided[1].facts, [])
+        XCTAssertEqual(decided[2].facts, [])
+        XCTAssertEqual(decided.map(\.when), Array(repeating: event.at, count: 3), "each carries its proposal's time")
+        XCTAssertFalse(decided.contains(where: \.isLive))
+    }
+
+    /// A queued follow-up's link names its slice by URL or by ID; one the
+    /// plan does not hold draws no task row, and a pending one no card.
+    func testAQueuedFollowUpsSliceIsFoundByLink() {
+        func task(_ id: String, url: String) -> Slice {
+            Slice(id: id, name: id, status: "Todo", milestoneID: "m", assignee: "", pr: "", url: url,
+                  blocked: false, handedBack: false)
+        }
+        let plan = [task("1ef38308-f654-81bf-a16e-c48ada02cca5", url: ""), task("b", url: "https://x/b")]
+
+        XCTAssertEqual(followUpSlice(link: "https://x/b", plan: plan)?.id, "b")
+        XCTAssertEqual(
+            followUpSlice(link: "https://www.notion.so/Some-title-1ef38308f65481bfa16ec48ada02cca5", plan: plan)?.name,
+            "1ef38308-f654-81bf-a16e-c48ada02cca5")
+        XCTAssertEqual(followUpSlice(link: "1EF38308F65481BFA16EC48ADA02CCA5", plan: plan)?.url, "")
+        XCTAssertNil(followUpSlice(link: "https://x/gone", plan: plan))
+        XCTAssertNil(followUpSlice(link: "", plan: plan))
+        XCTAssertNil(followUpSlice(link: nil, plan: plan))
+
+        let log = buildThreadEvents(
+            slice: slice(status: "In progress"), agent: nil, brief: nil,
+            events: [TaskLogEvent(.followUps, followUps: [
+                TaskFollowUp(index: 1, title: "Gone", decision: .queued, link: "https://x/gone"),
+                TaskFollowUp(index: 2, title: "Undecided"),
+            ])],
+            plan: plan)
+        XCTAssertEqual(log.map(\.kind), [.launched, .followUps, .followUp])
+        XCTAssertEqual(log[2].facts, [], "a slice the plan does not hold is no row")
+        XCTAssertNil(log[2].body, "an empty brief draws no body")
+        XCTAssertTrue(log[1].isLive, "a proposal awaiting a decision is live")
+    }
+
+    /// The live agent's card is live whether working or waiting.
+    func testTheLiveAgentsCardIsLive() {
+        for activity in [AgentActivityState.working, .waiting] {
+            let log = buildThreadEvents(
+                slice: slice(status: "In progress"), agent: AgentStatus(sliceID: "s", session: "nat-s", activity: activity),
+                brief: nil, events: [TaskLogEvent(.handedBack, note: "n")])
+            XCTAssertEqual(log.map(\.isLive), [false, false, true])
+        }
+    }
+
+    func testTheWidestFactKeyIsTheLongest() {
+        XCTAssertEqual(widestThreadFactKey, "depends on")
+        XCTAssertTrue(threadFactKeys.allSatisfy { $0.count <= widestThreadFactKey.count })
     }
 
     func testANoteFromATaskOnThePlanNamesItAsATaskRow() {
@@ -221,7 +287,8 @@ final class TaskLogTests: XCTestCase {
             ])
 
         XCTAssertEqual(log.map(\.kind), [
-            .launched, .released, .released, .relaunched, .blocked, .closed, .followUps, .followUps, .approved,
+            .launched, .released, .released, .relaunched, .blocked, .closed, .followUps, .followUp, .followUps,
+            .approved,
         ])
         XCTAssertEqual(log[1].title, "Craig released to Todo")
         XCTAssertEqual(log[2].title, "Released to Todo")
@@ -230,11 +297,12 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(log[4].tone, .hot)
         XCTAssertEqual(log[4].body, "No token.")
         XCTAssertEqual(log[5].body, "Wrote it up.")
-        XCTAssertEqual(log[6].facts, [ThreadFact("folded in", "Later")])
         XCTAssertEqual(log[6].meta, "proposed 1 follow-up")
-        XCTAssertTrue(log[7].awaitsTriage, "a proposal still undecided is the triage card")
-        XCTAssertEqual(log[7].tone, .hot)
-        XCTAssertEqual(log[8].facts, [])
+        XCTAssertEqual(log[7].title, "Later")
+        XCTAssertEqual(log[7].meta, "folded in")
+        XCTAssertTrue(log[8].awaitsTriage, "a proposal still undecided is the triage card")
+        XCTAssertEqual(log[8].tone, .hot)
+        XCTAssertEqual(log[9].facts, [])
     }
 
     func testAReleasedSliceKeepsItsHistory() {

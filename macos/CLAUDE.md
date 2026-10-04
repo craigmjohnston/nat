@@ -189,7 +189,7 @@ The main pane has no heading band: the titlebar band over it and the
 navigator (`TitlebarBand`) carries the breadcrumb and its tabs and nothing
 else. The live agent's model, effort and context — a slice's, a session's,
 the planning agent's; none for a container — are the status bar's trailing
-item (`AgentModelHeading`, small mono, the long form as a tooltip). A view's
+item (`AgentModelHeading`, in the bar's own sans, a divider before the context clause, the long form as a tooltip). A view's
 actions live in the navigator section whose view they act on: the diff's
 commit switcher (`DiffCommitsMenu`) a row atop the Changes body, Open in
 GitHub in the PR head before Merge, a container's Open in <source> in its
@@ -229,8 +229,14 @@ relaunches, notes (`nat slice-note`, headed "Another agent left a note";
 name — `noteSourceSlice` — is a `task` fact drawn as the brief's
 `DependencyRow`, through `ThreadEventCard.taskRow`, else `source` with the
 provenance as text; notes alone open no log on a slice never launched),
-follow-ups (triaged ones as a record, pending ones as the triage card in
-their place), then approve and merge. Each card with an `at` shows it at
+follow-ups (a proposal is its count line, then one card per decided
+follow-up — title, brief, the decision as its meta, a queued one's slice as
+a `task` row; pending ones as the triage card in their place), then approve
+and merge. A card for something happening now or awaiting the user
+(`ThreadEvent.isLive`: the live agent, a pending proposal) is washed and
+bordered in its hue (`threadCard(live:hot:)`); every key column takes the
+width of `widestThreadFactKey` (`ThreadFactKey`), and the brief's Edit is
+drawn only while the slice is Todo. Each card with an `at` shows it at
 its header's end (`threadTimestamp`: time today, `d MMM` this year, `d MMM
 y` before); Launched, approve and merge have none. Story:
 `window-task-log-notes`. Selecting sets the selection *before* awaiting the project's

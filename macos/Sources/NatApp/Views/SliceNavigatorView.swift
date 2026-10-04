@@ -221,14 +221,21 @@ struct SliceNavigatorView: View {
     private var briefCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Brief")
-                    .font(.system(size: GnatMetrics.body, weight: .medium))
-                    .ink(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    ThreadIcon(symbol: briefSymbol)
+                    Text("Brief")
+                        .font(.system(size: GnatMetrics.body, weight: .medium))
+                        .ink(.secondary)
+                }
                 Spacer(minLength: 0)
-                Button("Edit") { editingBrief = true }
-                    .buttonStyle(GnatLinkButtonStyle())
-                    .disabled(slice.status != "Todo" || detail.detail == nil)
-                    .help(slice.status == "Todo" ? "Edit the brief" : "Only a Todo task's brief can be edited")
+                // Only a Todo task's brief can be edited; once launched there
+                // is no Edit at all.
+                if slice.status == "Todo" {
+                    Button("Edit") { editingBrief = true }
+                        .buttonStyle(GnatLinkButtonStyle())
+                        .disabled(detail.detail == nil)
+                        .help("Edit the brief")
+                }
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
@@ -254,16 +261,12 @@ struct SliceNavigatorView: View {
             .font(.system(size: Typo.scaled(13.5)))
             .lineSpacing(2)
             .padding(.horizontal, 10)
-            .padding(.top, 4)
+            .padding(.top, ThreadCardMetrics.bodyGap)
             .padding(.bottom, 8)
 
             facts
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .overlay {
-            RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
-        }
+        .threadCard()
     }
 
     /// The brief's foot: its milestone, and what it depends on — one row
@@ -276,7 +279,7 @@ struct SliceNavigatorView: View {
             // milestone's place.
             if let container = detail.detail?.container {
                 GridRow {
-                    Text(containerNoun).ink(.tertiary)
+                    ThreadFactKey(containerNoun)
                     if let url = container.externalURL.flatMap(URL.init(string:)) {
                         Button(container.title) { NSWorkspace.shared.open(url) }
                             .buttonStyle(GnatLinkButtonStyle())
@@ -289,12 +292,12 @@ struct SliceNavigatorView: View {
                 SourceFactRows(facts: container.facts)
             } else {
                 GridRow {
-                    Text("milestone").ink(.tertiary)
+                    ThreadFactKey("milestone")
                     Text(milestoneName).ink(.primary).lineLimit(1)
                 }
             }
             GridRow(alignment: .firstTextBaseline) {
-                Text("depends on").ink(.tertiary)
+                ThreadFactKey("depends on")
                 if deps.isEmpty {
                     Text("none").ink(.secondary)
                 } else {

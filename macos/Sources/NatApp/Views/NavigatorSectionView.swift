@@ -156,7 +156,8 @@ struct NavHeading: View {
 /// One card of the Thread log: its icon and title (who and what they did,
 /// as one line) and, at the header's end, when where nat knows; then the
 /// body, cut short as the brief is; then its labelled facts, on the same
-/// ground with nothing between them.
+/// ground with nothing between them. A live card (`ThreadEvent.isLive`) is
+/// set apart from the settled ones around it (`threadCard(live:hot:)`).
 struct ThreadEventCard: View {
     let event: ThreadEvent
     @Environment(\.clock) private var clock
@@ -170,7 +171,7 @@ struct ThreadEventCard: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    ThreadIcon(symbol: event.kind.symbol, role: event.kind == .checksFailed ? .danger : .tertiary)
+                    ThreadIcon(symbol: event.kind.symbol, role: iconRole)
                     // An action and who did it are one line, in one face
                     // and ink: "Agent handed back".
                     Text(event.title)
@@ -198,7 +199,7 @@ struct ThreadEventCard: View {
                         .textSelection(.enabled)
                 }
                     .padding(.horizontal, 10)
-                    .padding(.top, 4)
+                    .padding(.top, ThreadCardMetrics.bodyGap)
                     .padding(.bottom, 8)
             }
 
@@ -207,7 +208,7 @@ struct ThreadEventCard: View {
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
                     ForEach(Array(event.facts.enumerated()), id: \.offset) { _, fact in
                         GridRow {
-                            Text(fact.key).ink(.tertiary)
+                            ThreadFactKey(fact.key)
                             if let id = fact.sliceID, let row = taskRow?(id) {
                                 row
                             } else {
@@ -226,11 +227,15 @@ struct ThreadEventCard: View {
                 .padding(.top, event.body == nil ? 2 : 0)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .overlay {
-            RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
-        }
+        .threadCard(live: event.isLive, hot: event.tone == .hot)
+    }
+
+    /// A failure in the danger ink; a live card's in its own hue; the rest
+    /// quiet.
+    private var iconRole: InkRole {
+        if event.kind == .checksFailed { return .danger }
+        if event.isLive { return tone }
+        return .tertiary
     }
 
     private var tone: InkRole {
@@ -239,6 +244,29 @@ struct ThreadEventCard: View {
         case .accent: return .accent
         case .hot: return .hot
         }
+    }
+}
+
+enum ThreadCardMetrics {
+    /// The room between a card's title and its body, so the two read as two
+    /// things. A card with no body keeps its title close over its facts.
+    static let bodyGap: CGFloat = 8
+}
+
+extension View {
+    /// A Thread card's frame: clipped to its corners and bordered. A live
+    /// one — something happening now, or waiting on the user's decision — is
+    /// washed in its hue (`hot`, else the accent) under a border of it; a
+    /// settled one keeps the plain separator.
+    func threadCard(live: Bool = false, hot: Bool = false) -> some View {
+        frame(maxWidth: .infinity, alignment: .leading)
+            .background { if live { DesignTokens.liveCardWash(hot: hot, on: .window) } }
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay {
+                RoundedRectangle(cornerRadius: 4).strokeBorder(
+                    live ? DesignTokens.liveCardBorder(hot: hot, on: .window) : DesignTokens.rule(.separator, on: .window),
+                    lineWidth: 1)
+            }
     }
 }
 

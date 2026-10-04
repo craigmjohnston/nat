@@ -878,8 +878,20 @@ enum AppStories {
 
         Story(
             name: "window-task-log",
-            summary: "A merged task's log: handed back three times, sent back twice, two follow-ups triaged, then approved and merged.",
+            summary: "A merged task's log: handed back three times, sent back twice, three follow-ups triaged "
+                + "(each its own card after the proposal: queued, folded in, dropped), then approved and merged.",
             size: window
+        ) {
+            await slicePane(
+                Fixtures.shellSliceID, agents: [], details: Fixtures.taskLogSliceDetails,
+                focus: NavigatorFocus(open: [.thread], main: .diff))
+        },
+
+        Story(
+            name: "window-task-log-whole",
+            summary: "The same log in a window tall enough to show every card: the three decided follow-ups, "
+                + "the queued one's task row, then the approve and the merge.",
+            size: CGSize(width: window.width, height: 1500)
         ) {
             await slicePane(
                 Fixtures.shellSliceID, agents: [], details: Fixtures.taskLogSliceDetails,
@@ -1432,7 +1444,7 @@ enum AppStories {
         Story(
             name: "status-bar-agent-readout",
             summary: "The status bar with the selection\u{2019}s agent live: the usage windows at the leading edge, "
-                + "the agent\u{2019}s model, effort and context in small mono at the trailing edge, no breadcrumb.",
+                + "the agent\u{2019}s model and effort, a divider, then its context clause at the trailing edge, no breadcrumb.",
             size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
         ) {
             StatusBarView(
@@ -1446,7 +1458,7 @@ enum AppStories {
 
         Story(
             name: "status-bar-agent-readout-high-context",
-            summary: "The same readout at 91% context: the percent switches to the warning tint.",
+            summary: "The same readout at 91% context: the context clause switches to the warning tint.",
             size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
         ) {
             StatusBarView(

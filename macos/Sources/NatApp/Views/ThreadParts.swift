@@ -30,37 +30,69 @@ struct Excerpt<Content: View>: View {
 // MARK: - Icons
 
 extension ThreadEventKind {
-    /// The glyph a Thread card is headed with.
+    /// The glyph a Thread card is headed with — filled wherever SF Symbols
+    /// has a filled form, so the set reads as one family.
     var symbol: String {
         switch self {
-        case .launched: return "play.circle"
-        case .agent: return "terminal"
-        case .handedBack: return "arrow.uturn.backward.circle"
-        case .sentBack: return "arrow.uturn.forward.circle"
-        case .released: return "arrow.down.to.line.circle"
-        case .relaunched: return "arrow.clockwise.circle"
-        case .checksFailed: return "xmark.octagon"
-        case .blocked: return "exclamationmark.octagon"
-        case .followUps: return "lightbulb"
-        case .note: return "note.text"
-        case .approved: return "checkmark.seal"
+        case .launched: return "play.circle.fill"
+        case .agent: return "terminal.fill"
+        case .handedBack: return "arrow.uturn.backward.circle.fill"
+        case .sentBack: return "arrow.uturn.forward.circle.fill"
+        case .released: return "arrow.down.to.line.circle.fill"
+        case .relaunched: return "arrow.clockwise.circle.fill"
+        case .checksFailed: return "xmark.octagon.fill"
+        case .blocked: return "exclamationmark.octagon.fill"
+        case .followUps: return "lightbulb.fill"
+        case .followUp: return "arrow.right.circle.fill"
+        case .note: return "text.bubble.fill"
+        case .approved: return "checkmark.seal.fill"
         case .merged: return "arrow.triangle.merge"
-        case .closed: return "checkmark.circle"
+        case .closed: return "checkmark.circle.fill"
         }
     }
 }
 
-/// A Thread card's leading glyph, sized to sit on the mono `xs` line beside
-/// it.
+/// The brief card's own glyph, heading it as a kind heads every other card.
+let briefSymbol = "doc.text.fill"
+
+/// A Thread card's leading glyph: centred in a frame wide enough for the
+/// widest of them (`terminal.fill`, 19pt at this size), so every card's
+/// title starts at one x, and — in a header aligned on its first baseline —
+/// centred on the title's capitals rather than seated on its baseline, which
+/// holds on the first line of a title that wraps.
 struct ThreadIcon: View {
     let symbol: String
     var role: InkRole = .tertiary
 
+    static let size: CGFloat = 13
+    static let width: CGFloat = 20
+
     var body: some View {
+        let capHeight = NSFont.systemFont(ofSize: GnatMetrics.body).capHeight
         Image(systemName: symbol)
-            .font(.system(size: 11, weight: .medium))
+            .font(.system(size: Self.size, weight: .semibold))
             .ink(role)
-            .frame(width: 14)
+            .frame(width: Self.width)
+            .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] + capHeight / 2 }
+    }
+}
+
+/// A Thread fact's key: every card's key column takes the width of the
+/// widest key any card can show (`widestThreadFactKey`), so every value in
+/// the Thread starts at the same x. A longer key — a source's own label —
+/// still draws whole, widening its own card's column.
+struct ThreadFactKey: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Text(widestThreadFactKey).hidden()
+            Text(text).ink(.tertiary)
+        }
     }
 }
 
@@ -112,7 +144,7 @@ struct LaunchCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 6) {
-                ThreadIcon(symbol: blocked ? "lock" : "play.circle")
+                ThreadIcon(symbol: blocked ? "lock.fill" : "play.circle.fill")
                 Text(blocked ? "Blocked" : mode == .relaunch ? "Relaunch" : mode == .fix ? "Fix" : "Launch")
                     .font(.system(size: GnatMetrics.body, weight: .medium))
                     .ink(blocked ? .tertiary : .secondary)
@@ -152,14 +184,14 @@ struct LaunchCard: View {
     private var facts: some View {
         Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
             GridRow {
-                Text("model").ink(.tertiary)
+                ThreadFactKey("model")
                 NavFactMenu(value: model) {
                     Button("Default") { model = "" }
                     ForEach(options.models, id: \.self) { option in Button(option) { model = option } }
                 }
             }
             GridRow {
-                Text("effort").ink(.tertiary)
+                ThreadFactKey("effort")
                 NavFactMenu(value: effort) {
                     Button("Default") { effort = "" }
                     ForEach(options.efforts, id: \.self) { option in Button(option) { effort = option } }
@@ -167,7 +199,7 @@ struct LaunchCard: View {
             }
             if let base {
                 GridRow {
-                    Text("base").ink(.tertiary)
+                    ThreadFactKey("base")
                     Text(base)
                         .ink(blocked ? .quaternary : .primary)
                         .lineLimit(1)

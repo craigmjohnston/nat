@@ -149,6 +149,18 @@ public enum DesignTokens {
         derived { $0.ink(of: $0.hot, on: ground.surface(in: $0)) }
     }
 
+    /// A Thread card for something happening now or waiting on the user:
+    /// its hue — `--hot` where it waits on the user, else the accent —
+    /// washed into the ground at a selection's weight.
+    public static func liveCardWash(hot: Bool, on ground: Ground) -> Color {
+        derived { $0.wash(.selection, of: hot ? $0.hot : $0.accent, on: ground) }
+    }
+
+    /// That card's border: the same hue, as ink on the ground.
+    public static func liveCardBorder(hot: Bool, on ground: Ground) -> Color {
+        derived { $0.ink(of: hot ? $0.hot : $0.accent, on: ground.surface(in: $0)) }
+    }
+
     /// The design's `--accent-dim`: a primary action's fill, the accent
     /// washed into the ground it sits on.
     public static func accentDim(on ground: Ground) -> Color {
