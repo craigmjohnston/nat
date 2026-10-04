@@ -200,7 +200,13 @@ milestones), Done, an unreadable body, and an unreadable `--from` — all before
 `Store.RecordNote`. Provenance is `fromSlice` (`From "<name>" (<milestone>)`,
 the label `store.SliceLabel` writes and `TaskEvents` parses back) or
 `fromPerson` (the config's assignee name), never an ID; `slice-triage`'s
-queued-follow-up line is `fromSlice` too. See root CLAUDE.md's Notes rule.
+queued-follow-up line is `fromSlice` too. After the write and its nudge, a
+target with a live session (`liveSessionFor`) is sent
+`agent.NoteArrivedPrompt` — unless `--from` resolves to the target itself (an
+agent noting its own slice is not sent its own note); a failed tmux listing is
+logged and concludes nothing, a failed send exits non-zero with the note
+standing, and the output adds `Its live agent was told.` only where one was.
+See root CLAUDE.md's Notes rule.
 
 `slice-show --json`'s `events` is the slice's whole task log: every
 `store.TaskEvent` its body carries (`handed_back`/`sent_back`/`relaunched`/

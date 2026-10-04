@@ -109,7 +109,8 @@ that is no longer true — leave a note on that slice, named by its name:
 Add `--milestone '<milestone name>'` where that name is filed under more
 than one milestone, and `--note -` to pipe a long note in. The note ends
 that slice's brief, with where it came from written by nat, so whoever
-works it next reads it as part of the brief. A note is never work to be
+works it next reads it as part of the brief; where that slice has a live
+agent, the note reaches it in its session too. A note is never work to be
 done — that is a follow-up, not a note — and never goes on a Done slice.
 
 ## Naming slices

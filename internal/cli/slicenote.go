@@ -7,8 +7,10 @@ import (
 	"io"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -16,7 +18,9 @@ import (
 // that slice needs to know, which the session writing it found out — a
 // constraint, a seam that moved, an assumption in the brief no longer true.
 // The brief an agent is handed at launch is the page body, so the note reaches
-// whoever works the slice next with nothing further to do.
+// whoever works the slice next with nothing further to do; an agent already
+// working it was handed its brief at launch, so a live one is sent the note as
+// well, once it is on the page.
 //
 // The target is named the way an agent knows it: by name, matched as
 // plan-apply matches a depends_on title, with --milestone to say which where
@@ -79,7 +83,7 @@ func sliceNote(ctx context.Context, args []string, env Env) error {
 	if _, err := st.Body(ctx, s.ID); err != nil {
 		return fmt.Errorf("%q has no readable brief to add a note to: %w", s.Name, err)
 	}
-	provenance, err := noteProvenance(r, *from, cfg)
+	provenance, fromID, err := noteProvenance(r, *from, cfg)
 	if err != nil {
 		return err
 	}
@@ -88,25 +92,46 @@ func sliceNote(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("file the note: %w", err)
 	}
 	env.nudged()
-	_, err = fmt.Fprintf(env.Out, "# %s\n\nNote filed at the end of its brief: %s.\n", s.Name, provenance)
+
+	// The page is the record and the send the courtesy, so the note is written
+	// first: a live agent is told only of a note already on its brief. An agent
+	// noting its own slice is not sent its own words back.
+	told := false
+	if fromID != s.ID {
+		session, live, err := liveSessionFor(env, s.ID, rest[0])
+		if err != nil {
+			logging.Error("could not read live sessions for a note; the agent will not be told", "slice", s.ID, "err", err)
+		}
+		if live {
+			if err := env.NewTmux().SendPrompt(session, agent.NoteArrivedPrompt(provenance, text)); err != nil {
+				return fmt.Errorf("the note is filed, but telling the agent failed: %w", err)
+			}
+			told = true
+		}
+	}
+	line := fmt.Sprintf("Note filed at the end of its brief: %s.", provenance)
+	if told {
+		line += " Its live agent was told."
+	}
+	_, err = fmt.Fprintf(env.Out, "# %s\n\n%s\n", s.Name, line)
 	return err
 }
 
 // noteProvenance is the line a note opens with: the slice --from names, read
 // for its name and milestone, or the person at the keyboard where there is
-// none.
-func noteProvenance(r sliceResolver, from string, cfg config.Config) (string, error) {
+// none. The --from slice's ID comes back beside it, empty for a person.
+func noteProvenance(r sliceResolver, from string, cfg config.Config) (string, string, error) {
 	if strings.TrimSpace(from) == "" {
 		if cfg.AssigneeUserName == "" {
-			return "", fmt.Errorf("no assignee in the config to say the note is from: pass --from, or finish setting nat up")
+			return "", "", fmt.Errorf("no assignee in the config to say the note is from: pass --from, or finish setting nat up")
 		}
-		return fromPerson(cfg.AssigneeUserName), nil
+		return fromPerson(cfg.AssigneeUserName), "", nil
 	}
 	s, err := r.resolve(from, "")
 	if err != nil {
-		return "", fmt.Errorf("--from: %w", err)
+		return "", "", fmt.Errorf("--from: %w", err)
 	}
-	return fromSlice(s, r.milestones), nil
+	return fromSlice(s, r.milestones), s.ID, nil
 }
 
 // fromSlice says a note or a queued follow-up came from a slice, by its name
