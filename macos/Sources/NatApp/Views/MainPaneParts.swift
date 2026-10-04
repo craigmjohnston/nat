@@ -159,7 +159,7 @@ struct TitlebarBreadcrumb<Picker: View>: View {
                                     FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
                                         .frame(height: CrumbLine.height)
                                 }
-                                Text(parent).ink(.secondary)
+                                Text(parent).ink(.tertiary)
                             }
                         }
                     case .project:
@@ -222,7 +222,7 @@ private struct ProjectCrumbLabel: View {
                 color: DesignTokens.ink(.tertiary, on: .header),
                 backColor: DesignTokens.ink(.tertiary, on: .header))
                 .frame(height: CrumbLine.height)
-            Text(name).ink(.secondary)
+            Text(name).ink(.tertiary)
         }
     }
 }
@@ -253,13 +253,14 @@ struct TitlebarIdentityLabel: View {
             Group {
                 if let identity, let icon = identity.icon {
                     SourceIdentityLabel(
-                        icon: icon, tag: identity.tag, title: identity.title, size: GnatMetrics.titlebarText)
+                        icon: icon, tag: identity.tag, title: identity.title, size: GnatMetrics.titlebarText,
+                        iconInk: .tertiary, titleInk: .tertiary)
                 } else if let identity {
                     ActiveIdentityLabel(
                         tag: identity.tag, state: identity.state, live: identity.live, title: identity.title,
-                        size: GnatMetrics.titlebarText)
+                        size: GnatMetrics.titlebarText, titleInk: .tertiary)
                 } else {
-                    Text(title).ink(.secondary)
+                    Text(title).ink(.tertiary)
                 }
             }
             .layoutPriority(-1)
@@ -276,7 +277,7 @@ struct TitlebarIdentityLabel: View {
 }
 
 /// The agent readout, at the status bar's trailing edge in the bar's own
-/// sans: the selection's live agent's model, its effort quieter, then — past
+/// sans and its one quiet ink: the selection's live agent's model and effort, then — past
 /// a divider like the leading edge's — its context clause as its own
 /// statusline reports it, in the warning tint once it runs high; or nothing.
 /// The long form is its tooltip.
@@ -288,7 +289,7 @@ struct AgentModelHeading: View {
             HStack(spacing: 10) {
                 if readout.model != nil || readout.effort != nil {
                     HStack(spacing: 6) {
-                        if let model = readout.model { Text(model).ink(.secondary) }
+                        if let model = readout.model { Text(model).ink(.tertiary) }
                         if let effort = readout.effort { Text(effort).ink(.tertiary) }
                     }
                 }

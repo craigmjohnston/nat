@@ -18,16 +18,13 @@ public enum NavigatorSection: String, CaseIterable, Equatable, Hashable, Sendabl
 }
 
 /// What the main pane shows: the agent's terminal, the diff, the images the
-/// agent handed in, the pull request's description and conversation, a run
-/// command's terminal, or nothing.
+/// agent handed in, the pull request's description and conversation, or
+/// nothing.
 public enum MainPaneMode: Equatable, Sendable {
     case terminal
     case diff
     case visuals
     case pr
-    /// A run command's terminal (`AppModel.runs`): no navigator section's
-    /// view, put up by its own tab.
-    case run
     /// "The terminal opens here on launch."
     case empty
 }
@@ -208,12 +205,9 @@ public struct NavigatorModel: Equatable, Sendable {
     /// request, approved, with no fix under way — "Launch fix agent".
     public var launchIsFix: Bool { state == .pr }
 
-    /// The first section's label: "Task" while the slice is still to do, and
-    /// "Task log" from the moment it is under way on — what the section has
-    /// become by then is the record of what happened to it.
-    public var threadLabel: String {
-        state.isLaunched ? "Task log" : NavigatorSection.thread.label
-    }
+    /// The first section's label: "Task", whatever the slice's state — the
+    /// one name the user knows it by, before launch and after.
+    public var threadLabel: String { NavigatorSection.thread.label }
 
     /// Whether the Thread header offers Launch: a slice not yet launched (a
     /// blocked one drawn disabled, as the design draws it), one being worked
@@ -434,7 +428,7 @@ public func buildThreadEvents(
         let waiting = AgentActivity(agent.activity) == .waiting
         return ThreadEvent(
             .agent, who: "Agent",
-            meta: waiting ? "waiting for you" : "working",
+            meta: waiting ? "on standby" : "working",
             tone: waiting ? .hot : .accent,
             facts: reading.context, isLive: true)
     }
@@ -445,10 +439,12 @@ public func buildThreadEvents(
     // What the page records, in the order it was written; then the agent as
     // it is now; then what the properties say came of it all.
     let closing: Set<TaskLogEvent.Kind> = [.approved, .merged]
+    // Each card takes its event's time, but for one that has its own — a
+    // decided follow-up's, the time it was decided.
     let cards = { (event: TaskLogEvent) -> [ThreadEvent] in
         threadEvents(event, plan: plan, milestones: milestones).map { card in
             var card = card
-            card.when = event.at
+            if card.when == nil { card.when = event.at }
             return card
         }
     }
@@ -486,17 +482,20 @@ public func followUpSlice(link: String?, plan: [Slice]) -> Slice? {
 
 /// One recorded event as its Task log cards: one card, except a proposal of
 /// follow-ups, which is its count line then one card per decided follow-up —
-/// its title, its brief as the body, the decision as the meta, and a `task`
-/// row for the slice a queued one became where the plan holds it.
+/// headed by the decision ("Queued proposed follow-up"), its title then its
+/// brief as the body, a `task` row for the slice a queued one became where
+/// the plan holds it, and the time it was decided where nat read one.
 private func threadEvents(_ event: TaskLogEvent, plan: [Slice], milestones: [Milestone]) -> [ThreadEvent] {
     [threadEvent(event, plan: plan, milestones: milestones)] + event.followUps.compactMap { followUp in
         followUp.decision.map { decision in
             let queued = decision == .queued ? followUpSlice(link: followUp.link, plan: plan) : nil
+            // Two newlines, so markdown sets the title and brief as paragraphs.
+            let body = followUp.brief.isEmpty ? followUp.title : "\(followUp.title)\n\n\(followUp.brief)"
             return ThreadEvent(
-                .followUp, who: followUp.title, meta: followUpDecisionWord(decision),
-                body: followUp.brief.isEmpty ? nil : followUp.brief,
+                .followUp, who: followUpDecisionHeading(decision), meta: "proposed follow-up",
+                body: body,
                 facts: queued.map { [ThreadFact("task", $0.name, sliceID: $0.id)] } ?? [],
-                metaIsAction: false)
+                when: followUp.decidedAt)
         }
     }
 }
@@ -572,12 +571,13 @@ public let threadFactKeys = [
 /// longest is the widest.
 public let widestThreadFactKey = threadFactKeys.max { $0.count < $1.count } ?? ""
 
-/// What a triaged follow-up's line in the log says came of it.
-public func followUpDecisionWord(_ decision: TaskFollowUp.Decision) -> String {
+/// What a triaged follow-up's log item says came of it, heading the item
+/// as "<word> proposed follow-up" — a dropped one reads as dismissed.
+public func followUpDecisionHeading(_ decision: TaskFollowUp.Decision) -> String {
     switch decision {
-    case .queued: return "queued"
-    case .folded: return "folded in"
-    case .dropped: return "dropped"
+    case .queued: return "Queued"
+    case .folded: return "Folded in"
+    case .dropped: return "Dismissed"
     }
 }
 

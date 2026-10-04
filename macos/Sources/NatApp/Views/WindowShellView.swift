@@ -128,11 +128,6 @@ struct WindowShellView: View {
         }
         .onChange(of: selectionKey) { _, _ in resetToDefaults() }
         .onChange(of: slicePhase) { _, _ in resetToDefaults() }
-        // A run just started puts its terminal up, where the selection can
-        // show it.
-        .onChange(of: appModel.runShowRequest) { _, _ in
-            if selectedRun != nil { mainOverride = .run }
-        }
         .alert(
             "The run could not start",
             isPresented: Binding(get: { appModel.runError != nil }, set: { if !$0 { appModel.dismissRunError() } })
@@ -203,16 +198,14 @@ struct WindowShellView: View {
         return []
     }
 
-    /// The band's tabs: the workshop's own, else a slice's or session's —
-    /// a slice's with Run beside Terminal while it has a run to show.
+    /// The band's tabs: the workshop's own, else a slice's or session's.
     private var titlebarTabs: [TitlebarTab] {
         if workshopShown { return appModel.workshopTabs.map(\.titlebarTab) }
-        return selectedRun == nil ? tabs.map(\.titlebarTab) : TitlebarTab.withRun(tabs)
+        return tabs.map(\.titlebarTab)
     }
 
     private var selectedTabID: String? {
         if workshopShown { return appModel.workshopTab?.titlebarTab.id }
-        if main.wrappedValue == .run { return TitlebarTab.run.id }
         return tabs.first { $0.mode == main.wrappedValue }?.titlebarTab.id
     }
 
@@ -221,17 +214,9 @@ struct WindowShellView: View {
             if let picked = appModel.workshopTabs.first(where: { $0.titlebarTab == tab }) {
                 appModel.showWorkshopTab(picked)
             }
-        } else if tab == .run {
-            main.wrappedValue = .run
         } else if let picked = tabs.first(where: { $0.titlebarTab == tab }) {
             showTab(picked)
         }
-    }
-
-    /// The run the selected slice's main pane can show: its own, else its
-    /// project's global one.
-    private var selectedRun: RunAttachment? {
-        selectedSlice.flatMap { appModel.run(forSlice: $0.id, inProject: appModel.activeProjectID ?? "") }
     }
 
     /// Whether the workshop is what the columns show — a project's, or an
@@ -378,14 +363,10 @@ struct WindowShellView: View {
 
     /// The main pane's mode. Setting it opens no section: a header click
     /// sets both together (`NavigatorFocus`), and a fold must be able to
-    /// leave its section's view up without the view reopening it. A run's
-    /// view with no run left to show falls back to the default.
+    /// leave its section's view up without the view reopening it.
     private var main: Binding<MainPaneMode> {
         Binding(
-            get: {
-                if mainOverride == .run && selectedRun == nil { return defaultMain }
-                return mainOverride ?? defaultMain
-            },
+            get: { mainOverride ?? defaultMain },
             set: { mainOverride = $0 }
         )
     }

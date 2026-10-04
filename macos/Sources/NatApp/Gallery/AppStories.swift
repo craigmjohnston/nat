@@ -223,15 +223,24 @@ enum AppStories {
     /// The sidebar's own titlebar segment over a project with runs — and,
     /// where `treeOpen`, the run tree drawn under the play button, since a
     /// real popover is a window of its own no render of this one can show.
-    private static func titlebarRun(treeOpen: Bool) async -> some View {
+    /// `running`: the project's Board run started and still live, so the
+    /// tree greys it and the play button spins.
+    private static func titlebarRun(treeOpen: Bool, running: Bool = false) async -> some View {
         let appModel = await Fixtures.startedAppModel(config: Fixtures.runsConfig)
+        if running {
+            appModel.runSessionExists = { _ in true }
+            await appModel.startRun(projectID: Fixtures.projectID, label: "Board")
+        }
         return VStack(alignment: .leading, spacing: 0) {
             SidebarView(appModel: appModel, showsTitlebar: true)
                 .frame(width: 260, height: GnatMetrics.titlebarHeight, alignment: .top)
                 .clipped()
                 .environment(\.pulsesPaused, true)
             if treeOpen {
-                RunTreePicker(projects: appModel.runProjects, openProjectID: Fixtures.projectID) { _, _ in }
+                RunTreePicker(
+                    projects: appModel.runProjects, openProjectID: Fixtures.projectID,
+                    isRunning: { appModel.isRunning(projectID: $0, sliceID: nil, label: $1) }
+                ) { _, _ in }
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(DesignTokens.rule(.separator, on: .header), lineWidth: 1))
                     .padding(.top, 6)
@@ -1713,10 +1722,29 @@ enum AppStories {
         },
 
         Story(
+            name: "titlebar-run-menu-running",
+            summary: "The run tree with the project\u{2019}s Board run live: its row greyed and not to be picked, "
+                + "Play beside it still offered; the play button spinning.",
+            size: CGSize(width: 500, height: 300)
+        ) {
+            await titlebarRun(treeOpen: true, running: true)
+        },
+
+        Story(
+            name: "run-menu-running",
+            summary: "A slice\u{2019}s run menu with its default, Play, live: Play greyed and not to be picked, "
+                + "Board still offered.",
+            size: CGSize(width: 320, height: 130)
+        ) {
+            RunMenuList(runs: Fixtures.runs.sliceRuns, isRunning: { $0 == "Play" }) { _ in }
+                .surface(.header)
+        },
+
+        Story(
             name: "window-run-heading",
-            summary: "A handed-back slice of a project with runs: the Run heading under the Task log, above "
-                + "Changes \u{2014} no section, no fold \u{2014} its split button full bleed; the play "
-                + "button in the sidebar\u{2019}s titlebar segment.",
+            summary: "A handed-back slice of a project with runs: the run split button among the Task "
+                + "section\u{2019}s header actions, full bleed; the play button in the sidebar\u{2019}s "
+                + "titlebar segment.",
             size: window
         ) {
             await slicePane(Fixtures.mergeBoxSliceID, config: Fixtures.runsConfig)
@@ -1724,8 +1752,8 @@ enum AppStories {
 
         Story(
             name: "window-run-heading-merged",
-            summary: "The same slice once merged: the Run heading greyed and its button disabled, the worktree "
-                + "being gone.",
+            summary: "The same slice once merged: the Task header\u{2019}s run button greyed and disabled, "
+                + "the worktree being gone.",
             size: window
         ) {
             await slicePane(
@@ -1733,15 +1761,12 @@ enum AppStories {
         },
 
         Story(
-            name: "window-run-tab",
-            summary: "A slice-scoped run started: the Run tab beside Terminal, picked, the run\u{2019}s session "
-                + "attached in the main pane (the terminal stubbed).",
+            name: "window-run-heading-running",
+            summary: "The handed-back slice with its default run, Play, live: the run button\u{2019}s main part "
+                + "spinning and greyed, so Play is not started twice; its chevron still live for Board.",
             size: window
         ) {
-            await slicePane(
-                Fixtures.mergeBoxSliceID, focus: NavigatorFocus(open: [.changes], main: .run),
-                config: Fixtures.runsConfig
-            ) { appModel in
+            await slicePane(Fixtures.mergeBoxSliceID, config: Fixtures.runsConfig) { appModel in
                 appModel.runSessionExists = { _ in true }
                 await appModel.startRun(projectID: Fixtures.projectID, sliceID: Fixtures.mergeBoxSliceID)
             }
@@ -2007,7 +2032,7 @@ private struct StateDotsStory: View {
         ("working — agent live", .working, true),
         ("working — no agent", .working, false),
         ("fixing", .fixing, true),
-        ("waiting for you", .waiting, true),
+        ("on standby", .waiting, true),
         ("review", .review, false),
         ("pr open", .pr, false),
         ("done", .done, false),

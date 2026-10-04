@@ -7,7 +7,7 @@ import SwiftUI
 @MainActor
 final class DiffFonts {
     let code = Typo.monoNSFont(size: Typo.codeView)
-    let header = Typo.monoNSFont(size: Typo.codeView, weight: .medium)
+    let header = Typo.monoNSFont(size: Typo.codeView)
     /// The design's mono `xs`: a hunk break, a header's tally, the closing
     /// line.
     let small = Typo.monoNSFont(size: Typo.codeView(12))
@@ -227,8 +227,9 @@ final class DiffViewportView: NSView {
 
     // MARK: - Headers
 
-    /// A file's header band: chevron, path, rename, tally, comment mark and
-    /// — on a review — the viewed box at the trailing edge.
+    /// A file's header band: chevron, path, rename and comment mark from the
+    /// leading edge; the tally against the trailing edge, just inside — on a
+    /// review — the viewed box.
     private func drawHeader(_ canvas: DiffCanvasView, file: Int, y: CGFloat) {
         let model = canvas.files[file]
         let height = canvas.metrics.headerHeight
@@ -255,6 +256,8 @@ final class DiffViewportView: NSView {
             drawSymbol("text.bubble.fill", size: 10, weight: .regular, color: DiffInk.secondary,
                        in: NSRect(x: x, y: y, width: 12, height: height))
         }
+        drawString(layout.tallyText, font: canvas.fonts.small, color: DiffInk.secondary, in: layout.tally,
+                   alignment: .right)
         if let viewed = layout.viewed {
             let checked = canvas.state.viewed.contains(model.path)
             let box = NSRect(x: viewed.minX, y: viewed.midY - 7, width: 14, height: 14)
@@ -276,22 +279,27 @@ final class DiffViewportView: NSView {
 
     struct HeaderLayout {
         var path: NSRect
+        /// What follows the path: the rename note, where there is one.
         var extras: [(String, CGFloat)]
         var hasComments: Bool
+        /// The `+N −N` tally, right-aligned against the trailing edge — just
+        /// inside the viewed toggle where there is one.
+        var tally: NSRect
+        var tallyText: String
         /// The viewed toggle — box and word — where the header has one.
         var viewed: NSRect?
     }
 
-    /// Where a header's pieces go across the band: the path takes what the
-    /// rest leaves it, cut from its head so the file's own name stays.
+    /// Where a header's pieces go across the band: from the trailing edge the
+    /// viewed toggle, then the tally; the path takes what the rest leaves it,
+    /// cut from its head so the file's own name stays.
     func headerLayout(_ canvas: DiffCanvasView, file: Int, y: CGFloat) -> HeaderLayout {
         let model = canvas.files[file]
         let height = canvas.metrics.headerHeight
         let small = canvas.fonts.small
         var extras: [(String, CGFloat)] = []
         if model.isRenamed { extras.append(("was \(model.oldPath)", width("was \(model.oldPath)", small))) }
-        let tally = "+\(model.adds) \u{2212}\(model.dels)"
-        extras.append((tally, width(tally, small)))
+        let tallyText = "+\(model.adds) \u{2212}\(model.dels)"
         let hasComments = (canvas.state.commentCounts[model.path] ?? 0) > 0
 
         var trailing = bounds.width - 16
@@ -302,12 +310,15 @@ final class DiffViewportView: NSView {
             viewed = NSRect(x: trailing, y: y, width: viewedWidth, height: height)
             trailing -= 8
         }
+        let tallyWidth = width(tallyText, small)
+        let tally = NSRect(x: trailing - tallyWidth, y: y, width: tallyWidth, height: height)
+        trailing -= tallyWidth + 8
         let extrasWidth = extras.reduce(0) { $0 + $1.1 + 8 } + (hasComments ? 12 + 8 : 0)
         let pathX: CGFloat = 30
         let pathWidth = min(width(model.path, canvas.fonts.header), max(trailing - pathX - extrasWidth, 0))
         return HeaderLayout(
             path: NSRect(x: pathX, y: y, width: pathWidth, height: height),
-            extras: extras, hasComments: hasComments, viewed: viewed)
+            extras: extras, hasComments: hasComments, tally: tally, tallyText: tallyText, viewed: viewed)
     }
 
     private func drawChevron(open: Bool, at origin: NSPoint) {

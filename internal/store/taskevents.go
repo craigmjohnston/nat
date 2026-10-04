@@ -91,6 +91,10 @@ type TaskFollowUp struct {
 	// Link is the queued slice's URL (or ID), set only where Decision is
 	// "queued".
 	Link string
+	// DecidedAt is when it was decided, off the stamp of the Follow-ups
+	// triaged section that decided it — the zero time while it is pending,
+	// and for a decision recorded before sections were stamped.
+	DecidedAt time.Time
 }
 
 // releasedLineRe matches [releasedLine]'s own text, capturing the assignee it
@@ -137,8 +141,8 @@ func releasedBy(line string) (string, time.Time, bool) {
 // Each section's stamp — its first paragraph, `At <RFC 3339>` — is read off
 // into the event's At and is no part of its text; a section with none (one
 // written before stamps were) reads exactly as it always did, at the zero
-// time. A Follow-ups triaged section's own stamp is read by nothing: it is a
-// record against an earlier event, not an event of its own.
+// time. A Follow-ups triaged section is a record against an earlier event,
+// not an event of its own: its stamp is each item it decides' DecidedAt.
 func TaskEvents(body string) []TaskEvent {
 	const (
 		outside = iota
@@ -151,8 +155,9 @@ func TaskEvents(body string) []TaskEvent {
 	var curLines []string
 	var items []FollowUp
 	var brief []string
-	// proposedAt is the stamp the Follow-ups section being read opened with.
-	var proposedAt time.Time
+	// proposedAt is the stamp the Follow-ups section being read opened with,
+	// and decidedAt the Follow-ups triaged section's.
+	var proposedAt, decidedAt time.Time
 	lastFollowUpsIdx := -1
 
 	in, level, fence, indent := outside, 0, "", ""
@@ -277,7 +282,7 @@ func TaskEvents(body string) []TaskEvent {
 			continue
 		case h > 0 && strings.EqualFold(text, notion.FollowUpsTriagedHeading):
 			closeCurrent()
-			in, level = record, h
+			in, level, decidedAt = record, h, time.Time{}
 			continue
 		}
 		switch in {
@@ -294,7 +299,10 @@ func TaskEvents(body string) []TaskEvent {
 			}
 		case record:
 			if title, dec, link, ok := triagedEntry(line); ok {
-				applyDecision(events, lastFollowUpsIdx, title, dec, link)
+				applyDecision(events, lastFollowUpsIdx, title, dec, link, decidedAt)
+			} else if t, ok := stampAt(line); ok && decidedAt.IsZero() {
+				// The stamp is the section's first paragraph, before any entry.
+				decidedAt = t
 			}
 		}
 	}
@@ -395,8 +403,9 @@ func taskFollowUpsOf(items []FollowUp) []TaskFollowUp {
 // event's matching item, by title — the same match [PendingFollowUps] makes
 // against its own record. idx is that event's place in events, or -1 where a
 // Follow-ups triaged section turns up with no Follow-ups section before it at
-// all, which names nothing to decide.
-func applyDecision(events []TaskEvent, idx int, title string, dec Decision, link string) {
+// all, which names nothing to decide. at is the record's stamp, the zero
+// time where it has none.
+func applyDecision(events []TaskEvent, idx int, title string, dec Decision, link string, at time.Time) {
 	if idx < 0 || idx >= len(events) {
 		return
 	}
@@ -404,6 +413,7 @@ func applyDecision(events []TaskEvent, idx int, title string, dec Decision, link
 		if events[idx].FollowUps[i].Title == title {
 			events[idx].FollowUps[i].Decision = decisionString(dec)
 			events[idx].FollowUps[i].Link = link
+			events[idx].FollowUps[i].DecidedAt = at
 			return
 		}
 	}

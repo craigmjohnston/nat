@@ -167,13 +167,15 @@ type noteSourceJSON struct {
 }
 
 // taskFollowUpJSON is one follow-up of a "follow_ups" event, the wire form of
-// [store.TaskFollowUp].
+// [store.TaskFollowUp]. decidedAt is RFC 3339, as an event's at, and
+// omitted where no decision time was recorded.
 type taskFollowUpJSON struct {
-	Index    int    `json:"index"`
-	Title    string `json:"title"`
-	Brief    string `json:"brief"`
-	Decision string `json:"decision,omitempty"`
-	Link     string `json:"link,omitempty"`
+	Index     int    `json:"index"`
+	Title     string `json:"title"`
+	Brief     string `json:"brief"`
+	Decision  string `json:"decision,omitempty"`
+	Link      string `json:"link,omitempty"`
+	DecidedAt string `json:"decidedAt,omitempty"`
 }
 
 // taskEventsJSON is a slice's whole task log: [store.TaskEvents]' own read of
@@ -193,9 +195,13 @@ func taskEventsJSON(s domain.Slice, brief string) []taskEventJSON {
 			tj.At = e.At.Format(time.RFC3339)
 		}
 		for _, f := range e.FollowUps {
-			tj.FollowUps = append(tj.FollowUps, taskFollowUpJSON{
+			fj := taskFollowUpJSON{
 				Index: f.Index, Title: f.Title, Brief: f.Brief, Decision: f.Decision, Link: f.Link,
-			})
+			}
+			if !f.DecidedAt.IsZero() {
+				fj.DecidedAt = f.DecidedAt.Format(time.RFC3339)
+			}
+			tj.FollowUps = append(tj.FollowUps, fj)
 		}
 		out = append(out, tj)
 	}

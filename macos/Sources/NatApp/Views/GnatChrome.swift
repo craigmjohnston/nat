@@ -130,6 +130,8 @@ struct GnatRowWash: ViewModifier {
     @Environment(\.ground) private var ground
     let selected: Bool
     var hoverable: Bool = true
+    /// Washed as under the pointer whether or not it is — a pinned header's.
+    var washed = false
     @Environment(\.hoverForced) private var forced
     @State private var hovering = false
 
@@ -141,14 +143,14 @@ struct GnatRowWash: ViewModifier {
 
     private var fill: Color {
         if selected { return DesignTokens.rowWash(selected: true, on: ground) }
-        if hoverable && (hovering || forced) { return DesignTokens.rowWash(selected: false, on: ground) }
+        if washed || (hoverable && (hovering || forced)) { return DesignTokens.rowWash(selected: false, on: ground) }
         return .clear
     }
 }
 
 extension View {
-    func gnatRow(selected: Bool = false, hoverable: Bool = true) -> some View {
-        modifier(GnatRowWash(selected: selected, hoverable: hoverable))
+    func gnatRow(selected: Bool = false, hoverable: Bool = true, washed: Bool = false) -> some View {
+        modifier(GnatRowWash(selected: selected, hoverable: hoverable, washed: washed))
     }
 
     /// The design's mono `xs`: `GnatMetrics.xs` in the app's monospaced face.
@@ -297,8 +299,8 @@ struct GnatLinkButtonStyle: ButtonStyle {
 /// height, square, a line on its leading edge (the run closes its own
 /// trailing one, beside the readout at the band's right). The picked one stands on the
 /// pane's own ground (`.window`) with no line under it, so it reads as open into the
-/// pane; the rest sit on the titlebar over its bottom line, in the secondary
-/// ink, washed under the pointer.
+/// pane; the rest sit on the titlebar over its bottom line, in the band's
+/// quiet tertiary ink, washed under the pointer.
 struct MainPaneTabButton: View {
     let title: String
     let selected: Bool
@@ -311,7 +313,7 @@ struct MainPaneTabButton: View {
                     .font(.system(size: GnatMetrics.titlebarText))
                     .lineLimit(1)
                     .fixedSize()
-                    .ink(selected ? .primary : .secondary)
+                    .ink(selected ? .primary : .tertiary)
                     .padding(.horizontal, 16)
                     .frame(maxHeight: .infinity)
                     .background(fill(hovering: hovering))

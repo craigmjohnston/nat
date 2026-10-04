@@ -1,7 +1,8 @@
 import SwiftUI
 import NatKit
 
-/// The navigator's Run heading's one action: a split button. The main part,
+/// A handed-back slice's runs, among its Task section's header actions: a
+/// split button. The main part,
 /// `<label> ▶`, runs the default — `nat run` with no `--label`, so nat picks
 /// it — and the split part, past a thin divider, is a chevron opening the
 /// menu of every run the slice is offered (`RunMenuList`), the default
@@ -13,12 +14,18 @@ struct RunSplitButton: View {
     var isBusy = false
     /// Whether the menu is open — the popover's, or a story's.
     @Binding var menuOpen: Bool
+    /// Whether a run, by label, is starting or still live — disabled
+    /// wherever it is offered, so it is not started twice.
+    var isRunning: (String) -> Bool = { _ in false }
     /// Run a label — nil for the default.
     let onRun: (String?) -> Void
 
     @Environment(\.isEnabled) private var isEnabled
 
     private var defaultLabel: String { runs.first?.label ?? "Run" }
+    /// The default already running: the main part greys, the chevron stays
+    /// live so another run can still be picked.
+    private var defaultRunning: Bool { runs.first.map { isRunning($0.label) } ?? false }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -26,7 +33,8 @@ struct RunSplitButton: View {
                 HeaderActionLabel(title: defaultLabel, systemImage: isBusy ? nil : "play.fill", isBusy: isBusy)
             }
             .buttonStyle(GnatHeaderButtonStyle())
-            .help("Run \(defaultLabel) in this task's worktree")
+            .disabled(defaultRunning)
+            .help(defaultRunning ? "\(defaultLabel) is running" : "Run \(defaultLabel) in this task's worktree")
             DesignTokens.rule(.separator, on: .chrome)
                 .frame(width: 1)
                 .padding(.vertical, 8)
@@ -41,7 +49,7 @@ struct RunSplitButton: View {
         }
         .fixedSize(horizontal: true, vertical: false)
         .popover(isPresented: $menuOpen, arrowEdge: .bottom) {
-            RunMenuList(runs: runs) { label in
+            RunMenuList(runs: runs, isRunning: isRunning) { label in
                 menuOpen = false
                 onRun(label)
             }
@@ -69,14 +77,17 @@ private struct RunHeaderChevronStyle: ButtonStyle {
 
 /// The split part's menu, drawn as a view of gnat's own rather than an
 /// `NSMenu` so a story can render it: one row per run of the scope — its
-/// label, its command in mono under it — the default marked.
+/// label, its command in mono under it — the default marked; a run already
+/// running greyed and not to be picked.
 struct RunMenuList: View {
     let runs: [RunCommand]
+    var isRunning: (String) -> Bool = { _ in false }
     let onPick: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(runs.enumerated()), id: \.element.label) { index, run in
+                let running = isRunning(run.label)
                 Button { onPick(run.label) } label: {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Image(systemName: "play.fill")
@@ -87,14 +98,14 @@ struct RunMenuList: View {
                             HStack(spacing: 6) {
                                 Text(run.label)
                                     .font(.system(size: GnatMetrics.body))
-                                    .ink(.primary)
+                                    .ink(running ? .tertiary : .primary)
                                 if index == 0 {
                                     Text("default").monoXS().ink(.tertiary)
                                 }
                             }
                             Text(run.command)
                                 .font(Typo.mono(size: Typo.subhead))
-                                .ink(.secondary)
+                                .ink(running ? .tertiary : .secondary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
@@ -102,10 +113,12 @@ struct RunMenuList: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .hoverWash(cornerRadius: 5)
+                    .hoverWash(cornerRadius: 5, enabled: !running)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .disabled(running)
+                .help(running ? "\(run.label) is running" : "")
             }
         }
         .padding(5)
@@ -116,7 +129,7 @@ struct RunMenuList: View {
 /// The titlebar's run button: a play glyph, beside Settings, drawn while
 /// any project has runs to offer. It opens the run tree (`RunTreePicker`) —
 /// projects, then the open one's runs — and a pick runs that project's run
-/// from its origin/main.
+/// from its origin/main. It spins while any run is starting or still live.
 struct TitlebarRunButton: View {
     @Bindable var appModel: AppModel
     @State private var treeOpen = false
@@ -126,7 +139,7 @@ struct TitlebarRunButton: View {
         if !projects.isEmpty {
             Button { treeOpen.toggle() } label: {
                 Group {
-                    if appModel.runsStarting.isEmpty {
+                    if !appModel.anyRunBusy {
                         Image(systemName: "play.fill").font(.system(size: 11))
                     } else {
                         ProgressView().controlSize(.mini)
@@ -139,7 +152,10 @@ struct TitlebarRunButton: View {
             .buttonStyle(GnatIconButtonStyle())
             .help("Run\u{2026}")
             .popover(isPresented: $treeOpen, arrowEdge: .bottom) {
-                RunTreePicker(projects: projects, openProjectID: appModel.activeProjectID) { project, label in
+                RunTreePicker(
+                    projects: projects, openProjectID: appModel.activeProjectID,
+                    isRunning: { appModel.isRunning(projectID: $0, sliceID: nil, label: $1) }
+                ) { project, label in
                     treeOpen = false
                     Task { await appModel.startRun(projectID: project, label: label) }
                 }
@@ -152,15 +168,22 @@ struct TitlebarRunButton: View {
 /// (`CrumbTreePicker`): every project with runs, then the open project's
 /// runs, a column apiece — each run its label over its command, the first
 /// marked default. It opens on `openProjectID` where that project has runs,
-/// else the first; picking a run runs it and closes the tree.
+/// else the first; picking a run runs it and closes the tree. A run already
+/// running is greyed and not to be picked.
 struct RunTreePicker: View {
     let projects: [RunProject]
     @State private var openID: String
+    /// Whether a project's run, by label, is starting or still live.
+    let isRunning: (String, String) -> Bool
     /// A pick: the project and the run's label.
     let onPick: (String, String) -> Void
 
-    init(projects: [RunProject], openProjectID: String?, onPick: @escaping (String, String) -> Void) {
+    init(
+        projects: [RunProject], openProjectID: String?, isRunning: @escaping (String, String) -> Bool = { _, _ in false },
+        onPick: @escaping (String, String) -> Void
+    ) {
         self.projects = projects
+        self.isRunning = isRunning
         let open = projects.first { $0.id == openProjectID } ?? projects.first
         _openID = State(initialValue: open?.id ?? "")
         self.onPick = onPick
@@ -191,7 +214,9 @@ struct RunTreePicker: View {
             column {
                 if let open {
                     ForEach(Array(open.runs.enumerated()), id: \.offset) { index, run in
-                        runRow(run, isDefault: index == 0) { onPick(open.id, run.label) }
+                        runRow(run, isDefault: index == 0, running: isRunning(open.id, run.label)) {
+                            onPick(open.id, run.label)
+                        }
                     }
                 }
             }
@@ -209,21 +234,23 @@ struct RunTreePicker: View {
         .frame(width: Self.columnWidth)
     }
 
-    private func runRow(_ run: RunCommand, isDefault: Bool, action: @escaping () -> Void) -> some View {
+    private func runRow(_ run: RunCommand, isDefault: Bool, running: Bool, action: @escaping () -> Void) -> some View {
+        // Running, the label drops to the tertiary ink and the glyph and
+        // command, tertiary already, a step below it, so the row reads greyed.
         HStack(alignment: .firstTextBaseline, spacing: 7) {
             Image(systemName: "play.fill")
                 .font(.system(size: 8.5))
-                .ink(.tertiary)
+                .ink(running ? .quaternary : .tertiary)
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text(run.label).ink(.secondary)
+                    Text(run.label).ink(running ? .tertiary : .secondary)
                     if isDefault { Text("default").monoXS().ink(.tertiary) }
                 }
                 .font(.system(size: GnatMetrics.body))
                 Text(run.command)
                     .font(Typo.mono(size: Typo.subhead))
-                    .ink(.tertiary)
+                    .ink(running ? .quaternary : .tertiary)
                     .truncationMode(.middle)
             }
             .lineLimit(1)
@@ -231,10 +258,10 @@ struct RunTreePicker: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .gnatRow(selected: false)
+        .gnatRow(selected: false, hoverable: !running)
         .contentShape(Rectangle())
-        .onTapGesture(perform: action)
-        .help(run.command)
+        .onTapGesture { if !running { action() } }
+        .help(running ? "\(run.label) is running" : run.command)
     }
 
     private func row<Label: View>(
@@ -258,39 +285,5 @@ struct RunTreePicker: View {
         .gnatRow(selected: selected)
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
-    }
-}
-
-/// The navigator's Run heading: a header's height and metrics, with no
-/// section under it and no fold — `Run` on the left, the split button as its
-/// one action, full bleed. Greyed and disabled once the slice is merged, its
-/// worktree being gone.
-struct RunHeadingRow: View {
-    let runs: [RunCommand]
-    let merged: Bool
-    var isBusy = false
-    @Binding var menuOpen: Bool
-    let onRun: (String?) -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                // The chevron's slot, empty: the label lines up with every
-                // other section's.
-                Color.clear.frame(width: 12)
-                Text("Run")
-                    .font(.system(size: GnatMetrics.body))
-                    .ink(merged ? .tertiary : .primary)
-                    .fixedSize()
-                Spacer(minLength: 0)
-                RunSplitButton(runs: runs, isBusy: isBusy, menuOpen: $menuOpen, onRun: onRun)
-                    .frame(maxHeight: .infinity)
-                    .disabled(merged)
-            }
-            .padding(.leading, 10)
-            .frame(height: GnatMetrics.sectionHeadHeight)
-            .background(DesignTokens.fill(.chrome))
-            DesignTokens.rule(.separator, on: .chrome).frame(height: 1)
-        }
     }
 }

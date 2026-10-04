@@ -35,11 +35,6 @@ final class RunCommandModelTests: XCTestCase {
         XCTAssertFalse(String(decoding: plain, as: UTF8.self).contains("runs"))
     }
 
-    func testTheRunTabSitsBesideTerminal() {
-        XCTAssertEqual(TitlebarTab.withRun([.terminal, .changes]).map(\.id), ["pane.terminal", "pane.run", "pane.changes"])
-        XCTAssertEqual(TitlebarTab.withRun([.changes]).map(\.id), ["pane.run", "pane.changes"])
-    }
-
     func testNatClientRunPassesWhatItIsGiven() async throws {
         let runner = RunStubRunner()
         runner.stdout = #"{"session":"nat-run-x-run","label":"Run","command":"make run","dir":"/w"}"#
@@ -54,7 +49,7 @@ final class RunCommandModelTests: XCTestCase {
 
 @MainActor
 final class AppModelRunTests: XCTestCase {
-    func testAGlobalRunIsHeldForEverySliceOfItsProjectUntilItEnds() async {
+    func testARunIsHeldAndItsButtonBusyUntilItEnds() async {
         let model = await Fixtures.startedAppModel(config: Fixtures.runsConfig)
         model.runSessionExists = { _ in true }
         XCTAssertEqual(model.globalRuns(ofProject: Fixtures.projectID).map(\.command), ["./scripts/play.sh --windowed", "go run ."])
@@ -62,19 +57,62 @@ final class AppModelRunTests: XCTestCase {
         XCTAssertEqual(model.runProjects.map(\.name), ["gnat", "notion-agent-tracker"])
         XCTAssertEqual(model.runProjects.last?.runs.map(\.label), ["Play", "Board"])
 
+        XCTAssertFalse(model.anyRunBusy)
         await model.startRun(projectID: Fixtures.projectID)
-        let run = model.run(forSlice: Fixtures.mergeBoxSliceID, inProject: Fixtures.projectID)
+        let run = model.runs[AppModel.runKey(projectID: Fixtures.projectID, sliceID: nil)]
         XCTAssertEqual(run?.label, "Play")
         XCTAssertNil(run?.sliceID)
-        XCTAssertEqual(model.runShowRequest, 1)
         XCTAssertFalse(model.isStartingRun(projectID: Fixtures.projectID, sliceID: nil))
+        XCTAssertTrue(model.isRunBusy(projectID: Fixtures.projectID, sliceID: nil), "busy while its session lives")
+        XCTAssertFalse(model.isRunBusy(projectID: Fixtures.projectID, sliceID: Fixtures.mergeBoxSliceID),
+                       "a project's run is not a slice's")
+        XCTAssertTrue(model.anyRunBusy)
 
         await model.startRun(projectID: Fixtures.projectID, sliceID: Fixtures.mergeBoxSliceID, label: "Board")
-        XCTAssertEqual(model.run(forSlice: Fixtures.mergeBoxSliceID, inProject: Fixtures.projectID)?.label, "Board",
-                       "a slice's own run wins over its project's")
+        XCTAssertEqual(model.runs[Fixtures.mergeBoxSliceID]?.label, "Board")
+        XCTAssertTrue(model.isRunBusy(projectID: Fixtures.projectID, sliceID: Fixtures.mergeBoxSliceID))
 
         model.runEnded(session: run!.session)
         XCTAssertNil(model.runs[AppModel.runKey(projectID: Fixtures.projectID, sliceID: nil)])
+        XCTAssertFalse(model.isRunBusy(projectID: Fixtures.projectID, sliceID: nil))
+        XCTAssertTrue(model.anyRunBusy, "the slice's run is still live")
+    }
+
+    /// The run asked for is reported running — nat's default by its scope's
+    /// first label — and its siblings are not, until its session ends.
+    func testTheRunningRunIsToldFromItsSiblings() async {
+        let model = await Fixtures.startedAppModel(config: Fixtures.runsConfig)
+        model.runSessionExists = { _ in true }
+        let p = Fixtures.projectID, s = Fixtures.mergeBoxSliceID
+
+        await model.startRun(projectID: p, label: "Board")
+        XCTAssertTrue(model.isRunning(projectID: p, sliceID: nil, label: "Board"))
+        XCTAssertFalse(model.isRunning(projectID: p, sliceID: nil, label: "Play"))
+        XCTAssertFalse(model.isRunning(projectID: p, sliceID: s, label: "Board"), "a slice's runs are another key")
+
+        await model.startRun(projectID: p, sliceID: s)
+        XCTAssertTrue(model.isRunning(projectID: p, sliceID: s, label: "Play"), "the default is the scope's first")
+        XCTAssertFalse(model.isRunning(projectID: p, sliceID: s, label: "Board"))
+
+        model.runEnded(session: model.runs[s]!.session)
+        XCTAssertFalse(model.isRunning(projectID: p, sliceID: s, label: "Play"))
+        XCTAssertTrue(model.isRunning(projectID: p, sliceID: nil, label: "Board"))
+    }
+
+    /// While `nat run` is in flight the label asked for is already running,
+    /// its siblings not; a run that never lands clears it.
+    func testARunStartingIsRunningUntilItFails() async throws {
+        let model = Fixtures.appModel(client: FixtureNatClient(behaviour: .hanging), config: Fixtures.runsConfig)
+        let p = Fixtures.projectID
+        let start = Task { await model.startRun(projectID: p, label: "Board") }
+        for _ in 0..<200 where !model.isStartingRun(projectID: p, sliceID: nil) {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertTrue(model.isRunning(projectID: p, sliceID: nil, label: "Board"))
+        XCTAssertFalse(model.isRunning(projectID: p, sliceID: nil, label: "Play"))
+        start.cancel()
+        await start.value
+        XCTAssertFalse(model.isRunning(projectID: p, sliceID: nil, label: "Board"))
     }
 
     func testARunWhoseSessionEndsIsLetGo() async throws {
@@ -92,6 +130,7 @@ final class AppModelRunTests: XCTestCase {
         await model.startRun(projectID: Fixtures.projectID)
         XCTAssertEqual(model.runError, "run: the project has no global runs")
         XCTAssertTrue(model.runs.isEmpty)
+        XCTAssertFalse(model.isRunning(projectID: Fixtures.projectID, sliceID: nil, label: "Play"), "a refused run is not running")
         model.dismissRunError()
         XCTAssertNil(model.runError)
     }

@@ -287,17 +287,22 @@ type ghUser struct {
 // ghRoll is one rollup entry with both kinds' fields on it, since which of
 // them are filled in is what __typename says.
 type ghRoll struct {
-	TypeName   string `json:"__typename"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	DetailsURL string `json:"detailsUrl"`
-	Context    string `json:"context"`
-	State      string `json:"state"`
-	TargetURL  string `json:"targetUrl"`
+	TypeName string `json:"__typename"`
+	Name     string `json:"name"`
+	// WorkflowName is the Actions workflow a CheckRun ran under ("CI"), ""
+	// for a StatusContext — what tells two workflows' "test" jobs apart.
+	WorkflowName string `json:"workflowName"`
+	Status       string `json:"status"`
+	Conclusion   string `json:"conclusion"`
+	DetailsURL   string `json:"detailsUrl"`
+	Context      string `json:"context"`
+	State        string `json:"state"`
+	TargetURL    string `json:"targetUrl"`
 }
 
 // check is the entry as one thing: the name it goes by and the state it is in.
+// A CheckRun goes by "<workflow> / <job>", GitHub's own display form, where it
+// names its workflow, and by its job name alone where it does not.
 // A CheckRun that has finished is worth its conclusion — SUCCESS, FAILURE,
 // CANCELLED — and one still going is worth its status instead, since a run
 // that has not concluded has no conclusion to report; a StatusContext has only
@@ -311,16 +316,25 @@ func (r ghRoll) check() Check {
 		if r.Status == statusCompleted {
 			state = r.Conclusion
 		}
-		return Check{Name: r.Name, State: state, URL: r.DetailsURL}
+		return Check{Name: r.runName(), State: state, URL: r.DetailsURL}
 	default:
 		// A kind GitHub has added since. Both shapes name themselves in one
 		// field or the other, so taking whichever is filled in draws it as
 		// well as it can be drawn rather than dropping it from the rollup.
 		if r.Name != "" {
-			return Check{Name: r.Name, State: r.Status, URL: r.DetailsURL}
+			return Check{Name: r.runName(), State: r.Status, URL: r.DetailsURL}
 		}
 		return Check{Name: r.Context, State: r.State, URL: r.TargetURL}
 	}
+}
+
+// runName is a CheckRun-shaped entry's name, led by its workflow's where it
+// has one.
+func (r ghRoll) runName() string {
+	if r.WorkflowName == "" {
+		return r.Name
+	}
+	return r.WorkflowName + " / " + r.Name
 }
 
 // pr is the decoded view flattened into what the viewer draws.

@@ -61,6 +61,10 @@ struct SidebarView: View {
     /// The project row under the pointer, whose folder turns into its fold
     /// chevron.
     @State private var hoveredProject: String?
+    /// The projects whose header is pinned with their milestones scrolled
+    /// under it — SwiftUI has no such state, so each section's body reports
+    /// whether its top has gone up under its header (`pinnedMarker`).
+    @State private var pinnedProjects: Set<String> = []
     /// A source fold's row under the pointer — a group's or a container's,
     /// by `sourceRowKey` — which shows its hover-only meta, `+` and menu.
     @State private var hoveredSourceRow: String?
@@ -325,6 +329,7 @@ struct SidebarView: View {
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { projectsContentHeight = $0 }
             }
+            .coordinateSpace(.named(Self.projectsScroll))
             .defaultScrollAnchor(treeAnchor)
             .thinScrollers()
             .frame(maxHeight: projectsContentHeight)
@@ -958,17 +963,37 @@ struct SidebarView: View {
         let open = isProjectOpen(project)
         return Section {
             if open {
+                pinnedMarker(project.id)
                 projectBody(project, isActive: appModel.activeProjectID == project.id)
             }
         } header: {
-            projectHead(project, open: open)
+            projectHead(project, open: open, pinned: open && pinnedProjects.contains(project.id))
         }
+    }
+
+    /// The Projects scroll's coordinate space, its origin the viewport's top.
+    private static let projectsScroll = "sidebar-projects"
+
+    /// A zero-height mark at the top of a project's body: once it has gone
+    /// up past the header's height in the scroll's viewport, the milestones
+    /// are scrolling under a header pinned at the top. Reported only as it
+    /// flips, so scrolling redraws nothing more. A mark the lazy stack has
+    /// let go of keeps its last word — it went up out of sight, still under.
+    private func pinnedMarker(_ id: String) -> some View {
+        Color.clear
+            .frame(height: 0)
+            .onGeometryChange(for: Bool.self) {
+                $0.frame(in: .named(Self.projectsScroll)).minY < GnatMetrics.sidebarRowHeight - 0.5
+            } action: { under in
+                if under { pinnedProjects.insert(id) } else { pinnedProjects.remove(id) }
+            }
     }
 
     /// A project's own row: the fold toggle, and its section's header —
     /// on the sidebar's ground, so its milestones scrolling under it while
-    /// it is pinned do not show through.
-    private func projectHead(_ project: SidebarProject, open: Bool) -> some View {
+    /// it is pinned do not show through. Pinned so, it reads as pinned: its
+    /// name in the status bar's quiet ink, the hover wash under it.
+    private func projectHead(_ project: SidebarProject, open: Bool, pinned: Bool = false) -> some View {
         let isActive = appModel.activeProjectID == project.id
         return HStack(spacing: 7) {
             // The project's own fold mark: a folder of folders, outlined
@@ -997,7 +1022,7 @@ struct SidebarView: View {
                 }
             }
             .font(.system(size: GnatMetrics.body))
-            .ink(.secondary)
+            .ink(pinned ? .tertiary : .secondary)
             .lineLimit(1)
             Spacer(minLength: 0)
             if !open && project.needsYou > 0 {
@@ -1018,7 +1043,7 @@ struct SidebarView: View {
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
-        .gnatRow(selected: project.kind == .untitled && isActive)
+        .gnatRow(selected: project.kind == .untitled && isActive, washed: pinned)
         .contentShape(Rectangle())
         .onHover { inside in
             if inside { hoveredProject = project.id } else if hoveredProject == project.id { hoveredProject = nil }

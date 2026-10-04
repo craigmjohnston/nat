@@ -78,7 +78,8 @@ no working dir.
 - The time comes from each store's `Clock` (nil → `time.Now`); tests set it
   (`fixedClock`, `clocked`) so bodies and Notion request JSON stay exact.
 - `TaskEvents` reads each stamp into `TaskEvent.At` (zero where absent —
-  old plans read exactly as before); `PendingFollowUps` passes the stamp line
+  old plans read exactly as before), and a Follow-ups triaged section's into
+  each item it decides' `TaskFollowUp.DecidedAt` (`slice-show`'s `decidedAt`); `PendingFollowUps` passes the stamp line
   over as a non-item, and `HandbackSummaryOf` strips it. `SliceLabel` writes
   a note's `"Name" (Milestone)` provenance and `sliceLabelOf` reads it back
   into `FromSlice` — write and parse kept together. `HasHistory` is the one

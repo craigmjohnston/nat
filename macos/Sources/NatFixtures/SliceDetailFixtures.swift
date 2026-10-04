@@ -112,7 +112,11 @@ extension Fixtures {
         handedBack: false,
         state: "in progress",
         brief: "Poll tmux every second for each agent's activity.",
-        followUps: proposedFollowUps
+        followUps: proposedFollowUps,
+        // The proposal on the page, undecided, stamped 25 minutes before `now`.
+        events: [TaskLogEvent(
+            .followUps, at: now.addingTimeInterval(-25 * 60),
+            followUps: proposedFollowUps.map { TaskFollowUp(index: $0.index, title: $0.title, brief: $0.brief) })]
     )
 
     /// `sliceDetails` with the activity slice's follow-ups added.
@@ -124,30 +128,42 @@ extension Fixtures {
     /// with comments between them twice, three follow-ups triaged on the way
     /// (one queued, one folded in, one dropped),
     /// then approved and merged — `slice-show`'s `events` for it, in order.
+    /// Each section is stamped a day apart, the first hand-back eight days
+    /// before `now` and the proposal five; two of its decisions a day after
+    /// it, the dropped one's predating stamps.
     public static let taskLogEvents: [TaskLogEvent] = [
-        TaskLogEvent(.handedBack, note: "The shell window and its three panes, empty states in each."),
-        TaskLogEvent(.sentBack, note: "Sources/NatApp/NatApp.swift, line 42: the window should remember its frame."),
-        TaskLogEvent(.handedBack, note: "Window frame autosaved under the scene's id."),
-        TaskLogEvent(.followUps, followUps: [
+        TaskLogEvent(
+            .handedBack, note: "The shell window and its three panes, empty states in each.",
+            at: now.addingTimeInterval(-8 * 86_400)),
+        TaskLogEvent(
+            .sentBack, note: "Sources/NatApp/NatApp.swift, line 42: the window should remember its frame.",
+            at: now.addingTimeInterval(-7 * 86_400)),
+        TaskLogEvent(
+            .handedBack, note: "Window frame autosaved under the scene's id.", at: now.addingTimeInterval(-6 * 86_400)),
+        TaskLogEvent(.followUps, at: now.addingTimeInterval(-5 * 86_400), followUps: [
             TaskFollowUp(
                 index: 1, title: "Cache the plan on disk",
                 brief: "Write each `nat info` reading to the app's caches directory and draw it at launch, "
                     + "before the first read lands, so the window never opens empty.\n\n"
                     + "Done when: a relaunch with no network draws the last plan read.",
-                decision: .queued, link: "https://notion.so/\(cacheSliceID)"),
+                decision: .queued, link: "https://notion.so/\(cacheSliceID)",
+                decidedAt: now.addingTimeInterval(-4 * 86_400)),
             TaskFollowUp(
                 index: 2, title: "Remember the window's frame between launches",
                 brief: "Autosave the main window's frame under the scene's id so it opens where it was left.\n\n"
                     + "Done when: a moved and resized window reopens at that frame.",
-                decision: .folded),
+                decision: .folded, decidedAt: now.addingTimeInterval(-4 * 86_400)),
             TaskFollowUp(
                 index: 3, title: "Drop the unused toolbar style",
                 brief: "Remove `ShellToolbarStyle`, which nothing applies since the titlebar became the header band.\n\n"
                     + "Done when: the type is gone and the app builds.",
                 decision: .dropped),
         ]),
-        TaskLogEvent(.sentBack, note: "Sources/NatApp/Views/ShellView.swift, lines 10-14: use the design's 32pt titlebar."),
-        TaskLogEvent(.handedBack, note: "Titlebar at 32pt, traffic lights recentred."),
+        TaskLogEvent(
+            .sentBack, note: "Sources/NatApp/Views/ShellView.swift, lines 10-14: use the design's 32pt titlebar.",
+            at: now.addingTimeInterval(-3 * 86_400)),
+        TaskLogEvent(
+            .handedBack, note: "Titlebar at 32pt, traffic lights recentred.", at: now.addingTimeInterval(-2 * 86_400)),
         TaskLogEvent(.approved, pr: "https://github.com/craigmjohnston/notion-agent-tracker/pull/101"),
         TaskLogEvent(.merged),
     ]
@@ -368,7 +384,7 @@ extension Fixtures {
     }
 
     /// The plan with the handed-back slice merged: Done, its pull request
-    /// recorded — what greys its Run heading.
+    /// recorded — what greys its Task header's run button.
     public static var mergedReviewProjectInfo: ProjectInfo {
         ProjectInfo(
             project: projectInfo.project,

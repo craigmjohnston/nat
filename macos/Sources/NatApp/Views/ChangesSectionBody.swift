@@ -111,7 +111,11 @@ struct FollowUpCards: View {
     let followUps: [FollowUp]
     let milestone: String
     let hasLiveAgent: Bool
+    /// When the proposal was filed, off its log event's stamp — nil where
+    /// the log has none.
+    var when: Date?
     var connector: LogConnector = .none
+    @Environment(\.clock) private var clock
 
     private var store: FollowUpStore { appModel.followUpStore }
     private var choices: [Int: FollowUpChoice] { store.choices(sliceID: slice.id) }
@@ -121,7 +125,7 @@ struct FollowUpCards: View {
         LogItem(
             symbol: ThreadEventKind.followUps.symbol, iconRole: .hot, who: "Agent",
             meta: "proposed \(followUps.count) follow-up\(followUps.count == 1 ? "" : "s")", metaRole: .hot,
-            connector: connector
+            when: when.map { threadTimestamp($0, now: clock()) }, connector: connector
         ) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(followUps.enumerated()), id: \.element.index) { offset, followUp in

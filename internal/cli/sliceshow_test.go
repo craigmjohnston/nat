@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
@@ -255,6 +256,40 @@ func TestSliceShowEventsFromTheBody(t *testing.T) {
 	}
 	if len(got.Events) != 1 || got.Events[0].Kind != "sent_back" || got.Events[0].Note != "Rename the helper." {
 		t.Errorf("events = %+v, want one sent_back event", got.Events)
+	}
+}
+
+// A decided follow-up carries when its triage record was stamped, as
+// decidedAt in RFC 3339; one still pending carries none, and so does one
+// decided by a record written before stamps were.
+func TestSliceShowEventsFollowUpDecidedAt(t *testing.T) {
+	body := "### Follow-ups\n\n1. A\n   Brief A.\n2. B\n   Brief B.\n\n" +
+		"### Follow-ups triaged\n\nAt 2026-10-05T09:30:00+01:00\n\n- Dropped: A\n\n" +
+		"### Follow-ups\n\n1. C\n   Brief C.\n\n" +
+		"### Follow-ups triaged\n\n- Folded in: C"
+	got := taskEventsJSON(domain.Slice{}, body)
+	if len(got) != 2 {
+		t.Fatalf("events = %+v, want two follow_ups events", got)
+	}
+	tests := []struct {
+		follow taskFollowUpJSON
+		want   string
+	}{
+		{got[0].FollowUps[0], "2026-10-05T09:30:00+01:00"},
+		{got[0].FollowUps[1], ""},
+		{got[1].FollowUps[0], ""},
+	}
+	for _, tt := range tests {
+		if tt.follow.DecidedAt != tt.want {
+			t.Errorf("%s: decidedAt = %q, want %q", tt.follow.Title, tt.follow.DecidedAt, tt.want)
+		}
+	}
+	raw, err := json.Marshal(got[0].FollowUps[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "decidedAt") {
+		t.Errorf("pending follow-up = %s, want no decidedAt", raw)
 	}
 }
 

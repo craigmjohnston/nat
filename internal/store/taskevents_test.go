@@ -288,8 +288,32 @@ func TestTaskEventsStampedSections(t *testing.T) {
 		{Kind: "relaunched", At: readNow},
 		{Kind: "blocked", Note: "Waiting on infra.", At: readNow},
 		{Kind: "summary", At: readNow},
-		{Kind: "follow_ups", At: readNow, FollowUps: []TaskFollowUp{{Index: 1, Title: "A", Brief: "Brief A.", Decision: "dropped"}}},
+		{Kind: "follow_ups", At: readNow, FollowUps: []TaskFollowUp{{Index: 1, Title: "A", Brief: "Brief A.", Decision: "dropped", DecidedAt: readNow}}},
 		{Kind: "released", By: "Craig Johnston", At: readNow},
+	}
+	if got := TaskEvents(body); !reflect.DeepEqual(got, want) {
+		t.Errorf("TaskEvents() =\n%#v\nwant\n%#v", got, want)
+	}
+}
+
+// A decided follow-up carries the time its Follow-ups triaged section was
+// stamped, not its proposal's; each record's own stamp goes to what it
+// decides, an unstamped record decides at the zero time, and an item still
+// pending has none.
+func TestTaskEventsFollowUpsDecidedAt(t *testing.T) {
+	later := "At 2026-10-05T09:30:00+01:00"
+	decided, _ := time.Parse(time.RFC3339, "2026-10-05T09:30:00+01:00")
+	body := "### Follow-ups\n\n" + testStamp + "\n\n1. A\n   Brief A.\n2. B\n   Brief B.\n3. C\n   Brief C.\n\n" +
+		"### Follow-ups triaged\n\n" + later + "\n\n- Queued: A → https://notion.so/a\n- Dropped: B\n\n" +
+		"### Follow-ups\n\n1. D\n   Brief D.\n\n" +
+		"### Follow-ups triaged\n\n- Folded in: D"
+	want := []TaskEvent{
+		{Kind: "follow_ups", At: readNow, FollowUps: []TaskFollowUp{
+			{Index: 1, Title: "A", Brief: "Brief A.", Decision: "queued", Link: "https://notion.so/a", DecidedAt: decided},
+			{Index: 2, Title: "B", Brief: "Brief B.", Decision: "dropped", DecidedAt: decided},
+			{Index: 3, Title: "C", Brief: "Brief C."},
+		}},
+		{Kind: "follow_ups", FollowUps: []TaskFollowUp{{Index: 1, Title: "D", Brief: "Brief D.", Decision: "folded"}}},
 	}
 	if got := TaskEvents(body); !reflect.DeepEqual(got, want) {
 		t.Errorf("TaskEvents() =\n%#v\nwant\n%#v", got, want)

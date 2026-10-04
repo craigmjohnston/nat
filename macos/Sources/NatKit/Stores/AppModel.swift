@@ -278,14 +278,14 @@ public final class AppModel {
     /// a session that ends drops it (`watchRun`).
     public private(set) var runs: [String: RunAttachment] = [:]
 
-    /// The keys of runs being started — the `nat run` in flight.
-    public private(set) var runsStarting: Set<String> = []
+    /// The runs being started — the `nat run` in flight — by key, each with
+    /// the label asked for (nat's default resolved to its scope's first run,
+    /// "" where the scope lists none), so a run in flight is told from its
+    /// siblings.
+    public private(set) var runsStarting: [String: String] = [:]
 
     /// What the last `nat run` refused with, until dismissed or the next run.
     public private(set) var runError: String?
-
-    /// Bumped by every run that starts, so the shell can put its Run tab up.
-    public private(set) var runShowRequest = 0
 
     /// Whether a run's tmux session is still there — tmux itself in the app,
     /// injectable so a test says when a run ends.
@@ -2374,7 +2374,7 @@ public final class AppModel {
 // MARK: - Run commands
 
 /// A run started from this app: the tmux session `nat run` started it in —
-/// what the Run tab attaches to — and what it was started for.
+/// held while it lives, so its button spins — and what it was started for.
 public struct RunAttachment: Equatable, Sendable {
     public let session: String
     public let label: String
@@ -2431,30 +2431,44 @@ extension AppModel {
         config?.projects[projectID]?.runs.sliceRuns ?? []
     }
 
-    /// The run a slice's main pane draws a Run tab for: its own, else its
-    /// project's global run.
-    public func run(forSlice sliceID: String, inProject projectID: String) -> RunAttachment? {
-        runs[sliceID] ?? runs[Self.runKey(projectID: projectID, sliceID: nil)]
-    }
-
     /// Whether a run for that key is being started.
     public func isStartingRun(projectID: String, sliceID: String?) -> Bool {
-        runsStarting.contains(Self.runKey(projectID: projectID, sliceID: sliceID))
+        runsStarting[Self.runKey(projectID: projectID, sliceID: sliceID)] != nil
     }
 
+    /// Whether the run with that label is being started or its session is
+    /// still live — what a run offered anywhere is disabled for, so the same
+    /// command is not doubled up. A guard of the UI's alone: nat itself
+    /// restarts a live session asked for the same run again.
+    public func isRunning(projectID: String, sliceID: String?, label: String) -> Bool {
+        let key = Self.runKey(projectID: projectID, sliceID: sliceID)
+        return runsStarting[key] == label || runs[key]?.label == label
+    }
+
+    /// Whether a run for that key is being started or its session is still
+    /// live — what a run button spins for, there being no tab to show it.
+    public func isRunBusy(projectID: String, sliceID: String?) -> Bool {
+        isStartingRun(projectID: projectID, sliceID: sliceID)
+            || runs[Self.runKey(projectID: projectID, sliceID: sliceID)] != nil
+    }
+
+    /// Whether any run at all is being started or still live — the
+    /// titlebar's run button's spinner.
+    public var anyRunBusy: Bool { !runsStarting.isEmpty || !runs.isEmpty }
+
     /// Start a run — `nat run`, `sliceID` nil for a global one and `label`
-    /// nil for nat's default — and hold its session for the Run tab, in
-    /// place of whatever that key held. A refusal is `runError`, in nat's
-    /// own words.
+    /// nil for nat's default — and hold its session while it lives, in
+    /// place of whatever that key held; no pane opens on it. A refusal is
+    /// `runError`, in nat's own words.
     public func startRun(projectID: String, sliceID: String? = nil, label: String? = nil) async {
         let key = Self.runKey(projectID: projectID, sliceID: sliceID)
-        runsStarting.insert(key)
+        let scope = sliceID == nil ? globalRuns(ofProject: projectID) : sliceRuns(ofProject: projectID)
+        runsStarting[key] = label ?? scope.first?.label ?? ""
         runError = nil
-        defer { runsStarting.remove(key) }
+        defer { runsStarting[key] = nil }
         do {
             let result = try await clientFactory().run(projectID: projectID, sliceRef: sliceID, label: label)
             runs[key] = RunAttachment(session: result.session, label: result.label, projectID: projectID, sliceID: sliceID)
-            runShowRequest += 1
             watchRun(key: key, session: result.session)
         } catch {
             runError = refusalMessage(error)
@@ -2464,15 +2478,14 @@ extension AppModel {
     /// Dismiss the last run's refusal.
     public func dismissRunError() { runError = nil }
 
-    /// A run's session is gone: every key holding it lets it go, and the
-    /// Run tab with it.
+    /// A run's session is gone: every key holding it lets it go, and its
+    /// button stops spinning.
     public func runEnded(session: String) {
         runs = runs.filter { $0.value.session != session }
     }
 
     /// Ask after a run's session until it ends, or until its key is given to
-    /// another run — what takes the Run tab away when the command finishes
-    /// with nothing attached to see it.
+    /// another run — what stops its button spinning once the command finishes.
     private func watchRun(key: String, session: String) {
         Task { [weak self] in
             while let self, self.runs[key]?.session == session {
