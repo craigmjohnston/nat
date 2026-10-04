@@ -537,6 +537,18 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 	b.WriteString("back to, and in particular not the project the user's board is on,\n")
 	b.WriteString("which they can switch while you work.\n")
 
+	b.WriteString("\n## Superseded work\n\n")
+	b.WriteString("The plan document changes Todo slices already on the board as well as\n")
+	b.WriteString("creating new ones: a top-level `remove` list of titles sends each to the\n")
+	b.WriteString("trash, `move` (`[{\"slice\": <title>, \"milestone\": <name>}]`) refiles\n")
+	b.WriteString("each under a milestone the project has or the document creates, and\n")
+	b.WriteString("`edit` (`[{\"slice\": <title>, \"description\": <brief>}]`) replaces each\n")
+	b.WriteString("brief whole. Each names a Todo slice by title, as `depends_on` does. A\n")
+	b.WriteString("Todo slice the new plan supersedes is removed in the same document that\n")
+	b.WriteString("replaces it — never left as a list for the user to delete or move by\n")
+	b.WriteString("hand. They apply in the order edits, moves, removals, then creations, so\n")
+	b.WriteString("a replacement may take the title of the slice it removes.\n")
+
 	b.WriteString("\n## Applying changes\n\n")
 	if frontend == FrontendGnat {
 		b.WriteString("Present the draft in conversation too, but the workshop's Plan section\n")

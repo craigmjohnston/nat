@@ -147,7 +147,8 @@ enum AppStories {
     /// `accepting` with an Accept under way that never lands, `scrollTo` the
     /// Plan section's row for that proposed slice clicked.
     private static func projectProposalShell(
-        _ proposal: PlanProposal = Fixtures.proposal, accepting: Bool, scrollTo: String? = nil
+        _ proposal: PlanProposal = Fixtures.proposal, accepting: Bool, scrollTo: String? = nil,
+        expandEdits: Set<String> = []
     ) async -> some View {
         let client = FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner)
         client.setProposal(proposal, forProject: Fixtures.projectID)
@@ -156,6 +157,7 @@ enum AppStories {
         appModel.workshopSelected = true
         await appModel.refreshProposals()
         if let scrollTo { appModel.showProposedSlice(scrollTo) }
+        appModel.expandedProposalEdits = expandEdits
         if accepting {
             client.holdAccepts()
             await startHeld { await appModel.acceptProposal() }
@@ -818,6 +820,15 @@ enum AppStories {
             size: window
         ) {
             await projectProposalShell(Fixtures.revisionProposal, accepting: false)
+        },
+
+        Story(
+            name: "workshop-proposal-superseding",
+            summary: "A project's proposal that supersedes work already planned: under the created work, Changes to tasks already planned — a struck-through removal, a move naming its destination, an edit unfolded to its new brief; the warning that Accept removes a task sits above the tree. Taller than the window so the whole Plan section shows.",
+            size: CGSize(width: window.width, height: 1180)
+        ) {
+            await projectProposalShell(
+                Fixtures.supersedingProposal, accepting: false, expandEdits: ["Cache the plan on disk"])
         },
 
         Story(

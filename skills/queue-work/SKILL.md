@@ -70,6 +70,13 @@ already in front of you and this read is only for when it later goes stale.
   the edges the project already records — is refused whole and nothing is
   created. If two slices each appear to need the other, they are one slice, or
   the split between them is in the wrong place.
+- **Clean up what the plan supersedes, in the same document.** Look over the
+  `Todo` slices already on the board: one the new plan replaces is removed
+  (`remove`), one that belongs under another milestone now is moved (`move`),
+  and one whose brief the plan changes is edited (`edit`) — in the document
+  that replaces it, never left as a list for the user to delete or move by
+  hand. Say which in the proposal. Only `Todo` slices can be changed this way;
+  work in progress or `Done` is never the plan's to touch.
 - Status and assignee are not yours to choose: `nat plan-apply` files new
   milestones at the end of the plan and new slices as `Todo` and unassigned. A
   milestone's status follows its slices — there is none to set, on the board or
@@ -91,8 +98,9 @@ briefs.
    NEW where applicable) with its slices in the order they should be worked,
    titles + one-line summaries, plus any repo overrides. Give every slice a
    line saying what it waits on — the slices it depends on, or "nothing" —
-   so the dependency pass is on show and the user can correct it. Note
-   anything you chose to leave out or split.
+   so the dependency pass is on show and the user can correct it. Then list
+   any slices already on the board the plan removes, moves (and where to) or
+   edits. Note anything you chose to leave out or split.
 2. **Write nothing until the user explicitly approves.** Iterate on their
    feedback by revising the proposal, not by writing part of it.
 
@@ -120,16 +128,20 @@ briefs.
      ],
      "dependencies": [
        { "slice": "A slice already on the board", "on": ["Do the thing"] }
-     ]
+     ],
+     "remove": ["A Todo slice this plan supersedes"],
+     "move": [{ "slice": "A Todo slice", "milestone": "M14: Something new" }],
+     "edit": [{ "slice": "A Todo slice", "description": "Its new brief, whole." }]
    }
    ```
 
    `milestone` names one of the plan's own new milestones, or an existing one
    of the project, by name — a milestone is an option of the slices' own
    `Milestone` column, so its name is all there is to name it by.
-   `description`, `repo` and `depends_on` are optional, as is the whole
-   top-level `dependencies` list; nothing else is, and any other key is
-   rejected. The whole document is validated before the first page is created.
+   `description`, `repo` and `depends_on` are optional, as are the whole
+   top-level `dependencies`, `remove`, `move` and `edit` lists; nothing else
+   is, and any other key is rejected. The whole document is validated before
+   the first page is created.
 
    The order of the `slices` list is the order the slices land on the board, so
    write them in the order they should be worked; `milestones` is likewise the
@@ -154,6 +166,23 @@ briefs.
    the project already records — is refused whole, with the cycle named in
    order and nothing created. Nothing in a cycle can ever be handed out, so
    check the order of the work rather than adding an edge back.
+
+   `remove`, `move` and `edit` change slices **already on the board**, each
+   named by title as `depends_on` names one: `remove` sends a slice to the
+   trash as `nat slice-delete` does, `move` refiles it under a milestone the
+   project has or one the same document creates, and `edit` replaces its brief
+   whole, as `nat slice-edit` does. A superseded `Todo` slice is removed in the
+   document that replaces it — never left for the user to clean up. Each must
+   name a `Todo` slice: one in progress or `Done` refuses the whole document,
+   as does a title that matches no slice or more than one. A removed slice may
+   not also be moved or edited, nor named by any `depends_on` or
+   `dependencies` entry; a slice already on the board that waits on a removed
+   one has that wait dropped, and the output says so. They are applied in the
+   order edits, moves, removals, then everything the document creates — so a
+   document may remove a slice and create its replacement under the same
+   title, and a new slice's `depends_on` naming that title means the
+   replacement. A milestone a removal empties stays. A task-source project
+   refuses `move`.
 4. Report the created page URLs, grouped by milestone — `plan-apply` prints
    them.
 
@@ -162,9 +191,11 @@ briefs.
 - Everything you write goes through `nat`. Never edit Notion directly.
 - Every `nat` command carries `--project <project>`, the ID you settled in
   setup — the one read that finds it is the only exception.
-- `plan-apply` only ever creates. Existing milestones and slices — and above
-  all anything in progress or `Done` — are left exactly as they are.
-- If a run fails partway, it says what it had already created. Trim those out
-  of the plan before running it again rather than filing them twice.
+- `plan-apply` creates, and changes only the `Todo` slices its `remove`,
+  `move` and `edit` lists name. Existing milestones, every other slice — and
+  above all anything in progress or `Done` — are left exactly as they are.
+- If a run fails partway, it says what it had already changed and created.
+  Trim those out of the plan before running it again rather than filing them
+  twice.
 - If `nat info --project <project>` shows a tracker that does not match what
   the user described, stop and tell them instead of improvising.

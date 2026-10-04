@@ -9,6 +9,10 @@ import Foundation
 /// has; those show as groups too, after the new ones, since a slice headed
 /// for an existing milestone is still proposed work. Nothing here is a slice
 /// yet; accepting is what files them (`nat plan-accept`).
+///
+/// A project's proposal may also change Todo slices already on its board —
+/// the work it supersedes: `removals`, `moves` and `edits`, each naming the
+/// slice by title, as the plan document does. Accepting applies those too.
 public struct PlanProposal: Equatable, Sendable, Decodable {
     /// One proposed slice: its title, its brief (markdown, empty where the
     /// plan gives none) and the titles of the slices it waits on. A string
@@ -44,14 +48,51 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
         }
     }
 
+    /// A slice already on the board the proposal refiles: its title, and the
+    /// milestone it goes under.
+    public struct ProposedMove: Equatable, Sendable {
+        public let name: String
+        public let milestone: String
+
+        public init(name: String, milestone: String) {
+            self.name = name
+            self.milestone = milestone
+        }
+    }
+
+    /// A slice already on the board whose brief the proposal replaces: its
+    /// title, and the new brief whole.
+    public struct ProposedEdit: Equatable, Sendable {
+        public let name: String
+        public let brief: String
+
+        public init(name: String, brief: String) {
+            self.name = name
+            self.brief = brief
+        }
+    }
+
     /// The project name the planning agent suggested.
     public let name: String
     public let milestones: [Milestone]
+    /// The titles of the slices already on the board accepting removes.
+    public let removals: [String]
+    public let moves: [ProposedMove]
+    public let edits: [ProposedEdit]
 
-    public init(name: String, milestones: [Milestone]) {
+    public init(
+        name: String, milestones: [Milestone],
+        removals: [String] = [], moves: [ProposedMove] = [], edits: [ProposedEdit] = []
+    ) {
         self.name = name
         self.milestones = milestones
+        self.removals = removals
+        self.moves = moves
+        self.edits = edits
     }
+
+    /// Whether accepting changes any slice already on the board.
+    public var changesBoard: Bool { !removals.isEmpty || !moves.isEmpty || !edits.isEmpty }
 
     /// How many milestones accepting creates — an existing one a slice is
     /// filed under is not among them.
@@ -95,6 +136,8 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
     private enum CodingKeys: String, CodingKey { case name, plan }
     private struct Plan: Decodable {
         struct Named: Decodable { let name: String }
+        struct Move: Decodable { let slice: String; let milestone: String }
+        struct Edit: Decodable { let slice: String; let description: String }
         struct Slice: Decodable {
             let title: String
             let milestone: String
@@ -108,6 +151,9 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
         }
         let milestones: [Named]?
         let slices: [Slice]?
+        let remove: [String]?
+        let move: [Move]?
+        let edit: [Edit]?
     }
 
     public init(from decoder: Decoder) throws {
@@ -139,6 +185,10 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
                 isNew: false))
         }
         milestones = new + existing
+        func trimmed(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        removals = (plan.remove ?? []).map(trimmed)
+        moves = (plan.move ?? []).map { ProposedMove(name: trimmed($0.slice), milestone: trimmed($0.milestone)) }
+        edits = (plan.edit ?? []).map { ProposedEdit(name: trimmed($0.slice), brief: trimmed($0.description)) }
     }
 
     /// How the CLI matches a slice to its milestone: trimmed, case-folded.
@@ -178,6 +228,24 @@ public enum ProposalText {
     /// The caption under the buttons, tracking the name field.
     public static func acceptCaption(name: String) -> String {
         "Accepting writes the plan to local storage as “\(name)”."
+    }
+
+    /// The section the proposal's changes to slices already on the board are
+    /// drawn under, below the work it creates.
+    public static let boardChangesHeading = "Changes to tasks already planned"
+    public static let removeLabel = "Remove"
+    public static let moveLabel = "Move"
+    public static let editLabel = "Edit"
+
+    /// Said before Accept wherever the proposal removes anything: Accept is
+    /// the one approval, so what it takes off the board is said plainly.
+    public static func removalWarning(count: Int) -> String {
+        "Accepting also removes \(count) \(count == 1 ? "task" : "tasks") already planned."
+    }
+
+    /// The destination a moved task is drawn with.
+    public static func moveDestination(_ milestone: String) -> String {
+        "→ \(milestone)"
     }
 
     /// The same caption on a project's own workshop, which has its name.

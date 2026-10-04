@@ -331,6 +331,21 @@ project's current shape and, where the plan depends on anything, its slices
 refused the same way by whichever of the three asks. Running either again for
 the same key replaces its proposal — how a revision lands.
 
+A plan document may also hold `remove` (titles), `move` (`{slice,
+milestone}`) and `edit` (`{slice, description}`), each naming a **Todo**
+slice already on the board by title (`resolveChanges`, `planchanges.go`):
+in progress/Done, no match, more than one match, a removed slice also moved
+or edited, or any `depends_on`/`dependencies` naming a removed slice each
+refuse the whole document before a write; `move` on a source project is
+refused in `validateAgainstProject`. Resolution and the cycle check see the
+board as the removals leave it (removed slices gone, every wait on one
+stripped). `applyPlan` writes edits, then milestones (a move may name a new
+one), moves, the dropped waits (`SetDependencies` on each slice that waited
+on a removed one — reported as the removal's `dependents`), the removals,
+then creations — so a replacement may take a removed slice's title.
+`plan-apply`'s output gains `edited`/`moved`/`removed`; `plan-accept`'s JSON
+their counts. `plan-propose --workspace` refuses all three lists.
+
 `plan-proposal (--workspace <id> | --project <id>) --json` reads back what
 `plan-propose` wrote for that key (`{"proposal": null}` with none yet — the
 app polls it on every nudge; a file that won't parse is an error, which the

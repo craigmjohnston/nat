@@ -242,6 +242,9 @@ func TestPlanApplyPrintsJSON(t *testing.T) {
 			},
 		},
 		Dependencies: []addedDependencyJSON{},
+		Edited:       []sliceEditedJSON{},
+		Moved:        []sliceMovedJSON{},
+		Removed:      []removedSliceJSON{},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("json =\n%+v\nwant:\n%+v", got, want)
@@ -258,7 +261,7 @@ func TestPlanApplyPrintsEmptyJSONLists(t *testing.T) {
 		t.Fatalf("plan-apply: %v", err)
 	}
 
-	for _, want := range []string{`"slices": []`, `"dependencies": []`} {
+	for _, want := range []string{`"slices": []`, `"dependencies": []`, `"edited": []`, `"moved": []`, `"removed": []`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("json =\n%s\nwant %s", out, want)
 		}

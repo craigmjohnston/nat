@@ -26,8 +26,11 @@ import (
 // landing in Notion leaves someone to work out which half — so the whole
 // document has to make sense before any of it is applied.
 //
-// It only ever creates. Nothing in a plan says which existing page to change,
-// and a command that adds work has no business editing work already filed.
+// Beside what it creates, a plan may remove, move and edit Todo slices the
+// project already has — the work a workshop supersedes — named by title in its
+// remove, move and edit lists. Nothing else already filed is the plan's to
+// change, and those three only what `slice-delete`, `slice-move` and
+// `slice-edit` would.
 //
 // Where the plan lands is the command line's rather than the document's:
 // --project names a project of the config file, and a run that names none
@@ -78,7 +81,7 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	// A run that failed partway has still written what it wrote — the error
 	// itself says so — and the board deserves to hear about that half as much
 	// as about a whole plan.
-	if len(applied.Milestones) > 0 || len(applied.Slices) > 0 || len(applied.Dependencies) > 0 {
+	if len(applied.Milestones) > 0 || len(applied.Slices) > 0 || len(applied.Dependencies) > 0 || applied.changed() {
 		env.nudged()
 	}
 	if err != nil {
@@ -86,7 +89,8 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	}
 
 	logging.Action("plan applied", "milestones", len(applied.Milestones), "slices", len(applied.Slices),
-		"dependencies", len(applied.Dependencies))
+		"dependencies", len(applied.Dependencies), "edited", len(applied.Edited), "moved", len(applied.Moved),
+		"removed", len(applied.Removed))
 	if *asJSON {
 		return writeJSON(env.Out, applied.jsonDoc(project))
 	}
@@ -99,10 +103,17 @@ func planApply(ctx context.Context, args []string, env Env) error {
 // orders and assignees are absent by design — they are not the plan's to choose,
 // and a document that could set them would be a way to smuggle a claim past the
 // workflow.
+//
+// Remove, Move and Edit name slices the project already has, by title, exactly
+// as depends_on does (see [resolveChanges]); they are omitted when empty, so a
+// proposal written before they existed round-trips unchanged.
 type plan struct {
 	Milestones   []planMilestone  `json:"milestones"`
 	Slices       []planSlice      `json:"slices"`
 	Dependencies []planDependency `json:"dependencies"`
+	Remove       []string         `json:"remove,omitempty"`
+	Move         []planMove       `json:"move,omitempty"`
+	Edit         []planEdit       `json:"edit,omitempty"`
 }
 
 // planMilestone is a milestone to create. It is an object rather than a bare
@@ -238,8 +249,9 @@ type filedDeps struct {
 // out before anything is written, so applying has nothing left to fail on for
 // a reason the document could have been refused for.
 type planTargets struct {
-	slices []sliceTarget
-	filed  []filedDeps
+	slices  []sliceTarget
+	filed   []filedDeps
+	changes planChanges
 }
 
 // validateAgainstProject reads a project's current shape — and, only if the
@@ -252,15 +264,21 @@ type planTargets struct {
 // three is asking, and a plan changed since a proposal was written is caught
 // here rather than half-applied.
 func validateAgainstProject(ctx context.Context, st store.Store, sp store.Project, p plan) (store.Shape, planTargets, error) {
+	// A source project's tasks stay under the container they were filed under,
+	// as slice-move is refused there — said before anything is read.
+	if sp.Source != "" && len(p.Move) > 0 {
+		return store.Shape{}, planTargets{}, fmt.Errorf("the plan moves %d %s, but this project's milestones are %s's "+
+			"containers: a task stays under the one it was filed under", len(p.Move), plural("slice", len(p.Move)), sp.Source)
+	}
 	shape, err := st.Shape(ctx, sp)
 	if err != nil {
 		return store.Shape{}, planTargets{}, err
 	}
 	// The project's own slices are only read when the plan names one: they are
-	// what a depends_on title may be resolved against, and a plan that declares
-	// no dependency has nothing to resolve.
+	// what a depends_on title, or a remove, move or edit, may be resolved
+	// against, and a plan that names none has nothing to resolve.
 	var filed []domain.Slice
-	if p.dependsOnAnything() {
+	if p.dependsOnAnything() || p.changesAnything() {
 		existingPlan, err := st.Plan(ctx, sp)
 		if err != nil {
 			return store.Shape{}, planTargets{}, fmt.Errorf("load slices: %w", err)
@@ -281,9 +299,9 @@ func validateAgainstProject(ctx context.Context, st store.Store, sp store.Projec
 // is empty when the plan declares no dependencies, because then there is
 // nothing to resolve against.
 func validatePlan(p plan, existing []domain.Milestone, existingSlices []domain.Slice) (planTargets, error) {
-	if len(p.Milestones) == 0 && len(p.Slices) == 0 && len(p.Dependencies) == 0 {
+	if len(p.Milestones) == 0 && len(p.Slices) == 0 && len(p.Dependencies) == 0 && !p.changesAnything() {
 		return planTargets{}, fmt.Errorf("the plan creates nothing and records nothing: " +
-			"it has no milestones, no slices and no dependencies")
+			"it has no milestones, no slices, no dependencies and nothing to remove, move or edit")
 	}
 
 	seen := map[string]int{}
@@ -326,14 +344,21 @@ func validatePlan(p plan, existing []domain.Milestone, existingSlices []domain.S
 		}
 		targets[i] = sliceTarget{newIndex: -1, existing: m}
 	}
-	filed, err := resolveDependencies(p, existingSlices, targets)
+	// Everything past this line sees the board as the removals leave it: a
+	// dependency cannot name a removed slice, and a cycle a removal breaks is
+	// no cycle.
+	changes, board, gone, err := resolveChanges(p, seen, existing, existingSlices)
 	if err != nil {
 		return planTargets{}, err
 	}
-	if err := checkPlanCycles(p, existingSlices, targets, filed); err != nil {
+	filed, err := resolveDependencies(p, board, gone, targets)
+	if err != nil {
 		return planTargets{}, err
 	}
-	return planTargets{slices: targets, filed: filed}, nil
+	if err := checkPlanCycles(p, board, targets, filed); err != nil {
+		return planTargets{}, err
+	}
+	return planTargets{slices: targets, filed: filed, changes: changes}, nil
 }
 
 // resolveDependencies turns every depends_on title into the slice it names,
@@ -347,7 +372,10 @@ func validatePlan(p plan, existing []domain.Milestone, existingSlices []domain.S
 // already has. An entry there naming a slice the plan itself creates is folded
 // into that slice's target instead — the page does not exist yet, so there is
 // nothing to add to.
-func resolveDependencies(p plan, existingSlices []domain.Slice, targets []sliceTarget) ([]filedDeps, error) {
+//
+// gone is the titles of the slices the plan removes, lower-cased, which no
+// dependency may name: existingSlices is the board without them.
+func resolveDependencies(p plan, existingSlices []domain.Slice, gone map[string]bool, targets []sliceTarget) ([]filedDeps, error) {
 	planned := map[string][]int{}
 	for i, s := range p.Slices {
 		key := strings.ToLower(strings.TrimSpace(s.Title))
@@ -362,21 +390,21 @@ func resolveDependencies(p plan, existingSlices []domain.Slice, targets []sliceT
 	for i, s := range p.Slices {
 		title := strings.TrimSpace(s.Title)
 		for _, ref := range s.DependsOn {
-			dep, err := resolveDependency(strings.TrimSpace(ref), planDep{newIndex: i}, planned, filed, "depends on")
+			dep, err := resolveDependency(strings.TrimSpace(ref), planDep{newIndex: i}, planned, filed, gone, "depends on")
 			if err != nil {
 				return nil, fmt.Errorf("slice %d (%q): %w", i+1, title, err)
 			}
 			targets[i].dependsOn = appendDep(targets[i].dependsOn, dep)
 		}
 	}
-	return resolveAdditions(p, planned, filed, targets)
+	return resolveAdditions(p, planned, filed, gone, targets)
 }
 
 // resolveAdditions works out the top-level dependencies list: which slice each
 // entry is about, and what it is being made to wait on. Two entries naming one
 // slice are merged rather than refused — each is a list of what to add, and
 // adding twice is adding once.
-func resolveAdditions(p plan, planned map[string][]int, filed map[string][]domain.Slice, targets []sliceTarget) ([]filedDeps, error) {
+func resolveAdditions(p plan, planned map[string][]int, filed map[string][]domain.Slice, gone map[string]bool, targets []sliceTarget) ([]filedDeps, error) {
 	var out []filedDeps
 	at := map[string]int{}
 	for i, d := range p.Dependencies {
@@ -387,7 +415,7 @@ func resolveAdditions(p plan, planned map[string][]int, filed map[string][]domai
 		if len(d.On) == 0 {
 			return nil, fmt.Errorf("dependencies %d (%q) names nothing for it to wait on", i+1, title)
 		}
-		target, err := resolveDependency(title, planDep{newIndex: -1}, planned, filed, "names")
+		target, err := resolveDependency(title, planDep{newIndex: -1}, planned, filed, gone, "names")
 		if err != nil {
 			return nil, fmt.Errorf("dependencies %d: %w", i+1, err)
 		}
@@ -405,7 +433,7 @@ func resolveAdditions(p plan, planned map[string][]int, filed map[string][]domai
 			slot = idx
 		}
 		for _, ref := range d.On {
-			dep, err := resolveDependency(strings.TrimSpace(ref), target, planned, filed, "depends on")
+			dep, err := resolveDependency(strings.TrimSpace(ref), target, planned, filed, gone, "depends on")
 			if err != nil {
 				return nil, fmt.Errorf("dependencies %d (%q): %w", i+1, title, err)
 			}
@@ -440,7 +468,8 @@ func appendDep(list []planDep, dep planDep) []planDep {
 //
 // what is how the document put it — a slice "depends on" a title, an entry of
 // the dependencies list "names" one — so a refusal reads as the thing refused.
-func resolveDependency(ref string, self planDep, planned map[string][]int, filed map[string][]domain.Slice, what string) (planDep, error) {
+// A title of a slice the plan removes (gone) is refused as that.
+func resolveDependency(ref string, self planDep, planned map[string][]int, filed map[string][]domain.Slice, gone map[string]bool, what string) (planDep, error) {
 	if ref == "" {
 		return planDep{}, fmt.Errorf("names an empty dependency")
 	}
@@ -456,6 +485,9 @@ func resolveDependency(ref string, self planDep, planned map[string][]int, filed
 	case 1:
 		return checkSelf(planDep{newIndex: -1, id: matches[0].ID}, self)
 	case 0:
+		if gone[key] {
+			return planDep{}, fmt.Errorf("%s %q, which the plan removes", what, ref)
+		}
 		return planDep{}, fmt.Errorf("%s %q, which is neither in the plan nor in the project", what, ref)
 	default:
 		return planDep{}, fmt.Errorf("%s %q, which the project already has %d slices named: "+
@@ -475,11 +507,15 @@ func checkSelf(dep, self planDep) (planDep, error) {
 // appliedPlan is what the run did: the new milestones, the slices each paired
 // with whichever milestone — new or existing — it was filed under, and the
 // slices already on the board it added dependencies to, which is the one thing
-// a plan changes rather than creates.
+// a plan changes rather than creates — beside the slices it edited, moved and
+// removed.
 type appliedPlan struct {
 	Milestones   []domain.Milestone
 	Slices       []appliedSlice
 	Dependencies []appliedDependency
+	Edited       []appliedEdit
+	Moved        []appliedMove
+	Removed      []appliedRemoval
 }
 
 type appliedSlice struct {
@@ -513,11 +549,13 @@ type appliedDependency struct {
 // that view's order any more than it ever could — and that is fine, since
 // nothing this app reads takes a plan's order from it.
 //
-// applyPlan writes the plan: milestones first, because the slices are filed
-// under them, then the slices in the document's own order, and last the
-// dependencies between them, which have to come last since a slice may wait
-// on one the plan creates further down and there is no page to point at
-// until every slice exists.
+// applyPlan writes the plan: first the edits to slices already on the board,
+// then the milestones, because moves and new slices are filed under them, then
+// the moves and the removals, then the slices in the document's own order, and
+// last the dependencies between them, which have to come last since a slice may
+// wait on one the plan creates further down and there is no page to point at
+// until every slice exists. Removals come before any slice is created, so a
+// document may remove a slice and create its replacement under the same title.
 //
 // A write that fails stops the run, and whatever was created stays created —
 // there is no transaction to roll back, and deleting pages to tidy up would be
@@ -527,13 +565,26 @@ type appliedDependency struct {
 func applyPlan(ctx context.Context, st store.Store, sp store.Project, shape store.Shape, p plan, resolved planTargets, existing []domain.Milestone) (appliedPlan, error) {
 	targets := resolved.slices
 	var applied appliedPlan
+	if err := applyEdits(ctx, st, resolved.changes.edits, &applied); err != nil {
+		return applied, appliedErr(applied, err)
+	}
 	names := make([]string, len(p.Milestones))
 	for i, pm := range p.Milestones {
 		names[i] = strings.TrimSpace(pm.Name)
 	}
-	added, err := st.AddMilestones(ctx, sp, shape, names)
-	applied.Milestones = added
-	if err != nil {
+	// A plan that creates no milestone asks for no write: a source project
+	// refuses every milestone write, and its plan may still edit or remove.
+	if len(names) > 0 {
+		added, err := st.AddMilestones(ctx, sp, shape, names)
+		applied.Milestones = added
+		if err != nil {
+			return applied, appliedErr(applied, err)
+		}
+	}
+	if err := applyMoves(ctx, st, resolved.changes.moves, &applied); err != nil {
+		return applied, appliedErr(applied, err)
+	}
+	if err := applyRemovals(ctx, st, resolved.changes, &applied); err != nil {
 		return applied, appliedErr(applied, err)
 	}
 	made := make([]appliedSlice, 0, len(p.Slices))
@@ -637,6 +688,10 @@ func applyAdditions(ctx context.Context, st store.Store, filed []filedDeps, crea
 // appliedErr says what a failed run had already written, so nobody re-runs a
 // plan whose first half is already in Notion.
 func appliedErr(applied appliedPlan, err error) error {
+	if applied.changed() {
+		err = fmt.Errorf("%w — of the slices already on the board, %s before this failed, and that stands", err,
+			changeCounts(len(applied.Edited), len(applied.Moved), len(applied.Removed)))
+	}
 	made := counts(len(applied.Milestones), len(applied.Slices))
 	if n := len(applied.Dependencies); n > 0 {
 		return fmt.Errorf("%w — %s were created, and %d %s already on the board were made to wait on more, "+
@@ -663,6 +718,9 @@ type planAppliedJSON struct {
 	Milestones   []milestoneJSON       `json:"milestones"`
 	Slices       []addedSliceJSON      `json:"slices"`
 	Dependencies []addedDependencyJSON `json:"dependencies"`
+	Edited       []sliceEditedJSON     `json:"edited"`
+	Moved        []sliceMovedJSON      `json:"moved"`
+	Removed      []removedSliceJSON    `json:"removed"`
 }
 
 // addedDependencyJSON is one slice already on the board the run made to wait on
@@ -703,6 +761,7 @@ func (a appliedPlan) jsonDoc(project config.ProjectConfig) planAppliedJSON {
 			URL:           s.Slice.URL,
 		})
 	}
+	a.changesJSON(&doc)
 	return doc
 }
 
@@ -713,6 +772,9 @@ func (a appliedPlan) markdown(project config.ProjectConfig) string {
 	var b strings.Builder
 	b.WriteString("# Plan applied\n\n")
 	fmt.Fprintf(&b, "Added %s to %s.\n", counts(len(a.Milestones), len(a.Slices)), project.Name)
+	if a.changed() {
+		fmt.Fprintf(&b, "Of the slices already there, %s.\n", changeCounts(len(a.Edited), len(a.Moved), len(a.Removed)))
+	}
 
 	for _, m := range a.Milestones {
 		fmt.Fprintf(&b, "\n## %s\n\n", m.Name)
@@ -733,6 +795,7 @@ func (a appliedPlan) markdown(project config.ProjectConfig) string {
 				d.Slice.Name, len(d.Added), plural("slice", len(d.Added)))
 		}
 	}
+	a.changesMarkdown(&b)
 	return b.String()
 }
 

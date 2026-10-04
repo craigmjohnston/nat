@@ -26,6 +26,19 @@ A command given no project is refused: there is nothing for it to fall
 back to, and in particular not the project the user's board is on,
 which they can switch while you work.
 
+## Superseded work
+
+The plan document changes Todo slices already on the board as well as
+creating new ones: a top-level `remove` list of titles sends each to the
+trash, `move` (`[{"slice": <title>, "milestone": <name>}]`) refiles
+each under a milestone the project has or the document creates, and
+`edit` (`[{"slice": <title>, "description": <brief>}]`) replaces each
+brief whole. Each names a Todo slice by title, as `depends_on` does. A
+Todo slice the new plan supersedes is removed in the same document that
+replaces it — never left as a list for the user to delete or move by
+hand. They apply in the order edits, moves, removals, then creations, so
+a replacement may take the title of the slice it removes.
+
 ## Applying changes
 
 Draft in conversation first, and write only after the user explicitly

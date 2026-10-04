@@ -125,7 +125,13 @@ the poll and the user's refresh pull). `plan-accept` claims the proposal file
 before filing (so it is accepted at most once) and nudges only once it is
 gone. Tests: `ProposalStateTests`, `ProposalRaceTests`. The navigator's Plan
 section draws `PlanProposal.folders` (`TreeMilestoneLine`/`TreeSliceLine`,
-the sidebar's own rows) and the sidebar shows nothing of it. Accept is `nat plan-accept`: on an
+the sidebar's own rows) and the sidebar shows nothing of it; under the
+created work, a project's proposal draws the Todo tasks it changes
+(`PlanProposal.removals`/`moves`/`edits`, from the plan document's
+`remove`/`move`/`edit`) — a struck-through row per removal, a move with its
+destination, an edit that unfolds its new brief (`expandedProposalEdits`) —
+and a removal is warned of above the tree (story
+`workshop-proposal-superseding`). Accept is `nat plan-accept`: on an
 Untitled tab it makes the project, then the session is killed and
 `addProject(replacing:)` hands the tab over; on a project it files the plan
 (`--project`) and leaves the session running. The layout is one for both:
