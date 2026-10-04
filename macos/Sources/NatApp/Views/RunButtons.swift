@@ -72,8 +72,6 @@ private struct RunHeaderChevronStyle: ButtonStyle {
 /// label, its command in mono under it — the default marked.
 struct RunMenuList: View {
     let runs: [RunCommand]
-    /// Whether it stands alone, with a menu's own inset and width.
-    var padded = true
     let onPick: (String) -> Void
 
     var body: some View {
@@ -110,15 +108,15 @@ struct RunMenuList: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(padded ? 5 : 0)
-        .frame(minWidth: padded ? 200 : nil, maxWidth: padded ? 320 : nil, alignment: .leading)
+        .padding(5)
+        .frame(minWidth: 200, maxWidth: 320, alignment: .leading)
     }
 }
 
 /// The titlebar's run button: a play glyph, beside Settings, drawn while
-/// any project has runs to offer. It opens the run tree (`RunTreeList`) —
-/// every such project, its runs under it — and a pick runs that project's
-/// run from its origin/main.
+/// any project has runs to offer. It opens the run tree (`RunTreePicker`) —
+/// projects, then the open one's runs — and a pick runs that project's run
+/// from its origin/main.
 struct TitlebarRunButton: View {
     @Bindable var appModel: AppModel
     @State private var treeOpen = false
@@ -141,7 +139,7 @@ struct TitlebarRunButton: View {
             .buttonStyle(GnatIconButtonStyle())
             .help("Run\u{2026}")
             .popover(isPresented: $treeOpen, arrowEdge: .bottom) {
-                RunTreeList(projects: projects) { project, label in
+                RunTreePicker(projects: projects, openProjectID: appModel.activeProjectID) { project, label in
                     treeOpen = false
                     Task { await appModel.startRun(projectID: project, label: label) }
                 }
@@ -150,30 +148,116 @@ struct TitlebarRunButton: View {
     }
 }
 
-/// The titlebar's run tree: each project with runs, then its runs, each
-/// with its command — the first of each project's marked as its default.
-struct RunTreeList: View {
+/// The titlebar's run tree, the breadcrumb's tree picker's shape
+/// (`CrumbTreePicker`): every project with runs, then the open project's
+/// runs, a column apiece — each run its label over its command, the first
+/// marked default. It opens on `openProjectID` where that project has runs,
+/// else the first; picking a run runs it and closes the tree.
+struct RunTreePicker: View {
     let projects: [RunProject]
+    @State private var openID: String
     /// A pick: the project and the run's label.
     let onPick: (String, String) -> Void
 
+    init(projects: [RunProject], openProjectID: String?, onPick: @escaping (String, String) -> Void) {
+        self.projects = projects
+        let open = projects.first { $0.id == openProjectID } ?? projects.first
+        _openID = State(initialValue: open?.id ?? "")
+        self.onPick = onPick
+    }
+
+    private static let columnWidth: CGFloat = 230
+    private static let height: CGFloat = 240
+
+    private var open: RunProject? { projects.first { $0.id == openID } }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(projects) { project in
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(project.name)
-                        .font(.system(size: GnatMetrics.body, weight: .medium))
-                        .ink(.secondary)
-                        .lineLimit(1)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                    RunMenuList(runs: project.runs, padded: false) { onPick(project.id, $0) }
-                        .padding(.leading, 12)
+        HStack(spacing: 0) {
+            column {
+                ForEach(projects) { project in
+                    row(selected: project.id == openID, opens: true) {
+                        StackedFolderGlyph(
+                            open: project.id == openID,
+                            color: DesignTokens.ink(.tertiary, on: .header),
+                            backColor: DesignTokens.ink(.tertiary, on: .header))
+                            .frame(width: 16)
+                        Text(project.name)
+                    } action: {
+                        openID = project.id
+                    }
+                }
+            }
+            DesignTokens.rule(.separator, on: .header).frame(width: 1)
+            column {
+                if let open {
+                    ForEach(Array(open.runs.enumerated()), id: \.offset) { index, run in
+                        runRow(run, isDefault: index == 0) { onPick(open.id, run.label) }
+                    }
                 }
             }
         }
-        .padding(5)
-        .frame(minWidth: 220, maxWidth: 340, alignment: .leading)
+        .frame(height: Self.height)
+        .surface(.header)
+    }
+
+    private func column<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            VStack(spacing: 0) { content() }
+                .padding(.vertical, 6)
+        }
+        .thinScrollers()
+        .frame(width: Self.columnWidth)
+    }
+
+    private func runRow(_ run: RunCommand, isDefault: Bool, action: @escaping () -> Void) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Image(systemName: "play.fill")
+                .font(.system(size: 8.5))
+                .ink(.tertiary)
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(run.label).ink(.secondary)
+                    if isDefault { Text("default").monoXS().ink(.tertiary) }
+                }
+                .font(.system(size: GnatMetrics.body))
+                Text(run.command)
+                    .font(Typo.mono(size: Typo.subhead))
+                    .ink(.tertiary)
+                    .truncationMode(.middle)
+            }
+            .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .gnatRow(selected: false)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: action)
+        .help(run.command)
+    }
+
+    private func row<Label: View>(
+        selected: Bool, opens: Bool, @ViewBuilder label: () -> Label, action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 7) {
+            label()
+                .font(.system(size: GnatMetrics.body))
+                .ink(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+            if opens {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .ink(.tertiary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+        .gnatRow(selected: selected)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: action)
     }
 }
 

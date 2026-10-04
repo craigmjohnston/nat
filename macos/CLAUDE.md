@@ -264,8 +264,8 @@ explicit frame; keep it so. Stories: `window-visuals`,
 **Run commands** (`docs/run-commands.md`): a project's `runs` live in its
 config entry alone (`ProjectConfig.runs`, `RunCommand`) — no settings screen.
 The titlebar's play button (`TitlebarRunButton`, beside Settings) opens
-`RunTreeList` — every project with runs (`AppModel.runProjects`), then its
-runs; a handed-back slice gets `RunHeadingRow` under its Task section, its
+`RunTreePicker`, `CrumbTreePicker`'s shape — every project with runs
+(`AppModel.runProjects`), then the open one's runs; a handed-back slice gets `RunHeadingRow` under its Task section, its
 `RunSplitButton` greyed once the stage is done. Both call
 `AppModel.startRun` → `nat run`; nothing in Swift picks a directory or
 default. The run's session is the Run tab (`MainPaneMode.run`,

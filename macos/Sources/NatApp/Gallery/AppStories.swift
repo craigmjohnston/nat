@@ -220,26 +220,27 @@ enum AppStories {
         }
     }
 
-    /// The sidebar's own titlebar segment over a project with runs, its run
-    /// tree drawn under the play button where `treeOpen` — a real popover is a
-    /// window of its own no render of this one can show.
+    /// The sidebar's own titlebar segment over a project with runs — and,
+    /// where `treeOpen`, the run tree drawn under the play button, since a
+    /// real popover is a window of its own no render of this one can show.
     private static func titlebarRun(treeOpen: Bool) async -> some View {
         let appModel = await Fixtures.startedAppModel(config: Fixtures.runsConfig)
-        return ZStack(alignment: .topTrailing) {
+        return VStack(alignment: .leading, spacing: 0) {
             SidebarView(appModel: appModel, showsTitlebar: true)
-                .frame(width: 260, height: 820, alignment: .top)
+                .frame(width: 260, height: GnatMetrics.titlebarHeight, alignment: .top)
+                .clipped()
                 .environment(\.pulsesPaused, true)
             if treeOpen {
-                RunTreeList(projects: appModel.runProjects) { _, _ in }
-                    .surface(.window)
+                RunTreePicker(projects: appModel.runProjects, openProjectID: Fixtures.projectID) { _, _ in }
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(DesignTokens.rule(.separator, on: .window), lineWidth: 1))
-                    .padding(.top, GnatMetrics.titlebarHeight + 2)
-                    .padding(.trailing, 8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(DesignTokens.rule(.separator, on: .header), lineWidth: 1))
+                    .padding(.top, 6)
+                    .padding(.leading, 12)
             }
+            Spacer(minLength: 0)
         }
-        .frame(width: 260, height: treeOpen ? 300 : GnatMetrics.titlebarHeight, alignment: .top)
-        .clipped()
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .surface(.window)
     }
 
     /// A slice's crumbs in the fixture project, under M2.
@@ -1680,9 +1681,10 @@ enum AppStories {
 
         Story(
             name: "titlebar-run-menu",
-            summary: "The play button\u{2019}s run tree open: each project with runs, then its runs with their "
-                + "commands, the first of each marked default.",
-            size: CGSize(width: 260, height: 300)
+            summary: "The play button\u{2019}s run tree open, the breadcrumb tree picker\u{2019}s shape: projects "
+                + "with runs in one column, the open project\u{2019}s runs and their commands in the next, the "
+                + "first marked default.",
+            size: CGSize(width: 500, height: 300)
         ) {
             await titlebarRun(treeOpen: true)
         },
