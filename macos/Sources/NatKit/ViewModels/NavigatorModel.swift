@@ -414,16 +414,27 @@ public func buildThreadEvents(
 ) -> [ThreadEvent] {
     let state = displayState(
         for: slice, agent: agent.map { AgentActivity($0.activity) })
+    // Each card takes its event's time, but for one that has its own — a
+    // decided follow-up's, the time it was decided.
+    let cards = { (event: TaskLogEvent) -> [ThreadEvent] in
+        threadEvents(event, plan: plan, milestones: milestones).map { card in
+            var card = card
+            if card.when == nil { card.when = event.at }
+            return card
+        }
+    }
     // A released slice is back to do, and its history is still its own. Notes
-    // alone are not history: one left on a slice never launched is read in its
-    // brief, and opens no log of launches that never happened.
+    // alone are not history: a slice never launched shows the notes left on
+    // it, and nothing claims a launch that never happened.
     let history = (events ?? []).contains { $0.kind != .note }
-    guard state.isLaunched || agent != nil || history else { return [] }
+    guard state.isLaunched || agent != nil || history else {
+        return (events ?? []).filter { $0.kind == .note }.flatMap(cards)
+    }
 
     let branch = (slice.branch ?? "").isEmpty ? nil : slice.branch
     let reading = agentFacts(agent)
-    var log = [ThreadEvent(
-        .launched, who: "Launched", facts: reading.model + (branch.map { [ThreadFact("branch", $0)] } ?? []))]
+    let launched = ThreadEvent(
+        .launched, who: "Launched", facts: reading.model + (branch.map { [ThreadFact("branch", $0)] } ?? []))
     let agentCard = agent.map { agent in
         let waiting = AgentActivity(agent.activity) == .waiting
         return ThreadEvent(
@@ -434,21 +445,19 @@ public func buildThreadEvents(
     }
 
     guard let events else {
-        return log + legacyThreadEvents(slice: slice, state: state, branch: branch, agentCard: agentCard, brief: brief)
+        return [launched] + legacyThreadEvents(slice: slice, state: state, branch: branch, agentCard: agentCard, brief: brief)
     }
+    // The notes ahead of every other recorded event go before Launched: a note
+    // on a Todo slice was written before it launched, and so stays where it
+    // was shown before the launch rather than jumping past it. The page keeps
+    // no first-launch time, so the order of its sections is the only reading —
+    // a note sent to an agent before its first hand-back sits there too.
+    let leadingNotes = events.prefix { $0.kind == .note }
+    var log = leadingNotes.flatMap(cards) + [launched]
     // What the page records, in the order it was written; then the agent as
     // it is now; then what the properties say came of it all.
     let closing: Set<TaskLogEvent.Kind> = [.approved, .merged]
-    // Each card takes its event's time, but for one that has its own — a
-    // decided follow-up's, the time it was decided.
-    let cards = { (event: TaskLogEvent) -> [ThreadEvent] in
-        threadEvents(event, plan: plan, milestones: milestones).map { card in
-            var card = card
-            if card.when == nil { card.when = event.at }
-            return card
-        }
-    }
-    log += events.filter { !closing.contains($0.kind) }.flatMap(cards)
+    log += events.dropFirst(leadingNotes.count).filter { !closing.contains($0.kind) }.flatMap(cards)
     if let agentCard { log.append(agentCard) }
     log += events.filter { closing.contains($0.kind) }.flatMap(cards)
     return log

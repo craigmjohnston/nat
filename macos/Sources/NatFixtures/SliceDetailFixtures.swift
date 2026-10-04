@@ -237,6 +237,33 @@ extension Fixtures {
         sliceDetails.merging([activitySliceID: notedSliceDetail]) { _, new in new }
     }
 
+    /// The fixtures slice, never launched, with one note on its brief from the
+    /// shell slice — its whole history, today.
+    public static var notedTodoSliceDetail: SliceDetail {
+        SliceDetail(
+            id: fixturesSliceID,
+            name: "Build a fixture library of canned app states",
+            url: "https://notion.so/\(fixturesSliceID)",
+            status: "Todo",
+            milestone: "M3: View gallery",
+            assignee: "",
+            blocked: false,
+            handedBack: false,
+            brief: "Build a library of canned app states for the gallery to draw.",
+            events: [
+                TaskLogEvent(.note, note: "The shell's window reads its frame from the scene's id: a fixture window needs one too.",
+                             by: "\"Bootstrap the SwiftUI shell\" (M1: Foundations)",
+                             fromSlice: NoteSource(name: "Bootstrap the SwiftUI shell", milestone: "M1: Foundations"),
+                             at: max(Calendar.current.startOfDay(for: now), now.addingTimeInterval(-25 * 60))),
+            ]
+        )
+    }
+
+    /// `sliceDetails` with the fixtures slice's note added.
+    public static var notedTodoSliceDetails: [String: SliceDetail] {
+        sliceDetails.merging([fixturesSliceID: notedTodoSliceDetail]) { _, new in new }
+    }
+
     /// Every slice a fixture has a detail for, keyed the way
     /// `SliceDetailStore` asks for one.
     public static var sliceDetails: [String: SliceDetail] {

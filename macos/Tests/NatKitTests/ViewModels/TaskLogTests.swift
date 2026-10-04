@@ -163,20 +163,20 @@ final class TaskLogTests: XCTestCase {
             slice: slice(status: "In progress"), agent: nil, brief: nil, events: events,
             plan: Fixtures.slices, milestones: Fixtures.milestones)
 
-        XCTAssertEqual(log.map(\.kind), [.launched, .note, .handedBack, .sentBack, .note])
+        XCTAssertEqual(log.map(\.kind), [.note, .launched, .handedBack, .sentBack, .note])
         let shell = Fixtures.slices.first { $0.name == "Bootstrap the SwiftUI shell" }
-        XCTAssertEqual(log[1], ThreadEvent(
+        XCTAssertEqual(log[0], ThreadEvent(
             .note, who: "Another agent", meta: "left a note", body: events[0].note,
             facts: [ThreadFact("task", "Bootstrap the SwiftUI shell", sliceID: shell?.id)], when: events[0].at))
-        XCTAssertEqual(log[1].title, "Another agent left a note")
+        XCTAssertEqual(log[0].title, "Another agent left a note")
         XCTAssertEqual(log[4].facts, [ThreadFact("source", "Craig Johnston")], "a person is plain text")
         XCTAssertEqual(log[2].when, events[1].at, "every recorded card carries its time")
-        XCTAssertNil(log[0].when, "the launch has no time source")
+        XCTAssertNil(log[1].when, "the launch has no time source")
 
         let anonymous = buildThreadEvents(
             slice: slice(status: "In progress"), agent: nil, brief: nil, events: [TaskLogEvent(.note, note: "n")])
-        XCTAssertEqual(anonymous.last?.title, "Note")
-        XCTAssertEqual(anonymous.last?.facts, [])
+        XCTAssertEqual(anonymous.first?.title, "Note")
+        XCTAssertEqual(anonymous.first?.facts, [])
     }
 
     /// With no plan to match against, or a source the plan does not hold
@@ -187,7 +187,7 @@ final class TaskLogTests: XCTestCase {
             .note, note: "n", by: label,
             fromSlice: NoteSource(name: "Bootstrap the SwiftUI shell", milestone: "M1: Foundations"))
         let log = buildThreadEvents(slice: slice(status: "In progress"), agent: nil, brief: nil, events: [event])
-        XCTAssertEqual(log.last?.facts, [ThreadFact("source", label)])
+        XCTAssertEqual(log.first?.facts, [ThreadFact("source", label)])
     }
 
     func testANoteSourceMatchesOneSliceByNameAndMilestone() {
@@ -259,13 +259,25 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(ThreadEvent(.agent, who: "Craig", meta: "2h ago", metaIsAction: false).title, "Craig")
     }
 
-    /// Notes left on a slice never launched are read in its brief; they open
-    /// no log of a launch that never happened.
-    func testNotesAloneOnASliceNeverLaunchedOpenNoLog() {
+    /// Notes left on a slice never launched are its log, with no launch
+    /// claimed before them.
+    func testNotesAloneOnASliceNeverLaunchedAreItsLog() {
+        let note = TaskLogEvent(.note, note: "n", by: "Craig", at: Date(timeIntervalSince1970: 1_791_065_645))
+        let log = buildThreadEvents(slice: slice(status: "Todo"), agent: nil, brief: nil, events: [note])
+        XCTAssertEqual(log.map(\.kind), [.note])
+        XCTAssertEqual(log[0].body, "n")
+        XCTAssertEqual(log[0].facts, [ThreadFact("source", "Craig")])
+        XCTAssertEqual(log[0].when, note.at)
+    }
+
+    /// The notes ahead of every other recorded event sit before Launched; a
+    /// note after one stays in its place.
+    func testLeadingNotesSitBeforeTheLaunch() {
         let log = buildThreadEvents(
-            slice: slice(status: "Todo"), agent: nil, brief: nil,
-            events: [TaskLogEvent(.note, note: "n", by: "Craig")])
-        XCTAssertEqual(log, [])
+            slice: slice(status: "In progress"), agent: nil, brief: nil,
+            events: [TaskLogEvent(.note, note: "a"), TaskLogEvent(.handedBack, note: "h"), TaskLogEvent(.note, note: "b")])
+        XCTAssertEqual(log.map(\.kind), [.note, .launched, .handedBack, .note])
+        XCTAssertEqual(log.map(\.body), ["a", nil, "h", "b"])
     }
 
     func testTheLiveAgentSitsAfterWhatThePageRecordsAndBeforeTheApprove() {
