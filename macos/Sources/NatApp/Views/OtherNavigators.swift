@@ -366,7 +366,7 @@ struct WorkshopNavigatorView: View {
                     TextField("Project name", text: Binding(
                         get: { appModel.proposalName }, set: { appModel.proposalName = $0 }))
                         .textFieldStyle(.plain)
-                        .font(Typo.mono(size: GnatMetrics.body))
+                        .font(Typo.mono(size: Typo.input))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .overlay {
@@ -526,7 +526,7 @@ private struct WorkshopBriefEditor: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             TextEditor(text: $text)
-                .font(Typo.mono(size: Typo.code))
+                .font(Typo.mono(size: Typo.input))
                 .lineSpacing(3)
                 .scrollContentBackground(.hidden)
                 .focused($focused)

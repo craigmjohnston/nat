@@ -194,13 +194,13 @@ struct PRComposerView: View {
                     // exactly where the first typed letter will: a
                     // proportional one would sit a hair off the caret it is
                     // drawn behind.
-                    .font(Typo.mono(size: Typo.subhead))
+                    .font(Typo.mono(size: Typo.input))
                     .ink(.tertiary)
                     .padding(.leading, 5)
                     .allowsHitTesting(false)
             }
             TextEditor(text: $text)
-                .font(Typo.mono(size: Typo.subhead))
+                .font(Typo.mono(size: Typo.input))
                 .scrollContentBackground(.hidden)
                 // No scroller, and so no gutter where "Show scroll bars" is
                 // Always (or a mouse is connected): the box still scrolls.
@@ -306,7 +306,7 @@ struct ReviewersBlock: View {
         .task(id: "\(pr.url)|\(pr.reviewRequests.joined(separator: ","))") { await loadCandidates() }
         .alert("Request a review", isPresented: $askingOther) {
             TextField("login or org/team", text: $otherLogin)
-                .font(Typo.mono(size: Typo.code))
+                .font(Typo.mono(size: Typo.input))
             Button("Request") {
                 let login = otherLogin.trimmingCharacters(in: .whitespaces)
                 if !login.isEmpty { edit(add: [login]) }

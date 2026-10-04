@@ -97,7 +97,35 @@ final class MonoSourcesTests: XCTestCase {
             strays, [],
             """
             Every input in the app is typed in `Typo.mono`. Give each of \
-            these the face at the size it already draws in:
+            these the face at `Typo.input`:
+            \(strays.joined(separator: "\n"))
+            """
+        )
+    }
+
+    /// Every text input — the settings window's included, whose face is the
+    /// system's but whose size is still the ramp's — is sized at
+    /// `Typo.input`, so typed text is one size app-wide and no view picks a
+    /// point size of its own for it.
+    func testEveryTextInputIsSizedAtTheRampsInputSize() throws {
+        var strays: [String] = []
+        for file in try swiftFiles() {
+            let relative = file.path.replacingOccurrences(of: sourcesDirectory.path + "/", with: "")
+            let lines = try String(contentsOf: file, encoding: .utf8).components(separatedBy: .newlines)
+            for (line, text) in lines.enumerated() {
+                guard text.range(of: #"\b(TextField|SecureField|TextEditor)\("#, options: .regularExpression) != nil,
+                      text.range(of: #"\bstruct\b"#, options: .regularExpression) == nil,
+                      !text.trimmingCharacters(in: .whitespaces).hasPrefix("//") else { continue }
+                let chain = lines[line..<min(line + 8, lines.count)].joined(separator: "\n")
+                if chain.contains("size: Typo.input)") { continue }
+                strays.append("\(relative):\(line + 1): \(text.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        XCTAssertEqual(
+            strays, [],
+            """
+            Every input's typed text is sized at `Typo.input`. Give each of \
+            these that size:
             \(strays.joined(separator: "\n"))
             """
         )

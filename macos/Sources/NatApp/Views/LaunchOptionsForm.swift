@@ -25,7 +25,7 @@ struct LaunchOptionsForm: View {
                 ModelPicker(value: $model, options: agentOptions.models) { text in
                     TextField("claude-…", text: text)
                         .textFieldStyle(.roundedBorder)
-                        .font(Typo.mono(size: Typo.code))
+                        .font(Typo.mono(size: Typo.input))
                 }
                 .frame(maxWidth: .infinity)
             }

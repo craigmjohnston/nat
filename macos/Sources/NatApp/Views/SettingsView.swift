@@ -333,6 +333,7 @@ struct SettingsView: View {
                     }
                 }
                 .textFieldStyle(.roundedBorder)
+                .font(.system(size: Typo.input))
                 .labelsHidden()
                 .onSubmit { _ = save() }
                 PluginActionButton(title: "Save", running: plugins.running.contains(.setup(key))) { _ = save() }
@@ -390,6 +391,7 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 TextField("Plugin source", text: $plugins.newSource, prompt: Text("owner/repo"))
                     .textFieldStyle(.roundedBorder)
+                    .font(.system(size: Typo.input))
                     .labelsHidden()
                     .onSubmit { Task { await plugins.addSource() } }
                 if plugins.running.contains(.addSource) {
@@ -888,7 +890,9 @@ private struct CommitTextField: View {
             .textFieldStyle(.roundedBorder)
             // The system font, not the app's monospaced face: a settings
             // window's fields are set in the face every other settings
-            // window on the Mac sets its own in.
+            // window on the Mac sets its own in — at the ramp's input size,
+            // the one every field in the app shares.
+            .font(.system(size: Typo.input))
             // The value column is trailing-aligned, and a field left to
             // inherit that alignment right-aligns the text inside itself.
             .multilineTextAlignment(.leading)

@@ -1469,7 +1469,7 @@ struct SidebarView: View {
                     presenting: view.milestoneForRename
                 ) { ref in
                     TextField("Milestone name", text: view.$renameText)
-                        .font(Typo.mono(size: Typo.code))
+                        .font(Typo.mono(size: Typo.input))
                     Button("Rename") { view.renameMilestone(ref) }
                     Button("Cancel", role: .cancel) {}
                 } message: { _ in
@@ -1481,7 +1481,7 @@ struct SidebarView: View {
                     presenting: view.newMilestoneProject
                 ) { projectID in
                     TextField("Milestone name", text: view.$newMilestoneText)
-                        .font(Typo.mono(size: Typo.code))
+                        .font(Typo.mono(size: Typo.input))
                     Button("Add") { view.addMilestone(projectID) }
                     Button("Cancel", role: .cancel) {}
                 } message: { _ in

@@ -459,6 +459,11 @@ public enum Typo {
     public static let caption: CGFloat = 11
     /// Monospaced code and diff text (mock's 12px code → 13).
     public static let code: CGFloat = 13
+    /// Text typed into an input — every `TextField`, `SecureField` and
+    /// `TextEditor` in the app, and the placeholder drawn where it is empty.
+    /// Never smaller than body, and one size for all of them, so a field's
+    /// type is changed here rather than at each view.
+    public static let input: CGFloat = body
 
     // MARK: - The monospaced face
 

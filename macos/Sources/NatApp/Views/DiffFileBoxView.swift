@@ -95,7 +95,7 @@ struct CommentEditorView: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 8) {
             TextEditor(text: $text)
-                .font(Typo.mono(size: Typo.subhead))
+                .font(Typo.mono(size: Typo.input))
                 .scrollContentBackground(.hidden)
                 // No scroller, and so no gutter where "Show scroll bars" is
                 // Always (or a mouse is connected): the box still scrolls.

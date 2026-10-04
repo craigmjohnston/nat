@@ -118,7 +118,7 @@ struct StarterView: View {
             .padding(.bottom, 10)
 
             TextEditor(text: draft)
-                .font(Typo.mono(size: Typo.body))
+                .font(Typo.mono(size: Typo.input))
                 .ink(.primary)
                 .scrollContentBackground(.hidden)
                 .padding(.horizontal, 7)
@@ -127,7 +127,7 @@ struct StarterView: View {
                 .overlay(alignment: .topLeading) {
                     if appModel.workshopDraft.isEmpty {
                         Text(StarterCard.describePlaceholder)
-                            .font(Typo.mono(size: Typo.body))
+                            .font(Typo.mono(size: Typo.input))
                             .ink(.tertiary)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 10)
