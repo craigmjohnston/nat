@@ -34,12 +34,12 @@ func (f *fakeChecksGH) ViewPR(dir, ref string) (gh.PR, error) {
 	return gh.PR{URL: ref, Checks: f.checks}, nil
 }
 
-func (f *fakeChecksGH) FailedLog(dir, run, job string) (string, error) {
-	f.logRuns = append(f.logRuns, run+"/"+job)
+func (f *fakeChecksGH) FailedLog(dir string, ref gh.ActionsRef) (string, error) {
+	f.logRuns = append(f.logRuns, ref.Run+"/"+ref.Job)
 	if f.logErr != nil {
 		return "", f.logErr
 	}
-	return f.logs[job], nil
+	return f.logs[ref.Job], nil
 }
 
 const checksPR = "https://github.test/craig/nat/pull/7"
@@ -142,7 +142,8 @@ func TestSliceChecksLog(t *testing.T) {
 }
 
 // TestSliceChecksLogShortAndUnreadable prints a log under the limit whole,
-// and passes over a log that cannot be read — the verdict still answers.
+// and says under its check, in both forms, why a log could not be read — the
+// verdict still answers.
 func TestSliceChecksLogShortAndUnreadable(t *testing.T) {
 	failed := []gh.Check{{Name: "test", State: "FAILURE", URL: "https://github.com/o/r/actions/runs/11"}}
 	env, out := checksEnv(t, checksPR, &fakeChecksGH{checks: failed, logs: map[string]string{"": "boom\nat step 3"}})
@@ -153,12 +154,23 @@ func TestSliceChecksLogShortAndUnreadable(t *testing.T) {
 		t.Errorf("output = %q, want the short log whole", out.String())
 	}
 
-	env, out = checksEnv(t, checksPR, &fakeChecksGH{checks: failed, logErr: errors.New("gone")})
+	env, out = checksEnv(t, checksPR, &fakeChecksGH{checks: failed, logErr: errors.New("gone\nand more")})
 	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("slice-checks --log over an unreadable log: %v", err)
 	}
-	if !strings.HasPrefix(out.String(), "Checks: failing") || strings.Contains(out.String(), "failed log") {
-		t.Errorf("output = %q, want the verdict and no log", out.String())
+	want := "- test — FAILURE — https://github.com/o/r/actions/runs/11\n  log not available: gone\n"
+	if !strings.HasPrefix(out.String(), "Checks: failing") || !strings.Contains(out.String(), want) ||
+		strings.Contains(out.String(), "failed log") || strings.Contains(out.String(), "and more") {
+		t.Errorf("output = %q, want the verdict and %q, and no log", out.String(), want)
+	}
+
+	env, out = checksEnv(t, checksPR, &fakeChecksGH{checks: failed, logErr: errors.New("gone\nand more")})
+	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-checks --log --json over an unreadable log: %v", err)
+	}
+	wantJSON := `{"checks":[{"log_error":"gone","name":"test","state":"FAILURE","url":"https://github.com/o/r/actions/runs/11"}],"pr":"` + checksPR + `","verdict":"failing"}`
+	if got := compactJSON(t, out.String()); got != wantJSON {
+		t.Errorf("json = %s, want %s", got, wantJSON)
 	}
 }
 

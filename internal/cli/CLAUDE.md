@@ -248,8 +248,11 @@ an unreadable one concluding false).
 `slice-checks <slice> [--log] [--json]` (any status, a read only): the
 recorded PR's `gh.ViewPR` checks through `gh.Verdict`, one line per check;
 no PR says so and exits 0. `--log` adds, per failed GitHub Actions check,
-`gh run view --log-failed` cut to its last 200 lines; an external status has
-its URL alone, an unreadable log is logged and skipped.
+`gh run view --log-failed` cut to its last 200 lines — or, where gh refuses
+that because a sibling job is still running, the job's whole log through `gh
+api` (`gh.CLI.FailedLog`); an external status has its URL alone, an
+unreadable log is logged and shown as `log not available: <why>` under its
+check (`log_error` in JSON).
 
 PR actions: `slice-approve` (`actions.OpenPR` + `actions.RecordPR`, the
 approve key's two-step write, headless), `pr-comment` (`gh pr comment
