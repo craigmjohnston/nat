@@ -170,54 +170,83 @@ struct NavHeading: View {
 /// cut short as the brief is; then its labelled facts, on the same ground. A
 /// live one (`ThreadEvent.isLive`) has its icon in its hue; the log's rule
 /// runs on from it as `connector` says.
+///
+/// A `collapsible` one (a quiet kind, `ThreadEvent.isCollapsible`) starts
+/// folded to its header — icon, title, time — and its header row opens and
+/// folds it on a click, its icon a chevron while the pointer is over it.
 struct ThreadEventCard: View {
     let event: ThreadEvent
     var connector: LogConnector = .none
+    /// Whether the item folds to its header. One with nothing under its
+    /// header to show never does: there would be nothing to open.
+    var collapsible = false
     @Environment(\.clock) private var clock
+    @Environment(\.threadFoldsOpen) private var foldsOpen
+    @Environment(\.hoverForced) private var hoverForced
     /// Draws a fact that names a slice (`ThreadFact.sliceID`) as a task row
     /// — the slice navigator's, which has the plan to draw one from. Nil
     /// from it (or no closure at all, as a session's Thread has) and the
     /// fact is plain text.
     var taskRow: ((String) -> AnyView?)?
+    /// Whether the user has opened (or folded) the item; nil until they
+    /// have, when `threadFoldsOpen` says.
+    @State private var expanded: Bool?
+    @State private var hovering = false
+
+    private var folds: Bool { collapsible && (event.body != nil || !event.facts.isEmpty) }
+    private var isOpen: Bool { !folds || (expanded ?? foldsOpen) }
 
     var body: some View {
         LogItem(
             // An action reads as one plain sentence ("Agent handed back"); a
             // meta that is a separate fact (a comment's time) stays beside it.
             symbol: event.kind.symbol, iconRole: iconRole,
+            glyph: folds && (hovering || hoverForced) ? AnyView(DisclosureChevron(open: isOpen)) : nil,
             who: event.metaIsAction ? event.title : event.who, meta: event.metaIsAction ? nil : event.meta,
             when: event.when.map { threadTimestamp($0, now: clock()) }, connector: connector
         ) {
-            VStack(alignment: .leading, spacing: 0) {
-                if let body = event.body {
-                    Excerpt(text: body) { shown in
-                        Text(markdownAttributed(shown, size: Typo.scaled(13.5)))
-                            .font(.system(size: Typo.scaled(13.5)))
-                            .lineSpacing(2)
-                            .ink(.primary)
-                            .textSelection(.enabled)
-                    }
+            if isOpen { details }
+        }
+        .overlay(alignment: .top) {
+            if folds {
+                LogFoldButton(open: isOpen, hovering: $hovering) {
+                    withAnimation(Motion.stateChange) { expanded = !isOpen }
                 }
-                if !event.facts.isEmpty {
-                    // Labelled values, as the brief's own facts are drawn.
-                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
-                        ForEach(Array(event.facts.enumerated()), id: \.offset) { _, fact in
-                            GridRow {
-                                ThreadFactKey(fact.key)
-                                if let id = fact.sliceID, let row = taskRow?(id) {
-                                    row
-                                } else {
-                                    Text(fact.value)
-                                        .ink(.primary)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                }
+            }
+        }
+    }
+
+    /// Everything under the header: the body, then the facts.
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let body = event.body {
+                Excerpt(text: body) { shown in
+                    Text(markdownAttributed(shown, size: Typo.scaled(13.5)))
+                        .font(.system(size: Typo.scaled(13.5)))
+                        .lineSpacing(2)
+                        .ink(.primary)
+                        .textSelection(.enabled)
+                }
+            }
+            if !event.facts.isEmpty {
+                // Labelled values, as the brief's own facts are drawn.
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+                    ForEach(Array(event.facts.enumerated()), id: \.offset) { _, fact in
+                        GridRow {
+                            ThreadFactKey(fact.key)
+                            if let id = fact.sliceID, let row = taskRow?(id) {
+                                row
+                            } else {
+                                Text(fact.value)
+                                    .ink(.primary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
                         }
                     }
-                    .monoXS()
-                    .padding(.top, event.body == nil ? 2 : 8)
                 }
+                .monoXS()
+                .padding(.top, event.body == nil ? 2 : 8)
             }
         }
     }
@@ -236,6 +265,133 @@ struct ThreadEventCard: View {
         case .accent: return .accent
         case .hot: return .hot
         }
+    }
+}
+
+/// A folding log item's header row as one button, drawn over the row and
+/// invisible: a click anywhere on it opens or folds the item, and the pointer
+/// over it (`hovering`) is what turns the item's icon into its chevron.
+struct LogFoldButton: View {
+    let open: Bool
+    @Binding var hovering: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: LogMetrics.headHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityLabel(open ? "Fold" : "Open")
+    }
+}
+
+/// A run of quiet log items folded into one (`ThreadLogItem.group`): a
+/// stacked icon, how many items it holds, in italic, and when the first and
+/// the last of them happened. Opened, it is that header, then each of its
+/// items folded as it would be on its own, then a foot whose chevron folds
+/// the group again — so it shuts from below without scrolling back up — and
+/// a thin rule beside the items, from the header down to the foot, says they
+/// are the group's.
+struct ThreadGroupCard: View {
+    let events: [ThreadEvent]
+    var connector: LogConnector = .none
+    var taskRow: ((String) -> AnyView?)?
+    @Environment(\.clock) private var clock
+    @Environment(\.threadFoldsOpen) private var foldsOpen
+    @Environment(\.hoverForced) private var hoverForced
+    /// Whether the user has opened (or folded) the group; nil until they
+    /// have, when `threadFoldsOpen` says.
+    @State private var expanded: Bool?
+    @State private var hoveringHead = false
+    @State private var hoveringFoot = false
+
+    private var isOpen: Bool { expanded ?? foldsOpen }
+
+    var body: some View {
+        if isOpen {
+            VStack(alignment: .leading, spacing: LogMetrics.spacing) {
+                head(connector: .solid)
+                ForEach(Array(events.enumerated()), id: \.offset) { _, event in
+                    ThreadEventCard(event: event, connector: .solid, collapsible: true, taskRow: taskRow)
+                }
+                foot
+            }
+            // Its items start folded, whatever opened the group.
+            .environment(\.threadFoldsOpen, false)
+            .overlay(alignment: .topLeading) { groupRule }
+        } else {
+            head(connector: connector)
+        }
+    }
+
+    private func toggle() {
+        withAnimation(Motion.stateChange) { expanded = !isOpen }
+    }
+
+    private func head(connector: LogConnector) -> some View {
+        LogItem(
+            symbol: "",
+            glyph: hoveringHead || hoverForced ? AnyView(DisclosureChevron(open: isOpen)) : AnyView(stackedIcon),
+            who: threadGroupTitle(count: events.count), whoRole: .secondary, whoItalic: true,
+            when: threadTimestampRange(events.compactMap(\.when), now: clock()), connector: connector
+        ) {
+            EmptyView()
+        }
+        .overlay(alignment: .top) {
+            LogFoldButton(open: isOpen, hovering: $hoveringHead, action: toggle)
+        }
+    }
+
+    /// The group's last row: a chevron pointing up, nothing else, folding the
+    /// group as its header does. The log's rule runs on from it as the
+    /// group's own would.
+    private var foot: some View {
+        LogItem(
+            symbol: "",
+            glyph: AnyView(
+                DisclosureChevron(open: false)
+                    .rotationEffect(.degrees(-90))
+                    .opacity(hoveringFoot || hoverForced ? 1 : 0.7)),
+            who: "", connector: connector
+        ) {
+            EmptyView()
+        }
+        .overlay(alignment: .top) {
+            LogFoldButton(open: true, hovering: $hoveringFoot, action: toggle)
+        }
+    }
+
+    /// The first two kinds of item the group holds, one behind the other:
+    /// the back one up and to the right, a step quieter, the front one on a
+    /// disc of the log's own ground so only the back one's edge shows.
+    private var stackedIcon: some View {
+        let symbols = events.map(\.kind.symbol).reduce(into: [String]()) { seen, symbol in
+            if !seen.contains(symbol) { seen.append(symbol) }
+        }
+        return ZStack {
+            if symbols.count > 1 {
+                ThreadIcon(symbol: symbols[1], role: .quaternary).offset(x: 3, y: -3)
+            }
+            ThreadIcon(symbol: symbols.first ?? "", role: .tertiary)
+                .background(Circle().fill(DesignTokens.fill(.window)).padding(-1.5))
+        }
+    }
+
+    /// The rule beside an open group's items: from under its header to above
+    /// its foot, in the margin column's gutter between the log's own rule
+    /// and the items' text.
+    private var groupRule: some View {
+        DesignTokens.rule(.separator, on: .window)
+            .frame(width: 1)
+            .padding(.top, LogMetrics.headHeight + 4)
+            .padding(.bottom, LogMetrics.headHeight + 4)
+            .offset(x: LogMetrics.groupRuleX)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
