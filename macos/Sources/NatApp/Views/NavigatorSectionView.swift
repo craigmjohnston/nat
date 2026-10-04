@@ -305,7 +305,7 @@ struct ChecksNoticeView: View {
                 .font(.system(size: 12, weight: .medium))
                 .ink(.danger)
             Text(notice.text)
-                .font(.system(size: 13))
+                .font(.system(size: Typo.scaled(13)))
                 .ink(.danger)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)

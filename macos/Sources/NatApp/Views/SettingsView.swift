@@ -641,6 +641,7 @@ struct SettingsView: View {
         return settingRow(title: title) {
             HStack(spacing: 4) {
                 TextField(title, value: clamped, format: .number)
+                    .font(.system(size: Typo.input))
                     .labelsHidden()
                     .multilineTextAlignment(.trailing)
                     .frame(width: FieldWidth.size)
