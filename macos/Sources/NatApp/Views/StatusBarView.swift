@@ -3,7 +3,8 @@ import NatKit
 
 /// The window's status bar: the gnat mark and how many agents are running,
 /// then each Claude usage window, set apart by faint dividers at the leading
-/// edge, all quietly in the system sans at `xs`; at the trailing edge
+/// edge, all in the system sans at `xs` and the one quiet `.tertiary` ink
+/// (bar the warning tint where a reading runs high); at the trailing edge
 /// (`trailing`), the selection's live agent's model, effort and context in
 /// the same (`AgentModelHeading`) — a slice's, a session's, the planning
 /// agent's — or nothing. Where the selection sits is the titlebar band's
@@ -26,7 +27,7 @@ struct StatusBarView<Trailing: View>: View {
                 GnatMark(color: DesignTokens.mark)
                     .frame(width: 14, height: 14)
                 Text("\(agentCount) agent\(agentCount == 1 ? "" : "s")")
-                    .ink(.secondary)
+                    .ink(.tertiary)
             }
             ForEach(Array(usage.windows.enumerated()), id: \.offset) { _, window in
                 StatusBarDivider()
@@ -69,7 +70,7 @@ private struct UsageWindowText: View {
 
     var body: some View {
         Text(window.text)
-            .foregroundStyle(window.warning ? DesignTokens.hotInk(on: ground) : DesignTokens.ink(.secondary, on: ground))
+            .foregroundStyle(window.warning ? DesignTokens.hotInk(on: ground) : DesignTokens.ink(.tertiary, on: ground))
     }
 }
 

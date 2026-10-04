@@ -1714,9 +1714,9 @@ enum AppStories {
 
         Story(
             name: "window-run-heading",
-            summary: "A handed-back slice of a project with runs: the Run heading under the Task log, above "
-                + "Changes \u{2014} no section, no fold \u{2014} its split button full bleed; the play "
-                + "button in the sidebar\u{2019}s titlebar segment.",
+            summary: "A handed-back slice of a project with runs: the run split button among the Task "
+                + "section\u{2019}s header actions, full bleed; the play button in the sidebar\u{2019}s "
+                + "titlebar segment.",
             size: window
         ) {
             await slicePane(Fixtures.mergeBoxSliceID, config: Fixtures.runsConfig)
@@ -1724,27 +1724,12 @@ enum AppStories {
 
         Story(
             name: "window-run-heading-merged",
-            summary: "The same slice once merged: the Run heading greyed and its button disabled, the worktree "
-                + "being gone.",
+            summary: "The same slice once merged: the Task header\u{2019}s run button greyed and disabled, "
+                + "the worktree being gone.",
             size: window
         ) {
             await slicePane(
                 Fixtures.mergeBoxSliceID, plan: Fixtures.mergedReviewProjectInfo, config: Fixtures.runsConfig)
-        },
-
-        Story(
-            name: "window-run-tab",
-            summary: "A slice-scoped run started: the Run tab beside Terminal, picked, the run\u{2019}s session "
-                + "attached in the main pane (the terminal stubbed).",
-            size: window
-        ) {
-            await slicePane(
-                Fixtures.mergeBoxSliceID, focus: NavigatorFocus(open: [.changes], main: .run),
-                config: Fixtures.runsConfig
-            ) { appModel in
-                appModel.runSessionExists = { _ in true }
-                await appModel.startRun(projectID: Fixtures.projectID, sliceID: Fixtures.mergeBoxSliceID)
-            }
         },
 
         // MARK: - Settings
@@ -2007,7 +1992,7 @@ private struct StateDotsStory: View {
         ("working — agent live", .working, true),
         ("working — no agent", .working, false),
         ("fixing", .fixing, true),
-        ("waiting for you", .waiting, true),
+        ("on standby", .waiting, true),
         ("review", .review, false),
         ("pr open", .pr, false),
         ("done", .done, false),

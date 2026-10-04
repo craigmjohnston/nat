@@ -230,8 +230,8 @@ their leading edge rather than crossing the split; a tab is
 and container crumbs and the selection's own each open `CrumbTreePicker`
 (projects → milestones → slices, `CrumbTree`) on themselves; with nothing
 selected there is no breadcrumb. Stories: `titlebar-band-*`,
-`status-bar-agent-readout*`, `changes-section-commits`. The Thread is labelled "Task" until the
-slice is under way and "Task log" after, and draws `slice-show`'s `events`
+`status-bar-agent-readout*`, `changes-section-commits`. The Thread is labelled "Task" whatever the
+slice's state, and draws `slice-show`'s `events`
 in order — hand-backs, send-backs (`slice-rework --comments`), releases,
 relaunches, notes (`nat slice-note`, headed "Another agent left a note";
 `fromSlice` matched once against the loaded plan by name and milestone
@@ -239,8 +239,9 @@ name — `noteSourceSlice` — is a `task` fact drawn as the brief's
 `DependencyRow`, through `ThreadEventCard.taskRow`, else `source` with the
 provenance as text; notes alone open no log on a slice never launched),
 follow-ups (a proposal is its count line, then one item per decided
-follow-up — title, brief, the decision as its meta, a queued one's slice as
-a `task` row; pending ones as the triage item in their place), then approve
+follow-up — headed "<Queued | Folded in | Dismissed> proposed follow-up"
+(`followUpDecisionHeading`), its title then its brief as the body, a queued
+one's slice as a `task` row; pending ones as the triage item in their place), then approve
 and merge. No item is boxed: each is a `LogItem` — its icon in a margin
 column, who and its meta (in its tone) as the header — and a rule runs down
 the margin from one icon to the next (`LogConnector`, chosen by
@@ -251,7 +252,8 @@ its hue; every key column takes the
 width of `widestThreadFactKey` (`ThreadFactKey`), and the brief's Edit is
 drawn only while the slice is Todo. Each item with an `at` shows it at
 its header's end (`threadTimestamp`: time today, `d MMM` this year, `d MMM
-y` before); Launched, approve and merge have none. Story:
+y` before) — a decided follow-up its `decidedAt`, the triage item its
+proposal's `at`; Launched, the live agent, approve and merge have none. Story:
 `window-task-log-notes`. Selecting sets the selection *before* awaiting the project's
 activation (`AppModel.select(inProject:)`), so a later click is never
 overwritten by an earlier one finishing. What the design does not draw
@@ -284,14 +286,14 @@ explicit frame; keep it so. Stories: `window-visuals`,
 config entry alone (`ProjectConfig.runs`, `RunCommand`) — no settings screen.
 The titlebar's play button (`TitlebarRunButton`, beside Settings) opens
 `RunTreePicker`, `CrumbTreePicker`'s shape — every project with runs
-(`AppModel.runProjects`), then the open one's runs; a handed-back slice gets `RunHeadingRow` under its Task section, its
-`RunSplitButton` greyed once the stage is done. Both call
-`AppModel.startRun` → `nat run`; nothing in Swift picks a directory or
-default. The run's session is the Run tab (`MainPaneMode.run`,
-`TitlebarTab.run`) beside Terminal, held in `AppModel.runs` until tmux says
-it is gone (`watchRun`, `TmuxSession.exists`). Stories: `titlebar-run`,
-`titlebar-run-menu`, `window-run-heading`, `window-run-heading-merged`,
-`window-run-tab`.
+(`AppModel.runProjects`), then the open one's runs; a handed-back slice's
+Task section header carries `RunSplitButton`, greyed once the stage is done.
+Both call `AppModel.startRun` → `nat run`; nothing in Swift picks a directory
+or default. No tab or pane opens on a run: its session is held in
+`AppModel.runs` until tmux says it is gone (`watchRun`,
+`TmuxSession.exists`), and the button spins meanwhile
+(`AppModel.isRunBusy`; the titlebar's `anyRunBusy`). Stories: `titlebar-run`,
+`titlebar-run-menu`, `window-run-heading`, `window-run-heading-merged`.
 
 **Task sources.** There is no new-project entry for one: **connecting a
 plugin makes its section.** `AppModel.ensureSourceProjects` makes exactly one

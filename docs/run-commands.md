@@ -45,9 +45,10 @@ with their scope.
   repository (`<repo>.worktrees/run-main`), cut where there is none and,
   before every run, fetched and hard-reset to origin's default branch. A failed fetch runs from the refs as last known.
   The user's own checkout is never checked out or reset.
-- **Slice** runs are offered as a Run heading in a handed-back slice's
-  navigator, and run in that slice's worktree — the one its agent worked in.
-  The heading greys once the slice is merged, its worktree being gone.
+- **Slice** runs are offered as a run split button among a handed-back
+  slice's Task section header actions, and run in that slice's worktree —
+  the one its agent worked in. The button greys once the slice is merged,
+  its worktree being gone.
 
 ## `nat run`
 
@@ -59,8 +60,9 @@ starts a run in a detached tmux session of nat's own,
 slice-scoped runs, without among its global ones; `--label` picks one, else
 the first. Asking for a run whose session is still live kills that session
 and starts it afresh. The run's pane is tagged `@nat_run`, never as an agent,
-so it never appears on the board or in gnat's rail. gnat attaches its
-terminal as a Run tab beside Terminal while the session is live.
+so it never appears on the board or in gnat's rail. gnat opens no pane on
+it: the run button that started it spins while the session is live (the
+titlebar's while any run is).
 
 Refused, each in its own words: no runs of that scope, an unknown label, a
 merged slice, a slice whose branch has no worktree, and a source task with no

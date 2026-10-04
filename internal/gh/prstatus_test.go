@@ -135,10 +135,12 @@ func TestOpenPRsChecksVerdict(t *testing.T) {
 // TestOpenPRsFailingChecks names every failed check with its run URL, in the
 // rollup's order, whatever else is pending beside them — a run's detailsUrl, a
 // status context's targetUrl — and nothing for a pull request that is not red.
+// A run is named under its workflow where it names one, bare where it does not.
 func TestOpenPRsFailingChecks(t *testing.T) {
 	const out = `[{"url":"https://github.test/pr/1","statusCheckRollup":[` +
-		`{"__typename":"CheckRun","name":"lint","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.test/runs/1"},` +
+		`{"__typename":"CheckRun","name":"lint","workflowName":"CI","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.test/runs/1"},` +
 		`{"__typename":"CheckRun","name":"test","status":"IN_PROGRESS"},` +
+		`{"__typename":"CheckRun","name":"bare","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.test/runs/3"},` +
 		`{"__typename":"StatusContext","context":"deploy","state":"ERROR","targetUrl":"https://ci.test/9"},` +
 		`{"__typename":"CheckRun","name":"vet","status":"COMPLETED","conclusion":"SUCCESS"}]},` +
 		`{"url":"https://github.test/pr/2","statusCheckRollup":[` +
@@ -149,7 +151,8 @@ func TestOpenPRsFailingChecks(t *testing.T) {
 	}
 	red := open["https://github.test/pr/1"]
 	want := []Check{
-		{Name: "lint", State: "FAILURE", URL: "https://github.test/runs/1"},
+		{Name: "CI / lint", State: "FAILURE", URL: "https://github.test/runs/1"},
+		{Name: "bare", State: "FAILURE", URL: "https://github.test/runs/3"},
 		{Name: "deploy", State: "ERROR", URL: "https://ci.test/9"},
 	}
 	if red.Checks != ChecksFailing || !reflect.DeepEqual(red.Failing, want) {

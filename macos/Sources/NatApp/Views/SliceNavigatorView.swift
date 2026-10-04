@@ -24,7 +24,7 @@ struct SliceNavigatorView: View {
     @State private var agentOptions = AgentOptions.fallback
     @State private var launchWarning: String?
     @State private var showMergeConfirm = false
-    /// Whether the Run heading's menu is open — a story's seam too.
+    /// Whether the Task header's run menu is open — a story's seam too.
     @State private var runMenuOpen = false
 
     private var projectID: String { appModel.projectStore?.projectID ?? "" }
@@ -62,16 +62,6 @@ struct SliceNavigatorView: View {
                 threadActions(nav)
             } content: {
                 threadBody(nav)
-            }
-            // The project's slice-scoped runs, once the slice has handed
-            // back: a heading with no section under it.
-            if slice.handedBack, !sliceRuns.isEmpty {
-                RunHeadingRow(
-                    runs: sliceRuns, merged: stage(for: slice, agent: nil) == .done,
-                    isBusy: appModel.isStartingRun(projectID: projectID, sliceID: slice.id), menuOpen: $runMenuOpen
-                ) { label in
-                    Task { await appModel.startRun(projectID: projectID, sliceID: slice.id, label: label) }
-                }
             }
             // Changes and PR are only there once there is a branch, and a
             // pull request, to show.
@@ -355,14 +345,28 @@ struct SliceNavigatorView: View {
                 appModel.sliceActions.observe(.launch, sliceID: slice.id, available: available)
             }
         }
+        // The project's slice-scoped runs, once the slice has handed back —
+        // greyed once it is merged, its worktree being gone; spinning while
+        // its run starts and for as long as the run's session lives.
+        if slice.handedBack, !sliceRuns.isEmpty {
+            RunSplitButton(
+                runs: sliceRuns, isBusy: appModel.isRunBusy(projectID: projectID, sliceID: slice.id),
+                menuOpen: $runMenuOpen
+            ) { label in
+                Task { await appModel.startRun(projectID: projectID, sliceID: slice.id, label: label) }
+            }
+            .frame(maxHeight: .infinity)
+            .disabled(stage(for: slice, agent: nil) == .done)
+        }
     }
 
     /// One item of the Thread's log, in the order `threadBody` draws them.
     private enum ThreadItem {
         case brief
         case event(ThreadEvent)
-        /// The pending follow-ups, awaiting the user's decision.
-        case triage
+        /// The pending follow-ups, awaiting the user's decision — and when
+        /// they were proposed, where the log says.
+        case triage(Date?)
         case launch
     }
 
@@ -385,10 +389,10 @@ struct SliceNavigatorView: View {
                             briefItem(connector: connector)
                         case .event(let event):
                             ThreadEventCard(event: event, connector: connector, taskRow: { taskRow(id: $0) })
-                        case .triage:
+                        case .triage(let when):
                             FollowUpCards(
                                 appModel: appModel, slice: slice, followUps: followUps, milestone: milestoneName,
-                                hasLiveAgent: agent != nil, connector: connector)
+                                hasLiveAgent: agent != nil, when: when, connector: connector)
                         case .launch:
                             LaunchCard(
                                 mode: launchMode(nav), model: $model, effort: $effort, options: agentOptions,
@@ -413,12 +417,12 @@ struct SliceNavigatorView: View {
             if !event.awaitsTriage {
                 items.append(.event(event))
             } else if !followUps.isEmpty {
-                items.append(.triage)
+                items.append(.triage(event.when))
             }
         }
         // A reading with no proposal in its log (a nat too old to report
         // one) still gets its pending follow-ups' item.
-        if !followUps.isEmpty && !log.contains(where: \.awaitsTriage) { items.append(.triage) }
+        if !followUps.isEmpty && !log.contains(where: \.awaitsTriage) { items.append(.triage(nil)) }
         if nav.showsLaunch { items.append(.launch) }
         return items
     }
@@ -630,7 +634,6 @@ struct PRSectionBody: View {
                             checkLine(check)
                         }
                     }
-                    .monoXS()
                 }
 
                 NavHeading(text: "Review")
@@ -656,6 +659,8 @@ struct PRSectionBody: View {
     /// A check's line, led by a circle of its outcome: empty for one that
     /// did not run, dashed for one running, and filled — the only two in
     /// colour — for done and failed.
+    /// Set in the pane's own sans at its body size, as the Review line is —
+    /// a check's name ("CI / test") is a label, not code.
     private func checkLine(_ check: PRCheck) -> some View {
         let outcome = checkOutcome(state: check.state)
         let (symbol, role): (String, InkRole) = switch outcome {

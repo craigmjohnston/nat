@@ -71,7 +71,7 @@ struct TreeMilestoneLine: View {
                 .font(.system(size: GnatMetrics.body))
                 .ink(isDone ? .tertiary : .secondary)
                 .lineLimit(1)
-            if isNew { Chip("NEW", tone: .accent) }
+            if isNew { Chip("New", tone: .accent, size: .small) }
             Spacer(minLength: 0)
             Text(count).monoXS().ink(isDone ? .quaternary : .tertiary)
         }

@@ -88,15 +88,19 @@ struct SourceIdentityLabel: View {
     let tag: String
     let title: String
     var size: CGFloat = GnatMetrics.body
+    /// The icon's and the title's inks — the titlebar's quieter crumb passes
+    /// `.tertiary` for both; the tag keeps its own.
+    var iconInk: InkRole = .secondary
+    var titleInk: InkRole = .primary
 
     var body: some View {
         HStack(spacing: 6) {
             SourceIconView(icon: icon, size: 12)
-                .ink(.secondary)
+                .ink(iconInk)
                 .frame(width: 12)
             (identityTag(tag, on: ground) + Text(title))
                 .font(.system(size: size))
-                .ink(.primary)
+                .ink(titleInk)
                 .lineLimit(1)
         }
     }

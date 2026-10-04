@@ -253,7 +253,7 @@ final class NavigatorModelTests: XCTestCase {
         let events = buildThreadEvents(slice: slice(status: "In progress"), agent: agent(.waiting, model: ""), brief: nil)
         XCTAssertEqual(events, [
             ThreadEvent(.launched, who: "Launched"),
-            ThreadEvent(.agent, who: "Agent", meta: "waiting for you", tone: .hot, isLive: true),
+            ThreadEvent(.agent, who: "Agent", meta: "on standby", tone: .hot, isLive: true),
         ])
     }
 

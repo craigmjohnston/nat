@@ -227,16 +227,24 @@ public struct TaskFollowUp: Codable, Equatable, Sendable {
     public let decision: Decision?
     /// Where a queued one's slice is.
     public let link: String?
+    /// When it was decided, off its `Follow-ups triaged` section's stamp —
+    /// `decidedAt`. Nil while undecided, and for a decision recorded before
+    /// sections were stamped.
+    public let decidedAt: Date?
 
-    public init(index: Int, title: String, brief: String = "", decision: Decision? = nil, link: String? = nil) {
+    public init(
+        index: Int, title: String, brief: String = "", decision: Decision? = nil, link: String? = nil,
+        decidedAt: Date? = nil
+    ) {
         self.index = index
         self.title = title
         self.brief = brief
         self.decision = decision
         self.link = link
+        self.decidedAt = decidedAt
     }
 
-    enum CodingKeys: String, CodingKey { case index, title, brief, decision, link }
+    enum CodingKeys: String, CodingKey { case index, title, brief, decision, link, decidedAt }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -246,6 +254,8 @@ public struct TaskFollowUp: Codable, Equatable, Sendable {
         // An empty or unknown decision is one still to be made.
         decision = (try c.decodeIfPresent(String.self, forKey: .decision)).flatMap(Decision.init(rawValue:))
         link = try c.decodeIfPresent(String.self, forKey: .link)
+        // A time that will not parse is no time, as an event's `at`.
+        decidedAt = (try c.decodeIfPresent(String.self, forKey: .decidedAt)).flatMap(PRDetail.parseGoTime)
     }
 }
 

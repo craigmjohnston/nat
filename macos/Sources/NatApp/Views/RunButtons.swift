@@ -1,7 +1,8 @@
 import SwiftUI
 import NatKit
 
-/// The navigator's Run heading's one action: a split button. The main part,
+/// A handed-back slice's runs, among its Task section's header actions: a
+/// split button. The main part,
 /// `<label> ▶`, runs the default — `nat run` with no `--label`, so nat picks
 /// it — and the split part, past a thin divider, is a chevron opening the
 /// menu of every run the slice is offered (`RunMenuList`), the default
@@ -116,7 +117,7 @@ struct RunMenuList: View {
 /// The titlebar's run button: a play glyph, beside Settings, drawn while
 /// any project has runs to offer. It opens the run tree (`RunTreePicker`) —
 /// projects, then the open one's runs — and a pick runs that project's run
-/// from its origin/main.
+/// from its origin/main. It spins while any run is starting or still live.
 struct TitlebarRunButton: View {
     @Bindable var appModel: AppModel
     @State private var treeOpen = false
@@ -126,7 +127,7 @@ struct TitlebarRunButton: View {
         if !projects.isEmpty {
             Button { treeOpen.toggle() } label: {
                 Group {
-                    if appModel.runsStarting.isEmpty {
+                    if !appModel.anyRunBusy {
                         Image(systemName: "play.fill").font(.system(size: 11))
                     } else {
                         ProgressView().controlSize(.mini)
@@ -258,39 +259,5 @@ struct RunTreePicker: View {
         .gnatRow(selected: selected)
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
-    }
-}
-
-/// The navigator's Run heading: a header's height and metrics, with no
-/// section under it and no fold — `Run` on the left, the split button as its
-/// one action, full bleed. Greyed and disabled once the slice is merged, its
-/// worktree being gone.
-struct RunHeadingRow: View {
-    let runs: [RunCommand]
-    let merged: Bool
-    var isBusy = false
-    @Binding var menuOpen: Bool
-    let onRun: (String?) -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                // The chevron's slot, empty: the label lines up with every
-                // other section's.
-                Color.clear.frame(width: 12)
-                Text("Run")
-                    .font(.system(size: GnatMetrics.body))
-                    .ink(merged ? .tertiary : .primary)
-                    .fixedSize()
-                Spacer(minLength: 0)
-                RunSplitButton(runs: runs, isBusy: isBusy, menuOpen: $menuOpen, onRun: onRun)
-                    .frame(maxHeight: .infinity)
-                    .disabled(merged)
-            }
-            .padding(.leading, 10)
-            .frame(height: GnatMetrics.sectionHeadHeight)
-            .background(DesignTokens.fill(.chrome))
-            DesignTokens.rule(.separator, on: .chrome).frame(height: 1)
-        }
     }
 }

@@ -18,20 +18,6 @@ extension MainPaneTab {
     public var titlebarTab: TitlebarTab { TitlebarTab(label: label, id: "pane.\(self)") }
 }
 
-extension TitlebarTab {
-    /// A run command's tab (`MainPaneMode.run`), beside Terminal while a run
-    /// the selection can show is live — no navigator section's.
-    public static let run = TitlebarTab(label: "Run", id: "pane.run")
-
-    /// `tabs` with the Run tab put just after Terminal — first, where there is
-    /// no Terminal.
-    public static func withRun(_ tabs: [MainPaneTab]) -> [TitlebarTab] {
-        var out = tabs.map(\.titlebarTab)
-        out.insert(run, at: tabs.firstIndex(of: .terminal).map { $0 + 1 } ?? 0)
-        return out
-    }
-}
-
 /// The workshop's main-pane tabs: the planning agent's terminal, and the
 /// proposal read brief by brief. Like the navigator's sections, a tab is
 /// there only while its view is.

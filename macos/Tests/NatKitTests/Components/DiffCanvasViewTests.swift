@@ -267,6 +267,29 @@ final class DiffCanvasViewTests: XCTestCase {
         XCTAssertEqual(canvas.diffLayout.height(canvas.diffLayout.index(of: .attachment(file: 0, row: 2))!), 0)
     }
 
+    // MARK: - The file header
+
+    /// The tally sits against the trailing edge — just inside the viewed
+    /// toggle where there is one — and the path's room stops short of it;
+    /// the rename note stays after the path.
+    func testTheTallyIsRightAlignedInsideTheViewedToggle() throws {
+        let canvas = makeCanvas()
+        let renamed = canvas.viewport.headerLayout(canvas, file: 1, y: 0)
+        let viewed = try XCTUnwrap(renamed.viewed)
+        XCTAssertEqual(renamed.tallyText, "+4 \u{2212}4")
+        XCTAssertEqual(renamed.tally.maxX, viewed.minX - 8)
+        XCTAssertLessThanOrEqual(renamed.path.maxX, renamed.tally.minX - 8)
+        XCTAssertEqual(renamed.extras.map(\.0), ["was dir/old1.swift"])
+
+        var state = DiffCanvasState()
+        state.showsViewed = false
+        let plain = makeCanvas(state: state)
+        let layout = plain.viewport.headerLayout(plain, file: 0, y: 0)
+        XCTAssertNil(layout.viewed)
+        XCTAssertEqual(layout.tally.maxX, plain.viewport.bounds.width - 16, "against the trailing edge")
+        XCTAssertEqual(layout.extras.count, 0)
+    }
+
     // MARK: - What is under the pointer
 
     func testHitTesting() {

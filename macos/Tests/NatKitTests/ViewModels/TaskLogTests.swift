@@ -23,8 +23,9 @@ final class TaskLogTests: XCTestCase {
            {"kind": "handed_back", "note": "first"},
            {"kind": "something_newer", "note": "?"},
            {"kind": "follow_ups", "followUps": [
-             {"index": 1, "title": "Queue me", "brief": "b", "decision": "queued", "link": "https://x"},
-             {"index": 2, "title": "Undecided", "decision": ""}
+             {"index": 1, "title": "Queue me", "brief": "b", "decision": "queued", "link": "https://x",
+              "decidedAt": "2026-10-03T23:14:05+01:00"},
+             {"index": 2, "title": "Undecided", "decision": "", "decidedAt": "not a time"}
            ]},
            {"kind": "released", "by": "Craig"},
            {"kind": "approved", "pr": "https://github.com/o/r/pull/40"},
@@ -36,9 +37,11 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(detail.events?.map(\.kind), [.handedBack, .followUps, .released, .approved, .merged])
         XCTAssertEqual(detail.events?[0].note, "first")
         XCTAssertEqual(detail.events?[1].followUps, [
-            TaskFollowUp(index: 1, title: "Queue me", brief: "b", decision: .queued, link: "https://x"),
+            TaskFollowUp(
+                index: 1, title: "Queue me", brief: "b", decision: .queued, link: "https://x",
+                decidedAt: Date(timeIntervalSince1970: 1_791_065_645)),
             TaskFollowUp(index: 2, title: "Undecided"),
-        ])
+        ], "a decision time that will not parse is no time")
         XCTAssertEqual(detail.events?[2].by, "Craig")
         XCTAssertEqual(detail.events?[3].pr, prURL)
     }
@@ -84,9 +87,10 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(log.first { $0.kind == .approved }?.facts, [ThreadFact("pr", "#101"), ThreadFact("into", "main")])
     }
 
-    /// Each decided follow-up is its own card after its proposal: its title,
-    /// its brief as the body, the decision as the meta, and the queued one's
-    /// slice as a task row.
+    /// Each decided follow-up is its own card after its proposal, headed by
+    /// the decision as one sentence, its title then its brief as the body,
+    /// the queued one's slice as a task row, and the time it was decided —
+    /// its proposal's where that was not recorded.
     func testEachDecidedFollowUpIsItsOwnCard() throws {
         let event = try XCTUnwrap(Fixtures.taskLogEvents.first { $0.kind == .followUps })
         let log = buildThreadEvents(
@@ -94,13 +98,16 @@ final class TaskLogTests: XCTestCase {
             events: Fixtures.taskLogEvents, plan: Fixtures.slices, milestones: Fixtures.milestones)
         let decided = log.filter { $0.kind == .followUp }
 
-        XCTAssertEqual(decided.map(\.title), event.followUps.map(\.title), "the follow-up's title alone heads it")
-        XCTAssertEqual(decided.map(\.meta), ["queued", "folded in", "dropped"])
-        XCTAssertEqual(decided.map(\.body), event.followUps.map(\.brief))
+        XCTAssertEqual(decided.map(\.title), [
+            "Queued proposed follow-up", "Folded in proposed follow-up", "Dismissed proposed follow-up",
+        ])
+        XCTAssertEqual(decided.map(\.body), event.followUps.map { "\($0.title)\n\n\($0.brief)" })
         XCTAssertEqual(decided[0].facts, [ThreadFact("task", "Cache the plan on disk", sliceID: Fixtures.cacheSliceID)])
         XCTAssertEqual(decided[1].facts, [])
         XCTAssertEqual(decided[2].facts, [])
-        XCTAssertEqual(decided.map(\.when), Array(repeating: event.at, count: 3), "each carries its proposal's time")
+        XCTAssertEqual(decided.map(\.when), [event.followUps[0].decidedAt, event.followUps[1].decidedAt, event.at])
+        XCTAssertNotNil(event.followUps[0].decidedAt)
+        XCTAssertNotEqual(event.followUps[0].decidedAt, event.at, "the decision's own time, not the proposal's")
         XCTAssertFalse(decided.contains(where: \.isLive))
     }
 
@@ -131,7 +138,7 @@ final class TaskLogTests: XCTestCase {
             plan: plan)
         XCTAssertEqual(log.map(\.kind), [.launched, .followUps, .followUp])
         XCTAssertEqual(log[2].facts, [], "a slice the plan does not hold is no row")
-        XCTAssertNil(log[2].body, "an empty brief draws no body")
+        XCTAssertEqual(log[2].body, "Gone", "an empty brief leaves the title alone")
         XCTAssertTrue(log[1].isLive, "a proposal awaiting a decision is live")
     }
 
@@ -298,8 +305,8 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(log[4].body, "No token.")
         XCTAssertEqual(log[5].body, "Wrote it up.")
         XCTAssertEqual(log[6].meta, "proposed 1 follow-up")
-        XCTAssertEqual(log[7].title, "Later")
-        XCTAssertEqual(log[7].meta, "folded in")
+        XCTAssertEqual(log[7].title, "Folded in proposed follow-up")
+        XCTAssertEqual(log[7].body, "Later")
         XCTAssertTrue(log[8].awaitsTriage, "a proposal still undecided is the triage card")
         XCTAssertEqual(log[8].tone, .hot)
         XCTAssertEqual(log[9].facts, [])
@@ -312,21 +319,21 @@ final class TaskLogTests: XCTestCase {
         XCTAssertTrue(buildThreadEvents(slice: slice(status: "Todo"), agent: nil, brief: nil, events: []).isEmpty)
     }
 
-    func testTheDecisionWords() {
-        XCTAssertEqual(followUpDecisionWord(.queued), "queued")
-        XCTAssertEqual(followUpDecisionWord(.folded), "folded in")
-        XCTAssertEqual(followUpDecisionWord(.dropped), "dropped")
+    func testTheDecisionHeadings() {
+        XCTAssertEqual(followUpDecisionHeading(.queued), "Queued")
+        XCTAssertEqual(followUpDecisionHeading(.folded), "Folded in")
+        XCTAssertEqual(followUpDecisionHeading(.dropped), "Dismissed")
     }
 
     // MARK: - The label
 
-    func testTheSectionIsTheTaskUntilItIsUnderWay() {
+    func testTheSectionIsTheTaskWhateverItsState() {
         let todo = NavigatorModel(slice: slice(status: "Todo"), agent: nil)
         XCTAssertEqual(todo.threadLabel, "Task")
         let working = NavigatorModel(slice: slice(status: "In progress"), agent: .working)
-        XCTAssertEqual(working.threadLabel, "Task log")
+        XCTAssertEqual(working.threadLabel, "Task")
         let done = NavigatorModel(slice: slice(status: "Done", branch: "b", pr: prURL), agent: nil)
-        XCTAssertEqual(done.threadLabel, "Task log")
+        XCTAssertEqual(done.threadLabel, "Task")
     }
 
     // MARK: - What a send-back files

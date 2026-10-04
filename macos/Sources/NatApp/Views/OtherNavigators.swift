@@ -49,7 +49,7 @@ struct SessionNavigatorView: View {
                             let reading = agentFacts(agent)
                             ThreadEventCard(
                                 event: ThreadEvent(
-                                    .agent, who: "Agent", meta: waiting ? "waiting for you" : "working",
+                                    .agent, who: "Agent", meta: waiting ? "on standby" : "working",
                                     tone: waiting ? .hot : .accent,
                                     facts: reading.model + reading.context, isLive: true),
                                 connector: .dashed)
@@ -190,7 +190,7 @@ struct SessionMainPane: View {
         let store = appModel.sessionDiffStore(projectID: appModel.projectStore?.projectID ?? "")
         VStack(spacing: 0) {
             switch mode {
-            case .terminal, .empty, .visuals, .run:
+            case .terminal, .empty, .visuals:
                 AgentTerminalPane(
                     agent: appModel.activityStore?.agents[session.tag],
                     sessionExists: { appModel.activityStore?.agents[session.tag] != nil })
@@ -568,7 +568,7 @@ private struct ProposedMilestoneHeading: View {
             Text(milestone.name)
                 .font(.system(size: GnatMetrics.body, weight: .semibold))
                 .ink(.primary)
-            if milestone.isNew { Chip("NEW", tone: .accent) }
+            if milestone.isNew { Chip("New", tone: .accent, size: .small) }
             Spacer(minLength: 0)
             Text("\(milestone.slices.count) \(milestone.slices.count == 1 ? "task" : "tasks")")
                 .monoXS().ink(.tertiary)
