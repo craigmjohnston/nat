@@ -173,12 +173,19 @@ changes nothing. Stories: `window-plan-accepted`, `notion-page-picker`.
 
 ## Release build quirks
 
-- Bundled `nat` and `gnat` itself are both **universal**: built per-arch
-  (`GOOS=darwin GOARCH=arm64|amd64 go build`; `swift build --arch <each>`)
-  and `lipo -create`'d together — never `swift build --arch arm64 --arch
-  x86_64` in one call, which routes through XCBuild's cross-arch path and
-  can't resolve a binary-dependency target for anything but the host arch
-  (swiftlang/swift-package-manager#7442). Needs the Go toolchain too.
+- Bundled `nat` and `gnat` itself are both **arm64 only** — Intel is not
+  supported (`GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w …"`;
+  `swift build --arch arm64`). Both are stripped; gnat is stripped in
+  make-app.sh, before release-app.sh signs, and its unstripped executable
+  is kept as `.build/gnat-<version>-unstripped` and published with the
+  release. If x86_64 ever comes back, build each arch on its own and lipo —
+  never `swift build --arch arm64 --arch x86_64` in one call, which routes
+  through XCBuild's cross-arch path and can't resolve SwiftTerm's build-tool
+  plugin (swiftlang/swift-package-manager#7442). Needs the Go toolchain too.
+- Only `Contents/Resources/AppIcon*.icns` ship: SwiftPM's
+  `nat_NatApp.bundle` (the same two icns, for the bare `swift run`
+  executable) is not copied in, as nothing reads it through `Bundle.module`.
+  Copy it back if NatApp ever does, or the generated accessor traps.
 - `tmux`, `gh`, `ntn` are never bundled — the machine's own install.
 
 ## The window

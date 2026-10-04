@@ -123,10 +123,13 @@ jobs:
         run: |
           # The plugins and their manifest ride along: the manifest is read
           # at releases/latest/download/nat-plugins.json, each binary at
-          # releases/download/v$VERSION/<asset>.
+          # releases/download/v$VERSION/<asset>. The unstripped gnat
+          # executable make-app.sh kept is there to symbolicate this
+          # release's crash reports; nothing downloads it otherwise.
           shopt -s nullglob
           gh release create "v$VERSION" \
             "macos/.build/gnat-$VERSION.dmg" \
+            "macos/.build/gnat-$VERSION-unstripped" \
             "$RUNNER_TEMP/appcast/appcast.xml" \
             macos/.build/plugins/nat-source-* \
             macos/.build/plugins/nat-plugins.json \
