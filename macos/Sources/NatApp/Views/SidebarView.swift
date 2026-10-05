@@ -185,6 +185,11 @@ struct SidebarView: View {
         }
         .surface(.header)
         .rule(.separator, edges: [.trailing], width: 1)
+        // Every menu here — each row's context menu, the `+` menus and their
+        // submenus — shows its items' icons: on macOS 15 SwiftUI builds a menu
+        // item with no image unless the label style asks for one, and this
+        // reaches every menu below it.
+        .labelStyle(.titleAndIcon)
         .modifier(SidebarDialogs(view: self))
         .focusedSceneValue(\.sidebarMenu, menuActions)
     }
@@ -397,7 +402,7 @@ struct SidebarView: View {
             newMilestoneProject = project.id
         }
         Button("New task\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "") }
-        Button("Workshop\u{2026}", systemImage: "sparkles") { Task { await appModel.selectWorkshop(inProject: project.id) } }
+        Button("Workshop\u{2026}", systemImage: workshopSymbol) { Task { await appModel.selectWorkshop(inProject: project.id) } }
         Divider()
         Button(
             project.kind == .scratch ? "New ad hoc session\u{2026}" : "New ad hoc session",
@@ -443,7 +448,7 @@ struct SidebarView: View {
             projectSubmenu("New task", systemImage: "plus", targets) { project in
                 newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "")
             }
-            projectSubmenu("Workshop", systemImage: "sparkles", targets) { project in
+            projectSubmenu("Workshop", systemImage: workshopSymbol, targets) { project in
                 Task { await appModel.selectWorkshop(inProject: project.id) }
             }
             Divider()
@@ -867,7 +872,8 @@ struct SidebarView: View {
 
     private func activeRow(_ row: SidebarActiveRow) -> some View {
         HStack(spacing: 6) {
-            ActiveIdentityLabel(tag: row.projectTag, state: row.state, live: row.live, title: row.title)
+            ActiveIdentityLabel(
+                tag: row.projectTag, state: row.state, live: row.live, title: row.title, symbol: row.symbol)
             Spacer(minLength: 0)
             if !row.failingChecks.isEmpty {
                 // The pull request was last read failing its checks: a

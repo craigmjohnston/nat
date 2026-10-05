@@ -14,7 +14,7 @@ public enum StarterCard {
         "What do you want to do? Sketch the milestones and tasks, paste a Notion page or URL, or drop a plan file. The planning agent will work it into a plan with you."
     public static let openPlanLabel = "Open plan from filesystem…"
     public static let startHint = "Press ⌘↩ to start"
-    public static let workshopLabel = "Workshop the plan"
+    public static let workshopLabel = "Workshop"
 
     public static let openDivider = "or open an existing project"
     public static let notionTitle = "From Notion"
@@ -51,7 +51,7 @@ public enum StarterCard {
 /// A plan document chosen from the filesystem, held until the workshop is
 /// launched: its content goes to the planning agent alongside whatever
 /// description was typed.
-public struct PlanFile: Equatable, Sendable {
+public struct PlanFile: Codable, Equatable, Sendable {
     /// The most a plan file may be: the content rides in the agent's opening
     /// prompt, which is no place for a book.
     public static let maxBytes = 256 * 1024

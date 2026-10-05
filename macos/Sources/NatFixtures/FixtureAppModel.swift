@@ -45,7 +45,8 @@ extension Fixtures {
     public static func appModel(
         client: FixtureNatClient = FixtureNatClient(),
         config: NatProjectConfig = Fixtures.config,
-        toolsReady: Bool = false
+        toolsReady: Bool = false,
+        workshopCache: WorkshopCaching = InMemoryWorkshopCache()
     ) -> AppModel {
         AppModel(
             configReader: FixtureConfigReader(config: config),
@@ -77,7 +78,11 @@ extension Fixtures {
             // Pinned rather than looked up, like the pane's own checklist
             // statuses: a config with no projects reads as onboarding unless
             // the toolchain is said to be there, on every machine alike.
-            toolsReady: { toolsReady }
+            toolsReady: { toolsReady },
+            // Its own memory, never the real file — and written without the
+            // pause typing gets, so a test reads what was kept at once.
+            workshopCache: workshopCache,
+            workshopSaveWait: { await Task.yield() }
         )
     }
 
@@ -106,9 +111,10 @@ extension Fixtures {
     public static func startedAppModel(
         client: FixtureNatClient = FixtureNatClient(),
         config: NatProjectConfig = Fixtures.config,
-        toolsReady: Bool = false
+        toolsReady: Bool = false,
+        workshopCache: WorkshopCaching = InMemoryWorkshopCache()
     ) async -> AppModel {
-        let model = appModel(client: client, config: config, toolsReady: toolsReady)
+        let model = appModel(client: client, config: config, toolsReady: toolsReady, workshopCache: workshopCache)
         await start(model)
         return model
     }

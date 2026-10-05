@@ -112,3 +112,13 @@ each of:
 
 None of these wedges SwiftUI's menus by itself, so the trigger is something
 gnat's real window or a real sleep/wake supplies.
+
+## Menu items with no icons
+
+Not the wedge, but it looks like a menu bug: on macOS 15 SwiftUI builds a
+menu item with no image unless the label style is `.titleAndIcon` — every
+`Button(_, systemImage:)` in a `.contextMenu` or `Menu` came out as title
+only (read off the `NSMenu` the hosting view's `menu(for:)` returns:
+`NSMenuItem.image` nil). `SidebarView` sets `.labelStyle(.titleAndIcon)` on
+its root, which reaches every menu under it, submenus included; a menu with
+icons anywhere else needs the same.

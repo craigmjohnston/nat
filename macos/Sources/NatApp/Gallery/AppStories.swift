@@ -1178,7 +1178,7 @@ enum AppStories {
 
         Story(
             name: "window-untitled-workshop",
-            summary: "An Untitled project after Workshop the plan: the planning agent's terminal and Brief alone, no Plan section until a proposal.",
+            summary: "An Untitled project after Workshop: the planning agent's terminal and Brief alone, no Plan section until a proposal.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel(config: Fixtures.emptyConfig, toolsReady: true)
@@ -1598,12 +1598,14 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-workshop",
-            summary: "The workshop\u{2019}s band: the project\u{2019}s name then Workshop, no tag, and no tabs.",
+            summary: "The workshop\u{2019}s band: the project\u{2019}s name then the wand and Workshop, no tag, and no tabs.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(
                 tabs: [], selected: nil,
-                crumbs: TitlebarCrumbs(parent: Fixtures.project.name, parentKind: .project, title: workshopRowTitle))
+                crumbs: TitlebarCrumbs(parent: Fixtures.project.name, parentKind: .project, title: workshopRowTitle),
+                identity: TitlebarIdentity(
+                    tag: "", state: .working, live: true, title: workshopRowTitle, symbol: workshopSymbol))
         },
 
         Story(

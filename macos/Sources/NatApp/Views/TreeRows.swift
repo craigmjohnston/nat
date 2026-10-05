@@ -2,20 +2,29 @@ import SwiftUI
 import NatKit
 
 /// What names a piece of work as the sidebar's Active fold does: its state
-/// dot, the project's short tag, then its title. The Active rows and the
-/// navigator's titlebar both draw it, so the two read alike.
+/// dot (or, for a workshop, its `symbol` in the dot's ink), the project's
+/// short tag, then its title. The Active rows and the navigator's titlebar
+/// both draw it, so the two read alike.
 struct ActiveIdentityLabel: View {
     @Environment(\.ground) private var ground
     let tag: String
     let state: SliceDisplayState
     let live: Bool
     let title: String
+    var symbol: String?
     var size: CGFloat = GnatMetrics.body
     var titleInk: InkRole = .secondary
 
     var body: some View {
         HStack(spacing: 6) {
-            StateDot(state: state, live: live).frame(width: 12)
+            Group {
+                if let symbol {
+                    StateSymbol(symbol: symbol, state: state, live: live)
+                } else {
+                    StateDot(state: state, live: live)
+                }
+            }
+            .frame(width: 12)
             (identityTag(tag, on: ground) + Text(title))
                 .font(.system(size: size))
                 .ink(titleInk)

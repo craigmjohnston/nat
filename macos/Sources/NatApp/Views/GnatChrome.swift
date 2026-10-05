@@ -110,6 +110,36 @@ struct StateDot: View {
     }
 }
 
+/// A glyph in a state dot's place — a workshop's wand — in the ink the dot
+/// would take: the row's own while nothing runs, the accent (pulsing while
+/// its agent is live) for work under way, `--hot` for what needs the user.
+struct StateSymbol: View {
+    @Environment(\.ground) private var ground
+    @Environment(\.pulsesPaused) private var pulsesPaused
+    let symbol: String
+    let state: SliceDisplayState
+    var live: Bool = false
+
+    var body: some View {
+        let glyph = Image(systemName: symbol)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(ink)
+        if live && !pulsesPaused && (state == .working || state == .fixing) {
+            glyph.modifier(PulseModifier())
+        } else {
+            glyph
+        }
+    }
+
+    private var ink: Color {
+        switch state {
+        case .working, .fixing: DesignTokens.accent
+        case .waiting, .review, .pr: DesignTokens.hot
+        case .todo, .blocked, .done: DesignTokens.ink(.tertiary, on: ground)
+        }
+    }
+}
+
 /// The design's pulse: down to a third and back, slowly, forever.
 struct PulseModifier: ViewModifier {
     @State private var isAnimating = false

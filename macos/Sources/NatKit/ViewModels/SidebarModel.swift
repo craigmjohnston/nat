@@ -418,6 +418,10 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
 
     public var id: String { "\(kind):\(targetID)" }
 
+    /// The SF Symbol drawn in the state dot's place — a workshop row's wand;
+    /// nil for every row that draws its dot.
+    public var symbol: String? { kind == .workshop ? workshopSymbol : nil }
+
     public init(
         kind: SidebarActiveKind, targetID: String, projectID: String, projectName: String,
         projectTag: String? = nil, title: String, state: SliceDisplayState, live: Bool,
@@ -535,7 +539,11 @@ public func projectTags(_ projects: [(id: String, name: String)]) -> [String: St
 
 /// The title an ad hoc session's row carries, and a planning agent's.
 public let sessionRowTitle = "Ad hoc session"
-public let workshopRowTitle = "Workshop the plan"
+public let workshopRowTitle = "Workshop"
+
+/// The SF Symbol a workshop row and crumb carry in a state dot's place — the
+/// starter card's own glyph, so the row reads as what that opened.
+public let workshopSymbol = "wand.and.stars"
 
 /// Builds the sidebar.
 ///

@@ -638,7 +638,7 @@ final class RailModelTests: XCTestCase {
     private func workshopEntry(_ state: String, _ tint: ActiveTintRole, elapsed: String? = nil) -> ActiveEntry {
         ActiveEntry(
             kind: .workshop,
-            name: "Workshop the plan",
+            name: "Workshop",
             displayState: state,
             tintRole: tint,
             detail: ["Planning agent"],

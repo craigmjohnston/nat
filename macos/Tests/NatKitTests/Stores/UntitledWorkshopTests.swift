@@ -60,7 +60,7 @@ class WorkspaceWorkshopClient: MockActivityClient, @unchecked Sendable {
     }
 }
 
-/// The starter card's "Workshop the plan": the Untitled tab's planning agent,
+/// The starter card's "Workshop": the Untitled tab's planning agent,
 /// keyed by the tab's workspace id and never by a project.
 @MainActor
 final class UntitledWorkshopTests: XCTestCase {

@@ -184,7 +184,13 @@ back to Terminal. The Plan tab boxes each proposed slice's brief
 up, a slice row scrolls it (`showProposedSlice`), and ⌘1/⌘2 switch the two
 while the workshop is on screen (`WorkshopMenuActions`). Opening a
 workshop pins its row in Active (`workshopPinnedProjects`) until a launch or
-the row's ✕. Stories: `workshop-*` (`workshop-proposal-scrolled` the Plan tab scrolled), `window-workshop*`,
+the row's ✕; the row is "Workshop", with the `wand.and.stars` glyph in the
+state dot's place (`workshopSymbol`, the crumb too). Pins, drafts, attached
+plan files, launched requests and the open Untitled tabs (with their
+workspace ids) are kept across relaunches in `workshops.json`
+(`WorkshopCaching`: `DiskWorkshopCache` only in `NatApp`, in memory
+everywhere else), restored once config is read, written debounced and on
+quit (`flushWorkshops`). Stories: `workshop-*` (`workshop-proposal-scrolled` the Plan tab scrolled), `window-workshop*`,
 `untitled-*`, `window-untitled-proposal`, `window-plan-accepted`.
 
 ## The Notion mirror nudge

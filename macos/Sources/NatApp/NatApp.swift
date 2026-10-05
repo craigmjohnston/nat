@@ -79,9 +79,17 @@ struct NatApp: App {
         // frame is a frame drawn in the fallback. It is idempotent and
         // `Typo.mono` calls it too, so this is only about when it happens.
         MonoFont.register()
-        _appModel = State(initialValue: AppModel(
+        let model = AppModel(
             mirrorNudgeMemory: MirrorNudgeMemory(), visualSeenMemory: VisualSeenMemory(),
-            closedTabMemory: ClosedTabMemory(), makesSourceProjects: true))
+            closedTabMemory: ClosedTabMemory(), workshopCache: DiskWorkshopCache(), makesSourceProjects: true)
+        _appModel = State(initialValue: model)
+        // A workshop brief is written once typing pauses; quitting (an
+        // update's relaunch included) writes whatever the pause had not yet.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { model.flushWorkshops() }
+        }
         // A bare executable launched from a terminal (swift run, or
         // .build/debug/gnat directly) has no bundle, and AppKit leaves such
         // a process at the `.prohibited` activation policy: its window draws,

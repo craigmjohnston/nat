@@ -35,12 +35,14 @@ final class TitlebarIdentityTests: XCTestCase {
             for: .workshop, projectID: "p",
             active: [row(.slice, "p", state: .todo, live: false), row(.workshop, "p", state: .working, live: true)],
             tags: tags)
-        XCTAssertEqual(identity, TitlebarIdentity(tag: "GNA", state: .working, live: true, title: workshopRowTitle))
+        XCTAssertEqual(identity, TitlebarIdentity(
+            tag: "GNA", state: .working, live: true, title: workshopRowTitle, symbol: workshopSymbol))
     }
 
     func testAWorkshopNothingRunsForIsTodo() {
         let identity = titlebarIdentity(for: .workshop, projectID: "q", active: [], tags: tags)
-        XCTAssertEqual(identity, TitlebarIdentity(tag: "QUI", state: .todo, live: false, title: workshopRowTitle))
+        XCTAssertEqual(identity, TitlebarIdentity(
+            tag: "QUI", state: .todo, live: false, title: workshopRowTitle, symbol: workshopSymbol))
     }
 
     func testASessionReadsItsRowAndAnEndedOneIsDone() {
