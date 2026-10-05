@@ -74,8 +74,10 @@ fuller structure and theme system.
 ## Settings and Done means merged
 
 `SettingsView` (⌘,) is laid out as 1Password's settings are: a sidebar of
-`SettingsTab` rows (tinted tile + name, the selection filled in the accent;
-About apart under a rule) beside the section's groups (bold heading,
+`SettingsTab` rows under a "Settings" heading (the window has no title bar,
+the traffic lights over the sidebar; tile + name, each tile a fixed
+`DesignTokens.tile*` gradient whatever the palette, the selection filled in
+the accent; About apart under a rule) beside the section's groups (bold heading,
 `settingRow`s left-aligned under it), one fixed 760×560 window whose
 sections scroll — reads `nat config-show`, writes one `nat config-set <key>
 <value>` per changed key. About reads `Bundle.main` (`AppVersion`, `dev`

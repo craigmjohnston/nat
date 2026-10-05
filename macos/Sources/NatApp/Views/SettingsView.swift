@@ -3,9 +3,11 @@ import SwiftUI
 import NatKit
 
 /// The Settings scene (⌘,), laid out as 1Password's settings are: a sidebar
-/// of sections down the left, each a tinted tile beside its name, and the
-/// chosen section's form on the plain window ground to its right — bold
-/// group headings over left-aligned labelled stock controls. The window is
+/// of sections down the left under a "Settings" heading (the window has no
+/// title bar, the traffic lights over the sidebar), each a tinted tile
+/// beside its name, and the chosen section's form on the plain window ground
+/// to its right — bold group headings over left-aligned labelled stock
+/// controls. The window is
 /// one fixed size whichever section is up (`SettingsLayout`); a section
 /// taller than it scrolls.
 ///
@@ -57,15 +59,16 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         }
     }
 
-    /// The tile's tint, one per section so the column reads at a glance as
-    /// the reference's does.
-    var tint: Color {
+    /// The tile's ground, one hue per section so the column reads at a
+    /// glance as the reference's does — fixed across palettes
+    /// (`DesignTokens.tileNavy` and the rest), shaded top to bottom.
+    var tint: LinearGradient {
         switch self {
-        case .general: DesignTokens.systemGray
-        case .agents: DesignTokens.systemOrange
-        case .projects: DesignTokens.systemBlue
-        case .sources: DesignTokens.systemGreen
-        case .about: DesignTokens.systemTeal
+        case .general: DesignTokens.tileNavy.gradient
+        case .agents: DesignTokens.tileAmber.gradient
+        case .projects: DesignTokens.tileInkBlue.gradient
+        case .sources: DesignTokens.tileAzure.gradient
+        case .about: DesignTokens.tileIndigo.gradient
         }
     }
 
@@ -159,7 +162,26 @@ struct SettingsView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(width: SettingsLayout.windowSize.width, height: SettingsLayout.windowSize.height)
+        // No title bar: the panes run to the window's top edge, the traffic
+        // lights over the sidebar, and the sidebar carries the heading. The
+        // bar is still there, transparent and untitled (so it drags and its
+        // buttons work), and SwiftUI still reserves its height as a top safe
+        // area — given back here, the panes keeping the bar's height clear
+        // themselves, so a story, drawn in a window with no bar at all, lays
+        // out as the real window does. The window is sized to the ideal
+        // height plus that inset, so the ideal is the window's height less
+        // the bar's; the max lets a story's barless window have it all. (A
+        // measured inset fed back into the frame oscillated, 0 and 28 in
+        // turn, as the window resized under it.)
+        .frame(width: SettingsLayout.windowSize.width)
+        .frame(maxHeight: .infinity)
+        .ignoresSafeArea(.container, edges: .top)
+        .frame(
+            minHeight: SettingsLayout.windowSize.height - SettingsLayout.titlebarHeight,
+            idealHeight: SettingsLayout.windowSize.height - SettingsLayout.titlebarHeight,
+            maxHeight: SettingsLayout.windowSize.height)
+        .toolbar(removing: .title)
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .navigationTitle("Settings")
         .task { await load() }
         .task { agentOptions = await AgentOptionsCache.shared.resolve() }
@@ -830,14 +852,27 @@ struct SettingsView: View {
 }
 
 /// The window's metrics, read off the reference: a 200pt sidebar of 32pt
-/// tiles in a 760×560 window, and the detail pane's generous insets.
+/// tiles under its own heading in a 760×560 window with no title bar, and
+/// the detail pane's generous insets.
 enum SettingsLayout {
     static let windowSize = CGSize(width: 760, height: 560)
     static let sidebarWidth: CGFloat = 200
     static let tileSize: CGFloat = 32
     static let tileCornerRadius: CGFloat = 8
     static let rowCornerRadius: CGFloat = 8
-    static let detailInsets = EdgeInsets(top: 28, leading: 32, bottom: 28, trailing: 32)
+    /// The band the hidden title bar leaves the traffic lights in: the
+    /// standard bar's height, which both panes keep clear above their own
+    /// content now that it runs to the window's top edge.
+    static let titlebarHeight: CGFloat = 28
+    /// The sidebar's "Settings" heading: well over the old title's size and
+    /// weight, so it reads as the pane's heading, a little clear of the
+    /// traffic lights' band and further clear of the first row.
+    static let headingSize: CGFloat = 21
+    static let headingTopGap: CGFloat = 6
+    static let headingGap: CGFloat = 12
+    /// The detail's top inset sets its first group heading's baseline level
+    /// with the sidebar heading's, so the two read as one line.
+    static let detailInsets = EdgeInsets(top: titlebarHeight + 14, leading: 32, bottom: 28, trailing: 32)
     static let groupSpacing: CGFloat = 28
     static let rowSpacing: CGFloat = 10
     static let labelWidth: CGFloat = 150
@@ -863,6 +898,12 @@ private struct SettingsSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            // The pane's heading, below the traffic lights rather than beside
+            // them, over the tiles' own leading edge.
+            Text("Settings")
+                .font(.system(size: SettingsLayout.headingSize, weight: .bold))
+                .padding(.horizontal, 4)
+                .padding(.bottom, SettingsLayout.headingGap)
             ForEach(SettingsTab.allCases) { tab in
                 if tab.startsGroup {
                     Divider()
@@ -874,7 +915,8 @@ private struct SettingsSidebar: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 12)
+        .padding(.top, SettingsLayout.titlebarHeight + SettingsLayout.headingTopGap)
+        .padding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(SidebarMaterial())
     }
@@ -888,6 +930,9 @@ private struct SettingsSidebar: View {
                     .foregroundStyle(DesignTokens.tileGlyph)
                     .frame(width: SettingsLayout.tileSize, height: SettingsLayout.tileSize)
                     .background(tab.tint, in: RoundedRectangle(cornerRadius: SettingsLayout.tileCornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: SettingsLayout.tileCornerRadius)
+                            .strokeBorder(DesignTokens.tileStroke, lineWidth: 0.5))
                 Text(tab.title)
                     .foregroundStyle(selected ? DesignTokens.accentText : DesignTokens.label)
                 Spacer(minLength: 0)
