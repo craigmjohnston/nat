@@ -146,10 +146,19 @@ images in before `complete-slice`:
         --visual '<what it shows, one line>
 <absolute path to the image>'
 
-`--visual` repeats, one per image. Hand in the full set each time: a later
-hand-in replaces an earlier one. Do not build a way to render when the
-project has none — go on without images instead. The user reviews them
-in the app; their comments, if any, arrive here as a message.
+`--visual` repeats, one per image. Hand in only what is new or
+re-rendered: an image handed in under a name already filed replaces that
+one, so never remove an image you are updating. Drop one that no longer
+shows anything relevant to the change — a view the work no longer
+touches, a render superseded by a differently named one — with
+`--remove '<its name>'`. Where a change is best judged against what was
+there, hand in a before too, with `--before '<the visual's name>
+<absolute path to the before>'`, rendered to a different file than the
+after: a before the after's render overwrote is no before.
+
+Do not build a way to render when the project has none — go on without
+images instead. The user reviews them in the app; their comments, if
+any, arrive here as a message.
 
 On completion, record the outcome:
 

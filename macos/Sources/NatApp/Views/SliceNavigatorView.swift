@@ -82,6 +82,8 @@ struct SliceNavigatorView: View {
             if nav.isLive(.visuals) {
                 NavSectionView(
                     label: NavigatorSection.visuals.label, open: open.contains(.visuals), selected: main == .visuals,
+                    // New while any image is, so a folded section says so.
+                    status: visualStore.anyNew(sliceID: slice.id, visuals) ? .new : nil,
                     onHead: { click(.visuals) }, onFold: { fold(.visuals) }
                 ) {
                     visualActions(nav)
@@ -113,7 +115,10 @@ struct SliceNavigatorView: View {
             prStore.startPolling()
         }
         .onDisappear { prStore.stopPolling() }
-        .task(id: "\(slice.id)|\(visuals.map(\.uri).joined(separator: "|"))") {
+        // Keyed by every image's hash as well as its URI, so a re-render
+        // saved over the same path — which a nudge's re-read carries as a new
+        // hash — loads afresh.
+        .task(id: "\(slice.id)|\(VisualChange.loadIdentity(visuals))") {
             await visualStore.load(sliceID: slice.id, visuals: visuals)
         }
         .focusedSceneValue(\.sliceMenu, menuActions(nav))

@@ -109,7 +109,8 @@ extension NavSectionView where Actions == EmptyView {
 extension NavSectionStatus {
     var tone: Tone {
         switch self {
-        case .merged: return .success
+        // New wears Merged's own badge.
+        case .merged, .new: return .success
         }
     }
 }

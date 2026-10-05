@@ -797,6 +797,10 @@ func TestEverySlicePromptHandsInVisualChanges(t *testing.T) {
 		for _, want := range []string{
 			"    nat slice-visuals " + testContext().Slice.ID + " --project " + testProjectID + " \\\n        --visual '",
 			"Do not build a way to render",
+			"Hand in only what is new or\nre-rendered",
+			"`--remove '<its name>'`",
+			"`--before '<the visual's name>",
+			"rendered to a different file than the\nafter",
 		} {
 			if !strings.Contains(text, want) {
 				t.Errorf("the %s prompt does not say %q", name, want)

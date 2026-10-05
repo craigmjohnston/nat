@@ -289,20 +289,91 @@ public struct FollowUp: Codable, Equatable, Hashable, Sendable, Identifiable {
     }
 }
 
-/// One image an agent handed in of what its slice changed, as `slice-show`
+/// One item an agent handed in of what its slice changed, as `slice-show`
 /// reads it: its 1-based index in the hand-in, what it shows, and where it is —
-/// an absolute path, or a URI as the agent gave it.
+/// an absolute path, or a URI as the agent gave it — and, where the item is a
+/// pair, the before it is best judged against. `hash` is the sha256 of the
+/// file's bytes at hand-in (none for a URI that is not a local file), and
+/// `changed` whether nat found it differs from the hand-in before; each of
+/// the three is absent from an older nat's reading, and decodes as none.
 public struct VisualChange: Codable, Equatable, Hashable, Sendable, Identifiable {
     public let index: Int
     public let name: String
     public let uri: String
+    public let hash: String?
+    public let before: VisualBefore?
+    public let changed: Bool
 
     public var id: Int { index }
 
-    public init(index: Int, name: String, uri: String) {
+    public init(
+        index: Int, name: String, uri: String, hash: String? = nil, before: VisualBefore? = nil, changed: Bool = false
+    ) {
         self.index = index
         self.name = name
         self.uri = uri
+        self.hash = hash
+        self.before = before
+        self.changed = changed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case index, name, uri, hash, before, changed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        index = try c.decode(Int.self, forKey: .index)
+        name = try c.decode(String.self, forKey: .name)
+        uri = try c.decode(String.self, forKey: .uri)
+        hash = try c.decodeIfPresent(String.self, forKey: .hash)
+        before = try c.decodeIfPresent(VisualBefore.self, forKey: .before)
+        changed = try c.decodeIfPresent(Bool.self, forKey: .changed) ?? false
+    }
+
+    /// The image's identity — its URI and hash together, so a re-render
+    /// saved over the same path is a different image. What the loaded image
+    /// is cached by.
+    public var imageKey: String { Self.key(uri: uri, hash: hash) }
+
+    /// The before's identity, as `imageKey` is the image's; nil for an item
+    /// that is no pair.
+    public var beforeKey: String? { before.map { Self.key(uri: $0.uri, hash: $0.hash) } }
+
+    /// The whole item's identity — its name, its image and its before. What
+    /// viewed marks, folds and seen marks hang off: a new hash anywhere in it
+    /// is a different item, which starts afresh.
+    public var identity: String {
+        [name, imageKey, beforeKey ?? ""].joined(separator: "\u{1}")
+    }
+
+    /// Every image the item draws — the after, then its before.
+    public var imageKeys: [(key: String, uri: String)] {
+        var keys = [(key: imageKey, uri: uri)]
+        if let before, let beforeKey { keys.append((beforeKey, before.uri)) }
+        return keys
+    }
+
+    /// What a load of a hand-in is keyed by, so a re-read carrying a new hash
+    /// for the same URI starts a fresh load.
+    public static func loadIdentity(_ visuals: [VisualChange]) -> String {
+        visuals.map(\.identity).joined(separator: "\u{2}")
+    }
+
+    static func key(uri: String, hash: String?) -> String {
+        "\(uri)\u{0}\(hash ?? "")"
+    }
+}
+
+/// The image a pair's after is best judged against: where it is, and the
+/// sha256 of its bytes at hand-in where it is a local file.
+public struct VisualBefore: Codable, Equatable, Hashable, Sendable {
+    public let uri: String
+    public let hash: String?
+
+    public init(uri: String, hash: String? = nil) {
+        self.uri = uri
+        self.hash = hash
     }
 }
 

@@ -2,11 +2,15 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,25 +19,38 @@ import (
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
-// shot lays an empty file down under dir for a hand-in to name, and is its
-// path.
+// shot lays a file down under dir for a hand-in to name, and is its path.
 func shot(t *testing.T, dir, name string) string {
 	t.Helper()
+	return shotOf(t, dir, name, "png")
+}
+
+// shotOf lays a file of the given bytes down under dir, and is its path.
+func shotOf(t *testing.T, dir, name, data string) string {
+	t.Helper()
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("png"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		t.Fatalf("write %s: %v", name, err)
 	}
 	return path
 }
 
+// sum is the sha256 a hand-in files for a file of these bytes.
+func sum(data string) string {
+	h := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(h[:])
+}
+
 // The round an agent makes: images handed in, read back by slice-show in
-// order, a relative path filed absolute and a URI as given; then a second
-// hand-in that replaces the first.
+// order, a relative path filed absolute with its hash and a URI as given with
+// none; then a second hand-in that re-renders one at the same path, gives
+// another a before and removes the third; then one that changes nothing; then
+// one that removes the rest.
 func TestSliceVisualsAreFiledAndReadBack(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	dir := t.TempDir()
 	dark := shot(t, dir, "dark.png")
-	shot(t, dir, "light.png")
+	light := shotOf(t, dir, "light.png", "light")
 	stubGetwd(t, dir, nil)
 
 	if err := fp.run("slice-visuals", sliceID,
@@ -44,7 +61,11 @@ func TestSliceVisualsAreFiledAndReadBack(t *testing.T) {
 	}
 	wantFiled := `# Render the board
 
-3 visual changes filed on the slice page for the user to review:
+Visual changes filed on the slice page for the user to review.
+
+Added: "Settings pane, dark", "Settings pane, light", "The docs page"
+
+As it now stands, 3 visual changes:
 
 1. Settings pane, dark
 2. Settings pane, light
@@ -59,36 +80,70 @@ Carry on — the user's comments on them, if any, arrive as a message.
 		t.Errorf("nudges = %d, want one for the filing", fp.nudges)
 	}
 	want := []visualJSON{
-		{1, "Settings pane, dark", dark},
-		{2, "Settings pane, light", filepath.Join(dir, "light.png")},
-		{3, "The docs page", "https://example.com/docs.png"},
+		{Index: 1, Name: "Settings pane, dark", URI: dark, Hash: sum("png"), Changed: true},
+		{Index: 2, Name: "Settings pane, light", URI: light, Hash: sum("light"), Changed: true},
+		{Index: 3, Name: "The docs page", URI: "https://example.com/docs.png", Changed: true},
 	}
-	if got := fp.shown(t).Visuals; !equalVisuals(got, want) {
+	if got := fp.shown(t).Visuals; !slices.Equal(got, want) {
 		t.Errorf("slice-show visuals = %+v, want %+v", got, want)
 	}
 
-	if err := fp.run("slice-visuals", sliceID, "--visual", "Only this\nfile://"+dark); err != nil {
+	shotOf(t, dir, "dark.png", "re-rendered")
+	before := shotOf(t, dir, "light-before.png", "old light")
+	if err := fp.run("slice-visuals", sliceID, "--visual", "Settings pane, dark\nfile://"+dark,
+		"--before", "Settings pane, light\n"+before, "--remove", "The docs page"); err != nil {
 		t.Fatalf("slice-visuals again: %v", err)
 	}
-	if got := fp.shown(t).Visuals; !equalVisuals(got, []visualJSON{{1, "Only this", dark}}) {
-		t.Errorf("slice-show after a second hand-in = %+v, want only its one", got)
+	wantFiled = `# Render the board
+
+Visual changes filed on the slice page for the user to review.
+
+Updated: "Settings pane, dark", "Settings pane, light"
+Removed: "The docs page"
+
+As it now stands, 2 visual changes:
+
+1. Settings pane, dark
+2. Settings pane, light, with a before
+
+Carry on — the user's comments on them, if any, arrive as a message.
+`
+	if fp.out.String() != wantFiled {
+		t.Errorf("slice-visuals printed\n%s\nwant\n%s", fp.out, wantFiled)
+	}
+	want = []visualJSON{
+		{Index: 1, Name: "Settings pane, dark", URI: dark, Hash: sum("re-rendered"), Changed: true},
+		{Index: 2, Name: "Settings pane, light", URI: light, Hash: sum("light"),
+			Before: visualBeforeJSON{URI: before, Hash: sum("old light")}, Changed: true},
+	}
+	if got := fp.shown(t).Visuals; !slices.Equal(got, want) {
+		t.Errorf("slice-show after a second hand-in = %+v, want %+v", got, want)
+	}
+
+	// A re-render with the same bytes keeps the before it has, and leaves both
+	// unchanged since the last hand-in.
+	if err := fp.run("slice-visuals", sliceID, "--visual", "Settings pane, light\n"+light); err != nil {
+		t.Fatalf("slice-visuals a third time: %v", err)
+	}
+	want[0].Changed, want[1].Changed = false, false
+	if got := fp.shown(t).Visuals; !slices.Equal(got, want) {
+		t.Errorf("slice-show after an unchanged hand-in = %+v, want %+v", got, want)
+	}
+
+	if err := fp.run("slice-visuals", sliceID, "--remove", "Settings pane, dark", "--remove", "Settings pane, light"); err != nil {
+		t.Fatalf("slice-visuals removing the rest: %v", err)
+	}
+	if !strings.Contains(fp.out.String(), "No visual changes are filed now.") {
+		t.Errorf("slice-visuals removing the rest printed\n%s", fp.out)
+	}
+	if got := fp.shown(t).Visuals; len(got) != 0 {
+		t.Errorf("slice-show after removing every one = %+v, want none", got)
 	}
 }
 
-func equalVisuals(got, want []visualJSON) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
-}
-
-// slice-show names its fields as the app decodes them, and leaves the list out
-// where nothing was handed in.
+// slice-show names its fields as the app decodes them, leaves the list out
+// where nothing was handed in, and leaves an item's hash and before out where
+// it has none.
 func TestSliceShowVisualsJSONShape(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	if err := fp.run("slice-show", sliceID, "--json"); err != nil {
@@ -97,8 +152,10 @@ func TestSliceShowVisualsJSONShape(t *testing.T) {
 	if strings.Contains(fp.out.String(), `"visuals"`) {
 		t.Errorf("slice-show with nothing handed in carries visuals:\n%s", fp.out)
 	}
-	path := shot(t, t.TempDir(), "a.png")
-	if err := fp.run("slice-visuals", sliceID, "--visual", "A\n"+path); err != nil {
+	dir := t.TempDir()
+	path, before := shot(t, dir, "a.png"), shotOf(t, dir, "b.png", "before")
+	if err := fp.run("slice-visuals", sliceID, "--visual", "A\n"+path, "--before", "A\n"+before,
+		"--visual", "B\nhttps://example.com/b.png"); err != nil {
 		t.Fatalf("slice-visuals: %v", err)
 	}
 	if err := fp.run("slice-show", sliceID, "--json"); err != nil {
@@ -110,10 +167,13 @@ func TestSliceShowVisualsJSONShape(t *testing.T) {
 	if err := json.Unmarshal(fp.out.Bytes(), &raw); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	want := map[string]any{"index": float64(1), "name": "A", "uri": path}
-	if len(raw.Visuals) != 1 || len(raw.Visuals[0]) != 3 ||
-		raw.Visuals[0]["index"] != want["index"] || raw.Visuals[0]["name"] != want["name"] || raw.Visuals[0]["uri"] != want["uri"] {
-		t.Errorf("visuals = %v, want [%v]", raw.Visuals, want)
+	want := []map[string]any{
+		{"index": float64(1), "name": "A", "uri": path, "hash": sum("png"),
+			"before": map[string]any{"uri": before, "hash": sum("before")}, "changed": true},
+		{"index": float64(2), "name": "B", "uri": "https://example.com/b.png", "changed": true},
+	}
+	if !reflect.DeepEqual(raw.Visuals, want) {
+		t.Errorf("visuals = %v, want %v", raw.Visuals, want)
 	}
 }
 
@@ -127,10 +187,22 @@ func TestSliceVisualsRefusals(t *testing.T) {
 		want   string
 	}{
 		{"none", notion.SliceInProgress, nil, "no visual given"},
-		{"no name", notion.SliceInProgress, []string{"--visual", "  \n "}, "has no name"},
+		{"no name", notion.SliceInProgress, []string{"--visual", "  \n "}, "a --visual has no name"},
+		{"a before with no name", notion.SliceInProgress, []string{"--before", "  \n "}, "a --before has no name"},
 		{"no image", notion.SliceInProgress, []string{"--visual", "Just a name"}, `"Just a name" has no image`},
 		{"two images", notion.SliceInProgress, []string{"--visual", "A\n" + path + "\n\n" + path}, `"A" names more than one image`},
 		{"twice", notion.SliceInProgress, []string{"--visual", "A\n" + path, "--visual", "A\n" + path}, `two visuals are named "A"`},
+		{"a before twice", notion.SliceInProgress, []string{"--visual", "A\n" + path, "--before", "A\n" + path, "--before", "A\n" + path},
+			`two befores are named "A"`},
+		{"a remove with no name", notion.SliceInProgress, []string{"--remove", " "}, "a --remove names nothing"},
+		{"a remove twice", notion.SliceInProgress, []string{"--remove", "A", "--remove", " A "}, `"A" is removed twice`},
+		{"removed and given", notion.SliceInProgress, []string{"--visual", "A\n" + path, "--remove", "A"}, `"A" is both removed and given`},
+		{"removed and given a before", notion.SliceInProgress, []string{"--before", "A\n" + path, "--remove", "A"}, `"A" is both removed and given`},
+		{"a remove naming nothing", notion.SliceInProgress, []string{"--remove", "A"}, `--remove "A" names no visual filed: none is filed`},
+		{"a before naming nothing", notion.SliceInProgress, []string{"--visual", "B\n" + path, "--before", "A\n" + path},
+			`--before "A" names no visual: filed are "B", or give it with --visual in the same command`},
+		{"a missing before", notion.SliceInProgress, []string{"--visual", "A\n" + path, "--before", "A\n" + filepath.Join(dir, "gone.png")},
+			"no image at " + filepath.Join(dir, "gone.png")},
 		{"missing file", notion.SliceInProgress, []string{"--visual", "A\n" + filepath.Join(dir, "gone.png")}, "no image at " + filepath.Join(dir, "gone.png")},
 		{"not held", notion.SliceTodo, []string{"--visual", "A\n" + path},
 			`"Render the board" is Todo: visual changes can be given only to a slice you hold, ` +
@@ -181,7 +253,7 @@ func TestSliceVisualsOnADoneSlice(t *testing.T) {
 				if err != nil {
 					t.Fatalf("slice-visuals: %v", err)
 				}
-				if got := fp.shown(t).Visuals; !equalVisuals(got, []visualJSON{{1, "A", path}}) {
+				if got := fp.shown(t).Visuals; !slices.Equal(got, []visualJSON{{Index: 1, Name: "A", URI: path, Hash: sum("png"), Changed: true}}) {
 					t.Errorf("visuals = %+v, want the one handed in", got)
 				}
 				return
@@ -260,6 +332,7 @@ func TestSliceVisualsReadAndWriteFailures(t *testing.T) {
 	for name, breakIt := range map[string]func(*sql.DB) error{
 		"shape": func(db *sql.DB) error { _, err := db.Exec(`ALTER TABLE milestones RENAME TO gone`); return err },
 		"slice": func(db *sql.DB) error { _, err := db.Exec(`DELETE FROM slices`); return err },
+		"body":  func(db *sql.DB) error { _, err := db.Exec(`ALTER TABLE slices DROP COLUMN body`); return err },
 		"write": func(db *sql.DB) error {
 			_, err := db.Exec(`CREATE TRIGGER no_writes BEFORE UPDATE ON slices BEGIN SELECT RAISE(FAIL, 'boom'); END`)
 			return err

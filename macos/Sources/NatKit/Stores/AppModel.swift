@@ -133,6 +133,8 @@ public final class AppModel {
     public var mirrorPickerPresented = false
 
     @ObservationIgnored private let mirrorNudgeMemory: MirrorNudgeMemory
+    /// Which handed-in images have been seen — see `VisualSeenMemory`.
+    @ObservationIgnored private let visualSeenMemory: VisualSeenMemory
 
     /// Bumped by "Keep workshopping"; the workshop terminal takes keyboard
     /// focus on each change.
@@ -515,10 +517,12 @@ public final class AppModel {
             ["nat", "tmux", "gh", "ntn"].allSatisfy { BinaryLocator.status(of: $0).isFound }
         },
         mirrorNudgeMemory: MirrorNudgeMemory = .inMemory(),
+        visualSeenMemory: VisualSeenMemory = .inMemory(),
         makesSourceProjects: Bool = false
     ) {
         self.makesSourceProjects = makesSourceProjects
         self.mirrorNudgeMemory = mirrorNudgeMemory
+        self.visualSeenMemory = visualSeenMemory
         self.mirrorNudgePending = mirrorNudgeMemory.pending
         self.toolsReady = toolsReady
         self.configReader = configReader
@@ -1254,7 +1258,7 @@ public final class AppModel {
     /// `sliceDetailStore(projectID:)`.
     public func visualStore(projectID: String) -> VisualStore {
         if let existing = visualStores[projectID] { return existing }
-        let store = VisualStore(client: clientFactory())
+        let store = VisualStore(client: clientFactory(), projectID: projectID, seen: visualSeenMemory)
         visualStores[projectID] = store
         return store
     }

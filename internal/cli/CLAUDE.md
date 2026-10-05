@@ -222,13 +222,23 @@ slice-show reads no plan; the app matches it against the plan it holds.
 
 `slice-visuals` (held slices, or — `canHandInVisuals` — a Done slice with a
 PR recorded, assigned to you where the project has an Assignee column: a fix
-session's, its PR not re-checked with gh; `--visual` repeatable, first line the
-name, the next the image's path or URI; refuses none, an empty name/URI, a URI
-over more than one line, or a duplicate name). A bare path or `file://` URI is
-made absolute against `getwd` and refused if `os.Stat` fails; any other scheme
-is filed as given. `Store.RecordVisuals`, nudge, print — never blocks
-`complete-slice`. `slice-show --json`'s `visuals` reads back the last section
-(`store.VisualChanges`). See root CLAUDE.md's Visual changes rule.
+session's, its PR not re-checked with gh). Incremental, each flag repeatable:
+`--visual` (first line the name, the next the image's path or URI) adds or
+replaces by name in place, keeping the before it has; `--before` (the
+visual's name, then the before's path) sets the before of a visual in the
+set or given in the same command; `--remove NAME` drops one with its before.
+`handInOf` refuses, before any read: nothing given, an empty name/URI, a URI
+over more than one line, a name twice to one flag, a name both removed and
+given, a path `os.Stat`-less. A bare path or `file://` URI is made absolute
+against `getwd` and hashed (sha256 of its bytes); any other scheme is filed
+as given with no hash. Then the body is read, `handIn.apply` works the
+command into `store.VisualChanges`' current set — refusing a `--remove` or
+`--before` naming nothing there, listing what is filed — and the whole result
+goes to `Store.RecordVisuals` (an empty set files a bare heading), nudge, and
+a print of what was added, updated and removed and the set as it stands —
+never blocks `complete-slice`. `slice-show --json`'s `visuals` reads back the
+last section: `index`, `name`, `uri`, `hash` and `before` `{uri, hash}` each
+omitted where none, and `changed`. See root CLAUDE.md's Visual changes rule.
 
 `slice-rework` (handed-back slices only): `--comments` (optional, `-` reads
 stdin) records what the review said under a `Sent back` heading

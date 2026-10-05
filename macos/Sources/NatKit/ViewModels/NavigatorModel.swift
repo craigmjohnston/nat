@@ -247,10 +247,13 @@ public struct NavigatorModel: Equatable, Sendable {
 /// A status a navigator section's header carries beside its label.
 public enum NavSectionStatus: Equatable, Sendable {
     case merged
+    /// Visual changes: an image handed in since the user last looked.
+    case new
 
     public var label: String {
         switch self {
         case .merged: return "Merged"
+        case .new: return "New"
         }
     }
 }
