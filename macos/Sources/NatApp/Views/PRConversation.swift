@@ -248,9 +248,9 @@ struct ReviewersBlock: View {
                     ForEach(pr.reviewRequests, id: \.self) { login in
                         HStack(spacing: 6) {
                             Image(systemName: "circle.dashed")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.system(size: GnatMetrics.treeGlyph, weight: .medium))
                                 .ink(.secondary)
-                                .frame(width: 13)
+                                .frame(width: GnatMetrics.treeGlyphColumn)
                             Text(login).ink(.primary).lineLimit(1)
                             Text("· requested").ink(.secondary)
                             Spacer(minLength: 0)
@@ -259,7 +259,8 @@ struct ReviewersBlock: View {
                                     Image(systemName: "xmark")
                                         .font(.system(size: 9, weight: .semibold))
                                         .ink(.tertiary)
-                                        .frame(width: 16, height: 16)
+                                        // The checks' cancel column, above it.
+                                        .frame(width: CheckControlSlot<EmptyView>.side, height: CheckControlSlot<EmptyView>.side)
                                         .contentShape(Rectangle())
                                 }
                                 .buttonStyle(GnatIconButtonStyle())

@@ -24,7 +24,7 @@ struct ActiveIdentityLabel: View {
                     StateDot(state: state, live: live)
                 }
             }
-            .frame(width: 12)
+            .frame(width: GnatMetrics.treeGlyphColumn)
             (identityTag(tag, on: ground) + Text(title))
                 .font(.system(size: size))
                 .ink(titleInk)
@@ -73,7 +73,7 @@ struct TreeMilestoneLine: View {
                     FolderGlyph(open: open, color: DesignTokens.ink(.tertiary, on: ground))
                 }
             }
-            .frame(width: 16)
+            .frame(width: GnatMetrics.treeFolderColumn)
             // Every live line of the tree is one ink — milestones, projects
             // and slices alike; only the Done folder recedes with what it holds.
             Text(name)
@@ -106,7 +106,7 @@ struct TreeSliceLine: View {
         // one ink, a step under the primary.
         let ink: InkRole = state == .blocked || state == .done ? .quaternary : .secondary
         HStack(spacing: 6) {
-            StateDot(state: state, live: live).frame(width: 12)
+            StateDot(state: state, live: live).frame(width: GnatMetrics.treeGlyphColumn)
             Text(title)
                 .font(.system(size: GnatMetrics.body))
                 .strikethrough(state == .done)

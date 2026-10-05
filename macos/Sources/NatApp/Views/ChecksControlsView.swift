@@ -136,7 +136,7 @@ struct CheckRowControls: View {
         HStack(spacing: 2) {
             Button { run(store) { await $0.rerunChecks(.checks([check.name]), from: .rerun(check.name)) } } label: {
                 CheckControlSlot(busy: store.checksActionSource == .rerun(check.name)) {
-                    Image(systemName: ChecksGlyph.rerun).font(.system(size: 10, weight: .medium))
+                    Image(systemName: ChecksGlyph.rerun).font(.system(size: GnatMetrics.treeGlyph, weight: .medium))
                 }
             }
             .buttonStyle(GnatIconButtonStyle())
@@ -145,7 +145,7 @@ struct CheckRowControls: View {
 
             Button { run(store) { await $0.cancelChecks([check.name], from: .cancel(check.name)) } } label: {
                 CheckControlSlot(busy: store.checksActionSource == .cancel(check.name)) {
-                    Image(systemName: ChecksGlyph.cancel).font(.system(size: 10, weight: .medium))
+                    Image(systemName: ChecksGlyph.cancel).font(.system(size: GnatMetrics.treeGlyph, weight: .medium))
                 }
             }
             .buttonStyle(GnatIconButtonStyle())

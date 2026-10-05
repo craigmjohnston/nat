@@ -611,6 +611,30 @@ final class DiffCanvasViewTests: XCTestCase {
         XCTAssertEqual(rep.colorAt(x: x, y: 0), rep.colorAt(x: x, y: 6))
     }
 
+    /// A folded file's header over the next file's draws one rule between
+    /// them — its own bottom one — never that and the next header's top rule
+    /// back to back; a header under an open file's last row keeps its top rule.
+    func testOneRuleSeparatesAFoldedFileFromTheNext() throws {
+        var state = DiffCanvasState()
+        state.collapsed = ["dir/file0.swift"]
+        let canvas = makeCanvas(state: state)
+        let viewport = canvas.viewport
+        let rep = try XCTUnwrap(viewport.bitmapImageRepForCachingDisplay(in: viewport.bounds))
+        viewport.cacheDisplay(in: viewport.bounds, to: rep)
+        let scale = CGFloat(rep.pixelsHigh) / viewport.bounds.height
+        let x = rep.pixelsWide - 2
+        func color(at y: CGFloat) -> NSColor? { rep.colorAt(x: x, y: Int((y + 0.5) * scale)) }
+        let height = canvas.metrics.headerHeight
+        let band = color(at: height + 10)
+
+        XCTAssertNotEqual(color(at: height - 1), band, "the folded header's own bottom rule")
+        XCTAssertEqual(color(at: height), band, "the next header draws no top rule under it")
+
+        XCTAssertFalse(DiffViewportView.followsFoldedFile(canvas, file: 0))
+        XCTAssertTrue(DiffViewportView.followsFoldedFile(canvas, file: 1))
+        XCTAssertFalse(DiffViewportView.followsFoldedFile(canvas, file: 2), "file1 is open")
+    }
+
     /// A fling through a 50,000-row diff, every frame drawn afresh: a
     /// hundred viewports, each a thousand points further down, as many
     /// rows set and drawn for the first time as a scroll can ask for.

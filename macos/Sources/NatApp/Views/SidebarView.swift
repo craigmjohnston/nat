@@ -8,12 +8,12 @@ import NatKit
 /// then the Scratch fold, the scratch project's milestones straight under it.
 ///
 /// Everything the old project tabs and rail did that the design does not
-/// draw lives on here as the row it belongs to: a project's menu (New Slice,
-/// Workshop…, Open in Notion, Reveal, Close), a milestone's (New
+/// draw lives on here as the row it belongs to: a project's menu (its `+`'s
+/// items, then Open in Notion, Reveal, Close), a milestone's (New
 /// Slice, Rename, Move, Delete), a slice's (Launch, Edit, Open, Move, Delete),
-/// each project's own `+` (New Milestone, New Slice, Workshop…, New Ad Hoc
-/// Session), the titlebar's `+` (any of those in a project it asks for, or a
-/// new project) beside its Settings cog, and an ended session under its
+/// each project's own `+` (Workshop…, New Milestone, New Slice, New Ad Hoc
+/// Session), the titlebar's `+` (a new project, then any of those in a
+/// project it asks for) beside its Settings cog, and an ended session under its
 /// project.
 struct SidebarView: View {
     @Bindable var appModel: AppModel
@@ -321,7 +321,7 @@ struct SidebarView: View {
                 Image(systemName: "folder.badge.plus")
                     .font(.system(size: 13))
                     .ink(.tertiary)
-                    .frame(width: 20, height: 18)
+                    .frame(width: GnatMetrics.trailingControl, height: GnatMetrics.trailingControl)
                     .contentShape(Rectangle())
             }
             .buttonStyle(GnatIconButtonStyle())
@@ -375,7 +375,7 @@ struct SidebarView: View {
         Image(systemName: "plus")
             .font(.system(size: 13, weight: .light))
             .ink(.tertiary)
-            .frame(width: 18, height: 18)
+            .frame(width: GnatMetrics.trailingControl, height: GnatMetrics.trailingControl)
             .contentShape(Rectangle())
     }
 
@@ -397,12 +397,12 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func addItems(_ project: SidebarProject) -> some View {
+        Button("Workshop\u{2026}", systemImage: workshopSymbol) { Task { await appModel.selectWorkshop(inProject: project.id) } }
         Button("New milestone\u{2026}", systemImage: "folder.badge.plus") {
             newMilestoneText = ""
             newMilestoneProject = project.id
         }
         Button("New task\u{2026}", systemImage: "plus") { newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "") }
-        Button("Workshop\u{2026}", systemImage: workshopSymbol) { Task { await appModel.selectWorkshop(inProject: project.id) } }
         Divider()
         Button(
             project.kind == .scratch ? "New ad hoc session\u{2026}" : "New ad hoc session",
@@ -441,15 +441,15 @@ struct SidebarView: View {
         return Menu {
             Button("New project\u{2026}", systemImage: "folder.badge.plus", action: onNewProject)
             Divider()
+            projectSubmenu("Workshop", systemImage: workshopSymbol, targets) { project in
+                Task { await appModel.selectWorkshop(inProject: project.id) }
+            }
             projectSubmenu("New milestone", systemImage: "folder.badge.plus", targets) { project in
                 newMilestoneText = ""
                 newMilestoneProject = project.id
             }
             projectSubmenu("New task", systemImage: "plus", targets) { project in
                 newSliceTarget = NewSliceTarget(projectID: project.id, milestone: "")
-            }
-            projectSubmenu("Workshop", systemImage: workshopSymbol, targets) { project in
-                Task { await appModel.selectWorkshop(inProject: project.id) }
             }
             Divider()
             projectSubmenu("New ad hoc session", systemImage: "terminal", targets) { project in
@@ -532,7 +532,7 @@ struct SidebarView: View {
             }
             Spacer(minLength: 0)
             if let filter = source?.menu.filterAction {
-                filterButton(filter, projectID: project.id, group: nil, size: 12, frame: 18)
+                filterButton(filter, projectID: project.id, group: nil, size: 12)
             }
             if let source, !source.menu.menuItems.isEmpty {
                 Menu {
@@ -541,7 +541,7 @@ struct SidebarView: View {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 12, weight: .medium))
                         .ink(.tertiary)
-                        .frame(width: 18, height: 18)
+                        .frame(width: GnatMetrics.trailingControl, height: GnatMetrics.trailingControl)
                         .contentShape(Rectangle())
                 }
                 .menuStyle(.button)
@@ -623,7 +623,7 @@ struct SidebarView: View {
                 // to it.
                 if let filter = group.menu.filterAction {
                     let showing = hovered || filterPresented(project.id, group: group.id).wrappedValue
-                    filterButton(filter, projectID: project.id, group: group.id, size: 11, frame: 16)
+                    filterButton(filter, projectID: project.id, group: group.id, size: 11)
                         .opacity(showing ? 1 : 0)
                         .allowsHitTesting(showing)
                 }
@@ -634,7 +634,7 @@ struct SidebarView: View {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 11, weight: .medium))
                             .ink(.tertiary)
-                            .frame(width: 16, height: 16)
+                            .frame(width: GnatMetrics.trailingControl, height: GnatMetrics.trailingControl)
                             .contentShape(Rectangle())
                     }
                     .menuStyle(.button)
@@ -692,7 +692,7 @@ struct SidebarView: View {
             Image(systemName: container.tasks.isEmpty ? SourceGlyph.emptyContainer : SourceGlyph.container)
                 .font(.system(size: 11))
                 .ink(.tertiary)
-                .frame(width: 16)
+                .frame(width: GnatMetrics.treeFolderColumn)
             Text(container.title)
                 .font(.system(size: GnatMetrics.body))
                 .ink(.secondary)
@@ -796,7 +796,7 @@ struct SidebarView: View {
     /// narrows anything (`SourceAction.isNarrowing`), opening the editor
     /// anchored to itself — the header's (`group` nil) or a segment's.
     private func filterButton(
-        _ action: SourceAction, projectID: String, group: String?, size: CGFloat, frame: CGFloat
+        _ action: SourceAction, projectID: String, group: String?, size: CGFloat
     ) -> some View {
         let narrowing = action.isNarrowing
         return Button {
@@ -805,7 +805,7 @@ struct SidebarView: View {
             Image(systemName: narrowing ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                 .font(.system(size: size, weight: .medium))
                 .ink(narrowing ? .accent : .tertiary)
-                .frame(width: frame, height: frame)
+                .frame(width: GnatMetrics.trailingControl, height: GnatMetrics.trailingControl)
                 .contentShape(Rectangle())
         }
         .buttonStyle(GnatIconButtonStyle())
@@ -881,6 +881,7 @@ struct SidebarView: View {
                 Image(systemName: "xmark.octagon.fill")
                     .font(.system(size: 10, weight: .medium))
                     .ink(.danger)
+                    .frame(width: GnatMetrics.trailingControl)
                     .help("Checks failing: \(row.failingChecks.joined(separator: ", "))")
             }
             if row.kind == .workshop {
@@ -888,7 +889,7 @@ struct SidebarView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .medium))
                         .ink(.tertiary)
-                        .frame(width: 16, height: 16)
+                        .frame(width: GnatMetrics.trailingControl, height: GnatMetrics.trailingControl)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(GnatIconButtonStyle())
@@ -1016,7 +1017,7 @@ struct SidebarView: View {
                         backColor: DesignTokens.ink(.tertiary, on: .header))
                 }
             }
-            .frame(width: 16)
+            .frame(width: GnatMetrics.treeFolderColumn)
             Group {
                 switch project.kind {
                 case .untitled:

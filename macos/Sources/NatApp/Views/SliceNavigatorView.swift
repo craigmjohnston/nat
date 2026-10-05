@@ -645,6 +645,8 @@ struct PRSectionBody: View {
     var checksStore: PRStore?
     /// A check drawn as under the pointer whether it is or not — a story's.
     var hoveredCheck: String?
+    /// The check row under the pointer, whose re-run and cancel show.
+    @State private var pointerCheck: String?
     var staleMessage: String?
     var actionError: String?
     /// A source container's word on its tasks' pull requests (`task_note`),
@@ -703,17 +705,31 @@ struct PRSectionBody: View {
     /// Actions run behind any check — its re-run and cancel at the trailing
     /// edge, in the heading's columns. Under the pointer the whole row is
     /// washed, full bleed to the section's edges.
+    ///
+    /// As tall as a sidebar task row, and its controls drawn only under the
+    /// pointer — or while one of them is under way, so a click never goes
+    /// without its spinner. Hidden, never removed, so the name keeps its
+    /// width as the pointer comes and goes (the sidebar `+`'s way).
     private func checkRow(_ check: PRCheck, controls: ChecksControls) -> some View {
-        HStack(spacing: 6) {
+        let source = checksStore?.checksActionSource
+        let shows = hoveredCheck == check.name || pointerCheck == check.name
+            || source == .rerun(check.name) || source == .cancel(check.name)
+        return HStack(spacing: 6) {
             checkLine(check)
             Spacer(minLength: 4)
             if let checksStore, controls.hasControls {
                 CheckRowControls(check: check, controls: controls, store: checksStore)
+                    .opacity(shows ? 1 : 0)
+                    .allowsHitTesting(shows)
+                    .accessibilityHidden(!shows)
             }
         }
-        .frame(minHeight: CheckControlSlot<EmptyView>.side + 2)
+        .frame(height: GnatMetrics.sidebarRowHeight)
         .padding(.horizontal, 12)
         .gnatRow(washed: hoveredCheck == check.name)
+        .onHover { inside in
+            if inside { pointerCheck = check.name } else if pointerCheck == check.name { pointerCheck = nil }
+        }
         .padding(.horizontal, -12)
     }
 
@@ -732,9 +748,9 @@ struct PRSectionBody: View {
         }
         return HStack(spacing: 6) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: GnatMetrics.treeGlyph, weight: .medium))
                 .ink(role)
-                .frame(width: 13)
+                .frame(width: GnatMetrics.treeGlyphColumn)
             Text(check.name).ink(.primary).lineLimit(1)
             if outcome != .passing {
                 Text("· \(checkStateWord(check.state))").ink(.secondary).lineLimit(1)

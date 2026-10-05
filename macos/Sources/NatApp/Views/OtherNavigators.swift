@@ -455,7 +455,7 @@ private struct ProposalChangeGroupLine: View {
             Image(systemName: systemImage)
                 .font(.system(size: 11))
                 .ink(.tertiary)
-                .frame(width: 16)
+                .frame(width: GnatMetrics.treeFolderColumn)
             Text(label)
                 .font(.system(size: GnatMetrics.body))
                 .ink(.secondary)
@@ -478,7 +478,7 @@ private struct ProposalChangeLine: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            StateDot(state: .todo).frame(width: 12)
+            StateDot(state: .todo).frame(width: GnatMetrics.treeGlyphColumn)
             Text(title)
                 .font(.system(size: GnatMetrics.body))
                 .strikethrough(struck)
@@ -489,6 +489,8 @@ private struct ProposalChangeLine: View {
                 Image(systemName: disclosure ? "chevron.down" : "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
                     .ink(.tertiary)
+                    // One width for both, which differ: the column holds still.
+                    .frame(width: GnatMetrics.treeGlyphColumn)
             }
         }
         .padding(.leading, 20)
@@ -508,7 +510,9 @@ struct WorkshopMainPane: View {
     var body: some View {
         VStack(spacing: 0) {
             if appModel.workshopTab == .plan, let proposal = appModel.activeProposal {
-                WorkshopPlanView(proposal: proposal, scroll: appModel.workshopPlanScroll)
+                WorkshopPlanView(
+                    proposal: proposal, scroll: appModel.workshopPlanScroll, folded: appModel.foldedProposedSlices,
+                    onToggle: { appModel.toggleProposedSliceFold($0) })
             } else if appModel.workshopLaunched {
                 AgentTerminalPane(
                     agent: appModel.planningAgent,
@@ -528,12 +532,15 @@ struct WorkshopMainPane: View {
 /// The Plan tab: the proposal as the briefs it files, read like the Changes
 /// view reads a diff — one box per proposed slice, in plan order, under a
 /// heading per milestone, each box a header strip with the slice's title
-/// over its brief as rendered markdown. A revised proposal replaces it in
-/// place; `scroll` is the Plan section's ask to bring a slice's box to the
-/// top.
+/// over its brief as rendered markdown, folding to the strip on a click. A
+/// revised proposal replaces it in place; `scroll` is the Plan section's ask
+/// to bring a slice's box to the top.
 private struct WorkshopPlanView: View {
     let proposal: PlanProposal
     let scroll: WorkshopPlanScroll?
+    /// The boxes folded to their header, by `PlanProposal.sliceID`.
+    let folded: Set<String>
+    let onToggle: (String) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -542,8 +549,13 @@ private struct WorkshopPlanView: View {
                     ForEach(Array(proposal.milestones.enumerated()), id: \.offset) { index, milestone in
                         ProposedMilestoneHeading(milestone: milestone)
                         ForEach(Array(milestone.slices.enumerated()), id: \.offset) { sliceIndex, slice in
-                            ProposedSliceBox(slice: slice)
-                                .id(PlanProposal.sliceID(milestone: index, slice: sliceIndex))
+                            let id = PlanProposal.sliceID(milestone: index, slice: sliceIndex)
+                            ProposedSliceBox(
+                                slice: slice, folded: folded.contains(id),
+                                followsFolded: sliceIndex > 0
+                                    && folded.contains(PlanProposal.sliceID(milestone: index, slice: sliceIndex - 1)),
+                                onToggle: { onToggle(id) })
+                                .id(id)
                         }
                     }
                 }
@@ -580,42 +592,71 @@ private struct ProposedMilestoneHeading: View {
 }
 
 /// One proposed slice in the Plan tab, in the diff file box's chrome: a
-/// header strip with its title between rules, then — under one quiet line
-/// naming what it waits on, where it waits on anything — its brief.
+/// header strip drawn as `DiffViewportView.drawHeader` draws a file's — its
+/// band and rules, the chevron at 11, the title at 30 in the header's mono —
+/// then, unless folded to it, one quiet line naming what it waits on, where it
+/// waits on anything, and its brief. The rules follow the diff's: a bottom
+/// rule always, a top one only where no folded box's bottom rule is already
+/// above it, so two never meet.
 private struct ProposedSliceBox: View {
     let slice: PlanProposal.ProposedSlice
+    var folded = false
+    /// The box above is folded: its bottom rule is the one between the two.
+    var followsFolded = false
+    let onToggle: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(slice.name)
-                .font(Typo.mono(size: Typo.code, weight: .medium))
-                .ink(.primary)
-                .textSelection(.enabled)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, minHeight: GnatMetrics.titlebarHeight, alignment: .leading)
-                .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
-                .overlay(alignment: .bottom) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
-            VStack(alignment: .leading, spacing: 10) {
-                if !slice.dependsOn.isEmpty {
-                    Text("Waits on " + slice.dependsOn.joined(separator: ", "))
-                        .font(.system(size: Typo.subhead))
-                        .ink(.tertiary)
-                        .textSelection(.enabled)
-                }
-                if slice.brief.isEmpty {
-                    Text("This task has a title but no brief.")
-                        .font(.system(size: GnatMetrics.body))
-                        .ink(.tertiary)
-                } else {
-                    MarkdownView(text: slice.brief, size: GnatMetrics.body)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
-            .padding(.bottom, 18)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            header
+            if !folded { content }
         }
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            DisclosureChevron(open: !folded)
+            Text(slice.name)
+                .font(Typo.mono(size: Typo.codeView))
+                .ink(.primary)
+                .lineLimit(1)
+                .truncationMode(.head)
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 16)
+        // The band, its bottom rule included, as `DiffLayout` counts it.
+        .frame(height: DiffMetrics().headerHeight)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignTokens.fill(.window))
+        .overlay(alignment: .top) {
+            if !followsFolded { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+        }
+        .overlay(alignment: .bottom) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onToggle)
+        .help(folded ? "Show the brief" : "Fold to the title")
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !slice.dependsOn.isEmpty {
+                Text("Waits on " + slice.dependsOn.joined(separator: ", "))
+                    .font(.system(size: Typo.subhead))
+                    .ink(.tertiary)
+                    .textSelection(.enabled)
+            }
+            if slice.brief.isEmpty {
+                Text("This task has a title but no brief.")
+                    .font(.system(size: GnatMetrics.body))
+                    .ink(.tertiary)
+            } else {
+                MarkdownView(text: slice.brief, size: GnatMetrics.body)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
