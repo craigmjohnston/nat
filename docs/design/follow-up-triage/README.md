@@ -5,6 +5,12 @@ Status: **agreed with Craig 2026-10-01**, filed as a slice. Written against
 `1-proposed.png`, `2-applied.png`, `3-handed-back.png` and the three sidebar
 states; the `.html` beside each is its source.
 
+**Amended 2026-10-05: several batches at once.** Every *Follow-ups* section is
+a batch, pending until its own items are decided — no section supersedes
+another — and the app draws one triage card per pending batch in the Task log
+(the pane-level sidebar below has since gone; the card replaced it). The
+sections below are updated where they said last-section-wins or all-at-once.
+
 ## Problem
 
 A slice agent routinely notices work beside its change — a bug in the file
@@ -166,18 +172,26 @@ Notion: `heading_3` + one `bulleted_list_item` per line.
 
 ### Reading it back
 
-`store.PendingFollowUps(body) []FollowUp` — a store-neutral markdown parser
-beside `lastMarkdownSection`: take the **last** *Follow-ups* section; items
-begin at a `^\d+\. ` line (title), their brief is the de-indented lines up
-to the next item or the section end; subtract any title named in a
-*Follow-ups triaged* section that appears **after** that section. Matching
-is by title, exact. Fence-aware like its neighbour.
+`store.TaskEvents(body)` reads every *Follow-ups* section as a **batch** (a
+`follow_ups` event, numbered by its ordinal among the body's *Follow-ups*
+sections, 1-based); items begin at a `^\d+\. ` line (title), their brief is
+the de-indented lines up to the next item or the section end. A *Follow-ups
+triaged* section decides items of any batch written before it: each of its
+lines decides the **earliest still-undecided** item with that title, exact —
+so two batches proposing the same title are two items, decided by two lines.
+Fence-aware like its neighbour. `store.PendingFollowUps(body) []FollowUp` is
+that reading's undecided items, in body order, each with its `Batch` and an
+`Index` counting every pending item — the matching lives once, in
+`TaskEvents`.
 
-A second `slice-followups` call (the agent proposing again on a later pass)
-starts a new section, and the last one wins — correct, since Apply
-requires every item decided, so an earlier set can only be pending if the
-agent proposed again before the user acted, and then the newer set is the
-one that matters.
+A second `slice-followups` call (the agent proposing again after talking to
+the user) starts a new batch, pending beside the first; neither supersedes
+the other. The agent is told a later hand-in carries only what is new.
+
+A Done slice's undecided items (a batch an older nat let a later one
+supersede, never triaged) are history: `store.PendingFollowUpsOf` reads
+nothing pending on a Done slice, so nothing refuses on them and the app draws
+them as a plain record.
 
 ## The `nat` contract
 
@@ -209,14 +223,16 @@ agent is allowed to stop.
 
 ```json
 "followUps": [
-  { "index": 1, "title": "Persist the conversation split width per project", "brief": "…" },
-  { "index": 3, "title": "Remove the dead reply-threading code in PRConversationView", "brief": "…" }
+  { "batch": 1, "index": 1, "title": "Persist the conversation split width per project", "brief": "…" },
+  { "batch": 2, "index": 2, "title": "Name the pane's activity states in one enum", "brief": "…" }
 ]
 ```
 
-Pending ones only, with their 1-based index within the last section
-(index 2 above was already triaged). Absent/empty when none. The app's one
-read; it already calls `slice-show` on selection.
+Pending ones only, every batch's, each with its batch and its 1-based index
+among all pending items. Absent/empty when none (always on a Done slice).
+Each `follow_ups` event in `events` carries the same `batch`, so the app pairs
+a log event with its own pending items and nothing else. The app's one read;
+it already calls `slice-show` on selection.
 
 ### New: `slice-triage`
 
@@ -225,9 +241,14 @@ nat slice-triage <slice> --project <id> --json \
     [--queue N]... [--fold N]... [--drop N]... | --drop-all
 ```
 
-`N` is the index from `slice-show`. Every pending index must be named
-exactly once, or `--drop-all` given alone — a partial triage is refused
-before any write, mirroring the sidebar's Apply rule. Refused on a Todo
+`N` is the index from `slice-show`. A call decides **whole batches**: every
+pending item of each batch it names must be named exactly once, other
+batches may be left untouched, or `--drop-all` given alone (every batch) — a
+partial batch is refused before any write, mirroring the card's Apply rule.
+So is deciding an item whose title an earlier, still-pending batch also
+proposes, unless that batch is decided in the same call: the record's line
+would decide the earlier one's item instead. The record names only what this
+call decided, in pending order, and the message tells the agent only that. Refused on a Todo
 slice and when nothing is pending. Any `--fold` is refused when the slice
 has no live session (`tmux.LiveSlices`, as `agent-send`), since the
 decision can't be delivered.
@@ -270,9 +291,10 @@ relaunch prompt already tells an agent it is continuing.
 ### `NatClient`
 
 - `sliceShow` decodes the new field into `SliceDetail.followUps`.
-- New `sliceTriage(projectID:sliceRef:queue:fold:drop:)` and
-  `sliceDiscardFollowUps(projectID:sliceRef:)` → the command above.
-- `FixtureNatClient` grows both, for the gallery.
+- New `sliceTriage(projectID:sliceRef:queue:fold:drop:)` → the command
+  above; a card's Discard all is the same call dropping its batch's indexes
+  (`--drop-all` would take every batch with it).
+- `FixtureNatClient` grows it, for the gallery.
 
 ### Rail and attention
 

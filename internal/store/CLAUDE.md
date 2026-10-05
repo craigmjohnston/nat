@@ -79,9 +79,14 @@ no working dir.
   (`fixedClock`, `clocked`) so bodies and Notion request JSON stay exact.
 - `TaskEvents` reads each stamp into `TaskEvent.At` (zero where absent —
   old plans read exactly as before), and a Follow-ups triaged section's into
-  each item it decides' `TaskFollowUp.DecidedAt` (`slice-show`'s `decidedAt`); `PendingFollowUps` passes the stamp line
-  over as a non-item, and `HandbackSummaryOf` strips it. `SliceLabel` writes
-  a note's `"Name" (Milestone)` provenance and `sliceLabelOf` reads it back
+  each item it decides' `TaskFollowUp.DecidedAt` (`slice-show`'s `decidedAt`), and
+  `HandbackSummaryOf` strips it.
+- Every `Follow-ups` section is a batch (`TaskEvent.Batch`, its ordinal); a
+  triage record's line decides the earliest still-undecided item of its title
+  in any batch before it (`applyDecision`). `PendingFollowUps` is
+  `TaskEvents`' undecided items — never a parser of its own, so the two
+  cannot disagree.
+- `SliceLabel` writes a note's `"Name" (Milestone)` provenance and `sliceLabelOf` reads it back
   into `FromSlice` — write and parse kept together. `HasHistory` is the one
   rule for "launched before": any event but a note.
 

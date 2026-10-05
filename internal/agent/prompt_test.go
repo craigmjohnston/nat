@@ -766,7 +766,8 @@ func TestOnlyAGnatPromptProposesFollowUps(t *testing.T) {
 	gnat := Prompt(c)
 	for _, want := range []string{
 		"    nat slice-followups " + c.Slice.ID + " --project " + testProjectID + " \\\n        --follow-up '<title line>",
-		"`complete-slice` refuses while the decision is outstanding.",
+		"`complete-slice` refuses while the\ndecision is outstanding.",
+		"A later hand-in carries only\nwhat is new — never a repeat of a follow-up already handed in.",
 		"\nDone when: <how anyone checks it is finished>'",
 		"this text is the\nbrief of a new slice, word for word",
 		"starting `Done when:` saying how anyone checks it is finished",
