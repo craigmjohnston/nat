@@ -88,11 +88,12 @@ final class ChecksFailingTests: XCTestCase {
         let model = buildSidebarModel(
             projects: [SidebarProjectInput(id: "p", name: "P", plan: plan)],
             liveAgents: ["b": .waiting, "c": .working],
-            failingChecks: ["a": ["test"], "b": ["lint"], "c": ["stale"]])
-        let marks = Dictionary(uniqueKeysWithValues: model.active.map { ($0.targetID, $0.failingChecks) })
+            prMarks: ["a": PRMarks(failingChecks: ["test"]), "b": PRMarks(failingChecks: ["lint"]),
+                      "c": PRMarks(failingChecks: ["stale"])])
+        let marks = Dictionary(uniqueKeysWithValues: model.active.map { ($0.targetID, $0.marks.failingChecks) })
         XCTAssertEqual(marks["a"], ["test"])
         XCTAssertEqual(marks["b"], ["lint"], "under a fix, its agent waiting")
-        XCTAssertEqual(marks["c"], [], "a working slice has no pull request to mark")
+        XCTAssertEqual(marks["c"], .some(nil), "a working slice has no pull request to mark")
     }
 
     // MARK: - The task log

@@ -35,11 +35,27 @@ struct SliceNavigatorView: View {
             slice: slice, agent: agent.map { AgentActivity($0.activity) },
             hasVisuals: !visuals.isEmpty)
     }
+    /// This project's last `pr-status` reading.
+    private var prReadingOfProject: PRReading { appModel.prStatusStore?.reading(projectID: projectID) ?? .empty }
     /// The failing-checks notice, where the last PR reading has one.
     private var notice: ChecksNotice? {
         checksNotice(
-            slice: slice, failing: appModel.reviewStatsStore?.failingChecks[slice.id],
+            slice: slice, failing: prReadingOfProject.failingChecks[slice.id],
             hasLiveAgent: agent != nil, events: detail.detail?.events)
+    }
+    /// The conflict notice, where the last reading — the loaded pull request
+    /// where it is this one, else `pr-status`'s — has one.
+    private var conflictNotice: ConflictNotice? {
+        NatKit.conflictNotice(
+            slice: slice,
+            conflict: conflict(
+                reading: prReadingOfProject.conflicts[slice.id], detail: prStore.loadState.pr, prURL: slice.pr),
+            hasLiveAgent: agent != nil)
+    }
+    /// The PR header's danger icon's tooltip: every notice that applies.
+    private var prWarning: String? {
+        let texts = [notice?.text, conflictNotice?.text].compactMap { $0 }
+        return texts.isEmpty ? nil : texts.joined(separator: "\n")
     }
     private var detail: SliceDetailLoadState { appModel.sliceDetailStore(projectID: projectID).state(for: slice.id) }
     private var visuals: [VisualChange] { detail.detail?.visuals ?? [] }
@@ -96,7 +112,7 @@ struct SliceNavigatorView: View {
             if nav.isLive(.pr) {
                 NavSectionView(
                     label: "PR", open: open.contains(.pr), selected: main == .pr, status: nav.prStatus,
-                    warning: notice?.text, onHead: { click(.pr) }, onFold: { fold(.pr) }
+                    warning: prWarning, onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
                     PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
                     if nav.showsMerge { mergeAction }
@@ -606,8 +622,19 @@ struct SliceNavigatorView: View {
         store.startPolling()
     }
 
-    @ViewBuilder
     private var prReading: some View {
+        VStack(spacing: 0) {
+            // Drawn from the project's reading too, so it shows before the
+            // pull request itself has been read.
+            if let conflictNotice {
+                NavNotice(text: conflictNotice.text, role: .danger)
+            }
+            prBody
+        }
+    }
+
+    @ViewBuilder
+    private var prBody: some View {
         if let pr = prStore.loadState.pr {
             PRSectionBody(
                 pr: pr,

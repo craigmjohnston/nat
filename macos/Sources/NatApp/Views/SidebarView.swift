@@ -30,6 +30,9 @@ struct SidebarView: View {
     /// An Active row to draw under the pointer, by its slice's, session's or
     /// (a workshop's) project's ID — a story's, the same way.
     var hoveredActiveRow: String?
+    /// A milestone row to draw under the pointer, by its fold key
+    /// (`m:<project>/<milestone>`) — a story's, the same way.
+    var hoveredMilestone: String?
     /// View ▸ Show/Hide Done Items.
     @Environment(\.showsDoneItems) private var showsDoneItems
 
@@ -87,13 +90,16 @@ struct SidebarView: View {
     ///   - hoveredSlice: a slice row to draw under the pointer, by slice ID.
     ///   - hoveredActiveRow: an Active row to draw under the pointer, by its
     ///     target's ID.
+    ///   - hoveredMilestone: a milestone row to draw under the pointer, by its
+    ///     fold key.
     init(
         appModel: AppModel, onNewProject: @escaping () -> Void = {}, showsTitlebar: Bool = false,
         folded: [String: Bool] = [:], treeAnchor: UnitPoint? = nil,
         hoveredContainer: (projectID: String, containerID: String)? = nil,
         hoveredGroup: (projectID: String, groupID: String)? = nil,
         hoveredSlice: String? = nil,
-        hoveredActiveRow: String? = nil
+        hoveredActiveRow: String? = nil,
+        hoveredMilestone: String? = nil
     ) {
         self.appModel = appModel
         self.onNewProject = onNewProject
@@ -101,6 +107,7 @@ struct SidebarView: View {
         self.treeAnchor = treeAnchor
         self.hoveredSlice = hoveredSlice
         self.hoveredActiveRow = hoveredActiveRow
+        self.hoveredMilestone = hoveredMilestone
         _fold = State(initialValue: folded)
         _hoveredSourceRow = State(initialValue: hoveredContainer.map {
             Self.sourceRowKey($0.projectID, container: $0.containerID)
@@ -875,14 +882,9 @@ struct SidebarView: View {
             ActiveIdentityLabel(
                 tag: row.projectTag, state: row.state, live: row.live, title: row.title, symbol: row.symbol)
             Spacer(minLength: 0)
-            if !row.failingChecks.isEmpty {
-                // The pull request was last read failing its checks: a
-                // danger mark, the checks by name under the pointer.
-                Image(systemName: "xmark.octagon.fill")
-                    .font(.system(size: 10, weight: .medium))
-                    .ink(.danger)
-                    .help("Checks failing: \(row.failingChecks.joined(separator: ", "))")
-            }
+            // The pull request was last read failing its checks, or
+            // conflicting: its marks, each named under the pointer.
+            PRMarksView(marks: row.marks)
             if row.kind == .workshop {
                 Button { closeWorkshopRow(row) } label: {
                     Image(systemName: "xmark")
@@ -1241,14 +1243,16 @@ struct SidebarView: View {
         isDone: Bool = false
     ) -> some View {
         let open = isOpen(key, byDefault: openByDefault)
-        return TreeMilestoneLine(name: name, count: count, open: open, indent: indent, isDone: isDone)
+        return TreeMilestoneLine(name: name, count: count, open: open, indent: indent, isDone: isDone, folds: true)
+            .transformEnvironment(\.hoverForced) { if key == hoveredMilestone { $0 = true } }
             .contentShape(Rectangle())
             .onTapGesture { toggle(key, open: open) }
     }
 
     private func sliceRow(_ row: SidebarSliceRow, indent: CGFloat = 34) -> some View {
         let selected = appModel.activeProjectID == row.projectID && appModel.selectedSliceID == row.sliceID
-        return sliceLine(title: row.title, state: row.state, live: row.live, selected: selected, indent: indent)
+        return sliceLine(
+            title: row.title, state: row.state, live: row.live, selected: selected, indent: indent, marks: row.marks)
             .transformEnvironment(\.hoverForced) { if row.sliceID == hoveredSlice { $0 = true } }
             .onTapGesture { Task { await appModel.selectSlice(row.sliceID, inProject: row.projectID) } }
             .contextMenu {
@@ -1258,9 +1262,10 @@ struct SidebarView: View {
     }
 
     private func sliceLine(
-        title: String, state: SliceDisplayState, live: Bool, selected: Bool, indent: CGFloat = 34
+        title: String, state: SliceDisplayState, live: Bool, selected: Bool, indent: CGFloat = 34,
+        marks: PRMarks = .none
     ) -> some View {
-        TreeSliceLine(title: title, state: state, live: live, selected: selected, indent: indent)
+        TreeSliceLine(title: title, state: state, live: live, selected: selected, indent: indent, marks: marks)
     }
 
     /// The project's finished milestones, once it has one: a Done folder at
