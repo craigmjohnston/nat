@@ -714,7 +714,33 @@ func checksPassage(c PromptContext) string {
 	b.WriteString("If you are told they failed, read how they stand — each check, and each\n")
 	b.WriteString("failed step's log — with:\n\n")
 	fmt.Fprintf(&b, "    nat slice-checks %s --log --project %s\n\n", c.Slice.ID, c.ProjectID)
-	b.WriteString("That is the one way to read CI: never `gh`.\n")
+	b.WriteString(runningChecksSentence)
+	b.WriteString("That is the one way to read CI: never `gh`.\n\n")
+	b.WriteString(rerunPassage(c.Slice.ID, c.ProjectID))
+	return b.String()
+}
+
+// runningChecksSentence is what the slice prompt, the fix prompt and the
+// checks nudge each say after the slice-checks command: it also reads a check
+// still running, which is where a stalled one is looked into.
+const runningChecksSentence = "The same command shows what a check still running is doing — the step\n" +
+	"it is on and for how long — so a check that has sat pending far longer\n" +
+	"than its siblings or its usual run is read there, never with `gh`.\n\n"
+
+// rerunPassage is how the slice prompt, the fix prompt and the checks nudge
+// tell an agent to re-run CI: `nat slice-checks-rerun`, for a failure that is
+// not the change's, never as a retry of a real one — and never `gh`.
+// skills/next-slice/SKILL.md says the same in its own words.
+func rerunPassage(sliceID, projectID string) string {
+	var b strings.Builder
+	b.WriteString("Where a check failed or stalled for a reason that is not the change's —\n")
+	b.WriteString("a flake, a runner that died, a job that has stalled — re-run it with:\n\n")
+	fmt.Fprintf(&b, "    nat slice-checks-rerun %s --check '<check name>' --project %s\n\n", sliceID, projectID)
+	b.WriteString("(`--failed` instead of `--check` re-runs every failed job.) A check still\n")
+	b.WriteString("running is cancelled first by the re-run itself, and a cancel stops every\n")
+	b.WriteString("job of that run — the output says which. It is never a way to retry a\n")
+	b.WriteString("real failure without a fix: a pushed commit re-runs CI by itself. Never\n")
+	b.WriteString("`gh` for this either.\n")
 	return b.String()
 }
 

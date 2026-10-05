@@ -139,11 +139,33 @@ public struct PRCheck: Codable, Equatable, Sendable {
     public let name: String
     public let state: String
     public let link: String
+    /// Whether a GitHub Actions run is behind the check — what `nat
+    /// slice-checks-rerun` and `-cancel` can act on. False where an older
+    /// `nat` sent no such key.
+    public let rerunnable: Bool
+    /// The Actions run's id, nil for a check no run is behind: checks with
+    /// the same `run` stop together, since GitHub cancels whole runs.
+    public let run: String?
 
-    public init(name: String, state: String, link: String) {
+    enum CodingKeys: String, CodingKey {
+        case name, state, link, rerunnable, run
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        state = try c.decode(String.self, forKey: .state)
+        link = try c.decode(String.self, forKey: .link)
+        rerunnable = try c.decodeIfPresent(Bool.self, forKey: .rerunnable) ?? false
+        run = try c.decodeIfPresent(String.self, forKey: .run)
+    }
+
+    public init(name: String, state: String, link: String, rerunnable: Bool = false, run: String? = nil) {
         self.name = name
         self.state = state
         self.link = link
+        self.rerunnable = rerunnable
+        self.run = run
     }
 }
 

@@ -236,6 +236,7 @@ func TestSessionLaunchRefusesAMissingDirectory(t *testing.T) {
 // commands: OpenPRs/CreatePR/MergePR/CommentPR are stubbed since none of
 // them are ever called by session-list/-status.
 type fakeSessionGH struct {
+	noActions
 	byBranch map[string][]gh.HeadPR
 	err      map[string]error
 	calls    []string

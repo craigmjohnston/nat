@@ -112,6 +112,31 @@ Stories: `window-pr-fix-launch`, `window-fixing`, `sidebar-checks-failing`,
 `window-pr-checks-failing`, `window-pr-checks-agent-told`,
 `window-task-log-checks-failed`.
 
+**Re-running and cancelling checks.** The PR section's Checks block
+(`PRSectionBody`, `ChecksControlsView.swift`): each check row ends in a re-run
+(`arrow.clockwise`) and a cancel (`xmark`) icon button, and the Checks heading
+(`ChecksHeading`) in the same pair stacked — `StackedGlyph`, drawn because SF
+Symbols on macOS 15 has no stacked refresh or cross: the row glyph with a
+dimmer copy behind it, up and to the right, knocked out a point round the
+front one as `DoneFolderGlyph` cuts its check. All four sit in fixed
+`CheckControlSlot` columns at the trailing edge. Heading re-run is a menu: Re-run
+all, Re-run failed. Row re-run is `slice-checks-rerun --check`, row cancel
+`slice-checks-cancel --check`, heading cancel `slice-checks-cancel`; nat cancels
+a running run before re-running, so nothing is disabled for running. What is
+enabled, and each tooltip's list of the siblings a call would stop (same `run`,
+still queued or running), is `ChecksControls` (NatKit, unit-tested) from the
+checks' states, `rerunnable` and `run` (`pr-view`'s new fields). The heading's
+buttons are absent where no check is `rerunnable`, and so are all of them on a
+session's PR (`checksStore` nil). A row is washed full bleed under the pointer
+(`gnatRow`, padded out by NavProse's 12 and back). `PRStore.rerunChecks`/
+`cancelChecks` run one call at a time (`checksActionSource`: its button a
+spinner, every other disabled), then re-read the PR and show nat's report
+(`checksActionNotice`: "Cancelled …, then re-ran …") or its refusal as the
+body's `NavNotice` (`checksNotice`, cleared on another slice). No confirmation.
+Stories: `window-pr-checks-controls`, `pr-checks-controls`,
+`pr-checks-row-hovered`, `pr-checks-nothing-run`, `pr-checks-mid-call`,
+`pr-checks-cancelled-then-reran`.
+
 ## The workshop and its proposal
 
 Every workshop proposes with `nat plan-propose` — an Untitled tab's by its

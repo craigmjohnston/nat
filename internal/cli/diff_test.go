@@ -83,6 +83,7 @@ func (f *fakeGitRunner) Run(dir, _ string, args ...string) (string, error) {
 // fakePRBase answers ViewPR with a fixed base branch (or a refusal), and
 // stubs the rest of [GH], the way prstatus_test's fakePRReader does.
 type fakePRBase struct {
+	noActions
 	base  string
 	err   error
 	calls int

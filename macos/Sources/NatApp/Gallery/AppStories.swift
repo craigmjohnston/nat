@@ -118,6 +118,27 @@ enum AppStories {
         return shell(appModel, focus: focus)
     }
 
+    /// The size the PR section's Checks stories are drawn at: the
+    /// navigator's width.
+    private static let checksSize = CGSize(width: 330, height: 330)
+
+    /// The PR section's body over `checks`, read through a `PRStore` on the
+    /// fixture client — `act` run on the store before it is drawn.
+    private static func checksSection(
+        _ checks: [PRCheck], hovered: String? = nil,
+        act: @MainActor (PRStore, FixtureNatClient) async -> Void = { _, _ in }
+    ) async -> some View {
+        let client = FixtureNatClient(pr: Fixtures.pr(checks: checks))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: Fixtures.projectID, sliceRef: Fixtures.approveSliceID)
+        await act(store, client)
+        store.stopPolling()
+        return PRSectionBody(
+            pr: store.loadState.pr ?? Fixtures.pr(checks: checks), checksStore: store, hoveredCheck: hovered)
+            .frame(width: checksSize.width, height: checksSize.height, alignment: .top)
+            .surface(.window)
+    }
+
     /// Starts an action whose nat call the fixture client holds, and gives it
     /// long enough to reach that call — the state a story about an action in
     /// flight is drawn in.
@@ -595,6 +616,61 @@ enum AppStories {
             await slicePane(
                 Fixtures.approveSliceID, agents: Fixtures.fixAgentStatuses, plan: Fixtures.fixingProjectInfo,
                 prStatus: Fixtures.prStatusChecksFailing, pr: Fixtures.prFailingChecks, details: Fixtures.checksNudgedSliceDetails)
+        },
+
+        Story(
+            name: "window-pr-checks-controls",
+            summary: "An approved slice's PR section open over checks in every state — passed, failed, running, queued, and one Vercel reported: each Actions row ends in re-run and cancel icon buttons, the heading in the stacked pair in the same columns; the Vercel row has none.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], pr: Fixtures.pr(checks: Fixtures.mixedChecks),
+                focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
+            name: "pr-checks-controls",
+            summary: "The Checks block alone: passed and failed rows' re-run enabled, their cancel disabled; the running row both enabled, the queued one cancel alone; Vercel's both disabled, no Actions run being behind it. The heading's re-run and cancel both enabled.",
+            size: checksSize
+        ) {
+            await checksSection(Fixtures.mixedChecks)
+        },
+
+        Story(
+            name: "pr-checks-row-hovered",
+            summary: "The running macOS check's row under the pointer: the row wash runs full bleed to the section's edges, its buttons in the heading's columns.",
+            size: checksSize
+        ) {
+            await checksSection(Fixtures.mixedChecks, hovered: "macOS App CI / test")
+        },
+
+        Story(
+            name: "pr-checks-nothing-run",
+            summary: "Every Actions job still queued: the heading's re-run disabled (nothing has run), its cancel enabled; each row's re-run disabled and cancel enabled.",
+            size: checksSize
+        ) {
+            await checksSection(Fixtures.queuedChecks)
+        },
+
+        Story(
+            name: "pr-checks-mid-call",
+            summary: "A re-run of the running macOS check under way: its re-run button a spinner, every other re-run and cancel disabled.",
+            size: checksSize
+        ) {
+            await checksSection(Fixtures.mixedChecks) { store, client in
+                client.holdChecksActions()
+                await startHeld { await store.rerunChecks(.checks(["macOS App CI / test"]), from: .rerun("macOS App CI / test")) }
+            }
+        },
+
+        Story(
+            name: "pr-checks-cancelled-then-reran",
+            summary: "After re-running the running macOS check: the section's notice says nat cancelled it and its queued sibling first, then re-ran both.",
+            size: checksSize
+        ) {
+            await checksSection(Fixtures.mixedChecks) { store, _ in
+                await store.rerunChecks(.checks(["macOS App CI / test"]), from: .rerun("macOS App CI / test"))
+            }
         },
 
         Story(

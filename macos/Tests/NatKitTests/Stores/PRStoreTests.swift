@@ -119,6 +119,21 @@ private final class MockPRClient: NatClientProtocol, @unchecked Sendable {
         return PRReviewers(pr: sliceRef, requested: add, candidates: ["mona"])
     }
 
+    private(set) var checksCalls: [String] = []
+    var checksError: Error?
+
+    func sliceChecksRerun(projectID: String, sliceRef: String, mode: ChecksRerunMode) async throws -> ChecksActionResult {
+        checksCalls.append("rerun \(mode)")
+        if let checksError { throw checksError }
+        return ChecksActionResult(cancelled: ["test", "lint"], rerun: ["test", "lint", "build"])
+    }
+
+    func sliceChecksCancel(projectID: String, sliceRef: String, checks: [String]) async throws -> ChecksActionResult {
+        checksCalls.append("cancel \(checks)")
+        if let checksError { throw checksError }
+        return ChecksActionResult(cancelled: ["test"])
+    }
+
     func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {
         throw PRTestError()
     }
@@ -735,5 +750,61 @@ final class PRStoreTests: XCTestCase {
         try? await store.comment(text: "hi")
 
         XCTAssertEqual(client.commentCalls.count, 0)
+    }
+
+    // MARK: - Re-running and cancelling checks
+
+    @MainActor
+    func testRerunChecksSaysWhatNatDidThenRereads() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        await store.rerunChecks(.checks(["test"]), from: .rerun("test"))
+
+        XCTAssertEqual(client.checksCalls, ["rerun checks([\"test\"])"])
+        XCTAssertEqual(store.checksNotice, ChecksActionNotice(
+            text: "Cancelled test and lint, then re-ran test, lint and build.", isError: false))
+        XCTAssertNil(store.checksActionSource)
+        XCTAssertEqual(client.viewCallCount, 2, "a re-run should trigger a reread")
+    }
+
+    @MainActor
+    func testCancelChecksRefusalIsTheNotice() async {
+        let client = MockPRClient(response: .success(openPR()))
+        client.checksError = NatError.commandFailed("slice-checks-cancel: nothing to cancel")
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        await store.cancelChecks([], from: .cancelAll)
+
+        XCTAssertEqual(store.checksNotice, ChecksActionNotice(text: "slice-checks-cancel: nothing to cancel", isError: true))
+        XCTAssertEqual(client.viewCallCount, 2)
+    }
+
+    @MainActor
+    func testChecksCallsNeedASlicesPullRequest() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.rerunChecks(.all, from: .rerunAll)
+        await store.fetch(projectID: "proj-1", sliceRef: "https://x/pull/7", sessionID: "s1")
+        await store.cancelChecks([], from: .cancelAll)
+        XCTAssertEqual(client.checksCalls, [])
+        XCTAssertNil(store.checksNotice)
+    }
+
+    @MainActor
+    func testTheNoticeGoesWithAnotherSlicesPullRequest() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        await store.cancelChecks(["test"], from: .cancel("test"))
+        XCTAssertNotNil(store.checksNotice)
+
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-2")
+        XCTAssertNil(store.checksNotice)
+        await store.cancelChecks(["test"], from: .cancel("test"))
+        store.clear()
+        XCTAssertNil(store.checksNotice)
     }
 }

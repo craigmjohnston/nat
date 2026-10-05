@@ -31,6 +31,28 @@ extension Fixtures {
         PRCheck(name: "codeql", state: "SKIPPED", link: prURL + "/checks?check_run_id=4"),
     ]
 
+    static func actionsLink(run: Int, job: Int) -> String {
+        "https://github.com/craigmjohnston/notion-agent-tracker/actions/runs/\(run)/job/\(job)"
+    }
+
+    /// Checks in every state the controls tell apart, across two Actions runs
+    /// and another service: one run finished with a failure, one still going
+    /// (a job running, a sibling queued), and a status Vercel reported.
+    public static let mixedChecks: [PRCheck] = [
+        PRCheck(name: "Gate", state: "SUCCESS", link: actionsLink(run: 901, job: 11), rerunnable: true, run: "901"),
+        PRCheck(name: "test", state: "FAILURE", link: actionsLink(run: 901, job: 12), rerunnable: true, run: "901"),
+        PRCheck(name: "macOS App CI / test", state: "IN_PROGRESS", link: actionsLink(run: 902, job: 21), rerunnable: true, run: "902"),
+        PRCheck(name: "lint", state: "QUEUED", link: actionsLink(run: 902, job: 22), rerunnable: true, run: "902"),
+        PRCheck(name: "Vercel", state: "PENDING", link: "https://vercel.com/craig/nat/1"),
+    ]
+
+    /// Checks none of which has started: every Actions job queued.
+    public static let queuedChecks: [PRCheck] = [
+        PRCheck(name: "Gate", state: "QUEUED", link: actionsLink(run: 903, job: 31), rerunnable: true, run: "903"),
+        PRCheck(name: "test", state: "QUEUED", link: actionsLink(run: 903, job: 32), rerunnable: true, run: "903"),
+        PRCheck(name: "Vercel", state: "PENDING", link: "https://vercel.com/craig/nat/1"),
+    ]
+
     static let approvingReviews: [PRReview] = [
         PRReview(
             author: "craigmjohnston",
@@ -240,4 +262,16 @@ extension Fixtures {
 
     public static let prErrorMessage =
         "nat pr-view: gh: no pull requests found for branch \"\(diffBranch)\""
+}
+
+extension Fixtures {
+    /// The green pull request with `checks` in place of its own.
+    public static func pr(checks: [PRCheck]) -> PRDetail {
+        PRDetail(
+            number: prGreen.number, title: prGreen.title, body: prGreen.body, state: prGreen.state,
+            isDraft: false, author: prGreen.author, baseRefName: prGreen.baseRefName,
+            headRefName: prGreen.headRefName, url: prGreen.url, checks: checks, reviews: prGreen.reviews,
+            comments: prGreen.comments, reviewDecision: prGreen.reviewDecision, mergeable: prGreen.mergeable,
+            mergeStateStatus: prGreen.mergeStateStatus)
+    }
 }

@@ -20,6 +20,7 @@ import (
 // one entry per repository the plan spans, exactly as [PRReader.OpenPRs] does
 // — and for the per-pull-request reading pr-status settles an absent one by.
 type fakePRReader struct {
+	noActions
 	open  map[string]map[string]gh.PRStatus
 	err   map[string]error
 	dirs  []string

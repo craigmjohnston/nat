@@ -40,6 +40,27 @@ public enum PRLoadState: Equatable, Sendable {
     }
 }
 
+/// Which re-run or cancel control a call is under way from: the heading's
+/// two, or one check row's.
+public enum ChecksActionSource: Hashable, Sendable {
+    case rerunAll
+    case cancelAll
+    case rerun(String)
+    case cancel(String)
+}
+
+/// What the PR section says after a re-run or cancel: what nat reports doing,
+/// or its refusal.
+public struct ChecksActionNotice: Equatable, Sendable {
+    public let text: String
+    public let isError: Bool
+
+    public init(text: String, isError: Bool) {
+        self.text = text
+        self.isError = isError
+    }
+}
+
 /// Manages a slice's pull request: fetching it on demand, polling it while
 /// the tab showing it is open and the pull request is, and
 /// merging it.
@@ -58,6 +79,13 @@ public final class PRStore {
     /// a poll every five seconds never moves a row; `loadState`'s own
     /// `.loading` is the other case, the one with nothing to keep.
     public private(set) var isRefreshing = false
+
+    /// The re-run or cancel control a call is under way from, nil with none —
+    /// while set, every such control is disabled and this one spins.
+    public private(set) var checksActionSource: ChecksActionSource?
+    /// What the last re-run or cancel did, or why nat refused it — cleared
+    /// when another slice's pull request is fetched.
+    public private(set) var checksNotice: ChecksActionNotice?
 
     private let client: NatClientProtocol
     private let pollIntervalNanoseconds: UInt64
@@ -107,6 +135,7 @@ public final class PRStore {
         }
         if let previous = self.sliceRef, previous != sliceRef {
             stopPolling()
+            checksNotice = nil
         }
         self.projectID = projectID
         self.sliceRef = sliceRef
@@ -180,9 +209,45 @@ public final class PRStore {
         return answer
     }
 
+    /// Re-run the pull request's checks (`nat slice-checks-rerun`) from the
+    /// control `source`, then read it again at once and say what nat
+    /// cancelled and re-ran — or why it refused. One call at a time.
+    public func rerunChecks(_ mode: ChecksRerunMode, from source: ChecksActionSource) async {
+        await checksAction(from: source) { client, projectID, sliceRef in
+            try await client.sliceChecksRerun(projectID: projectID, sliceRef: sliceRef, mode: mode)
+        }
+    }
+
+    /// Cancel the runs still going behind the pull request's checks — all, or
+    /// the named checks' — (`nat slice-checks-cancel`), as `rerunChecks` does.
+    public func cancelChecks(_ checks: [String], from source: ChecksActionSource) async {
+        await checksAction(from: source) { client, projectID, sliceRef in
+            try await client.sliceChecksCancel(projectID: projectID, sliceRef: sliceRef, checks: checks)
+        }
+    }
+
+    private func checksAction(
+        from source: ChecksActionSource,
+        _ call: (NatClientProtocol, String, String) async throws -> ChecksActionResult
+    ) async {
+        guard checksActionSource == nil, let projectID, let sliceRef, sessionID == nil else { return }
+        checksActionSource = source
+        checksNotice = nil
+        do {
+            let result = try await call(client, projectID, sliceRef)
+            checksNotice = ChecksActionNotice(text: checksActionNotice(result), isError: false)
+        } catch {
+            checksNotice = ChecksActionNotice(text: SliceActionTracker.message(for: error), isError: true)
+        }
+        checksActionSource = nil
+        await refresh()
+        startPolling()
+    }
+
     /// Drop everything, as if nothing had ever been fetched.
     public func clear() {
         stopPolling()
+        checksNotice = nil
         loadState = .idle
         projectID = nil
         sliceRef = nil

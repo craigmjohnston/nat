@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -25,13 +26,84 @@ type fakeChecksGH struct {
 	logs    map[string]string
 	logErr  error
 	logRuns []string
+	// prState is the pull request's state, OPEN where left empty.
+	prState string
+
+	// jobs answers ActionsJob by job id, jobErr fails it; jobLogs answers
+	// JobLog by job id, jobLogErr fails it.
+	jobs      map[string]gh.Job
+	jobErr    error
+	jobLogs   map[string]string
+	jobLogErr error
+
+	// statuses answers RunStatus by run, one word per poll (the last
+	// repeating), statusErr failing the first poll; failOn fails the run
+	// call whose record starts with it; calls records every run call.
+	statuses  map[string][]string
+	statusErr error
+	failOn    string
+	calls     []string
 }
 
 func (f *fakeChecksGH) ViewPR(dir, ref string) (gh.PR, error) {
 	if f.viewErr != nil {
 		return gh.PR{}, f.viewErr
 	}
-	return gh.PR{URL: ref, Checks: f.checks}, nil
+	state := f.prState
+	if state == "" {
+		state = "OPEN"
+	}
+	return gh.PR{URL: ref, State: state, Checks: f.checks}, nil
+}
+
+func (f *fakeChecksGH) ActionsJob(dir string, ref gh.ActionsRef) (gh.Job, error) {
+	return f.jobs[ref.Job], f.jobErr
+}
+
+func (f *fakeChecksGH) JobLog(dir string, ref gh.ActionsRef) (string, error) {
+	return f.jobLogs[ref.Job], f.jobLogErr
+}
+
+func (f *fakeChecksGH) record(call string) error {
+	f.calls = append(f.calls, call)
+	if f.failOn != "" && strings.HasPrefix(call, f.failOn) {
+		return errors.New("gh refused " + call)
+	}
+	return nil
+}
+
+func (f *fakeChecksGH) RunStatus(dir string, ref gh.ActionsRef) (string, error) {
+	f.calls = append(f.calls, "status "+ref.Run)
+	if f.statusErr != nil {
+		err := f.statusErr
+		f.statusErr = nil
+		return "", err
+	}
+	words := f.statuses[ref.Run]
+	if len(words) == 0 {
+		return gh.RunCompleted, nil
+	}
+	word := words[0]
+	if len(words) > 1 {
+		f.statuses[ref.Run] = words[1:]
+	}
+	return word, nil
+}
+
+func (f *fakeChecksGH) CancelRun(dir string, ref gh.ActionsRef) error {
+	return f.record("cancel " + ref.Owner + "/" + ref.Repo + " " + ref.Run)
+}
+
+func (f *fakeChecksGH) RerunRun(dir string, ref gh.ActionsRef, failedOnly bool) error {
+	call := "rerun " + ref.Run
+	if failedOnly {
+		call += " --failed"
+	}
+	return f.record(call)
+}
+
+func (f *fakeChecksGH) RerunJob(dir string, ref gh.ActionsRef) error {
+	return f.record("rerun --job " + ref.Job)
 }
 
 func (f *fakeChecksGH) FailedLog(dir string, ref gh.ActionsRef) (string, error) {
@@ -243,4 +315,121 @@ func compactJSON(t *testing.T, s string) string {
 	}
 	b, _ := json.Marshal(v)
 	return string(b)
+}
+
+// fixedNow pins checksNow for a test, so a running job's durations are exact.
+func fixedNow(t *testing.T, at time.Time) {
+	t.Helper()
+	old := checksNow
+	checksNow = func() time.Time { return at }
+	t.Cleanup(func() { checksNow = old })
+}
+
+// TestSliceChecksLogRunningJob says under a running Actions check where its
+// job stands — running, the step in progress and for how long, the job's
+// runner and how long it has run — then each step with its status and time,
+// and that GitHub gives no log until the job ends; under a queued one, how
+// long it has waited for a runner; and nothing more under a pending check
+// whose URL names no job, or that another service reported.
+func TestSliceChecksLogRunningJob(t *testing.T) {
+	base := time.Date(2026, 10, 5, 11, 0, 0, 0, time.UTC)
+	at := func(d time.Duration) time.Time { return base.Add(d) }
+	fixedNow(t, at(10*time.Minute))
+	fake := &fakeChecksGH{
+		checks: []gh.Check{
+			{Name: "test", State: "IN_PROGRESS", URL: "https://github.com/o/r/actions/runs/11/job/21"},
+			{Name: "lint", State: "QUEUED", URL: "https://github.com/o/r/actions/runs/11/job/22"},
+			{Name: "macos", State: "IN_PROGRESS", URL: "https://github.com/o/r/actions/runs/12"},
+			{Name: "vercel", State: "PENDING", URL: "https://vercel.example.com/1"},
+		},
+		jobs: map[string]gh.Job{
+			"21": {Status: gh.JobInProgress, CreatedAt: at(0), StartedAt: at(time.Minute), Runner: "GitHub Actions 7", Steps: []gh.JobStep{
+				{Name: "Set up job", Status: "completed", Conclusion: "success", StartedAt: at(time.Minute), CompletedAt: at(time.Minute + 2*time.Second)},
+				{Name: "Test", Status: "in_progress", StartedAt: at(2 * time.Minute)},
+				{Name: "Post", Status: "pending"},
+			}},
+			"22": {Status: gh.JobQueued, CreatedAt: at(7 * time.Minute)},
+		},
+		jobLogErr: gh.ErrLogNotReady,
+	}
+	env, out := checksEnv(t, checksPR, fake)
+	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-checks --log: %v", err)
+	}
+	want := `Checks: pending — ` + checksPR + `
+
+- test — IN_PROGRESS — https://github.com/o/r/actions/runs/11/job/21
+  in progress for 9m0s on GitHub Actions 7, at step "Test" for 8m0s
+  steps:
+  - Set up job — success — 2s
+  - Test — in progress — 8m0s so far
+  - Post — pending
+  log: GitHub gives no log until the job ends
+- lint — QUEUED — https://github.com/o/r/actions/runs/11/job/22
+  queued, no runner yet — waiting 3m0s
+  log: GitHub gives no log until the job ends
+- macos — IN_PROGRESS — https://github.com/o/r/actions/runs/12
+- vercel — PENDING — https://vercel.example.com/1
+`
+	if out.String() != want {
+		t.Errorf("output =\n%s\nwant\n%s", out.String(), want)
+	}
+
+	env, out = checksEnv(t, checksPR, fake)
+	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-checks --log --json: %v", err)
+	}
+	wantJSON := `{"checks":[` +
+		`{"job":{"created_at":"2026-10-05T11:00:00Z","runner":"GitHub Actions 7","started_at":"2026-10-05T11:01:00Z","status":"in_progress","steps":[` +
+		`{"completed_at":"2026-10-05T11:01:02Z","conclusion":"success","name":"Set up job","started_at":"2026-10-05T11:01:00Z","status":"completed"},` +
+		`{"name":"Test","started_at":"2026-10-05T11:02:00Z","status":"in_progress"},` +
+		`{"name":"Post","status":"pending"}]},"log_pending":true,"name":"test","state":"IN_PROGRESS","url":"https://github.com/o/r/actions/runs/11/job/21"},` +
+		`{"job":{"created_at":"2026-10-05T11:07:00Z","status":"queued","steps":[]},"log_pending":true,"name":"lint","state":"QUEUED","url":"https://github.com/o/r/actions/runs/11/job/22"},` +
+		`{"name":"macos","state":"IN_PROGRESS","url":"https://github.com/o/r/actions/runs/12"},` +
+		`{"name":"vercel","state":"PENDING","url":"https://vercel.example.com/1"}],` +
+		`"pr":"` + checksPR + `","verdict":"pending"}`
+	if got := compactJSON(t, out.String()); got != wantJSON {
+		t.Errorf("json =\n%s\nwant\n%s", got, wantJSON)
+	}
+}
+
+// TestSliceChecksLogRunningJobReads prints a log GitHub gave, cut as a failed
+// one is; says under the check why a job or log could not be read, the
+// verdict and every other check still printed; and reads a job with no start
+// time as waiting with no time to give.
+func TestSliceChecksLogRunningJobReads(t *testing.T) {
+	fixedNow(t, time.Date(2026, 10, 5, 11, 0, 0, 0, time.UTC))
+	running := []gh.Check{
+		{Name: "test", State: "IN_PROGRESS", URL: "https://github.com/o/r/actions/runs/11/job/21"},
+		{Name: "lint", State: "SUCCESS", URL: "https://github.com/o/r/actions/runs/11/job/22"},
+	}
+	fake := &fakeChecksGH{checks: running, jobs: map[string]gh.Job{"21": {Status: gh.JobInProgress, StartedAt: time.Date(2026, 10, 5, 11, 0, 5, 0, time.UTC)}},
+		jobLogs: map[string]string{"21": "step one\nstep two"}}
+	env, out := checksEnv(t, checksPR, fake)
+	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-checks --log: %v", err)
+	}
+	for _, want := range []string{"  in progress for 0s\n- lint", "## test log\n\n```\nstep one\nstep two\n```"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, out.String())
+		}
+	}
+
+	fake = &fakeChecksGH{checks: running, jobErr: errors.New("HTTP 502\nmore"), jobLogErr: errors.New("HTTP 500")}
+	env, out = checksEnv(t, checksPR, fake)
+	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-checks --log over failed reads: %v", err)
+	}
+	want := "Checks: pending — " + checksPR + "\n\n- test — IN_PROGRESS — https://github.com/o/r/actions/runs/11/job/21\n" +
+		"  job not available: HTTP 502\n  log not available: HTTP 500\n- lint — SUCCESS — https://github.com/o/r/actions/runs/11/job/22\n"
+	if out.String() != want {
+		t.Errorf("output = %q, want %q", out.String(), want)
+	}
+
+	if got := jobMarkdown(jobJSON{Status: gh.JobQueued}, time.Now()); got != "  queued, no runner yet\n" {
+		t.Errorf("a queued job with no times = %q", got)
+	}
+	if got := elapsed(time.Now(), time.Now().Add(-time.Minute)); got != 0 {
+		t.Errorf("elapsed backwards = %v, want 0", got)
+	}
 }

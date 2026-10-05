@@ -117,11 +117,16 @@ func writePRView(env Env, pr gh.PR, asJSON bool) error {
 	return err
 }
 
-// checkJSON is one entry of the status check rollup.
+// checkJSON is one entry of the status check rollup. Rerunnable is whether a
+// GitHub Actions run is behind it — what slice-checks-rerun and
+// slice-checks-cancel can act on — and Run that run's id, so a reader tells
+// which checks share a run (and so stop together) without reading a URL.
 type checkJSON struct {
-	Name  string `json:"name"`
-	State string `json:"state"`
-	Link  string `json:"link"`
+	Name       string `json:"name"`
+	State      string `json:"state"`
+	Link       string `json:"link"`
+	Rerunnable bool   `json:"rerunnable"`
+	Run        string `json:"run,omitempty"`
 }
 
 // reviewJSON is one review left on the pull request.
@@ -196,7 +201,8 @@ func prJSON(pr gh.PR) prDoc {
 		ReviewRequests:   nonNil(pr.ReviewRequests),
 	}
 	for _, c := range pr.Checks {
-		doc.Checks = append(doc.Checks, checkJSON{Name: c.Name, State: c.State, Link: c.URL})
+		ref, rerunnable := gh.ActionsRun(c.URL)
+		doc.Checks = append(doc.Checks, checkJSON{Name: c.Name, State: c.State, Link: c.URL, Rerunnable: rerunnable, Run: ref.Run})
 	}
 	for _, r := range pr.Reviews {
 		doc.Reviews = append(doc.Reviews, reviewJSON{

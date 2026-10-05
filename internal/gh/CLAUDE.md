@@ -62,6 +62,22 @@ human has read the diff.
   repos/{owner}/{repo}/collaborators --paginate --jq .[].login` (needs push
   access; a refusal is an error, never an empty list). `ViewPR` also reads
   `reviewRequests` (a user's login, a team's slug).
+- `FailedLog(dir, ref)` — a failed check's log: `gh run view [--job]
+  --log-failed`, falling back to `gh api repos/<o>/<r>/actions/jobs/<job>/logs`
+  where gh refuses because a sibling is still running.
+- `ActionsJob(dir, ref)` — `gh api repos/<o>/<r>/actions/jobs/<job>`: a job's
+  status, `created_at`/`started_at`, runner and steps, answered while it runs.
+  `JobLog(dir, ref)` — the same path `/logs`; for a job still running gh exits
+  `HTTP 404` with a `BlobNotFound` body on stdout, which is `ErrLogNotReady`.
+  Both refuse a ref short of owner, repo or job before gh runs. Observations
+  are in the doc comments (October 2026, gh 2.83.1).
+- `RunStatus`, `CancelRun`, `RerunRun(failedOnly)`, `RerunJob` — `gh run view
+  <run> --json status`, `gh run cancel <run>`, `gh run rerun <run> [--failed]`,
+  `gh run rerun --job <job>`, each `--repo <o>/<r>` where the ref knows it (a
+  check's run may be in another repository than the worktree's). GitHub
+  cancels whole runs only, and refuses a re-run of a run still going (403;
+  gh: "run <id> cannot be rerun; …", per gh's source). These log method, ids
+  and exit code only (`logRunCall`), never gh's words.
 - `NormaliseURL(url)` — strips query/fragment, trailing slash, lowercases
   owner/repo — so a URL pasted from a review comment matches the canonical
   one gh prints.
