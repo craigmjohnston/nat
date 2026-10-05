@@ -791,7 +791,7 @@ enum AppStories {
 
         Story(
             name: "sidebar-milestone-hovered",
-            summary: "A milestone row under the pointer: washed as a project or slice row is, its folder given way to the fold chevron, as a project row's does.",
+            summary: "A milestone row under the pointer: washed as a project or slice row is, its folder given way to the fold chevron, as a project row's does, and its count given way to its three-dot button in the same slot.",
             size: sidebar
         ) {
             let appModel = await prMarksAppModel()
@@ -1345,13 +1345,28 @@ enum AppStories {
         Story(
             name: "sidebar-slice-hover",
             summary: "The loaded sidebar with one slice row of the tree under the pointer: the hover wash, "
-                + "square and edge to edge, a step lighter than the selected row's.",
+                + "square and edge to edge, a step lighter than the selected row's, and its three-dot "
+                + "button at the trailing edge.",
             size: sidebar
         ) {
             let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
             appModel.selectedSliceID = Fixtures.mergeBoxSliceID
             return SidebarView(appModel: appModel, hoveredSlice: Fixtures.commentsSliceID)
                 .environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "sidebar-project-hovered",
+            summary: "A folded project row under the pointer: its three-dot button beside its `+`, both "
+                + "showing; the open project above shows its `+` alone, its three-dot hidden in a kept slot.",
+            size: sidebar
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            return SidebarView(
+                appModel: appModel, folded: ["p:\(Fixtures.secondProjectID)": true],
+                hoveredProject: Fixtures.secondProjectID
+            ).environment(\.pulsesPaused, true)
         },
 
         Story(
@@ -2091,13 +2106,33 @@ enum AppStories {
         },
 
         Story(
-            name: "settings-projects",
-            summary: "The settings window on Projects: each tracked project's working directory, "
-                + "a field the width of the value column and Choose\u{2026} beside it.",
-            size: CGSize(width: 760, height: 560),
+            name: "project-settings",
+            summary: "A project's settings sheet (the project menu's Project settings\u{2026}): titled with the "
+                + "project's name, one grouped form holding only its working directory \u{2014} the field "
+                + "and Choose\u{2026} beside it \u{2014} then Cancel and Save.",
+            size: CGSize(width: 520, height: 200),
             colorScheme: .light
         ) {
-            SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(), initialTab: .projects)
+            ProjectSettingsView(
+                appModel: await Fixtures.startedAppModel(), projectID: Fixtures.projectID,
+                projectName: "notion-agent-tracker", client: FixtureNatClient())
+        },
+
+        Story(
+            name: "project-settings-refused",
+            summary: "The project settings sheet after a Save nat refused: the edited path kept in the "
+                + "field and nat's message under it, nothing written.",
+            size: CGSize(width: 520, height: 220),
+            colorScheme: .light
+        ) {
+            let appModel = await Fixtures.startedAppModel()
+            let model = ProjectSettingsModel(
+                projectID: Fixtures.projectID, config: appModel.config,
+                client: FixtureNatClient(behaviour: .refusing("working_dir: /Users/craig/nowhere is not a directory")),
+                reload: {})
+            model.edited.workingDir = "/Users/craig/nowhere"
+            _ = await model.save()
+            return ProjectSettingsView(projectName: "notion-agent-tracker", model: model)
         },
 
         Story(

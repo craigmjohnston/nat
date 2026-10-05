@@ -80,10 +80,25 @@ the traffic lights over the sidebar; tile + name, each tile a fixed
 the accent; About apart under a rule) beside the section's groups (bold heading,
 `settingRow`s left-aligned under it), one fixed 760×560 window whose
 sections scroll — reads `nat config-show`, writes one `nat config-set <key>
-<value>` per changed key. About reads `Bundle.main` (`AppVersion`, `dev`
-where unset) and `nat --version` (`NatClient.natVersion`). Stories:
-`settings`, `settings-agents*`, `settings-projects`, `settings-sources*`,
-`settings-about`. `WorkflowStage`
+<value>` per changed key. Sections: General, Agents, Sources, About. About
+reads `Bundle.main` (`AppVersion`, `dev` where unset) and `nat --version`
+(`NatClient.natVersion`). Stories: `settings`, `settings-agents*`,
+`settings-sources*`, `settings-about`. **Per-project settings are not
+here**: the project menu's Project settings… (a project row's right-click
+or its hover-only three-dot) opens `ProjectSettingsView`, a sheet on the
+main window titled with the project's name — one grouped `Form`, no
+sidebar or tabs — holding the working directory (field + Choose…). Its
+logic is `ProjectSettingsModel` (NatKit, tested): the same one `config-set`
+per changed key (`SettingsModel.workingDirKey`), a refusal kept under its
+row with the baseline as read, `AppModel.reloadConfig` after any write so
+Reveal and launches use the new path at once. A further per-project row is
+a `ProjectSettingsFields` field and a row in the sheet. Stories:
+`project-settings`, `project-settings-refused`. Project, milestone and task
+rows in the sidebar tree each carry that hover-only three-dot
+(`RowMenuButton`), opening exactly the row's right-click menu — beside a
+project's `+`, in a milestone's count slot, in a kept slot at a task's
+trailing edge (stories `sidebar-project-hovered`,
+`sidebar-milestone-hovered`, `sidebar-slice-hover`). `WorkflowStage`
 (`stage(for:)`) is the one source of where a slice stands: the navigator's
 phase (`NavigatorModel`), the sidebar's dots (`displayState(for:)`) and
 `RailModel.isReviewSlice`/`isActiveSlice` all read it, and it mirrors
