@@ -362,4 +362,10 @@ func (a appliedPlan) changesMarkdown(b *strings.Builder) {
 			b.WriteString("\n")
 		}
 	}
+	if len(a.MilestonesRemoved) > 0 {
+		b.WriteString("\n## Milestones removed\n\n")
+		for _, name := range a.MilestonesRemoved {
+			fmt.Fprintf(b, "- %s — no slice is filed under it any more\n", name)
+		}
+	}
 }

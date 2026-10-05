@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
@@ -84,14 +85,18 @@ func sliceReorder(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("reorder the slice: %w", err)
 	}
+	refiled := s.MilestoneID != moved.MilestoneID
+	var removed string
+	if refiled {
+		removed = firstOf(actions.PruneEmptied(ctx, st, storeProject(projectID, project), s.MilestoneID))
+	}
 	env.nudged()
 
-	refiled := s.MilestoneID != moved.MilestoneID
 	if *asJSON {
 		return writeJSON(env.Out, sliceReorderedJSON{
 			ID: moved.ID, Name: moved.Name, URL: moved.URL,
 			MilestoneID: moved.MilestoneID, Refiled: refiled,
-			Placement: placementWord(before),
+			Placement: placementWord(before), RemovedMilestone: removed,
 			RelativeTo: reorderedTargetJSON{
 				ID: to.ID, Name: to.Name, URL: to.URL, MilestoneID: to.MilestoneID,
 			},
@@ -101,7 +106,7 @@ func sliceReorder(ctx context.Context, args []string, env Env) error {
 	if refiled {
 		msg += fmt.Sprintf(" Refiled under %s.", milestoneLabel(moved.MilestoneID))
 	}
-	_, err = fmt.Fprintln(env.Out, msg)
+	_, err = fmt.Fprint(env.Out, msg+"\n"+removedLine(removed))
 	return err
 }
 
@@ -125,6 +130,9 @@ type sliceReorderedJSON struct {
 	Refiled     bool                `json:"refiled"`
 	Placement   string              `json:"placement"`
 	RelativeTo  reorderedTargetJSON `json:"relative_to"`
+	// RemovedMilestone names the milestone a refile left with no slice at
+	// all, and so removed; omitted where it left none empty.
+	RemovedMilestone string `json:"removed_milestone,omitempty"`
 }
 
 // reorderedTargetJSON is the slice a reorder placed another beside.

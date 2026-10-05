@@ -1093,7 +1093,9 @@ func (a *App) saved(msg sliceSavedMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case msg.deleted:
 		a.removeSlice(msg.sliceID)
+		a.dropMilestones(msg.removed)
 	case msg.sliceID != "" && a.project != nil:
+		a.dropMilestones(msg.removed)
 		cmds = append(cmds, a.refreshSlice(msg.sliceID))
 	default:
 		cmds = append(cmds, a.startLoad(false))

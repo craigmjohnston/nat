@@ -57,7 +57,7 @@ public struct MirrorNudgeMemory: Sendable {
     }
 }
 
-private final class LockedIDs: @unchecked Sendable {
+final class LockedIDs: @unchecked Sendable {
     private let lock = NSLock()
     private var ids: [String] = []
 

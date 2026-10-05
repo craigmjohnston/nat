@@ -288,7 +288,14 @@ independently say the same thing.
 milestone is nothing but its name, never referenced by URL or ID. Renaming
 one goes the long way (Notion silently ignores an in-place option rename;
 see `internal/notion/CLAUDE.md`); removing one refuses while any slice is
-still filed under it; moving one changes only its place among the options,
+still filed under it, and the last slice leaving one removes it: every write
+that takes a slice out of a milestone (`slice-move`, `slice-delete`, a
+refiling `slice-reorder`, `plan-apply`'s `move`/`remove` once the whole
+document has applied, the board's move and delete) ends in
+`actions.PruneEmptied`, which removes it only where a fresh read finds no
+slice of any status under it — never one that was already empty, never a
+source project's container, and a failure is logged, never the command's;
+moving one changes only its place among the options,
 reading and writing no slice at all.
 
 **Projects with no workspace.** A project's config entry carries an optional

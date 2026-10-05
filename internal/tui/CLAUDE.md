@@ -112,6 +112,9 @@ directly; check each file, don't assume every one routes through `actions`.
   milestone status from the patched slice list, restamps `syncedAt`, closes
   any row-anchored board prompt (the row may have moved), calls `syncBoard`.
   Prefer patching one row through this over triggering a full reload.
+  A move or delete that emptied its milestone (`actions.PruneEmptied`,
+  carried as `sliceSavedMsg.removed`) drops it from the board's own list
+  through `dropMilestones`, which funnels through the same choke point.
 
 ## Mouse ownership
 

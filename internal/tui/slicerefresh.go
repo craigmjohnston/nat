@@ -76,6 +76,29 @@ func (a *App) removeSlice(id string) {
 	a.setPlanSlices(slices)
 }
 
+// dropMilestones takes the named milestones off the plan the board holds — the
+// ones a write emptied and removed — rather than wait for the next full load
+// to stop listing them.
+func (a *App) dropMilestones(names []string) {
+	if a.project == nil || len(names) == 0 {
+		return
+	}
+	gone := make(map[string]bool, len(names))
+	for _, n := range names {
+		gone[n] = true
+	}
+	kept := make([]domain.Milestone, 0, len(a.project.Milestones))
+	for _, m := range a.project.Milestones {
+		if !gone[m.Name] {
+			kept = append(kept, m)
+		}
+	}
+	trimmed := *a.project
+	trimmed.Milestones = kept
+	a.project = &trimmed
+	a.setPlanSlices(trimmed.Slices)
+}
+
 // setPlanSlices rebuilds the plan around a patched slice list — the milestone
 // statuses are computed from the slices under them, so they are re-derived the
 // way a full load would — and puts it on the board. The patch stands in for the

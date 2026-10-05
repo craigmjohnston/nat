@@ -126,6 +126,9 @@ no working dir.
   move-is-cheapest-of-three); this is where it's actually implemented.
 - `AddMilestones`/`RenameMilestone`/`RemoveMilestone`/`MoveMilestone` each
   read the plan before their first write and refuse before it.
+- `MoveSlice`, `ReorderSlice` and `DeleteSlice` write the slice alone; the
+  milestone a write empties is removed afterwards by the caller, through
+  `actions.PruneEmptied` and `RemoveMilestone`, never inside the store.
 - `AddMilestones(names=[])` is a **silent no-op** (`nil, nil`) — rewriting an
   option list to a copy of itself is a real schema edit for nothing, so it's
   skipped rather than performed.

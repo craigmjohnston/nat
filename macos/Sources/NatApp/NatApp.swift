@@ -81,7 +81,7 @@ struct NatApp: App {
         MonoFont.register()
         let model = AppModel(
             mirrorNudgeMemory: MirrorNudgeMemory(), visualSeenMemory: VisualSeenMemory(),
-            workshopCache: DiskWorkshopCache(), makesSourceProjects: true)
+            closedTabMemory: ClosedTabMemory(), workshopCache: DiskWorkshopCache(), makesSourceProjects: true)
         _appModel = State(initialValue: model)
         // A workshop brief is written once typing pauses; quitting (an
         // update's relaunch included) writes whatever the pause had not yet.

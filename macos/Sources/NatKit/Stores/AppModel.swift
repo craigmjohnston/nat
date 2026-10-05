@@ -145,6 +145,8 @@ public final class AppModel {
     @ObservationIgnored private let mirrorNudgeMemory: MirrorNudgeMemory
     /// Which handed-in images have been seen — see `VisualSeenMemory`.
     @ObservationIgnored private let visualSeenMemory: VisualSeenMemory
+    /// Which projects' tabs the user closed — see `ClosedTabMemory`.
+    @ObservationIgnored private let closedTabMemory: ClosedTabMemory
 
     /// Bumped by "Keep workshopping"; the workshop terminal takes keyboard
     /// focus on each change.
@@ -553,6 +555,7 @@ public final class AppModel {
         },
         mirrorNudgeMemory: MirrorNudgeMemory = .inMemory(),
         visualSeenMemory: VisualSeenMemory = .inMemory(),
+        closedTabMemory: ClosedTabMemory = .inMemory(),
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
         workshopSaveWait: @escaping @MainActor @Sendable () async -> Void = {
             try? await Task.sleep(nanoseconds: 500_000_000)
@@ -564,6 +567,7 @@ public final class AppModel {
         self.makesSourceProjects = makesSourceProjects
         self.mirrorNudgeMemory = mirrorNudgeMemory
         self.visualSeenMemory = visualSeenMemory
+        self.closedTabMemory = closedTabMemory
         self.mirrorNudgePending = mirrorNudgeMemory.pending
         self.toolsReady = toolsReady
         self.configReader = configReader
@@ -672,6 +676,7 @@ public final class AppModel {
                 await reloadConfig()
                 if !projectTabs.contains(where: { $0.id == created.id }) {
                     projectTabs.append((id: created.id, name: tabName(created.id, fallback: created.name)))
+                    closedTabMemory.reopen(created.id)
                 }
                 loadBackgroundProject(created.id)
             } catch {
@@ -791,10 +796,20 @@ public final class AppModel {
 
             // Build project tabs from config, sorted by project ID, with the
             // scratch project (when config names one it also tracks) pinned
-            // ahead of that sort.
-            var sortedProjects = loadedConfig.projects.sorted { $0.key < $1.key }
+            // ahead of that sort, and the projects whose tabs the user closed
+            // left out — unless that would leave no tab but scratch's, when
+            // the closes are ignored for this launch rather than opening on
+            // an empty board. A close of a project config no longer names is
+            // forgotten here.
             self.scratchProjectID = loadedConfig.scratchProject.flatMap {
                 loadedConfig.projects[$0] == nil ? nil : $0
+            }
+            closedTabMemory.prune(keeping: Set(loadedConfig.projects.keys))
+            let closed = closedTabMemory.closed
+            var sortedProjects = loadedConfig.projects.sorted { $0.key < $1.key }
+            let open = sortedProjects.filter { $0.key == scratchProjectID || !closed.contains($0.key) }
+            if open.contains(where: { $0.key != scratchProjectID }) {
+                sortedProjects = open
             }
             if let scratch = scratchProjectID, let at = sortedProjects.firstIndex(where: { $0.key == scratch }) {
                 sortedProjects.insert(sortedProjects.remove(at: at), at: 0)
@@ -934,9 +949,13 @@ public final class AppModel {
         await activateProject(projectID, nudgePath: nudgePath, config: config)
     }
 
-    /// Close a project's tab for this session: the strip forgets it, the
-    /// config does not — every configured project is a tab again at the next
-    /// launch. Closing the active tab activates its neighbour (the tab that
+    /// Close a project's tab, and keep it closed: once the tab has gone the
+    /// project is remembered in `ClosedTabMemory`, so later launches leave it
+    /// out of the strip until the user opens it again from the "+" tab. The
+    /// config entry is untouched — the project stays configured for every
+    /// headless command and agent. A refused close records nothing, and an
+    /// Untitled tab, which has no config entry to come back from, never is
+    /// recorded. Closing the active tab activates its neighbour (the tab that
     /// followed it, else the one before), and the last tab refuses to close:
     /// a board with no project is the onboarding screen's shape, and this is
     /// not onboarding.
@@ -970,11 +989,26 @@ public final class AppModel {
         let closing = Set((stores[projectID]?.state.projectInfo?.slices ?? []).map(\.id))
         await reapFinishedAgents(ignoringHoldsFor: closing)
         projectTabs.remove(at: index)
+        if !isUntitledTab(projectID) { closedTabMemory.close(projectID) }
         if activeProjectID == projectID {
             let neighbour = projectTabs[min(index, projectTabs.count - 1)]
             await activateProject(neighbour.id)
         }
         return nil
+    }
+
+    /// The configured projects with no tab in the strip — every one the user
+    /// closed — as the "+" tab's open picker offers them, in config order.
+    /// Read off config itself rather than `nat project-list`, so a closed
+    /// project can be opened again whatever the workspace listing says. The
+    /// scratch project is never one: it is never closed.
+    public var closedProjects: [ProjectListingEntry] {
+        let open = Set(projectTabs.map(\.id))
+        return (config?.projects ?? [:]).sorted { $0.key < $1.key }
+            .filter { !open.contains($0.key) && $0.key != scratchProjectID }
+            .map { ProjectListingEntry(
+                id: $0.key, name: tabName($0.key, fallback: $0.value.name),
+                configured: true, workingDir: $0.value.workingDir) }
     }
 
     /// Take a project just opened or created into the board: re-read config
@@ -1034,6 +1068,7 @@ public final class AppModel {
         } else if let replaced {
             projectTabs.remove(at: replaced)
         }
+        closedTabMemory.reopen(id)
         if let untitledID, replaced != nil { forgetUntitledTab(untitledID) }
         await activateProject(id)
     }
@@ -1858,6 +1893,7 @@ public final class AppModel {
         } else if !projectTabs.contains(where: { $0.id == project.id }) {
             projectTabs.append(tab)
         }
+        closedTabMemory.reopen(project.id)
         await activateProject(project.id)
     }
 
