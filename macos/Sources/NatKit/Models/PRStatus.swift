@@ -25,18 +25,41 @@ public struct PRStatusSlice: Codable, Equatable, Sendable {
     /// How the pull request's checks stand — present for every open pull
     /// request the listing read, nil otherwise.
     public let checks: PRStatusChecks?
+    /// GitHub positively said the branch conflicts with its base — false for
+    /// a mergeable branch, one whose mergeability is still being worked out,
+    /// a pull request the reading did not reach, and an older `nat` that sent
+    /// no such key.
+    public let conflicting: Bool
+    /// The branch the pull request merges into, where the reading had it.
+    public let base: String?
 
     enum CodingKeys: String, CodingKey {
         case sliceID = "slice_id"
-        case name, pr, readiness, checks
+        case name, pr, readiness, checks, conflicting, base
     }
 
-    public init(sliceID: String, name: String, pr: String, readiness: String, checks: PRStatusChecks? = nil) {
+    public init(
+        sliceID: String, name: String, pr: String, readiness: String, checks: PRStatusChecks? = nil,
+        conflicting: Bool = false, base: String? = nil
+    ) {
         self.sliceID = sliceID
         self.name = name
         self.pr = pr
         self.readiness = readiness
         self.checks = checks
+        self.conflicting = conflicting
+        self.base = base
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sliceID = try c.decode(String.self, forKey: .sliceID)
+        name = try c.decode(String.self, forKey: .name)
+        pr = try c.decode(String.self, forKey: .pr)
+        readiness = try c.decode(String.self, forKey: .readiness)
+        checks = try c.decodeIfPresent(PRStatusChecks.self, forKey: .checks)
+        conflicting = try c.decodeIfPresent(Bool.self, forKey: .conflicting) ?? false
+        base = try c.decodeIfPresent(String.self, forKey: .base)
     }
 
     /// `domain.PRReadiness`'s affirmative words, said once here rather

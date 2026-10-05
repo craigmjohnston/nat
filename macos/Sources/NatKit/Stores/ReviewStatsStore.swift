@@ -23,20 +23,6 @@ public final class ReviewStatsStore {
     /// and kept in step with it — the review row's "N files" meta.
     public private(set) var fileCounts: [String: Int] = [:]
 
-    /// The readiness words of every pull request positively read as open,
-    /// by slice id — `nat pr-status`'s reading, the same one the Go board's
-    /// Active panel rides. A slice absent here has no open pull request as
-    /// far as anything has read, which for a Done slice is what keeps a
-    /// project's whole finished history out of the ACTIVE section.
-    public private(set) var prReadiness: [String: String] = [:]
-
-    /// The names of the checks each pull request read "checks failing" has
-    /// failed, by slice id — what the rail's marker and the pane's notice
-    /// name. Replaced with every reading that arrives, so a slice drops out
-    /// on the first one no longer failing; kept as it was by one that does
-    /// not arrive, as `prReadiness` is.
-    public private(set) var failingChecks: [String: [String]] = [:]
-
     private let client: NatClientProtocol
     private var branchBySlice: [String: String] = [:]
 
@@ -92,33 +78,10 @@ public final class ReviewStatsStore {
         }
     }
 
-    /// Takes a fresh PR-readiness reading and replaces the last one with it.
-    /// A reading that fails outright leaves the last one standing — stale
-    /// news about an open pull request beats no news, and the next plan
-    /// reload retries on its own. Within a reading that succeeded, a slice
-    /// reported "unread" simply has no entry, exactly as the Go board holds
-    /// it: nothing distinguishes a landed pull request from one gh could not
-    /// be asked about, and neither keeps a slice in the section.
-    public func updatePRStatus(projectID: String) async {
-        guard let doc = try? await client.prStatus(projectID: projectID) else { return }
-        prReadiness = doc.slices.reduce(into: [:]) { map, slice in
-            if slice.isOpen {
-                map[slice.sliceID] = slice.readiness
-            }
-        }
-        failingChecks = doc.slices.reduce(into: [:]) { map, slice in
-            if slice.readiness == PRStatusSlice.checksFailing {
-                map[slice.sliceID] = (slice.checks?.failing ?? []).map(\.name)
-            }
-        }
-    }
-
     /// Clear everything, as if nothing had ever been fetched.
     public func clear() {
         stats = [:]
         fileCounts = [:]
         branchBySlice = [:]
-        prReadiness = [:]
-        failingChecks = [:]
     }
 }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -645,5 +646,86 @@ func TestPRStatusLeavesFailingChecksWhenTmuxIsUnread(t *testing.T) {
 	}
 	if len(api.appends) != 0 || len(runner.sends) != 0 {
 		t.Errorf("appends %d, sends %d, want nothing", len(api.appends), len(runner.sends))
+	}
+}
+
+// listingRunner answers gh pr list with a fixed printout — gh's own output,
+// read by the real [gh.CLI].
+type listingRunner string
+
+func (r listingRunner) Run(dir, name string, args ...string) (string, error) { return string(r), nil }
+
+// realListing is a fakePRReader whose listing is the real gh.CLI's reading
+// of real gh output, so pr-status is tested against the shapes gh prints.
+type realListing struct {
+	*fakePRReader
+	cli gh.CLI
+}
+
+func (r realListing) OpenPRs(dir string) (map[string]gh.PRStatus, error) { return r.cli.OpenPRs(dir) }
+
+// TestPRStatusJSONConflicting pins the per-slice conflicting fact, exactly as
+// printed, from gh pr list's own output: CONFLICTING or a DIRTY merge state is
+// a conflict, MERGEABLE and UNKNOWN are not, and a slice the listing did not
+// name says false with no base.
+func TestPRStatusJSONConflicting(t *testing.T) {
+	const pr = "https://github.test/craig/nat/pull/"
+	api := &fakeAPI{
+		dataSources: map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1")},
+		pages: map[string][]notion.Page{
+			"slices-ds": {
+				slicePageForStatus("s1", "Conflicting", notion.SliceInProgress, "M1", pr+"1"),
+				slicePageForStatus("s2", "Dirty", notion.SliceInProgress, "M1", pr+"2"),
+				slicePageForStatus("s3", "Clean", notion.SliceInProgress, "M1", pr+"3"),
+				slicePageForStatus("s4", "Unknown", notion.SliceInProgress, "M1", pr+"4"),
+				slicePageForStatus("s5", "Landed", notion.SliceDone, "M1", pr+"5"),
+			},
+		},
+	}
+	env, out := testEnv(testConfig(t), api)
+	env.NewGH = func() GH {
+		return realListing{fakePRReader: &fakePRReader{}, cli: gh.NewWithRunner(listingRunner(`[
+{"url":"` + pr + `1","reviewDecision":"","mergeable":"CONFLICTING","mergeStateStatus":"DIRTY","baseRefName":"main","statusCheckRollup":[]},
+{"url":"` + pr + `2","reviewDecision":"APPROVED","mergeable":"UNKNOWN","mergeStateStatus":"DIRTY","baseRefName":"main","statusCheckRollup":[]},
+{"url":"` + pr + `3","reviewDecision":"APPROVED","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","baseRefName":"main","statusCheckRollup":[]},
+{"url":"` + pr + `4","reviewDecision":"","mergeable":"UNKNOWN","mergeStateStatus":"UNKNOWN","baseRefName":"main","statusCheckRollup":[]}
+]`))}
+	}
+
+	if err := Run(context.Background(), []string{"pr-status", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr-status --json: %v", err)
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, out.Bytes()); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	entry := func(id, name, n, readiness, conflicting string) string {
+		return `{"slice_id":"` + id + `","name":"` + name + `","pr":"` + pr + n + `","readiness":"` + readiness +
+			`","conflicting":` + conflicting + `,"base":"main","checks":{"verdict":"none","failing":[]}}`
+	}
+	want := `{"slices":[` +
+		entry("s1", "Conflicting", "1", "awaiting review", "true") + `,` +
+		entry("s2", "Dirty", "2", "awaiting review", "true") + `,` +
+		entry("s3", "Clean", "3", "ready to merge", "false") + `,` +
+		entry("s4", "Unknown", "4", "awaiting review", "false") + `,` +
+		`{"slice_id":"s5","name":"Landed","pr":"` + pr + `5","readiness":"unread","conflicting":false}` +
+		`]}`
+	if compact.String() != want {
+		t.Errorf("json =\n%s\nwant\n%s", compact.String(), want)
+	}
+}
+
+// TestPRStatusMarkdownConflicting says a conflict under the slice's line,
+// naming the base where the listing read one.
+func TestPRStatusMarkdownConflicting(t *testing.T) {
+	got := prStatusMarkdown([]prReading{
+		{SliceName: "A", PR: "u1", Checks: &gh.PRStatus{Conflicting: true, Base: "main"}},
+		{SliceName: "B", PR: "u2", Checks: &gh.PRStatus{Conflicting: true}},
+		{SliceName: "C", PR: "u3", Checks: &gh.PRStatus{}},
+	})
+	for _, want := range []string{"- A — unread — u1\n  - conflicting with main\n", "- B — unread — u2\n  - conflicting\n- C"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("markdown missing %q:\n%s", want, got)
+		}
 	}
 }

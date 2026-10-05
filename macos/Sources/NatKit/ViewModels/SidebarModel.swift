@@ -69,15 +69,21 @@ public struct SidebarSliceRow: Equatable, Identifiable, Sendable {
     public let state: SliceDisplayState
     /// Whether an agent is live on it — what makes a working dot pulse.
     public let live: Bool
+    /// Its pull request's failing checks and conflict, where it reads either.
+    public let marks: PRMarks
 
     public var id: String { sliceID }
 
-    public init(sliceID: String, projectID: String, title: String, state: SliceDisplayState, live: Bool) {
+    public init(
+        sliceID: String, projectID: String, title: String, state: SliceDisplayState, live: Bool,
+        marks: PRMarks = .none
+    ) {
         self.sliceID = sliceID
         self.projectID = projectID
         self.title = title
         self.state = state
         self.live = live
+        self.marks = marks
     }
 }
 
@@ -412,9 +418,9 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     public let title: String
     public let state: SliceDisplayState
     public let live: Bool
-    /// The checks a slice's pull request was last read failing, by name —
-    /// what the row's danger marker names. Empty for every other row.
-    public let failingChecks: [String]
+    /// A slice's pull request's failing checks and conflict, where it was
+    /// last read with either — `.none` for every other row.
+    public let marks: PRMarks
 
     public var id: String { "\(kind):\(targetID)" }
 
@@ -425,7 +431,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     public init(
         kind: SidebarActiveKind, targetID: String, projectID: String, projectName: String,
         projectTag: String? = nil, title: String, state: SliceDisplayState, live: Bool,
-        failingChecks: [String] = []
+        marks: PRMarks = .none
     ) {
         self.kind = kind
         self.targetID = targetID
@@ -435,7 +441,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
         self.title = title
         self.state = state
         self.live = live
-        self.failingChecks = failingChecks
+        self.marks = marks
     }
 }
 
@@ -554,7 +560,9 @@ public let workshopSymbol = "wand.and.stars"
 /// dismissed, each a workshop row of its own with nothing running —
 /// `launchingWorkshop` the one whose launch is in flight. A live agent wins
 /// over both. Active is sorted needs-you first and otherwise left in project,
-/// then plan, order.
+/// then plan, order. `prMarks` is every project's pull request marks by slice
+/// id (`PRStatusStore.marks`), drawn on a slice's Active and tree rows alike
+/// while it stands at its pull request.
 public func buildSidebarModel(
     projects: [SidebarProjectInput],
     liveAgents: [String: AgentActivity],
@@ -563,7 +571,7 @@ public func buildSidebarModel(
     planningAgents: [String: AgentActivity] = [:],
     pinnedWorkshops: Set<String> = [],
     launchingWorkshop: String? = nil,
-    failingChecks: [String: [String]] = [:]
+    prMarks: [String: PRMarks] = [:]
 ) -> SidebarModel {
     var active: [SidebarActiveRow] = []
     var built: [SidebarProject] = []
@@ -609,21 +617,20 @@ public func buildSidebarModel(
         if let plan = project.plan {
             let rows = plan.slices.map { slice -> SidebarSliceRow in
                 let agent = liveAgents[slice.id]
+                // A pull request read failing its checks or conflicting is
+                // marked on the rows it already has: at the PR stage, or
+                // under a fix — never a Done or pre-PR slice.
                 return SidebarSliceRow(
                     sliceID: slice.id, projectID: project.id, title: slice.name,
                     state: displayState(for: slice, agent: agent),
-                    live: agent != nil)
+                    live: agent != nil,
+                    marks: atPullRequest(slice) ? prMarks[slice.id] ?? .none : .none)
             }
-            // A pull request read failing its checks is marked on the row it
-            // already has: at the PR stage, or under a fix.
-            let atPR = Set(plan.slices.filter { [.pr, .fixing].contains(stage(for: $0, agent: nil)) }.map(\.id))
             for row in rows where row.state.isInFlight {
                 if row.state.needsYou { needsYou += 1 }
-                let red = atPR.contains(row.sliceID)
                 active.append(SidebarActiveRow(
                     kind: .slice, targetID: row.sliceID, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
-                    title: row.title, state: row.state, live: row.live,
-                    failingChecks: red ? failingChecks[row.sliceID] ?? [] : []))
+                    title: row.title, state: row.state, live: row.live, marks: row.marks))
             }
 
             // A source project's tasks are drawn under the plugin's own tree,

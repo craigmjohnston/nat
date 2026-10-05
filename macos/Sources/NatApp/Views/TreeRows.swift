@@ -50,9 +50,12 @@ func identityTag(_ tag: String, on ground: Ground) -> Text {
 
 /// A milestone line of a plan tree, as the sidebar draws it: its folder,
 /// outlined or open, its name and its count. Folding, where there is any, is
-/// the caller's.
+/// the caller's; a line that `folds` draws as a project row does under the
+/// pointer — washed, its folder giving way to the chevron the click works.
 struct TreeMilestoneLine: View {
     @Environment(\.ground) private var ground
+    @Environment(\.hoverForced) private var hoverForced
+    @State private var hovering = false
     let name: String
     let count: String
     var open = true
@@ -61,13 +64,17 @@ struct TreeMilestoneLine: View {
     /// A proposed milestone the proposal creates: NEW beside its name, as
     /// the workshop's Plan tab marks it.
     var isNew = false
+    /// Whether a click folds it — what earns it the hover chevron and wash.
+    var folds = false
 
     var body: some View {
         HStack(spacing: 7) {
             // A milestone's fold mark: one folder, outlined or open, always in
             // the muted ink — never the accent.
             Group {
-                if isDone {
+                if folds && (hovering || hoverForced) {
+                    DisclosureChevron(open: open)
+                } else if isDone {
                     DoneFolderGlyph(open: open, color: DesignTokens.ink(.tertiary, on: ground))
                 } else {
                     FolderGlyph(open: open, color: DesignTokens.ink(.tertiary, on: ground))
@@ -87,6 +94,8 @@ struct TreeMilestoneLine: View {
         .padding(.leading, indent)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
+        .gnatRow(hoverable: folds)
+        .onHover { if folds { hovering = $0 } }
     }
 }
 
@@ -97,6 +106,8 @@ struct TreeSliceLine: View {
     var live = false
     var selected = false
     var indent: CGFloat = 34
+    /// Its pull request's marks, at the trailing edge.
+    var marks: PRMarks = .none
 
     var body: some View {
         // Done and blocked both recede to the faintest ink — blocked since it
@@ -113,6 +124,7 @@ struct TreeSliceLine: View {
                 .ink(ink)
                 .lineLimit(1)
             Spacer(minLength: 0)
+            PRMarksView(marks: marks)
         }
         .opacity(state == .done ? 0.7 : 1)
         .padding(.leading, indent)

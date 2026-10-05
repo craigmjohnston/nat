@@ -103,15 +103,33 @@ progress, PR recorded) with no live agent whatever its dependencies
 Launch say "Launch fix agent" (`LaunchCard.Mode.actionTitle`, "Relaunch agent"
 for a relaunch, else "Launch agent") and its launch item "Fix", through the ordinary
 `nat slice-launch` and its one-shot optimistic advance to the terminal.
-`ReviewStatsStore.failingChecks` (from `pr-status`'s `checks`, replaced
-each reading, kept on a failed one) drives the Active row's danger marker
-(`SidebarActiveRow.failingChecks`, pr/fixing stage only) and
-`checksNotice` — the PR section header's danger icon (`NavSectionView`'s
-`warning`), its text the tooltip: "sent to the agent to fix" when the latest
-recorded event is the nudge's Sent back (the fix launch itself is the Task
-log's launch item and the action bar's). `projectAttention` counts a red pr/fixing slice once.
-Stories: `window-pr-fix-launch`, `window-fixing`, `sidebar-checks-failing`,
-`window-pr-checks-failing`, `window-pr-checks-agent-told`,
+`PRStatusStore` holds `pr-status`'s reading **per project, for every open
+project** (`PRReading`: readiness, failing checks, conflicts) — the active
+one's taken with its plan (`updateReviewStats`), each background one's after
+its plan lands (`loadBackgroundProject`, `refreshBackgroundProjects`), all
+skipped where no slice has a PR. A project's reading is replaced only by a
+newer reading of it (a failed one leaves it standing; switching projects
+touches nothing), written beside its plan in the read cache
+(`PlanCaching.writePRStatus`, `<id>.pr-status.json`) and restored before the
+first fresh read (`restore`). `PRStatusStore.marks` (by slice id) puts
+`PRMarks` on **both** sidebar row kinds — `SidebarActiveRow.marks` and
+`SidebarSliceRow.marks`, pr/fixing stage only (`atPullRequest`) — drawn by
+`PRMarksView`: the checks' `xmark.octagon.fill` and the conflict's own
+`ConflictMark` (`MergeIcon`, "Conflicts with <base>" / "Merge
+conflicts"), which takes a `BranchConflict` and nothing about a PR, for a
+conflicting branch with no PR to reuse. `attention(projectID:)` reads the
+project's own reading. In the navigator, `checksNotice` and `conflictNotice`
+(the conflict the reading's, unless a loaded `PRDetail` of that PR decides —
+`conflict(reading:detail:prURL:)`) share the PR section header's danger icon
+(`NavSectionView`'s `warning`, both texts in its tooltip); the checks text
+says "sent to the agent to fix" when the latest recorded event is the
+nudge's Sent back (the fix launch itself is the Task log's launch item and
+the action bar's); the conflict's is also a `NavNotice` atop the PR body, drawn
+before `pr-view` lands, offering the fix launch or naming the live agent.
+`projectAttention` counts a red pr/fixing slice once. Stories:
+`window-pr-fix-launch`, `window-fixing`, `sidebar-checks-failing`,
+`sidebar-pr-marks`, `window-pr-checks-failing`, `window-pr-checks-agent-told`,
+`window-pr-conflicting`, `window-pr-conflicting-checks-failing`,
 `window-task-log-checks-failed`.
 
 **Re-running and cancelling checks.** The PR section's Checks block
@@ -283,7 +301,11 @@ body; the workshop's launch shortcut is in the brief editor's placeholder. The P
 quietened, chips disabled, when blocked — with Launch itself only in the
 action bar; its prose items cut short as the brief does (`Excerpt`). View ▸ Hide done items
 (`showsDoneItems`) drops done slices, ended sessions and the Done folder from
-the sidebar. `AppModel` keeps its one *active* project —
+the sidebar. Every "merge" icon is `MergeIcon` — the Merge button's own `MergeGlyph`,
+never `arrow.triangle.merge` (the Task log's Merged item through
+`ThreadIcon`, the conflict mark). A sidebar milestone row (and the Done and Ad hoc sessions folders)
+folds as a project row does: washed under the pointer, its folder giving way
+to the chevron (`TreeMilestoneLine.folds`; story `sidebar-milestone-hovered`). `AppModel` keeps its one *active* project —
 every per-project reading is keyed by it — and the sidebar selects across
 projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
 only what nat reports (`buildThreadEvents`). The titlebar is two bands:

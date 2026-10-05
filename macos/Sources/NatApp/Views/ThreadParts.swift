@@ -46,11 +46,16 @@ extension ThreadEventKind {
         case .followUp: return "arrow.right.circle"
         case .note: return "text.bubble"
         case .approved: return "checkmark.seal"
-        case .merged: return "arrow.triangle.merge"
+        // A stand-in name: `ThreadIcon` draws gnat's own `MergeIcon` for it.
+        case .merged: return mergeSymbol
         case .closed: return "checkmark.circle"
         }
     }
 }
+
+/// The name a Task log item's symbol carries for a merge — drawn as gnat's
+/// `MergeIcon`, the merge button's, rather than as an SF Symbol.
+let mergeSymbol = "arrow.triangle.merge"
 
 /// The brief's own glyph, heading it as a kind heads every other item.
 let briefSymbol = "doc.text"
@@ -64,9 +69,15 @@ struct ThreadIcon: View {
     static let size: CGFloat = 13
 
     var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: Self.size, weight: .regular))
-            .ink(role)
+        Group {
+            if symbol == mergeSymbol {
+                MergeIcon(size: Self.size, lineWidth: 1.2)
+            } else {
+                Image(systemName: symbol)
+                    .font(.system(size: Self.size, weight: .regular))
+            }
+        }
+        .ink(role)
     }
 }
 
