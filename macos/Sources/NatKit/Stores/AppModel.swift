@@ -66,18 +66,24 @@ public final class AppModel {
     public var expandedProposalEdits: Set<String> = []
 
     /// The projects whose workshop has been opened and not yet launched or
-    /// dismissed — each holding a "Workshop the plan" row in Active while the
+    /// dismissed — each holding a "Workshop" row in Active while the
     /// user is elsewhere, so clicking away loses neither the row nor the
     /// draft under it. Per-project, beside `workshopSelectedProjects`; a
     /// launch that takes hands the row to the live agent, and the row's ✕
-    /// (`closeWorkshopTab`) is the other way it goes.
-    public private(set) var workshopPinnedProjects: Set<String> = []
+    /// (`closeWorkshopTab`) is the other way it goes. Kept across launches,
+    /// with the three below, by `workshopCache`.
+    public private(set) var workshopPinnedProjects: Set<String> = [] {
+        didSet { workshopsChanged() }
+    }
 
     /// The request each project's workshop was launched on, as it was sent —
     /// what the Brief section shows, read-only, once the draft it came from
-    /// has been cleared by the launch. In memory only: an agent this run did
-    /// not launch has no request here to show.
-    private var workshopRequests: [String: String] = [:]
+    /// has been cleared by the launch — and, kept across launches, what it
+    /// goes on showing for a session still running after a relaunch. An
+    /// agent no run of this app launched has no request here to show.
+    private var workshopRequests: [String: String] = [:] {
+        didSet { workshopsChanged() }
+    }
 
     /// The composer's typed-but-not-yet-launched request, per project — kept
     /// here rather than as `WorkshopPaneView`'s own `@State` so switching to a
@@ -85,14 +91,18 @@ public final class AppModel {
     /// mounts the workshop pane in a plain conditional). Cleared only by a
     /// successful launch (`launchWorkshop(request:)`) or the ✕ closing the
     /// tab outright — never by navigating away, which is the one thing this
-    /// exists to survive. In-memory only, like every other per-project piece
-    /// of view state here; there is no draft to restore when the app is next launched.
-    private var workshopDrafts: [String: String] = [:]
+    /// exists to survive — and kept across launches, saved as it is typed
+    /// (debounced, `workshopsChanged`) and flushed on quit.
+    private var workshopDrafts: [String: String] = [:] {
+        didSet { workshopsChanged() }
+    }
 
     /// The plan document chosen or dropped on an Untitled tab's starter card,
     /// per tab, held with the draft and cleared as it is: by a launch that
     /// took, or the tab closing.
-    private var workshopPlanFiles: [String: PlanFile] = [:]
+    private var workshopPlanFiles: [String: PlanFile] = [:] {
+        didSet { workshopsChanged() }
+    }
 
     /// Each tab's workshop proposal and its Accept, by tab — an Untitled
     /// tab's read by its workspace, a project's by the project. See
@@ -145,8 +155,11 @@ public final class AppModel {
     @ObservationIgnored private var nudgePath: String?
     @ObservationIgnored private var proposalWatcher: NudgeWatcher?
 
-    /// Ordered list of project tabs: (id, name).
-    public private(set) var projectTabs: [(id: String, name: String)] = []
+    /// Ordered list of project tabs: (id, name). The Untitled ones among
+    /// them are kept across launches (`workshopCache`).
+    public private(set) var projectTabs: [(id: String, name: String)] = [] {
+        didSet { workshopsChanged() }
+    }
 
     /// The reserved scratch project, when config names one that is also among
     /// its projects: pinned first in `projectTabs`, drawn icon-only and never
@@ -172,8 +185,9 @@ public final class AppModel {
     /// What an Untitled tab is labelled with.
     public static let untitledName = "Untitled"
 
-    /// How many Untitled tabs this run has opened, so each gets an ID of its
+    /// How many Untitled tabs have been opened, so each gets an ID of its
     /// own: more than one may exist, and a closed one's ID is not reused.
+    /// Restarts past the highest one restored from `workshopCache`.
     private var untitledOpened = 0
 
     /// Whether a tab is an Untitled one — a tab backed by no project, which
@@ -205,10 +219,14 @@ public final class AppModel {
     /// Each Untitled tab's workspace id, minted with the tab: what a planning
     /// agent launched from it is keyed by, where a project's is keyed by the
     /// project, and what its `plan-propose` carries so a proposal routes back
-    /// here. A fresh UUID rather than the tab's own `untitled-N`, which the
-    /// next run reuses — a stale proposal file or session of an earlier run
-    /// must never be mistaken for this tab's.
-    @ObservationIgnored private var workspaceIDs: [String: String] = [:]
+    /// here. A fresh UUID rather than the tab's own `untitled-N`, which a
+    /// later run may reuse once the tab is closed — a stale proposal file or
+    /// session of a tab long gone must never be mistaken for this one's. An
+    /// open tab's is kept across launches with the tab (`workshopCache`), so
+    /// its planning session is found again under it.
+    @ObservationIgnored private var workspaceIDs: [String: String] = [:] {
+        didSet { workshopsChanged() }
+    }
 
     /// A tab's workspace id — nil for a tab that is a project.
     public func workspaceID(forTab tabID: String) -> String? {
@@ -428,6 +446,23 @@ public final class AppModel {
     /// Application Support directory.
     private let planCache: PlanCaching
 
+    /// Where the workshops are kept between launches — see
+    /// `WorkshopSnapshot`. In memory unless the app says otherwise, so a
+    /// test or a story never touches the real Application Support file.
+    @ObservationIgnored private let workshopCache: WorkshopCaching
+
+    /// How long a change to the workshops waits before it is written, so a
+    /// brief being typed is written once it pauses rather than per key.
+    /// Injectable so a test never waits.
+    @ObservationIgnored private let workshopSaveWait: @MainActor @Sendable () async -> Void
+
+    /// Whether `workshopCache` has been read this run. Nothing is written
+    /// until it has: a write before would replace what is there with nothing.
+    @ObservationIgnored private var workshopsRestored = false
+
+    /// The write `workshopsChanged` has waiting, replaced by each change.
+    @ObservationIgnored private var workshopSaveTask: Task<Void, Never>?
+
     private let pollInterval: UInt64 // in seconds
     private var pollTask: Task<Void, Never>?
     private var nudgeWatcher: NudgeWatcher?
@@ -518,8 +553,14 @@ public final class AppModel {
         },
         mirrorNudgeMemory: MirrorNudgeMemory = .inMemory(),
         visualSeenMemory: VisualSeenMemory = .inMemory(),
+        workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
+        workshopSaveWait: @escaping @MainActor @Sendable () async -> Void = {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        },
         makesSourceProjects: Bool = false
     ) {
+        self.workshopCache = workshopCache
+        self.workshopSaveWait = workshopSaveWait
         self.makesSourceProjects = makesSourceProjects
         self.mirrorNudgeMemory = mirrorNudgeMemory
         self.visualSeenMemory = visualSeenMemory
@@ -738,6 +779,7 @@ public final class AppModel {
                 // install: one Untitled tab, with the starter card. Without
                 // the tools it is the onboarding pane's checklist, as before.
                 if toolsReady() {
+                    restoreWorkshops()
                     startWithUntitledTab()
                     if makesSourceProjects { await ensureSourceProjects() }
                 } else {
@@ -758,6 +800,7 @@ public final class AppModel {
                 sortedProjects.insert(sortedProjects.remove(at: at), at: 0)
             }
             self.projectTabs = sortedProjects.map { (id: $0.key, name: tabName($0.key, fallback: $0.value.name)) }
+            restoreWorkshops()
 
             // Create activity store (app-wide)
             let activityStore = activityStoreFactory()
@@ -811,7 +854,9 @@ public final class AppModel {
         if usageStore == nil {
             startUsageStore()
         }
-        if !projectTabs.contains(where: { isUntitledTab($0.id) }) {
+        if let restored = projectTabs.first(where: { isUntitledTab($0.id) }) {
+            if activeProjectID == nil { activeProjectID = restored.id }
+        } else {
             openUntitledTab()
         }
     }
@@ -1464,6 +1509,77 @@ public final class AppModel {
         }
     }
 
+    // MARK: - Keeping workshops across launches
+
+    /// The workshops as they stand, as `workshopCache` keeps them: every open
+    /// Untitled tab with its workspace id, in strip order, and every tab with
+    /// anything of a workshop to keep.
+    var workshopSnapshot: WorkshopSnapshot {
+        let untitled = projectTabs.compactMap { tab in
+            workspaceIDs[tab.id].map { WorkshopSnapshot.UntitledTab(id: tab.id, workspaceID: $0) }
+        }
+        let ids = workshopPinnedProjects.union(workshopDrafts.keys)
+            .union(workshopPlanFiles.keys).union(workshopRequests.keys)
+        var workshops: [String: WorkshopSnapshot.Workshop] = [:]
+        for id in ids {
+            workshops[id] = WorkshopSnapshot.Workshop(
+                pinned: workshopPinnedProjects.contains(id), draft: workshopDrafts[id],
+                planFile: workshopPlanFiles[id], request: workshopRequests[id]
+            )
+        }
+        return WorkshopSnapshot(untitledTabs: untitled, workshops: workshops)
+    }
+
+    /// Bring back what the last run kept, once per run, as config is read:
+    /// its Untitled tabs (at the end of the strip, under the workspace ids
+    /// their planning sessions are keyed by) and every workshop of a tab that
+    /// is here — a project config no longer names is dropped. A missing or
+    /// unreadable file brings back nothing. From here on, changes are written.
+    private func restoreWorkshops() {
+        guard !workshopsRestored else { return }
+        defer { workshopsRestored = true }
+        guard let snapshot = workshopCache.read() else { return }
+        for tab in snapshot.untitledTabs
+        where isUntitledTab(tab.id) && !projectTabs.contains(where: { $0.id == tab.id }) {
+            projectTabs.append((id: tab.id, name: Self.untitledName))
+            workspaceIDs[tab.id] = tab.workspaceID
+            if let n = Int(tab.id.dropFirst(Self.untitledPrefix.count)) {
+                untitledOpened = max(untitledOpened, n)
+            }
+        }
+        for (id, workshop) in snapshot.workshops {
+            let here = isUntitledTab(id) ? workspaceIDs[id] != nil : config?.projects[id] != nil
+            guard here else { continue }
+            if workshop.pinned { workshopPinnedProjects.insert(id) }
+            workshopDrafts[id] = workshop.draft
+            workshopPlanFiles[id] = workshop.planFile
+            workshopRequests[id] = workshop.request
+        }
+    }
+
+    /// Something kept across launches changed: write it once the changes
+    /// pause (`workshopSaveWait`), each change putting the write back.
+    private func workshopsChanged() {
+        guard workshopsRestored else { return }
+        workshopSaveTask?.cancel()
+        workshopSaveTask = Task { [weak self] in
+            guard let wait = self?.workshopSaveWait else { return }
+            await wait()
+            guard !Task.isCancelled else { return }
+            self?.flushWorkshops()
+        }
+    }
+
+    /// Write the workshops now, ahead of any write still waiting — what the
+    /// app does as it quits, so the last keystrokes are not lost to the
+    /// debounce. Nothing before the cache has been read this run.
+    public func flushWorkshops() {
+        guard workshopsRestored else { return }
+        workshopSaveTask?.cancel()
+        workshopSaveTask = nil
+        workshopCache.write(workshopSnapshot)
+    }
+
     // MARK: - Proposal
 
     /// What a closed tab, or a handed-over Untitled one, leaves behind: its
@@ -2072,6 +2188,7 @@ public final class AppModel {
             if let refusal = await killWorkshopAgent() { return refusal }
         }
         workshopDrafts[projectID] = nil
+        workshopPlanFiles[projectID] = nil
         workshopRequests[projectID] = nil
         workshopPinnedProjects.remove(projectID)
         workshopSelected = false

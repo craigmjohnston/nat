@@ -6,7 +6,7 @@ import NatKit
 /// description to workshop into a plan, or an existing project to open.
 ///
 /// From Notion is the app's add-project flow, and the project it opens takes
-/// the tab over. "Workshop the plan" (and ⌘↩) launches the planning agent on
+/// the tab over. "Workshop" (and ⌘↩) launches the planning agent on
 /// the description — the window then shows its terminal in place of this card.
 /// "Open plan from filesystem…" (or a file dropped on the composer) attaches a
 /// document the agent is handed with the description; the From filesystem

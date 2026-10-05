@@ -640,7 +640,7 @@ public final class NatClient: Sendable {
     }
 
     /// Launch the new-project planning agent for an Untitled tab — `nat
-    /// workshop-launch --workspace`, the starter card's "Workshop the plan".
+    /// workshop-launch --workspace`, the starter card's "Workshop".
     /// The workspace id stands where a project's would: it keys the session,
     /// and is what the agent's `plan-propose` carries so a proposal routes
     /// back to the tab. nat makes the session's scratch directory.

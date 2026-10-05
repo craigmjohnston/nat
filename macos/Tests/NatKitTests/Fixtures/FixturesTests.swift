@@ -97,7 +97,7 @@ final class FixturesTests: XCTestCase {
 
     func testWorkshopEntryIsALivePlanningAgent() {
         XCTAssertEqual(Fixtures.workshopEntry?.kind, .workshop)
-        XCTAssertEqual(Fixtures.workshopEntry?.name, "Workshop the plan")
+        XCTAssertEqual(Fixtures.workshopEntry?.name, "Workshop")
         XCTAssertEqual(Fixtures.workshopEntry?.displayState, "Working")
         XCTAssertEqual(Fixtures.workshopEntry?.tintRole, .working)
         XCTAssertEqual(Fixtures.workshopEntry?.detail, ["Planning agent"])

@@ -157,7 +157,7 @@ public func buildWorkshopEntry(
     }
     return ActiveEntry(
         kind: .workshop,
-        name: "Workshop the plan",
+        name: "Workshop",
         displayState: state.0,
         tintRole: state.1,
         detail: ["Planning agent"],

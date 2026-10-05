@@ -867,7 +867,8 @@ struct SidebarView: View {
 
     private func activeRow(_ row: SidebarActiveRow) -> some View {
         HStack(spacing: 6) {
-            ActiveIdentityLabel(tag: row.projectTag, state: row.state, live: row.live, title: row.title)
+            ActiveIdentityLabel(
+                tag: row.projectTag, state: row.state, live: row.live, title: row.title, symbol: row.symbol)
             Spacer(minLength: 0)
             if !row.failingChecks.isEmpty {
                 // The pull request was last read failing its checks: a

@@ -3,7 +3,8 @@ import Foundation
 /// What the navigator's titlebar names the selection by: the sidebar's
 /// Active row for the same thing — the project's tag, the state dot, the
 /// title. A source container has no state of its own: it is named by its
-/// source's icon in the dot's place (`icon`).
+/// source's icon in the dot's place (`icon`); a workshop by its wand
+/// (`symbol`), taking the state's ink.
 public struct TitlebarIdentity: Equatable, Sendable {
     public let tag: String
     public let state: SliceDisplayState
@@ -11,13 +12,20 @@ public struct TitlebarIdentity: Equatable, Sendable {
     public let title: String
     /// Drawn in place of the state dot — a source container's.
     public let icon: SourceIcon?
+    /// An SF Symbol drawn in place of the state dot, in the state's ink — a
+    /// workshop's wand (`SidebarActiveRow.symbol`).
+    public let symbol: String?
 
-    public init(tag: String, state: SliceDisplayState, live: Bool, title: String, icon: SourceIcon? = nil) {
+    public init(
+        tag: String, state: SliceDisplayState, live: Bool, title: String, icon: SourceIcon? = nil,
+        symbol: String? = nil
+    ) {
         self.tag = tag
         self.state = state
         self.live = live
         self.title = title
         self.icon = icon
+        self.symbol = symbol
     }
 
     /// A source container's identity: its source's icon and tag, its title.
@@ -30,7 +38,7 @@ public struct TitlebarIdentity: Equatable, Sendable {
     /// project, whole otherwise.
     public func lastCrumb(afterProjectCrumb: Bool) -> TitlebarIdentity {
         guard afterProjectCrumb else { return self }
-        return TitlebarIdentity(tag: "", state: state, live: live, title: title, icon: icon)
+        return TitlebarIdentity(tag: "", state: state, live: live, title: title, icon: icon, symbol: symbol)
     }
 }
 
@@ -60,18 +68,20 @@ public func titlebarIdentity(
     let targetID: String
     let title: String
     let fallback: SliceDisplayState
+    var symbol: String?
     switch selection {
     case let .slice(id, name, state):
         (kind, targetID, title, fallback) = (.slice, id, name, state)
     case .workshop:
         (kind, targetID, title, fallback) = (.workshop, projectID, workshopRowTitle, .todo)
+        symbol = workshopSymbol
     case let .session(id, sessionTitle):
         (kind, targetID, title, fallback) = (.session, id, sessionTitle, .done)
     case let .container(_, containerTitle, tag, icon):
         return .container(title: containerTitle, tag: tag.isEmpty ? tags[projectID] ?? "" : tag, icon: icon)
     }
     if let row = active.first(where: { $0.kind == kind && $0.targetID == targetID && $0.projectID == projectID }) {
-        return TitlebarIdentity(tag: row.projectTag, state: row.state, live: row.live, title: title)
+        return TitlebarIdentity(tag: row.projectTag, state: row.state, live: row.live, title: title, symbol: symbol)
     }
-    return TitlebarIdentity(tag: tags[projectID] ?? "", state: fallback, live: false, title: title)
+    return TitlebarIdentity(tag: tags[projectID] ?? "", state: fallback, live: false, title: title, symbol: symbol)
 }
