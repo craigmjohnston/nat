@@ -65,6 +65,10 @@ public final class AppModel {
     /// edited task's title.
     public var expandedProposalEdits: Set<String> = []
 
+    /// The Plan tab's boxes folded to their header, by proposed slice
+    /// (`PlanProposal.sliceID`). Every box starts open.
+    public var foldedProposedSlices: Set<String> = []
+
     /// The projects whose workshop has been opened and not yet launched or
     /// dismissed — each holding a "Workshop" row in Active while the
     /// user is elsewhere, so clicking away loses neither the row nor the
@@ -1780,11 +1784,17 @@ public final class AppModel {
         if expandedProposalEdits.remove(name) == nil { expandedProposalEdits.insert(name) }
     }
 
+    /// A Plan tab box's header: the box folded to it, or open again.
+    public func toggleProposedSliceFold(_ sliceID: String) {
+        if foldedProposedSlices.remove(sliceID) == nil { foldedProposedSlices.insert(sliceID) }
+    }
+
     /// A slice row in the Plan section: the Plan tab up, scrolled to that
-    /// slice's box.
+    /// slice's box, unfolded.
     public func showProposedSlice(_ sliceID: String) {
         showWorkshopTab(.plan)
         guard workshopTab == .plan else { return }
+        foldedProposedSlices.remove(sliceID)
         workshopPlanScroll = WorkshopPlanScroll(sliceID: sliceID, token: (workshopPlanScroll?.token ?? 0) + 1)
     }
 

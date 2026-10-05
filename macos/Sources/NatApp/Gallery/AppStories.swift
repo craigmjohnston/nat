@@ -187,7 +187,7 @@ enum AppStories {
     /// Plan section's row for that proposed slice clicked.
     private static func projectProposalShell(
         _ proposal: PlanProposal = Fixtures.proposal, accepting: Bool, scrollTo: String? = nil,
-        expandEdits: Set<String> = []
+        expandEdits: Set<String> = [], folded: Set<String> = []
     ) async -> some View {
         let client = FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner)
         client.setProposal(proposal, forProject: Fixtures.projectID)
@@ -197,6 +197,7 @@ enum AppStories {
         await appModel.refreshProposals()
         if let scrollTo { appModel.showProposedSlice(scrollTo) }
         appModel.expandedProposalEdits = expandEdits
+        appModel.foldedProposedSlices = folded
         if accepting {
             client.holdAccepts()
             await startHeld { await appModel.acceptProposal() }
@@ -691,6 +692,14 @@ enum AppStories {
         },
 
         Story(
+            name: "diff-folds",
+            summary: "The review's diff with its first two files folded over each other, the third open under them and the last folded under it: one rule between any two headers, and between the last folded header and the closing line.",
+            size: CGSize(width: 900, height: 640)
+        ) {
+            DiffFoldsStory()
+        },
+
+        Story(
             name: "diff-stress-unwrapped",
             summary: "The same diff with View ▸ Wrap lines in diffs off: every row one line, the long ones running past the pane's edge.",
             size: CGSize(width: 900, height: 640)
@@ -807,7 +816,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-checks-controls",
-            summary: "An approved slice's PR section open over checks in every state — passed, failed, running, queued, and one Vercel reported: each Actions row ends in re-run and cancel icon buttons, the heading in the same pair over a checklist, in the same columns; the Vercel row has none.",
+            summary: "An approved slice's PR section open over checks in every state — passed, failed, running, queued, and one Vercel reported — each row a sidebar task row's height: the heading's re-run and cancel over a checklist at the trailing edge, the rows' own pair hidden until the pointer is on one.",
             size: window
         ) {
             await slicePane(
@@ -817,7 +826,7 @@ enum AppStories {
 
         Story(
             name: "pr-checks-controls",
-            summary: "The Checks block alone: passed and failed rows' re-run enabled, their cancel disabled; the running row both enabled, the queued one cancel alone; Vercel's both disabled, no Actions run being behind it. The heading's re-run and cancel both enabled.",
+            summary: "The Checks block alone, no row under the pointer: rows a sidebar task row's height, their name at its size, the outcome glyph in the tree's dot column; no row's re-run or cancel drawn, the heading's both enabled.",
             size: checksSize
         ) {
             await checksSection(Fixtures.mixedChecks)
@@ -825,7 +834,7 @@ enum AppStories {
 
         Story(
             name: "pr-checks-row-hovered",
-            summary: "The running macOS check's row under the pointer: the row wash runs full bleed to the section's edges, its buttons in the heading's columns.",
+            summary: "The running macOS check's row under the pointer: the row wash runs full bleed to the section's edges, its re-run and cancel — both enabled — shown in the heading's columns, the other rows' still hidden.",
             size: checksSize
         ) {
             await checksSection(Fixtures.mixedChecks, hovered: "macOS App CI / test")
@@ -833,15 +842,15 @@ enum AppStories {
 
         Story(
             name: "pr-checks-nothing-run",
-            summary: "Every Actions job still queued: the heading's re-run disabled (nothing has run), its cancel enabled; each row's re-run disabled and cancel enabled.",
+            summary: "Every Actions job still queued: the heading's re-run disabled (nothing has run), its cancel enabled; the hovered test row's re-run disabled and cancel enabled.",
             size: checksSize
         ) {
-            await checksSection(Fixtures.queuedChecks)
+            await checksSection(Fixtures.queuedChecks, hovered: "test")
         },
 
         Story(
             name: "pr-checks-mid-call",
-            summary: "A re-run of the running macOS check under way: its re-run button a spinner, every other re-run and cancel disabled.",
+            summary: "A re-run of the running macOS check under way, the pointer gone from its row: its re-run still shown as a spinner, its cancel with it, disabled; every other row's pair hidden.",
             size: checksSize
         ) {
             await checksSection(Fixtures.mixedChecks) { store, client in
@@ -1155,6 +1164,18 @@ enum AppStories {
             size: window
         ) {
             await projectProposalShell(accepting: false, scrollTo: PlanProposal.sliceID(milestone: 1, slice: 1))
+        },
+
+        Story(
+            name: "workshop-proposal-folded",
+            summary: "The Plan tab with some boxes folded to their header: M1's first two folded over each other, the third open, the last folded over M2's heading; M2's first folded under its heading, the second open, the last folded. One rule between any two headers, a header and the brief under it, or a brief and the header after it.",
+            size: window
+        ) {
+            await projectProposalShell(accepting: false, folded: [
+                PlanProposal.sliceID(milestone: 0, slice: 0), PlanProposal.sliceID(milestone: 0, slice: 1),
+                PlanProposal.sliceID(milestone: 0, slice: 3), PlanProposal.sliceID(milestone: 1, slice: 0),
+                PlanProposal.sliceID(milestone: 1, slice: 2),
+            ])
         },
 
         Story(
@@ -2493,6 +2514,21 @@ private struct DiffStressStory: View {
         var state = DiffCanvasState()
         state.wrap = wrap
         if review.scrollRequest == nil { review.requestScroll(to: Self.model.files[150].path) }
+        return DiffCanvasRepresentable(
+            files: Self.model.files, state: state, attachments: [:], actions: DiffCanvasActions(),
+            review: review, store: nil, authorName: "craig johnston", authorInitials: "CJ")
+        .surface(.window)
+    }
+}
+
+private struct DiffFoldsStory: View {
+    @State private var review = DiffReview()
+    private static let model = Fixtures.diffModel
+
+    var body: some View {
+        var state = DiffCanvasState()
+        let paths = Self.model.files.map(\.path)
+        state.collapsed = [paths[0], paths[1], paths[3]]
         return DiffCanvasRepresentable(
             files: Self.model.files, state: state, attachments: [:], actions: DiffCanvasActions(),
             review: review, store: nil, authorName: "craig johnston", authorInitials: "CJ")

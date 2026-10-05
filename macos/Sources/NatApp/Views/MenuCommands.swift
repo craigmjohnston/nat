@@ -60,10 +60,10 @@ struct GnatCommands: Commands {
         // One window, so no New Window: File ▸ New makes plan items instead.
         CommandGroup(replacing: .newItem) {
             item("New project\u{2026}", shell?.newProject).keyboardShortcut("n", modifiers: [.command, .shift])
-            item("New task\u{2026}", sidebar?.newSlice).keyboardShortcut("n")
-            item("New milestone\u{2026}", sidebar?.newMilestone).keyboardShortcut("n", modifiers: [.command, .option])
-            item("New ad hoc session", sidebar?.newSession).keyboardShortcut("n", modifiers: [.command, .control])
             item("Workshop\u{2026}", sidebar?.workshop)
+            item("New milestone\u{2026}", sidebar?.newMilestone).keyboardShortcut("n", modifiers: [.command, .option])
+            item("New task\u{2026}", sidebar?.newSlice).keyboardShortcut("n")
+            item("New ad hoc session", sidebar?.newSession).keyboardShortcut("n", modifiers: [.command, .control])
             Divider()
             item("Open project in Notion", sidebar?.openProjectInNotion)
             item("Reveal working directory in Finder", sidebar?.revealWorkingDirectory)

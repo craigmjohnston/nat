@@ -724,6 +724,29 @@ final class WorkshopTabFlowTests: XCTestCase {
         XCTAssertEqual(appModel.expandedProposalEdits, [])
     }
 
+    func testAPlanBoxFoldsAndOpensOnItsHeader() async {
+        let appModel = await model(client: ProposingClient())
+
+        XCTAssertEqual(appModel.foldedProposedSlices, [], "every box starts open")
+        appModel.toggleProposedSliceFold("proposed-0-1")
+        XCTAssertEqual(appModel.foldedProposedSlices, ["proposed-0-1"])
+        appModel.toggleProposedSliceFold("proposed-0-1")
+        XCTAssertEqual(appModel.foldedProposedSlices, [])
+    }
+
+    func testAPlanRowUnfoldsTheBoxItScrollsTo() async {
+        let client = ProposingClient()
+        let appModel = await model(client: client)
+        await appModel.launchWorkshop(request: "A plan.")
+        client.proposal = proposal()
+        await appModel.refreshProposals()
+        appModel.toggleProposedSliceFold("proposed-0-0")
+        appModel.toggleProposedSliceFold("proposed-0-1")
+
+        appModel.showProposedSlice("proposed-0-1")
+        XCTAssertEqual(appModel.foldedProposedSlices, ["proposed-0-0"], "only the box scrolled to opens")
+    }
+
     func testAPlanRowWithNoPlanTabAsksForNoScroll() async {
         let client = ProposingClient()
         let appModel = await model(client: client)

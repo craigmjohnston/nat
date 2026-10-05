@@ -148,8 +148,11 @@ before `pr-view` lands, offering the fix launch or naming the live agent.
 `window-task-log-checks-failed`.
 
 **Re-running and cancelling checks.** The PR section's Checks block
-(`PRSectionBody`, `ChecksControlsView.swift`): each check row ends in a re-run
-(`arrow.clockwise`) and a cancel (`xmark`) icon button, and the Checks heading
+(`PRSectionBody`, `ChecksControlsView.swift`): each check row — a sidebar task
+row's height, its outcome glyph in the tree's dot column — ends in a re-run
+(`arrow.clockwise`) and a cancel (`xmark`) icon button, drawn only under the
+pointer or while that row's own call is under way (hidden in place, so nothing
+shifts), and the Checks heading
 (`ChecksHeading`) in the list form of the pair — `ListActionGlyph`, drawn
 because SF Symbols on macOS 15 has no such pair: `checklist` with the row
 glyph in its lower right, the list cut a point round it as `DoneFolderGlyph`
@@ -214,7 +217,10 @@ editor before launch, with no tabs; from launch on the titlebar band's
 a proposal's first arrival Plan, a revision neither; Keep workshopping goes
 back to Terminal. The Plan tab boxes each proposed slice's brief
 (`PlanProposal.ProposedSlice`) under its milestone; the Plan header puts it
-up, a slice row scrolls it (`showProposedSlice`), and ⌘1/⌘2 switch the two
+up, a slice row scrolls it (`showProposedSlice`) and unfolds it — each box
+folds to its header, drawn as a diff file header is (its title in the
+Changes file rows' sans), on a click
+(`foldedProposedSlices`) — and ⌘1/⌘2 switch the two
 while the workshop is on screen (`WorkshopMenuActions`). Opening a
 workshop pins its row in Active (`workshopPinnedProjects`) until a launch or
 the row's ✕; the row is "Workshop", with the `wand.and.stars` glyph in the
@@ -223,7 +229,7 @@ plan files, launched requests and the open Untitled tabs (with their
 workspace ids) are kept across relaunches in `workshops.json`
 (`WorkshopCaching`: `DiskWorkshopCache` only in `NatApp`, in memory
 everywhere else), restored once config is read, written debounced and on
-quit (`flushWorkshops`). Stories: `workshop-*` (`workshop-proposal-scrolled` the Plan tab scrolled), `window-workshop*`,
+quit (`flushWorkshops`). Stories: `workshop-*` (`workshop-proposal-scrolled` the Plan tab scrolled, `workshop-proposal-folded` boxes folded), `window-workshop*`,
 `untitled-*`, `window-untitled-proposal`, `window-plan-accepted`.
 
 ## The Notion mirror nudge
@@ -531,7 +537,10 @@ every row's height up front from its columns (`DiffText` — layout and drawing
 wrap through the same code, so they can't disagree), and a viewport-sized view
 draws only what's visible over a sizer document. Comments and the editor stay
 SwiftUI, hosted per anchor row (`DiffCanvasRepresentable`). Don't move the
-rows back into SwiftUI. Stories: `diff-stress`, `diff-stress-unwrapped`.
+rows back into SwiftUI. Exactly one rule ever sits between two file boxes: a
+header draws its bottom rule always and its top rule only where no folded
+file's header is above it (`followsFoldedFile`); the Plan tab's boxes follow
+the same rule. Stories: `diff-stress`, `diff-stress-unwrapped`, `diff-folds`.
 The gutter is one number column (the branch's side; a removed line's is
 blank) and there is no +/- column — a row's fill, and its gutter stripe,
 say what changed. A task's diff is read `expandable`: every gap around its

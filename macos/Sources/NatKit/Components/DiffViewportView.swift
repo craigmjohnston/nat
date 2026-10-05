@@ -238,8 +238,11 @@ final class DiffViewportView: NSView {
         band.fill()
         DiffInk.rule.setFill()
         // A header at the top — the first file's, or any file's pinned there —
-        // sits on the pane heading's own line.
-        if y > 0 { NSRect(x: 0, y: y, width: band.width, height: 1).fill() }
+        // sits on the pane heading's own line, and one under a folded file
+        // on that header's bottom rule: two rules never meet back to back.
+        if y > 0 && !Self.followsFoldedFile(canvas, file: file) {
+            NSRect(x: 0, y: y, width: band.width, height: 1).fill()
+        }
         NSRect(x: 0, y: band.maxY - 1, width: band.width, height: 1).fill()
 
         drawChevron(open: !canvas.state.collapsed.contains(model.path), at: NSPoint(x: 11, y: y + (height - 10) / 2))
@@ -275,6 +278,12 @@ final class DiffViewportView: NSView {
             drawString("viewed", font: canvas.fonts.small, color: checked ? DiffInk.primary : DiffInk.secondary,
                        in: NSRect(x: box.maxX + 6, y: y, width: viewed.maxX - box.maxX - 6, height: height))
         }
+    }
+
+    /// Whether the file before `file` is folded to its header — whose bottom
+    /// rule is then the one rule between the two headers.
+    static func followsFoldedFile(_ canvas: DiffCanvasView, file: Int) -> Bool {
+        file > 0 && canvas.state.collapsed.contains(canvas.files[file - 1].path)
     }
 
     struct HeaderLayout {

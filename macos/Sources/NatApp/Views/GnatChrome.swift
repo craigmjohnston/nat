@@ -11,6 +11,19 @@ enum GnatMetrics {
     static let rowHeight: CGFloat = 24
     /// A sidebar row — a little taller than the design's 24, to breathe.
     static let sidebarRowHeight: CGFloat = 26
+    /// The column a tree row's leading glyph is centred in — a task row's
+    /// state dot, an Active row's — and every row drawn after its fashion
+    /// (a check's outcome).
+    static let treeGlyphColumn: CGFloat = 12
+    /// The wider column a folder-led tree row's glyph is centred in — a
+    /// project's, a milestone's, a source card's.
+    static let treeFolderColumn: CGFloat = 16
+    /// A symbol in the dot column: the size that fills it without spilling.
+    static let treeGlyph: CGFloat = 11
+    /// The square every trailing icon control of a sidebar row or heading
+    /// is centred in — the `+`s, ellipses, filters and closes — so the ones
+    /// stacked down a column share a centre whatever their glyph's width.
+    static let trailingControl: CGFloat = 18
     /// A navigator section's header.
     static let sectionHeadHeight: CGFloat = 32
     static let statusBarHeight: CGFloat = 32
