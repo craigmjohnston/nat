@@ -2493,6 +2493,9 @@ public final class AppModel {
         let watcher = NudgeWatcher()
         watcher.start(path: nudgePath) { [weak self] in
             Task { @MainActor in
+                // An agent marking itself waiting or working nudges too, and
+                // its state should not wait on the plan read below.
+                self?.activityStore?.reread()
                 // A nudge is a write made on this machine, which nat made
                 // through the replica: it is already there to read.
                 await self?.refresh(.replica)

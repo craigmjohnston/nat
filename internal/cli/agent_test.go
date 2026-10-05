@@ -134,10 +134,10 @@ func (r *agentTestRunner) Run(name string, args ...string) (string, error) {
 
 func (r *agentTestRunner) formatPanes() string {
 	var result string
-	// Format: #{@nat_slice}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_dead}
+	// Format: #{@nat_slice}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_dead}\t#{@nat_waiting}
 	for sliceID, session := range r.liveSessions {
-		// sliceID\tpane_id\tsession_name\twindow_id\tpane_dead
-		result += fmt.Sprintf("%s\t%s\t%s\t@0\t0\n", sliceID, "pane_id", session)
+		// sliceID\tpane_id\tsession_name\twindow_id\tpane_dead\twaiting
+		result += fmt.Sprintf("%s\t%s\t%s\t@0\t0\t\n", sliceID, "pane_id", session)
 	}
 	return result
 }

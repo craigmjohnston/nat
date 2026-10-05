@@ -17,12 +17,12 @@ type AgentPresence int
 const (
 	// AgentNone is a slice with no session running on it.
 	AgentNone AgentPresence = iota
-	// AgentUnknown is a live agent whose screen has not been classified. It is
+	// AgentUnknown is a live agent with no activity reading. It is
 	// running, so it counts as working until a reading says otherwise.
 	AgentUnknown
 	// AgentWorking is a live agent getting on with the slice.
 	AgentWorking
-	// AgentWaiting is a live agent that has stopped and wants input.
+	// AgentWaiting is a live agent that has said it stopped and wants input.
 	AgentWaiting
 )
 

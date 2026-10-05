@@ -148,6 +148,18 @@ it a private socket — `tmux -L <name>` on every one of its commands — and
 kill only that socket's server when you are done. Setting `TMUX_TMPDIR`
 does not isolate you: `$TMUX` wins while it is set.
 
+## Waiting on the user
+
+Before you end a turn on a question, a decision or anything else only the
+user can supply, run `nat agent-waiting`: without it the user sees an
+agent still at work and will not look. On the next turn, once the user has
+answered, run `nat agent-working` before doing anything else. They are not
+for hand-back, follow-ups or a blocked note: those have their own commands
+and their own place in the app.
+
+Both act on this session's own tmux pane and take no `--project`: they
+are the one exception to pinning it.
+
 ## Finish
 
 Work you noticed but did not do — a bug beside your change, a test gap

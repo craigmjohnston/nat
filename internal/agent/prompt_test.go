@@ -712,7 +712,7 @@ func TestPromptFlagsAWorktreesOverrideByItsCheckout(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // merely says "the `nat` commands" is not read as one.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|slice-checks-rerun|slice-checks-cancel|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|plan-propose|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|slice-checks-rerun|slice-checks-cancel|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|plan-propose|project-create|agent-waiting|agent-working)\b`)
 
 // natCommands are the invocations a prompt names: each from the command word to
 // the end of its line, and on through the lines a trailing backslash continues
@@ -822,6 +822,7 @@ func TestEverySlicePromptHandsInVisualChanges(t *testing.T) {
 // is pinned to the project of the launch, which is the project the session is
 // actually working.
 func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
+	unpinned := map[string]bool{"agent-waiting": true, "agent-working": true}
 	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
 	for prompt, text := range map[string]string{
 		"slice":          Prompt(testContext()),
@@ -838,6 +839,11 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 			t.Errorf("the %s prompt names no `nat` command at all:\n%s", prompt, text)
 		}
 		for _, cmd := range cmds {
+			// The two an agent marks its own pane with take no project at
+			// all, and are the only ones exempt.
+			if unpinned[natCommand.FindStringSubmatch(cmd)[1]] {
+				continue
+			}
 			if !strings.Contains(cmd, "--project "+testProjectID) {
 				t.Errorf("the %s prompt runs %q without naming the project", prompt, cmd)
 			}
@@ -892,6 +898,47 @@ func TestEveryPromptCarriesTheTmuxRule(t *testing.T) {
 		if !strings.Contains(tmuxPassage, want) {
 			t.Errorf("the tmux rule does not say %q", want)
 		}
+	}
+}
+
+// Every agent nat launches is read as working until it says otherwise, so
+// every prompt tells it to say when it is waiting on the user, and every prompt
+// pinned to a project that the two commands it says so with take no --project.
+func TestEveryPromptCarriesTheWaitingRule(t *testing.T) {
+	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
+	for prompt, text := range map[string]string{
+		"slice":          Prompt(testContext()),
+		"slice worktree": Prompt(worktreeContext()),
+		"slice gnat":     Prompt(gnatContext()),
+		"slice resume":   Prompt(resumeContext()),
+		"slice no repo":  Prompt(repoUnknownContext()),
+		"fix":            Prompt(fixContext()),
+		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
+		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
+		"plan gnat":      PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
+	} {
+		if !strings.Contains(text, waitingPassage(true)) {
+			t.Errorf("the %s prompt does not carry the waiting rule", prompt)
+		}
+	}
+	// The new-project prompt has no project to pin, and so says nothing of
+	// the flag either way.
+	if !strings.Contains(NewProjectPrompt("ws-1", "A todo app."), waitingPassage(false)) {
+		t.Error("the new project prompt does not carry the waiting rule")
+	}
+	for _, want := range []string{
+		"run `nat agent-waiting`", "run `nat agent-working` before doing anything else",
+		"not\nfor hand-back, follow-ups or a blocked note",
+	} {
+		if !strings.Contains(waitingPassage(false), want) {
+			t.Errorf("the waiting rule does not say %q", want)
+		}
+	}
+	if !strings.Contains(waitingPassage(true), "take no `--project`") {
+		t.Error("the pinned waiting rule does not say the two take no --project")
+	}
+	if strings.Contains(waitingPassage(false), "--project") {
+		t.Error("the unpinned waiting rule names --project")
 	}
 }
 

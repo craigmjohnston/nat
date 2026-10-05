@@ -46,6 +46,14 @@ const sessionIDLen = 8
 // moved into another session.
 const SlicePaneOption = "@nat_slice"
 
+// WaitingPaneOption is the tmux pane option an agent sets on its own pane, with
+// `nat agent-waiting`, to say it has stopped and needs the user — and clears,
+// with `nat agent-working`, once it has its answer. It is the whole of what
+// [Tmux.Activity] reads a waiting agent from: the agent says so itself rather
+// than nat inferring it from the screen. It lives on the pane and nowhere else,
+// so it goes with the pane and a relaunch starts clear.
+const WaitingPaneOption = "@nat_waiting"
+
 // PlanSentinel is the bare value [SlicePaneOption] used to carry on every
 // planning agent's pane, in place of a slice page ID: the planning agent works
 // the plan itself and has no slice to be tagged with. It cannot collide with a
@@ -304,6 +312,9 @@ type pane struct {
 	// server-wide would otherwise have every finished agent read as one still
 	// sitting there with nothing to say.
 	dead bool
+	// waiting is a pane whose agent has said it needs the user
+	// ([WaitingPaneOption]).
+	waiting bool
 }
 
 // panes lists every pane on the server. Panes that are not ours carry no slice
@@ -332,22 +343,23 @@ func (t *Tmux) panes() ([]pane, error) {
 			continue
 		}
 		panes = append(panes, pane{slice: fields[0], id: fields[1], session: fields[2], window: fields[3],
-			dead: fields[4] == "1"})
+			dead: fields[4] == "1", waiting: fields[5] != ""})
 	}
 	return panes, nil
 }
 
 // listPanesFields is how many fields [listPanesFormat] asks for; a line with
 // any other number of them is not one tmux wrote for us.
-const listPanesFields = 5
+const listPanesFields = 6
 
 // listPanesFormat is what [Tmux.panes] asks tmux to print for each pane: the
-// slice tag, then the pane, the session it is in and the window within it, and
-// last whether the pane is dead, which is what the activity watcher reads
-// liveness from. Tabs separate them because a session name can hold anything
-// but that.
+// slice tag, then the pane, the session it is in and the window within it,
+// whether the pane is dead, which is what the activity watcher reads liveness
+// from, and last the agent's own waiting flag. Tabs separate them because a
+// session name can hold anything but that.
 func listPanesFormat() string {
-	return fmt.Sprintf("#{%s}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_dead}", SlicePaneOption)
+	return fmt.Sprintf("#{%s}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_dead}\t#{%s}",
+		SlicePaneOption, WaitingPaneOption)
 }
 
 // HostPane is the tmux pane this process is drawing in, or "" when it is not

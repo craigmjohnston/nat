@@ -47,8 +47,8 @@ func checkNudge() tea.Cmd {
 	}
 }
 
-// nudged takes a reading of the marker to the board, returning the reload a
-// moved mtime calls for.
+// nudged takes a reading of the marker to the board, returning the reload — and
+// the activity reading — a moved mtime calls for.
 //
 // The first reading is a baseline, not news: whatever commands ran before this
 // board started are already in the load Init kicked off. And a nudge that
@@ -67,5 +67,8 @@ func (a *App) nudged(msg nudgeMsg) tea.Cmd {
 		return nil
 	}
 	a.nudgeSeen = msg.mtime
-	return a.startLoad(false)
+	// The agents are read again too: an agent marking itself waiting or
+	// working (`nat agent-waiting`/`agent-working`) nudges, and its star
+	// should not wait out the watcher's interval.
+	return tea.Batch(a.startLoad(false), a.refreshActivity())
 }

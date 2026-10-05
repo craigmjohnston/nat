@@ -13,9 +13,8 @@ import (
 // getting on. It is far shorter than the live read's half a minute because this
 // is the reading a star on a row moves with: an agent that has stopped for
 // input is asking for the user, and a mark that takes half a minute to settle
-// would be answering after they had gone. One scan of the panes plus a screen
-// read per agent, all of them local socket calls, is cheap enough to pay for
-// twice a second's worth of freshness.
+// would be answering after they had gone. One scan of the panes, a local
+// socket call, is cheap enough to pay for twice a second's worth of freshness.
 const activityInterval = 2 * time.Second
 
 // activityTick is held as a variable so the tests can pin the watcher quiet
