@@ -136,6 +136,14 @@ running agent's state.
   `supportsSessionEnv` (`tmux -V` read as ≥ 3.2) gates whether `-e` is even
   passed — an older tmux refuses the whole launch over an unsupported flag,
   and a version that can't be read is treated as "don't know," not "old."
+- Every session's shell `cd`s into its workdir itself (`inWorkdir`, in
+  `agentCommand`, `bareLaunchArgs` and `usageProbeCommand`) — `-c` alone is
+  not enough. A tmux server keeps the working directory it started in; one
+  started from a worktree a merge later removed puts every new pane in that
+  deleted directory whatever `-c` says, and `claude` refuses to start there
+  (exit 1, no transcript — the session just vanishes). `ExecRunner` runs
+  every tmux from the home directory (`stableDir`) so a server nat starts
+  never has that problem; one someone else started still can.
 - `agentCommand` pins every launch's `--settings` to `{"theme":"auto"}`,
   unconditionally — there is no lighter/darker choice threaded in from the
   caller any more. `"auto"` is what makes Claude Code speak the *live*
