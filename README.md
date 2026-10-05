@@ -9,8 +9,6 @@
   and keep track of all of it from one window.</em>
 </p>
 
----
-
 Breaking a project into small, well-described tasks is what makes coding
 agents reliable. Running more than one of those agents at a time is what
 makes them fast. Doing both by hand means a pile of terminals, a pile of
