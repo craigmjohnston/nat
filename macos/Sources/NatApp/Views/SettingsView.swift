@@ -61,14 +61,14 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
 
     /// The tile's ground, one hue per section so the column reads at a
     /// glance as the reference's does — fixed across palettes
-    /// (`DesignTokens.tileSlate` and the rest), shaded top to bottom.
+    /// (`DesignTokens.tileNavy` and the rest), shaded top to bottom.
     var tint: LinearGradient {
         switch self {
-        case .general: DesignTokens.tileSlate.gradient
-        case .agents: DesignTokens.tileCoral.gradient
+        case .general: DesignTokens.tileNavy.gradient
+        case .agents: DesignTokens.tileAmber.gradient
         case .projects: DesignTokens.tileInkBlue.gradient
-        case .sources: DesignTokens.tileJade.gradient
-        case .about: DesignTokens.tileViolet.gradient
+        case .sources: DesignTokens.tileAzure.gradient
+        case .about: DesignTokens.tileIndigo.gradient
         }
     }
 

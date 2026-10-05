@@ -368,8 +368,8 @@ final class DesignTokensTests: XCTestCase {
     // MARK: - Settings tiles
 
     private let tiles = [
-        DesignTokens.tileSlate, DesignTokens.tileCoral, DesignTokens.tileInkBlue,
-        DesignTokens.tileJade, DesignTokens.tileViolet,
+        DesignTokens.tileNavy, DesignTokens.tileAmber, DesignTokens.tileInkBlue,
+        DesignTokens.tileAzure, DesignTokens.tileIndigo,
     ]
 
     /// Each tile is shaded lighter at the top and deeper at the bottom by the

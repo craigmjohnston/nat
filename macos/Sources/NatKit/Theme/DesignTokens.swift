@@ -116,17 +116,18 @@ public enum DesignTokens {
     /// glyph on them, rather than the palette's `system*` hues: a dark
     /// palette's hues are pale (Iceberg's blue is 84a0c6) and a white glyph
     /// washes out on them, where these are solid and saturated under every
-    /// palette and either appearance, and of one lightness so the column
-    /// reads as a family.
-    public static let tileSlate = TileTint("5a6378")
-    public static let tileCoral = TileTint("d8552f")
+    /// palette and either appearance. The column is the app icon's run of
+    /// navy and blues with one warm tile in it, each deep enough that the
+    /// glyph reads on its lighter top.
+    public static let tileNavy = TileTint("1f2a5c")
+    public static let tileAmber = TileTint("b8740f")
     /// The app icon's own blue.
     public static let tileInkBlue = TileTint("2c5ed7")
-    public static let tileJade = TileTint("188a6a")
-    public static let tileViolet = TileTint("7b5bd6")
+    public static let tileAzure = TileTint("168dc9")
+    public static let tileIndigo = TileTint("5a48d6")
     /// The hairline just inside every tile's edge: what keeps the ink-blue
     /// tile apart from a selected row's accent fill, which in One Light is
-    /// nearly the same blue.
+    /// nearly the same blue, and the navy tile apart from a dark sidebar.
     public static let tileStroke = Color.white.opacity(0.35)
 
     /// The gnat mark drawn on its own, in the ink the app icon draws it in
