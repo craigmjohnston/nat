@@ -333,16 +333,17 @@ public func sessionIsDone(_ session: Session, liveAgents: [String: AgentActivity
 public func isReviewSlice(_ slice: Slice) -> Bool {
     switch stage(for: slice, agent: nil) {
     case .review, .pr: return true
-    case .todo, .working, .fixing, .done: return false
+    case .todo, .working, .done: return false
     }
 }
 
 /// Whether the ACTIVE section's working half would hold this slice: its stage
-/// is working, or fixing (a fix agent on an approved slice). It is never "has
+/// is working — a resumed slice too, its PR recorded but the agent at it
+/// again (`Slice.resumed`). It is never "has
 /// a live tmux session" — a session can outlive the slice it was launched on.
 public func isActiveSlice(_ slice: Slice) -> Bool {
     switch stage(for: slice, agent: nil) {
-    case .working, .fixing: return true
+    case .working: return true
     case .todo, .review, .pr, .done: return false
     }
 }
@@ -395,7 +396,7 @@ public func buildRailModel(
     // Done-ness itself is Notion's own status, read directly (`slice.status ==
     // "Done"`) wherever the DONE folders, their counts and the summary count
     // it. What is in flight is the slice's `WorkflowStage`: review and pr
-    // draw as needs review, working and fixing as working. A pr slice's meta
+    // draw as needs review, working (a resumed slice too) as working. A pr slice's meta
     // is the gh reading's own words when one has been taken, and absent
     // otherwise, which is also what keeps every Done slice a project ever
     // finished out of the section.

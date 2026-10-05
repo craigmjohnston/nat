@@ -27,7 +27,8 @@ var newPRViewer = defaultPRViewer
 // defaultPRViewer is the real gh on PATH.
 func defaultPRViewer() PRViewer { return gh.New() }
 
-// newReviewReader is a fix launch's own edge onto gh — see
+// newReviewReader is a launch's own edge onto gh, for a slice with a pull
+// request recorded — see
 // [actions.PRReviewReader] — held apart from newPRViewer even though both
 // drive the real gh, so a fake standing in for the PR screen's own reads is
 // never asked to answer these two as well.

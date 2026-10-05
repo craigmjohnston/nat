@@ -370,6 +370,9 @@ func TestSourcedDelegatesTheRestToTheFile(t *testing.T) {
 	if err := s.RecordSentBack(ctx, sl.ID, "redo"); err != nil {
 		t.Error(err)
 	}
+	if err := s.RecordResumed(ctx, sl.ID, "more"); err != nil {
+		t.Error(err)
+	}
 	if err := s.RecordRelaunch(ctx, sl.ID); err != nil {
 		t.Error(err)
 	}

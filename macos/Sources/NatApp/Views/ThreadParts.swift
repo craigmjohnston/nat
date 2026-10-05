@@ -40,6 +40,7 @@ extension ThreadEventKind {
         case .sentBack: return "arrow.uturn.forward.circle"
         case .released: return "arrow.down.to.line.circle"
         case .relaunched: return "arrow.clockwise.circle"
+        case .resumed: return "arrow.uturn.left.circle"
         case .checksFailed: return "xmark.octagon"
         case .blocked: return "exclamationmark.octagon"
         case .followUps: return "lightbulb"
@@ -277,9 +278,6 @@ struct LaunchCard: View {
         /// A slice nat recorded a launch of, whose agent is gone
         /// (`launchIsRelaunch`).
         case relaunch
-        /// An approved slice at its pull request: a fix agent, sent at the
-        /// review on the same branch.
-        case fix
         /// The dependencies still unfinished, by name.
         case blocked(waitingOn: [String])
 
@@ -288,7 +286,6 @@ struct LaunchCard: View {
         var actionTitle: String {
             switch self {
             case .relaunch: return "Relaunch agent"
-            case .fix: return "Launch fix agent"
             case .launch, .blocked: return "Launch agent"
             }
         }
@@ -310,7 +307,7 @@ struct LaunchCard: View {
     var body: some View {
         LogItem(
             symbol: blocked ? "lock" : ThreadEventKind.launched.symbol,
-            who: blocked ? "Blocked" : mode == .relaunch ? "Relaunch" : mode == .fix ? "Fix" : "Launch",
+            who: blocked ? "Blocked" : mode == .relaunch ? "Relaunch" : "Launch",
             whoRole: blocked ? .tertiary : .primary
         ) {
             VStack(alignment: .leading, spacing: 0) {
@@ -357,9 +354,6 @@ struct LaunchCard: View {
                 .ink(.secondary)
         case .relaunch:
             Text("No agent is running on this task. Relaunch to start a new agent on its branch that carries on from the work so far.")
-                .ink(.secondary)
-        case .fix:
-            Text("The pull request is open. Launch a fix agent on its branch to answer the review and get the checks green; it hands back when the fix is pushed.")
                 .ink(.secondary)
         case .blocked(let names):
             let waiting = names.isEmpty ? Text("its dependencies") : names.enumerated().reduce(Text("")) { text, entry in

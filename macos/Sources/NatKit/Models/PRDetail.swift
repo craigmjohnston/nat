@@ -39,6 +39,10 @@ public struct PRDetail: Codable, Equatable, Sendable {
     /// Who has been asked to review and not yet answered — a user's login,
     /// a team's slug. Empty where an older `nat` sent no such key.
     public let reviewRequests: [String]
+    /// The commit the pull request's head is at — what the PR section's
+    /// Updated badge compares against the head the user last saw. "" where
+    /// nat does not know it, or is too old to send it.
+    public let headRefOid: String
 
     enum CodingKeys: String, CodingKey {
         case number, title, body, state
@@ -54,6 +58,7 @@ public struct PRDetail: Codable, Equatable, Sendable {
         case changedFiles = "changed_files"
         case commits
         case reviewRequests = "review_requests"
+        case headRefOid = "head_ref_oid"
     }
 
     public init(from decoder: Decoder) throws {
@@ -78,6 +83,7 @@ public struct PRDetail: Codable, Equatable, Sendable {
         changedFiles = try c.decodeIfPresent(Int.self, forKey: .changedFiles)
         commits = try c.decodeIfPresent(Int.self, forKey: .commits)
         reviewRequests = try c.decodeIfPresent([String].self, forKey: .reviewRequests) ?? []
+        headRefOid = try c.decodeIfPresent(String.self, forKey: .headRefOid) ?? ""
     }
 
     public init(
@@ -100,7 +106,8 @@ public struct PRDetail: Codable, Equatable, Sendable {
         deletions: Int? = nil,
         changedFiles: Int? = nil,
         commits: Int? = nil,
-        reviewRequests: [String] = []
+        reviewRequests: [String] = [],
+        headRefOid: String = ""
     ) {
         self.number = number
         self.title = title
@@ -122,6 +129,7 @@ public struct PRDetail: Codable, Equatable, Sendable {
         self.changedFiles = changedFiles
         self.commits = commits
         self.reviewRequests = reviewRequests
+        self.headRefOid = headRefOid
     }
 }
 

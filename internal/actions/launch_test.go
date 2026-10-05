@@ -476,43 +476,6 @@ func TestLaunchRecordsARelaunchForANoteBesideAHandBack(t *testing.T) {
 	}
 }
 
-// A fix launch claims nothing, but it is a return to work, and files one
-// Relaunched to say so — the line store.Fixing reads it off — whether the
-// slice is approved and in progress or Done under the old rule. A failed write
-// is logged and the agent is started regardless.
-func TestLaunchRecordsARelaunchForAFixLaunch(t *testing.T) {
-	for _, status := range []domain.SliceStatus{domain.SliceClaimed, domain.SliceDone} {
-		client := &fakeClient{}
-		l := &fakeLauncher{}
-		_, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"},
-			client.store(), &fakeReviewer{}, "u1",
-			agent.PromptContext{
-				Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: status, PRURL: "https://example/pr/1"},
-				WorkingDir: t.TempDir(), Fix: true,
-			}, config.AgentModel{})
-		if err != nil || len(l.launches) != 1 {
-			t.Fatalf("%s: Launch() = %v, launches %+v, want it to go through", status, err, l.launches)
-		}
-		if len(client.appended) != 1 || client.appended[0] != "s5" || client.headings[0] != notion.RelaunchedHeading {
-			t.Errorf("%s: appended = %v %v, want the Relaunched line filed on the slice", status, client.appended, client.headings)
-		}
-		if len(client.updated) != 0 {
-			t.Errorf("%s: updated = %v, want nothing claimed", status, client.updated)
-		}
-	}
-
-	l := &fakeLauncher{}
-	client := &fakeClient{appendBlocks: func(string, []map[string]any) ([]notion.Block, error) { return nil, errors.New("notion: 500") }}
-	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(), nil, "u1",
-		agent.PromptContext{
-			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed, PRURL: "https://example/pr/1"},
-			WorkingDir: t.TempDir(), Fix: true,
-		}, config.AgentModel{})
-	if err != nil || res.Session == "" {
-		t.Errorf("Launch() = %+v, %v, want the agent started despite the failed note", res, err)
-	}
-}
-
 // A relaunch's or a fresh launch's line that fails to write is logged and
 // never fails the launch: the agent is still started.
 func TestLaunchToleratesAFailedLaunchOrRelaunchWrite(t *testing.T) {
@@ -573,15 +536,12 @@ func (s *describingStore) Describe(context.Context) (source.Describe, error) {
 
 // launchSourced runs an ordinary first-time launch of a slice filed under
 // container c1 against st, and answers the prompt file it wrote.
-func launchSourced(t *testing.T, st Store, fix bool) (LaunchResult, string) {
+func launchSourced(t *testing.T, st Store) (LaunchResult, string) {
 	t.Helper()
 	l := &fakeLauncher{}
 	slice := domain.Slice{ID: "s5", Name: "Info view", MilestoneID: "c1"}
-	if fix {
-		slice.Status, slice.PRURL = domain.SliceDone, "https://example/pr/1"
-	}
 	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, st, &fakeReviewer{}, "u1",
-		agent.PromptContext{Slice: slice, WorkingDir: t.TempDir(), Fix: fix}, config.AgentModel{})
+		agent.PromptContext{Slice: slice, WorkingDir: t.TempDir()}, config.AgentModel{})
 	if err != nil || len(l.launches) != 1 {
 		t.Fatalf("Launch() = %v, launches %+v, want it to go through", err, l.launches)
 	}
@@ -609,7 +569,7 @@ func sourcedFake() *sourcedStore {
 // under the plugin's own noun, carrying only the prose sections.
 func TestLaunchCarriesTheContainer(t *testing.T) {
 	st := &describingStore{sourcedStore: sourcedFake(), describe: source.Describe{ContainerNoun: "card"}}
-	res, prompt := launchSourced(t, st, false)
+	res, prompt := launchSourced(t, st)
 	want := &agent.PromptContainer{Noun: "card", Title: "Checkout times out", ExternalURL: "https://tracker.example/c1",
 		Prose: "First paragraph.\n\nSecond paragraph."}
 	if res.Context.Container == nil || *res.Context.Container != *want {
@@ -637,7 +597,7 @@ func TestLaunchNamesAContainerGenericallyWithoutANoun(t *testing.T) {
 		"empty noun":      &describingStore{sourcedStore: sourcedFake()},
 	} {
 		t.Run(name, func(t *testing.T) {
-			res, prompt := launchSourced(t, st, false)
+			res, prompt := launchSourced(t, st)
 			if res.Context.Container == nil || res.Context.Container.Noun != "container" {
 				t.Errorf("container = %+v, want the generic noun", res.Context.Container)
 			}
@@ -652,7 +612,7 @@ func TestLaunchNamesAContainerGenericallyWithoutANoun(t *testing.T) {
 func TestLaunchGoesOnWithoutAContainerThatCannotBeRead(t *testing.T) {
 	st := sourcedFake()
 	st.containerErr = errors.New("plugin down")
-	res, prompt := launchSourced(t, st, false)
+	res, prompt := launchSourced(t, st)
 	if res.Context.Container != nil {
 		t.Errorf("container = %+v, want none after a failed read", res.Context.Container)
 	}
@@ -661,12 +621,9 @@ func TestLaunchGoesOnWithoutAContainerThatCannotBeRead(t *testing.T) {
 	}
 }
 
-// A fix launch reads no container, and neither does a slice filed under none.
-func TestLaunchReadsNoContainerForAFixOrAnUnfiledSlice(t *testing.T) {
+// A slice filed under no container reads none.
+func TestLaunchReadsNoContainerForAnUnfiledSlice(t *testing.T) {
 	st := sourcedFake()
-	if res, _ := launchSourced(t, st, true); res.Context.Container != nil || len(st.containerIDs) != 0 {
-		t.Errorf("fix launch: container %+v, reads %v, want neither", res.Context.Container, st.containerIDs)
-	}
 	l := &fakeLauncher{}
 	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, st, nil, "u1",
 		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: t.TempDir()}, config.AgentModel{})
@@ -919,9 +876,10 @@ func TestLaunchLeavesTheDiffStatEmptyOnAFailedRead(t *testing.T) {
 	}
 }
 
-// A fix launch claims nothing and gathers the review instead: the gh reads
-// come back on the context, and no claim is written.
-func TestLaunchGathersTheReviewForAFixLaunch(t *testing.T) {
+// A launch of a slice with a pull request recorded — work already out,
+// resumed — gathers the review as it stood: the gh reads come back on the
+// context, and the slice is claimed as for any launch.
+func TestLaunchGathersTheReviewOfARecordedPullRequest(t *testing.T) {
 	dir := repoDir(t)
 	l := &fakeLauncher{}
 	client := &fakeClient{}
@@ -930,8 +888,8 @@ func TestLaunchGathersTheReviewForAFixLaunch(t *testing.T) {
 	res, err := Launch(context.Background(), l, &fakeWorktrees{}, &fakeRepo{base: "origin/main"}, client.store(),
 		reviewer, "u1",
 		agent.PromptContext{
-			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceDone, PRURL: "https://example/pr/1"},
-			WorkingDir: dir, Fix: true,
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed, PRURL: "https://example/pr/1"},
+			WorkingDir: dir,
 		}, config.AgentModel{})
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
@@ -939,13 +897,12 @@ func TestLaunchGathersTheReviewForAFixLaunch(t *testing.T) {
 	if res.Context.ReviewComments != "craig: nit on naming" || res.Context.ReviewChecks != "X build 1m" {
 		t.Errorf("context = %+v, want the gathered review", res.Context)
 	}
-	if len(client.updated) != 0 {
-		t.Errorf("wrote %+v, want a fix launch to claim nothing", client.updated)
+	if len(client.updated) != 1 {
+		t.Errorf("wrote %+v, want the claim", client.updated)
 	}
 }
 
-// A nil viewer — nothing headless ever drives a fix launch with one — gathers
-// nothing rather than panicking.
+// A nil viewer gathers nothing rather than panicking.
 func TestLaunchReviewGatherToleratesANilViewer(t *testing.T) {
 	dir := repoDir(t)
 	client := &fakeClient{}
@@ -953,8 +910,8 @@ func TestLaunchReviewGatherToleratesANilViewer(t *testing.T) {
 	res, err := Launch(context.Background(), &fakeLauncher{}, &fakeWorktrees{}, &fakeRepo{base: "origin/main"},
 		client.store(), nil, "u1",
 		agent.PromptContext{
-			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceDone, PRURL: "https://example/pr/1"},
-			WorkingDir: dir, Fix: true,
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed, PRURL: "https://example/pr/1"},
+			WorkingDir: dir,
 		}, config.AgentModel{})
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
@@ -973,8 +930,8 @@ func TestLaunchLeavesTheReviewEmptyOnAFailedRead(t *testing.T) {
 	res, err := Launch(context.Background(), &fakeLauncher{}, &fakeWorktrees{}, &fakeRepo{base: "origin/main"},
 		client.store(), reviewer, "u1",
 		agent.PromptContext{
-			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceDone, PRURL: "https://example/pr/1"},
-			WorkingDir: dir, Fix: true,
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed, PRURL: "https://example/pr/1"},
+			WorkingDir: dir,
 		}, config.AgentModel{})
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
@@ -997,8 +954,8 @@ func TestLaunchLeavesTheChecksEmptyOnAFailedRead(t *testing.T) {
 	res, err := Launch(context.Background(), &fakeLauncher{}, &fakeWorktrees{}, &fakeRepo{base: "origin/main"},
 		client.store(), reviewer, "u1",
 		agent.PromptContext{
-			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceDone, PRURL: "https://example/pr/1"},
-			WorkingDir: dir, Fix: true,
+			Slice:      domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed, PRURL: "https://example/pr/1"},
+			WorkingDir: dir,
 		}, config.AgentModel{})
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)

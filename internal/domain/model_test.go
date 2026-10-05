@@ -641,3 +641,28 @@ func TestSliceHandedBack(t *testing.T) {
 		})
 	}
 }
+
+// TestSliceResumed is the one statement of a resumed slice: in progress, a
+// pull request recorded, its branch cleared, on a project that has a Branch
+// column to clear it from.
+func TestSliceResumed(t *testing.T) {
+	tests := []struct {
+		name      string
+		slice     Slice
+		hasBranch bool
+		want      bool
+	}{
+		{"resumed", Slice{Status: SliceClaimed, PRURL: "https://gh/pr/1"}, true, true},
+		{"handed back again", Slice{Status: SliceClaimed, PRURL: "https://gh/pr/1", Branch: "slice/x"}, true, false},
+		{"no pull request", Slice{Status: SliceClaimed}, true, false},
+		{"done", Slice{Status: SliceDone, PRURL: "https://gh/pr/1"}, true, false},
+		{"no branch column", Slice{Status: SliceClaimed, PRURL: "https://gh/pr/1"}, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.slice.Resumed(tt.hasBranch); got != tt.want {
+				t.Errorf("Resumed(%v) = %v, want %v", tt.hasBranch, got, tt.want)
+			}
+		})
+	}
+}

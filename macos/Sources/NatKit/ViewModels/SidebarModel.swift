@@ -6,14 +6,14 @@ import Foundation
 /// agent refining only what a stage leaves open: whether a slice being worked
 /// is waiting on the user.
 public enum SliceDisplayState: String, CaseIterable, Equatable, Sendable {
-    case todo, working, waiting, review, pr, fixing, blocked, done
+    case todo, working, waiting, review, pr, blocked, done
 
     /// The design's `needsYou`: an agent waiting, a branch to review, a pull
     /// request open. What the sidebar sorts Active by and counts in hot.
     public var needsYou: Bool {
         switch self {
         case .waiting, .review, .pr: return true
-        case .todo, .working, .fixing, .blocked, .done: return false
+        case .todo, .working, .blocked, .done: return false
         }
     }
 
@@ -31,7 +31,6 @@ public enum SliceDisplayState: String, CaseIterable, Equatable, Sendable {
         case .waiting: return "Waiting for you"
         case .review: return "In review"
         case .pr: return "PR open"
-        case .fixing: return "Fixing"
         case .blocked: return "Blocked"
         case .done: return "Done"
         }
@@ -41,20 +40,19 @@ public enum SliceDisplayState: String, CaseIterable, Equatable, Sendable {
     /// fold and the reaper's sweep can never disagree.
     public var isInFlight: Bool {
         switch self {
-        case .working, .waiting, .review, .pr, .fixing: return true
+        case .working, .waiting, .review, .pr: return true
         case .todo, .blocked, .done: return false
         }
     }
 }
 
 /// A slice's display state. `agent` is the live map's reading, which turns a
-/// working (or fixing) slice into a waiting one and nothing else: a session
+/// working slice (a resumed one too) into a waiting one and nothing else: a session
 /// outlives hand-back and approve, so it never moves a slice's stage.
 public func displayState(for slice: Slice, agent: AgentActivity?) -> SliceDisplayState {
     switch stage(for: slice, agent: agent) {
     case .todo: return slice.blocked ? .blocked : .todo
     case .working: return agent == .waiting ? .waiting : .working
-    case .fixing: return agent == .waiting ? .waiting : .fixing
     case .review: return .review
     case .pr: return .pr
     case .done: return .done
@@ -618,8 +616,8 @@ public func buildSidebarModel(
             let rows = plan.slices.map { slice -> SidebarSliceRow in
                 let agent = liveAgents[slice.id]
                 // A pull request read failing its checks or conflicting is
-                // marked on the rows it already has: at the PR stage, or
-                // under a fix — never a Done or pre-PR slice. Passing
+                // marked on the rows it already has: at the PR stage — never
+                // a Done, pre-PR or resumed slice. Passing
                 // checks, more narrowly (`prMarks`).
                 return SidebarSliceRow(
                     sliceID: slice.id, projectID: project.id, title: slice.name,

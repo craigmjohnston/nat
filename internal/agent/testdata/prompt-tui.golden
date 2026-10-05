@@ -219,6 +219,15 @@ about a value you interpolated rather than read is exactly the kind of
 line that costs somebody else an hour redoing the work to find out it
 was wrong.
 
+If the user asks for more or different work after you have handed back,
+say so on the record before changing anything:
+
+    nat slice-resume 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 --note '<what they asked for>'
+
+then do the work, push, and hand back again with the same
+`complete-slice --branch` command. If it refuses because the slice is
+Done, the work is merged: say so to the user and stop.
+
 Leave `--branch` off when the slice produced no branch — a docs or
 research slice — and it is marked Done there and then, with no pull
 request to describe. A summary too long for one argument can be piped in

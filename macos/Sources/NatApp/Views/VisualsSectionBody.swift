@@ -58,8 +58,8 @@ struct VisualsSectionBody: View {
                     .truncationMode(.head)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if store.isNew(sliceID: slice.id, visual) {
-                Chip(NavSectionStatus.new.label, tone: NavSectionStatus.new.tone, size: .small).fixedSize()
+            if let badge = store.badge(sliceID: slice.id, visual) {
+                SeenBadgeChip(badge: badge)
             }
             if commented {
                 Image(systemName: "text.bubble.fill")

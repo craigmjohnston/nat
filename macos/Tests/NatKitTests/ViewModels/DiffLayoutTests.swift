@@ -68,6 +68,19 @@ final class DiffLayoutTests: XCTestCase {
 
     // MARK: - Laying out
 
+    /// What a stretch of the view shows of each file's change: its rows, not
+    /// its header alone — what the Changes badges count as seen.
+    func testShownFilesAreThoseWithARowInView() {
+        let layout = DiffLayout(files: files, width: width(columns: 100), metrics: metrics)
+        XCTAssertEqual(layout.shownFiles(from: 0, to: 30), [], "a's header alone")
+        XCTAssertEqual(layout.shownFiles(from: 0, to: 200), [0, 1])
+        XCTAssertEqual(layout.shownFiles(from: 80, to: 100), [], "b's header alone")
+        XCTAssertEqual(layout.shownFiles(from: 60, to: 110), [0, 1])
+        XCTAssertEqual(layout.shownFiles(from: 50, to: 50), [], "an empty stretch")
+        let folded = DiffLayout(files: files, collapsed: ["a.swift"], width: width(columns: 100), metrics: metrics)
+        XCTAssertEqual(folded.shownFiles(from: 0, to: 200), [1], "a folded file shows no change")
+    }
+
     func testItemsAndOffsetsAreExact() {
         let layout = DiffLayout(files: files, width: width(columns: 10), metrics: metrics)
         XCTAssertEqual(layout.items, [

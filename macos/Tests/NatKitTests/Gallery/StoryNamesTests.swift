@@ -80,7 +80,8 @@ final class StoryNamesTests: XCTestCase {
         let names = try shippedNames()
         for prefix in [
             "window-review", "window-visuals", "window-todo", "window-blocked", "window-working", "window-waiting",
-            "window-pr", "window-fixing", "window-done", "window-light", "window-onboarding",
+            "window-pr", "window-resumed", "window-resumed-notices", "window-resumed-badges", "window-pr-updated", "window-taken-back",
+            "window-task-log-resumed", "window-pr-send-back", "window-done", "window-light", "window-onboarding",
             "window-workshop", "window-session-", "window-untitled", "sidebar-skeleton",
             "sidebar-loaded", "sidebar-empty", "sidebar-error", "status-bar-", "workshop-", "settings",
         ] {

@@ -102,11 +102,20 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
     public let dependsOn: [String]?
     public let blocked: Bool
     public let handedBack: Bool
-    /// A fix is under way: approved, and its latest task-log event a return
-    /// to work (a Relaunched or a Sent back) — read off the record by nat
-    /// (`store.Fixing`), so a restart mid-fix still reads it. False where nat
-    /// does not say.
-    public let fixing: Bool
+    /// The slice was resumed after its hand-back: In progress, a PR
+    /// recorded and its `Branch` cleared (`nat slice-resume`), on a project
+    /// whose shape has a Branch column — nat's own reading, never re-derived
+    /// here, since a project with no Branch column holds a PR and no branch
+    /// legitimately. Left by the agent's next hand-back. False where nat does
+    /// not say.
+    public let resumed: Bool
+    /// Taken back after a hand-back: In progress, its Branch cleared on a
+    /// project with a Branch column, and a Handed back on its task log —
+    /// nat's `taken_back`. True for a resumed slice too, and for a review
+    /// sent back with no PR, which `resumed` (PR recorded) does not cover:
+    /// what keeps its Changes and Visual changes on screen while the work is
+    /// redone. Never a stage of its own. False where nat does not say.
+    public let takenBack: Bool
     public let state: SliceState?
 
     enum CodingKeys: String, CodingKey {
@@ -122,7 +131,8 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         case dependsOn = "depends_on"
         case blocked
         case handedBack = "handed_back"
-        case fixing
+        case resumed
+        case takenBack = "taken_back"
         case state
     }
 
@@ -139,7 +149,8 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         dependsOn: [String]? = nil,
         blocked: Bool,
         handedBack: Bool,
-        fixing: Bool = false,
+        resumed: Bool = false,
+        takenBack: Bool = false,
         state: SliceState? = nil
     ) {
         self.id = id
@@ -154,7 +165,8 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         self.dependsOn = dependsOn
         self.blocked = blocked
         self.handedBack = handedBack
-        self.fixing = fixing
+        self.resumed = resumed
+        self.takenBack = takenBack
         self.state = state
     }
 
@@ -172,7 +184,8 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         dependsOn = try c.decodeIfPresent([String].self, forKey: .dependsOn)
         blocked = try c.decode(Bool.self, forKey: .blocked)
         handedBack = try c.decode(Bool.self, forKey: .handedBack)
-        fixing = try c.decodeIfPresent(Bool.self, forKey: .fixing) ?? false
+        resumed = try c.decodeIfPresent(Bool.self, forKey: .resumed) ?? false
+        takenBack = try c.decodeIfPresent(Bool.self, forKey: .takenBack) ?? false
         state = try c.decodeIfPresent(SliceState.self, forKey: .state)
     }
 }

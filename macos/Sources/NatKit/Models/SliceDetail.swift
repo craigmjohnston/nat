@@ -137,6 +137,10 @@ public struct TaskLogEvent: Codable, Equatable, Sendable {
         /// from. Not drawn as an item of its own.
         case launched
         case relaunched
+        /// Work resumed after a hand-back (`nat slice-resume`): the note is
+        /// why, and the Branch was cleared after it; the hand-back that
+        /// follows is the ordinary `handed_back` after it in the list.
+        case resumed
         case blocked
         case summary
         case followUps = "follow_ups"
@@ -151,7 +155,7 @@ public struct TaskLogEvent: Codable, Equatable, Sendable {
 
     public let kind: Kind
     /// The section's own text: a hand-back's note, the comments sent back,
-    /// a blocked or closing summary, a note's text without its provenance.
+    /// why work was resumed, a blocked or closing summary, a note's text without its provenance.
     public let note: String?
     /// Who released it, or who a note came from — a slice by name and
     /// milestone, or a person.

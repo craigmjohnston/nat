@@ -65,6 +65,9 @@ type (
 	// projectLoadedMsg carries a freshly loaded plan.
 	projectLoadedMsg struct {
 		project domain.Project
+		// hasBranch is whether the project has a Branch column, read with the
+		// plan's shape — see [Board.SetHasBranch].
+		hasBranch bool
 		// pullErr is a forced pull's own failure — the refresh key or the
 		// background poll asked the workspace and it would not answer. The
 		// plan itself still landed, read from the file as it stands, so this
@@ -292,7 +295,7 @@ type App struct {
 	// prMerger is the one thing this app does to a pull request rather than
 	// reads of one: the merge key on that screen — see [App.mergePRFlow].
 	//
-	// reviewReader is a fix launch's own gh reads — see [actions.Launch] —
+	// reviewReader is a launch's own gh reads of a recorded pull request — see [actions.Launch] —
 	// gathered once at launch time rather than left for the agent to read
 	// live. A separate accessor from prViewer even though both drive the same
 	// real gh, so a fake standing in for the PR screen's own reads is never
@@ -468,6 +471,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A prompt is a question about a row of the plan that was on show, which
 		// the reload may have moved or taken away entirely.
 		a.closeBoardPrompt()
+		a.board.SetHasBranch(msg.hasBranch)
 		a.board.SetProject(a.project)
 		// The first plan brings the bar with it, which the board's viewport has
 		// to give its lines up to; resize re-shares them and re-syncs the board.
@@ -1206,7 +1210,7 @@ func (a *App) fetchProject(st store.Store, id string, cfg config.ProjectConfig, 
 		if err != nil {
 			return notionErrMsg{err: err}
 		}
-		return projectLoadedMsg{project: plan.Project, pullErr: pullErr}
+		return projectLoadedMsg{project: plan.Project, hasBranch: plan.Shape.HasBranch, pullErr: pullErr}
 	}
 }
 

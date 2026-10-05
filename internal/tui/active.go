@@ -62,8 +62,16 @@ func (b Board) activeSlices() []domain.Slice {
 // slice, what gh last said about its pull request, and the plan its
 // dependencies are read from.
 func (b Board) state(s domain.Slice) domain.SliceState {
-	return domain.StateOf(s, b.agentPresence(s.ID), b.prState[s.ID], b.byID)
+	return domain.StateOf(s, b.agentPresence(s.ID), b.prState[s.ID], b.byID, b.hasBranch)
 }
+
+// SetHasBranch records whether the project on show has a Branch column, read
+// with its plan: what tells a slice whose pull request is recorded and whose
+// branch was cleared — work resumed after its approval, in progress — from a
+// pull request recorded on a project that never records a branch, which is
+// work out. A board told nothing reads every pull request as work out, as
+// one with no Branch column would.
+func (b *Board) SetHasBranch(has bool) { b.hasBranch = has }
 
 // SetPRState records how ready each pull request read as still open is, keyed
 // by slice ID. It is the board's second background reading — see

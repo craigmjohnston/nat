@@ -25,6 +25,10 @@ private struct ThreadFoldsOpenKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+private struct SendBackOpenKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 private struct ClockKey: EnvironmentKey {
     static let defaultValue: @Sendable () -> Date = { Date() }
 }
@@ -52,6 +56,15 @@ extension EnvironmentValues {
     var threadFoldsOpen: Bool {
         get { self[ThreadFoldsOpenKey.self] }
         set { self[ThreadFoldsOpenKey.self] = newValue }
+    }
+
+    /// Whether a slice's Send back to agent starts open, as a press of the
+    /// action bar's button opens it — its reason prefilled where the pull
+    /// request has one. False everywhere but a story: a render has no pointer
+    /// to press it with.
+    var sendBackOpen: Bool {
+        get { self[SendBackOpenKey.self] }
+        set { self[SendBackOpenKey.self] = newValue }
     }
 
     /// The instant a view measures "ago" and "resets at" against: the live

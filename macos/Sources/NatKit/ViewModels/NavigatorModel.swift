@@ -119,11 +119,34 @@ public enum MainPaneTab: CaseIterable, Equatable, Sendable {
 /// facts — and, where the design assumed a fact nat does not have, over the
 /// fact nat does: Changes reads a branch, and only a recorded one can be read
 /// (`nat slice-diff` refuses a slice with none), so it is live once a branch
-/// is recorded rather than the moment an agent is launched.
+/// is recorded rather than the moment an agent is launched — or while the
+/// slice is taken back (resumed, or a review sent back with no PR), whose
+/// cleared Branch nat still reads by its agent branch, so the work handed
+/// back stays on screen while it is redone.
 public struct NavigatorModel: Equatable, Sendable {
+    /// What every section a resumed slice keeps — Changes, Visual changes,
+    /// PR — says, in its navigator foldout and its main pane alike.
+    public static let resumedNotice = "The agent is working on this again — what is here may change or be out of date."
+    /// The one word, and the glyph beside it, that a section header carries
+    /// in `resumedNotice`'s place — the notice itself its tooltip.
+    public static let reworkingLabel = "Reworking"
+    public static let reworkingSymbol = "arrow.triangle.2.circlepath"
+
     public let state: SliceDisplayState
     public let hasPR: Bool
     public let hasBranch: Bool
+    /// Resumed after its hand-back (`Slice.resumed`): working again, its
+    /// sections kept but each carrying `resumedNotice`, and neither Approve
+    /// nor Merge offered until the next hand-back.
+    public let resumed: Bool
+    /// Taken back after a hand-back (`Slice.takenBack`): resumed, or a
+    /// review sent back with no PR. Keeps Changes and Visual changes, each
+    /// with `resumedNotice`; moves no stage and gates nothing at the PR.
+    public let takenBack: Bool
+    /// Whether Send back to agent can go: with a live agent, always (the
+    /// note is recorded, then sent to it); with none, only where a launch
+    /// can follow the record.
+    public let canSendBack: Bool
     public let hasLiveAgent: Bool
     /// The action bar's Launch: `LaunchPlan`'s own answer, so the bar,
     /// the slice menu and the CLI never disagree.
@@ -135,16 +158,19 @@ public struct NavigatorModel: Equatable, Sendable {
     public init(slice: Slice, agent: AgentActivity?, hasVisuals: Bool = false) {
         self.state = displayState(for: slice, agent: agent)
         self.hasPR = !slice.pr.isEmpty
-        self.hasBranch = slice.handedBack || !(slice.branch ?? "").isEmpty
+        self.resumed = slice.resumed
+        self.takenBack = slice.takenBack
+        self.hasBranch = slice.handedBack || !(slice.branch ?? "").isEmpty || slice.resumed || slice.takenBack
         self.hasLiveAgent = agent != nil
         self.canLaunch = LaunchPlan(for: slice, hasLiveAgent: agent != nil).canLaunch
+        self.canSendBack = agent != nil || LaunchPlan(for: slice, hasLiveAgent: false).canLaunch
         self.hasVisuals = hasVisuals
     }
 
     /// Where the slice stands, as the section that should be open first.
     public var phase: NavigatorSection {
         switch state {
-        case .todo, .blocked, .working, .waiting, .fixing: return .thread
+        case .todo, .blocked, .working, .waiting: return .thread
         case .review: return .changes
         case .pr: return .pr
         // With no pull request, the Thread is where a finished slice says
@@ -198,43 +224,66 @@ public struct NavigatorModel: Equatable, Sendable {
     public var diffAvailable: Bool { hasBranch }
 
     /// Whether Launch is the primary action — a Todo slice — rather than a
-    /// relaunch or a fix session offered on one already under way.
+    /// relaunch offered on one already under way.
     public var launchIsPrimary: Bool { state == .todo }
-
-    /// Whether a launch would be a fix session: the slice sits at its pull
-    /// request, approved, with no fix under way — "Launch fix agent".
-    public var launchIsFix: Bool { state == .pr }
 
     /// The first section's label: "Task", whatever the slice's state — the
     /// one name the user knows it by, before launch and after.
     public var threadLabel: String { NavigatorSection.thread.label }
 
     /// Whether the action bar offers Launch: a slice not yet launched (a
-    /// blocked one drawn disabled, as the design draws it), one being worked
-    /// or fixed whose agent is gone — a relaunch where nat recorded the first
-    /// launch (`launchIsRelaunch`), else a launch — and one approved and at
-    /// its pull request, where it is a fix launch. A slice handed back, in
-    /// review or done carries no Launch here, as in the design; the slice's
-    /// menu still offers whatever `LaunchPlan` allows.
+    /// blocked one drawn disabled, as the design draws it), and one being
+    /// worked — a resumed one too — whose agent is gone: a relaunch where nat
+    /// recorded the first launch (`launchIsRelaunch`), else a launch. A slice
+    /// handed back, at its pull request or done carries no Launch here, as in
+    /// the design — going back to the agent from there is Send back to agent;
+    /// the slice's menu still offers whatever `LaunchPlan` allows.
     public var showsLaunch: Bool {
         guard !hasLiveAgent else { return false }
         switch state {
-        case .todo, .blocked, .working, .fixing, .pr: return true
-        case .waiting, .review, .done: return false
+        case .todo, .blocked, .working: return true
+        case .waiting, .review, .pr, .done: return false
         }
     }
+
+    /// Whether the action bar offers Send back to agent: a slice handed back
+    /// — in review, or at its open pull request — that the user wants more
+    /// of. It resumes the slice (`nat slice-resume`) and tells the agent, or
+    /// launches one where none is live. Not on a resumed slice: it is
+    /// already back with the agent, whose terminal is the place to say more.
+    public var showsSendBack: Bool { state == .review || state == .pr }
 
     /// Whether the action bar offers Approve (and Changes Send): only a
     /// hand-back awaiting review has anything to approve.
     public var showsReviewActions: Bool { state == .review }
+
+    /// Whether Changes carries Send for its pending comments: on a review
+    /// (Approve's companion), and on a resumed slice while its agent is live
+    /// to be told — sent with no hand-back line, its agent bound to hand back
+    /// of its own accord.
+    public var showsChangesSend: Bool { showsReviewActions || (worksAgain && hasLiveAgent) }
+
+    /// Whether the agent is at the handed-back work again — resumed, or
+    /// taken back with no PR: what puts `resumedNotice` on Changes, Visual
+    /// changes and PR (where there is one), and on their main panes.
+    public var worksAgain: Bool { resumed || takenBack }
+
+    /// Whether a section's header wears Reworking (`reworkingLabel`, its
+    /// tooltip `resumedNotice`): Changes, Visual changes and PR while the
+    /// agent is at the handed-back work again — each only where the section
+    /// is drawn at all. The Task log, where the work now is, never does.
+    public func showsReworking(_ section: NavigatorSection) -> Bool {
+        worksAgain && section != .thread && isLive(section)
+    }
 
     /// Whether Visual changes carries Send: comments go to the agent, so
     /// only while there is one to receive them.
     public var showsVisualActions: Bool { hasVisuals && hasLiveAgent }
 
     /// Whether the action bar offers Merge: an open pull request on a slice
-    /// not yet Done.
-    public var showsMerge: Bool { hasPR && state != .done }
+    /// not yet Done, and not resumed — the agent is changing what would be
+    /// merged, so Merge comes back with its next hand-back.
+    public var showsMerge: Bool { hasPR && state != .done && !resumed }
 
     /// The PR header's status: Merged once the slice is Done with a pull
     /// request — Done is written only by the merge, so nothing past the
@@ -244,11 +293,13 @@ public struct NavigatorModel: Equatable, Sendable {
     }
 
     /// The action bar at the navigator's foot: the slice's major actions,
-    /// each drawn only while relevant — Launch where `showsLaunch`, Approve
-    /// where `showsReviewActions`, Merge where `showsMerge` and the pull
-    /// request is not read as merged or closed — in that order, so the
-    /// primary trails. With none relevant, the latest live section's primary
-    /// drawn disabled with why; a Done slice, no button at all.
+    /// each drawn only while relevant — Send back to agent where
+    /// `showsSendBack` (and, at the pull request, while it is open), Launch
+    /// where `showsLaunch`, Approve where `showsReviewActions`, Merge where
+    /// `showsMerge` and the pull request is not read as merged or closed — in
+    /// that order, so the primary trails. With none relevant, the latest live
+    /// section's primary drawn disabled with why — a resumed slice's being
+    /// Launch, the agent at it again; a Done slice, no button at all.
     ///
     /// What only the view can read comes in: the launch's words (a relaunch
     /// is read off the Task log), the comments pending on the diff, whether
@@ -268,16 +319,22 @@ public struct NavigatorModel: Equatable, Sendable {
             action: .approve, title: approveTitle, enabled: canApprove, primary: true,
             help: canApprove ? nil : approveHelp)
         let merge = NavigatorBarButton(action: .merge, title: "Merge PR", enabled: canMerge, primary: true)
+        let sendBack = NavigatorBarButton(
+            action: .sendBack, title: NavigatorBarButton.sendBackTitle, enabled: canSendBack, primary: false,
+            help: canSendBack ? nil : "No agent is live, and none can be launched")
         var buttons: [NavigatorBarButton] = []
+        if showsSendBack && (state == .review || prOpen) { buttons.append(sendBack) }
         if showsLaunch { buttons.append(launch) }
         if showsReviewActions { buttons.append(approve) }
         if showsMerge && prOpen { buttons.append(merge) }
         if !buttons.isEmpty { return .buttons(buttons) }
-        // Nothing to press: the latest section's own primary, greyed.
-        if isLive(.pr) {
+        // Nothing to press: the latest section's own primary, greyed — a
+        // resumed slice's the launch, since its PR and Changes are the work
+        // being redone rather than anything to act on.
+        if isLive(.pr) && !resumed {
             return .buttons([merge.fallback("The pull request is no longer open")])
         }
-        if isLive(.changes) {
+        if isLive(.changes) && !resumed {
             return .buttons([approve.fallback("Waiting on the agent's hand-back")])
         }
         return .buttons([launch.fallback(
@@ -304,6 +361,9 @@ public enum NavigatorBar: Equatable, Sendable {
 /// The slice's major actions, as the action bar names them.
 public enum NavigatorBarAction: Equatable, Sendable {
     case launch, approve, merge
+    /// Send back to agent: resume the slice with a note saying why, then
+    /// tell the live agent, or launch one (`AppModel.sendBack`).
+    case sendBack
 }
 
 /// One button of the action bar.
@@ -325,6 +385,8 @@ public struct NavigatorBarButton: Equatable, Sendable {
         self.help = help
     }
 
+    public static let sendBackTitle = "Send back to agent"
+
     /// The button drawn as the bar's stand-in: greyed, primary, saying why.
     func fallback(_ why: String) -> NavigatorBarButton {
         NavigatorBarButton(action: action, title: title, enabled: false, primary: true, help: why)
@@ -334,13 +396,33 @@ public struct NavigatorBarButton: Equatable, Sendable {
 /// A status a navigator section's header carries beside its label.
 public enum NavSectionStatus: Equatable, Sendable {
     case merged
-    /// Visual changes: an image handed in since the user last looked.
+    /// Something in the section the user has not seen before (`SeenBadge`).
     case new
+    /// Something in the section changed since the user last saw it.
+    case updated
 
     public var label: String {
         switch self {
         case .merged: return "Merged"
         case .new: return "New"
+        case .updated: return "Updated"
+        }
+    }
+
+    /// A section's badge, from its items' own: New where any item is,
+    /// else Updated where any item is, else none.
+    public static func of(_ badges: [SeenBadge?]) -> NavSectionStatus? {
+        if badges.contains(.new) { return .new }
+        if badges.contains(.updated) { return .updated }
+        return nil
+    }
+
+    /// One item's badge as the section header's status.
+    public init?(_ badge: SeenBadge?) {
+        switch badge {
+        case .new: self = .new
+        case .updated: self = .updated
+        case nil: return nil
         }
     }
 }
@@ -363,6 +445,9 @@ public enum ThreadEventKind: Equatable, Sendable {
     case released
     /// Launched again on the work so far.
     case relaunched
+    /// Work resumed after a hand-back (`nat slice-resume`), the reason as
+    /// its body.
+    case resumed
     /// The pull request's checks failed with no agent live to be told.
     case checksFailed
     /// Handed in as blocked.
@@ -735,6 +820,8 @@ private func threadEvent(
         return ThreadEvent(.launched, who: "Launched")
     case .relaunched:
         return ThreadEvent(.relaunched, who: "Relaunched on the work so far")
+    case .resumed:
+        return ThreadEvent(.resumed, who: "Work resumed", tone: .accent, body: note)
     case .checksFailed:
         return ThreadEvent(.checksFailed, who: "Checks failed", tone: .hot, body: note)
     case .blocked:

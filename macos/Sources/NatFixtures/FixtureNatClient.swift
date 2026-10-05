@@ -404,6 +404,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await record("slice-rework \(sliceRef)")
     }
 
+    public func sliceResume(projectID: String, sliceRef: String, note: String) async throws {
+        try await record("slice-resume \(sliceRef) \(note)")
+    }
+
     public func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult {
         try await record("slice-triage \(sliceRef) queue=\(queue) fold=\(fold) drop=\(drop)")
         let followUps = details[sliceRef]?.followUps ?? []

@@ -31,8 +31,11 @@ write and subprocess — see `internal/actions/CLAUDE.md` for the mechanics
 (claim-before-tmux ordering, `PlaceAgent`, `OpenPR`/`RecordPR`,
 `SettleMerged`/`ReopenUnmerged`, `RemoveWorktree`). What's left here is
 TUI-only: the launch form, the launch/approve prompts anchored to a row,
-toasts, the after-write refetch. The fix-launch discriminator and its gh gate
-are `actions.FixLaunch`/`actions.PRStillOpen`, shared with `slice-launch`.
+toasts, the after-write refetch. `l` on an In progress slice with a PR runs
+`actions.Resume` (`boardResumeNote`) before the ordinary relaunch; a Done
+slice is refused. The board's `StateOf` gets `Board.hasBranch`
+(`SetHasBranch`, from the plan's `Shape` on `projectLoadedMsg`) so a
+resumed slice reads as in progress.
 **`release.go` was *not* extracted** — still calls `store.Over(client)`
 directly; check each file, don't assume every one routes through `actions`.
 

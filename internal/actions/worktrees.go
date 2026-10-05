@@ -34,7 +34,7 @@ type Worktrees interface {
 // the remote's news, and the branch the remote calls its default — together
 // the ref a fresh worktree is cut from, the tip origin is at now rather than
 // wherever the shared checkout's own main was last left — plus the two reads
-// [Launch] gathers for a resume or fix launch's prompt once the worktree is
+// [Launch] gathers for a resume launch's prompt once the worktree is
 // placed: the one-line commit log and the diff stat of what is already on
 // the branch.
 type Repo interface {

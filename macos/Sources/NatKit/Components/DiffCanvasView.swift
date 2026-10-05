@@ -29,6 +29,9 @@ public struct DiffCanvasState: Equatable, Sendable {
     public var canComment = false
     public var showsViewed = true
     public var wrap = true
+    /// A file's New or Updated badge (`SeenBadge`), by path, drawn on its
+    /// header after the path.
+    public var badges: [String: SeenBadge] = [:]
 
     public init() {}
 }
@@ -46,6 +49,9 @@ public struct DiffCanvasActions {
     public var collapseToggled: @MainActor (String) -> Void = { _ in }
     /// A gap's control pressed: reveal what it offers.
     public var gapExpanded: @MainActor (DiffFileModel, DiffGap, DiffGap.Control) -> Void = { _, _, _ in }
+    /// The files whose rows are on screen, by path — seen, for their badges.
+    /// Said whenever the view moves or what it shows changes.
+    public var filesShown: @MainActor ([String]) -> Void = { _ in }
 
     public init() {}
 }
@@ -83,6 +89,10 @@ public final class DiffCanvasView: NSView {
     let horizontalKnob = DiffKnobView(axis: .horizontal)
 
     private var pathIndex: [String: Int] = [:]
+    /// The files last said to be on screen (`actions.filesShown`), so a
+    /// scroll within them says nothing again; forgotten on every update, so
+    /// a fresh reading of what is on screen is said even unscrolled.
+    private var lastShownFiles: [String]?
     private var attachmentViews: [String: NSView] = [:]
     private var attachmentHeights: [String: CGFloat] = [:]
     private var layoutWidth: CGFloat = -1
@@ -156,6 +166,7 @@ public final class DiffCanvasView: NSView {
         }
         self.files = files
         self.state = state
+        lastShownFiles = nil
 
         if filesChanged {
             pathIndex = Dictionary(files.enumerated().map { ($1.path, $0) }, uniquingKeysWith: { first, _ in first })
@@ -166,6 +177,7 @@ public final class DiffCanvasView: NSView {
             relayout(keeping: anchor)
         } else {
             viewport.needsDisplay = true
+            reportShownFiles()
         }
     }
 
@@ -342,6 +354,18 @@ public final class DiffCanvasView: NSView {
         placeAttachments()
         placeKnobs()
         viewport.refreshHover()
+        reportShownFiles()
+    }
+
+    /// Say which files' rows are on screen, where that has changed.
+    private func reportShownFiles() {
+        let visible = scrollView.contentView.bounds
+        guard visible.height > 0 else { return }
+        let paths = diffLayout.shownFiles(from: visible.minY, to: visible.maxY)
+            .filter { files.indices.contains($0) }.map { files[$0].path }
+        guard paths != lastShownFiles else { return }
+        lastShownFiles = paths
+        if !paths.isEmpty { actions.filesShown(paths) }
     }
 
     private func measure(_ key: String, width: CGFloat? = nil) -> CGFloat {

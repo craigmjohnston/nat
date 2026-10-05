@@ -875,7 +875,7 @@ Handed back for review, still held by Craig Johnston. The summary is on the slic
 	}
 }
 
-// A fix session's ending: the slice is approved — its pull request recorded —
+// Resumed work's ending: the slice is approved — its pull request recorded —
 // and its agent hands the same branch back. That is accepted: the summary goes
 // on as a Handed back, the branch is rewritten with the same name, the status
 // and the pull request are left alone, and the report says the slice is back

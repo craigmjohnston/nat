@@ -431,3 +431,87 @@ func TestMirroredRecordChecksFailedGoesLocallyThenPushes(t *testing.T) {
 		t.Error("RecordChecksFailed on a slice not in the plan: want an error")
 	}
 }
+
+// A resumption is the Sent back's shape under its own heading: Resumed, its
+// stamp, then the note — one append in Notion, the same section in the file,
+// which TaskEvents reads back as a stamped "resumed" carrying the note.
+func TestNotionRecordResumedWritesOneAppend(t *testing.T) {
+	api := &fakeAPI{}
+	if err := clocked(api).RecordResumed(context.Background(), "s5", "Add a footer."); err != nil {
+		t.Fatalf("RecordResumed() error = %v", err)
+	}
+	if len(api.appended) != 1 {
+		t.Fatalf("appends = %d, want one", len(api.appended))
+	}
+	got, _ := json.Marshal(api.appended[0])
+	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Resumed"},"type":"text"}]},"object":"block","type":"heading_3"},` +
+		stampBlockJSON + `,` +
+		`{"object":"block","paragraph":{"rich_text":[{"text":{"content":"Add a footer."},"type":"text"}]},"type":"paragraph"}]`
+	if string(got) != want {
+		t.Errorf("blocks =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestNotionRecordResumedCarriesTheFailureUp(t *testing.T) {
+	api := &fakeAPI{appendBlocks: func(string, []map[string]any) ([]notion.Block, error) { return nil, errBoom }}
+	if err := Over(api).RecordResumed(context.Background(), "s5", "x"); !errors.Is(err, errBoom) {
+		t.Errorf("RecordResumed err = %v, want the append's failure", err)
+	}
+}
+
+func TestLocalRecordResumedAppendsTheSection(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	write(t, l, `UPDATE slices SET body = ? WHERE id = ?`, "Do the thing.", "writes")
+
+	if err := l.RecordResumed(context.Background(), "writes", "Add a footer."); err != nil {
+		t.Fatalf("RecordResumed: %v", err)
+	}
+	body, err := l.Body(context.Background(), "writes")
+	if err != nil {
+		t.Fatalf("Body: %v", err)
+	}
+	if !strings.HasSuffix(strings.TrimRight(body, "\n"), "### Resumed\n\n"+testStamp+"\n\nAdd a footer.") {
+		t.Errorf("body = %q, want it to end in the Resumed section", body)
+	}
+	events := TaskEvents(body)
+	if len(events) != 1 || events[0].Kind != "resumed" || events[0].Note != "Add a footer." || events[0].At.IsZero() {
+		t.Errorf("events = %+v, want one stamped resumed carrying the note", events)
+	}
+	if !HasHistory(events) {
+		t.Error("a resumption is no history, want it counted")
+	}
+}
+
+func TestLocalRecordResumedCarriesTheFailureUp(t *testing.T) {
+	l, _ := openPlan(t)
+	if err := l.RecordResumed(context.Background(), "ghost", "x"); err == nil {
+		t.Error("RecordResumed on a slice not in the plan: want an error")
+	}
+}
+
+func TestMirroredRecordResumedGoesLocallyThenPushes(t *testing.T) {
+	api := &fakeAPI{}
+	m, l := mirroredPlan(t, api)
+	ctx := context.Background()
+	if err := m.RecordResumed(ctx, "writes", "Add a footer."); err != nil {
+		t.Fatalf("RecordResumed: %v", err)
+	}
+	if len(api.appended) != 1 {
+		t.Errorf("appends = %d, want it pushed", len(api.appended))
+	}
+	if body, _ := l.Body(ctx, "writes"); !strings.Contains(body, "### Resumed") {
+		t.Errorf("local body = %q, want the Resumed section filed", body)
+	}
+	if dirty, _ := l.Dirty(ctx, "writes"); dirty {
+		t.Error("dirty = true, want the push to have cleared it")
+	}
+}
+
+func TestMirroredRecordResumedCarriesTheLocalFailureUp(t *testing.T) {
+	l, _ := openPlan(t)
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
+	if err := m.RecordResumed(context.Background(), "ghost", "x"); err == nil {
+		t.Error("RecordResumed on a slice not in the plan: want an error")
+	}
+}

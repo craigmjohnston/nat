@@ -375,7 +375,7 @@ public final class NatClient: Sendable {
     /// user is driving this from the app rather than the TUI board — it
     /// phrases pickup, approve and merge as gnat's own Diff/PR tabs rather
     /// than the board's exit-and-refresh and its keys
-    /// (`internal/agent/prompt.go`, `internal/agent/fixprompt.go`).
+    /// (`internal/agent/prompt.go`).
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
@@ -427,6 +427,20 @@ public final class NatClient: Sendable {
         _ = try await runNatRaw(
             arguments: ["slice-rework", "--project", projectID, sliceRef, "--comments", "-"],
             standardInput: Data(comments.utf8))
+    }
+
+    /// Resume a handed-back slice — `nat slice-resume`: the note, why the
+    /// user wants more, is filed under a stamped `Resumed` on the slice's
+    /// page and then its Branch is cleared, so it reads as being worked again
+    /// until the agent's next `complete-slice --branch`. The note goes over
+    /// stdin (`--note -`), as `sliceRework`'s comments do; nat writes nothing
+    /// on a slice already resumed.
+    ///
+    /// - Throws: NatError if the note is empty or the slice is not In progress
+    public func sliceResume(projectID: String, sliceRef: String, note: String) async throws {
+        _ = try await runNatRaw(
+            arguments: ["slice-resume", "--project", projectID, sliceRef, "--note", "-"],
+            standardInput: Data(note.utf8))
     }
 
     /// Decide every follow-up a slice's agent proposed — `nat slice-triage`:

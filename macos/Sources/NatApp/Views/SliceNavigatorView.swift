@@ -8,8 +8,10 @@ import NatKit
 /// (`open`, `main`) — the design's own pairing: a header puts its section's
 /// view up (the Thread the terminal, Changes the diff, PR its conversation),
 /// its chevron only folds. Under them all, pinned to the column's foot, the
-/// action bar holds the slice's major actions — Launch, Approve, Merge — as
-/// `NavigatorModel.bar` decides them; the headers keep only secondaries.
+/// action bar holds the slice's major actions — Send back to agent, Launch,
+/// Approve, Merge — as `NavigatorModel.bar` decides them; the headers keep
+/// only secondaries. A resumed slice keeps Changes, Visual changes and PR,
+/// each header wearing Reworking (`NavigatorModel.showsReworking`).
 struct SliceNavigatorView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
@@ -26,6 +28,9 @@ struct SliceNavigatorView: View {
     @State private var agentOptions = AgentOptions.fallback
     @State private var launchWarning: String?
     @State private var showMergeConfirm = false
+    /// Send back to agent's note while its editor is open; nil while shut.
+    @State private var sendBackDraft: String?
+    @Environment(\.sendBackOpen) private var sendBackOpen
 
     private var projectID: String { appModel.projectStore?.projectID ?? "" }
     private var agent: AgentStatus? { appModel.activityStore?.agents[slice.id] }
@@ -88,11 +93,17 @@ struct SliceNavigatorView: View {
             if nav.isLive(.changes) {
                 NavSectionView(
                     label: "Changes", open: open.contains(.changes), selected: main == .diff,
+                    // New or Updated while any file is, so a folded section
+                    // says so.
+                    status: diffStore.sectionStatus,
+                    reworking: reworking(nav, .changes),
                     onHead: { click(.changes) }, onFold: { fold(.changes) }
                 ) {
-                    if nav.showsReviewActions { sendCommentsAction }
+                    if nav.showsChangesSend { sendCommentsAction }
                 } content: {
-                    ChangesSectionBody(appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions) {
+                    ChangesSectionBody(
+                        appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions
+                    ) {
                         main = .diff
                     }
                 }
@@ -102,8 +113,10 @@ struct SliceNavigatorView: View {
             if nav.isLive(.visuals) {
                 NavSectionView(
                     label: NavigatorSection.visuals.label, open: open.contains(.visuals), selected: main == .visuals,
-                    // New while any image is, so a folded section says so.
-                    status: visualStore.anyNew(sliceID: slice.id, visuals) ? .new : nil,
+                    // New or Updated while any image is, so a folded section
+                    // says so.
+                    status: visualStore.sectionStatus(sliceID: slice.id, visuals),
+                    reworking: reworking(nav, .visuals),
                     onHead: { click(.visuals) }, onFold: { fold(.visuals) }
                 ) {
                     visualActions(nav)
@@ -115,7 +128,11 @@ struct SliceNavigatorView: View {
             }
             if nav.isLive(.pr) {
                 NavSectionView(
-                    label: "PR", open: open.contains(.pr), selected: main == .pr, status: nav.prStatus,
+                    label: "PR", open: open.contains(.pr), selected: main == .pr,
+                    // Merged once Done; else Updated while the head has moved
+                    // since the section was last open.
+                    status: nav.prStatus ?? NavSectionStatus(prStore.badge(sliceID: slice.id)),
+                    reworking: reworking(nav, .pr),
                     warning: prWarning, passing: prPassing, onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
                     PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
@@ -128,6 +145,7 @@ struct SliceNavigatorView: View {
         }
         .task(id: slice.id) {
             resetLaunchForm()
+            sendBackDraft = sendBackOpen ? sendBackReason(checks: notice, conflict: conflictNotice) : nil
             agentOptions = await AgentOptionsCache.shared.resolve()
         }
         .task(id: "\(slice.id)|\(slice.pr)") {
@@ -136,6 +154,11 @@ struct SliceNavigatorView: View {
             prStore.startPolling()
         }
         .onDisappear { prStore.stopPolling() }
+        // An open PR section — or its conversation up — is the pull request
+        // seen, as it is read now.
+        .onChange(of: "\(open.contains(.pr) || main == .pr)|\(prStore.loadState.pr?.headRefOid ?? "")", initial: true) {
+            if open.contains(.pr) || main == .pr { prStore.markSeen(sliceID: slice.id) }
+        }
         // Keyed by every image's hash as well as its URI, so a re-render
         // saved over the same path — which a nudge's re-read carries as a new
         // hash — loads afresh.
@@ -171,6 +194,11 @@ struct SliceNavigatorView: View {
             Button("Merge") { Task { await merge() } }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    /// A section header's Reworking tooltip, where it wears the badge.
+    private func reworking(_ nav: NavigatorModel, _ section: NavigatorSection) -> String? {
+        nav.showsReworking(section) ? NavigatorModel.resumedNotice : nil
     }
 
     // MARK: - Menu
@@ -258,6 +286,7 @@ struct SliceNavigatorView: View {
         case .launch: return .launch
         case .approve: return .approve
         case .merge: return .merge
+        case .sendBack: return .sendBack
         }
     }
 
@@ -269,6 +298,21 @@ struct SliceNavigatorView: View {
     /// The bar at the column's foot: each action the slice has now, the
     /// primary trailing; "Task completed" alone for a Done slice.
     private func actionBar(_ nav: NavigatorModel) -> some View {
+        VStack(spacing: 0) {
+            if let draft = sendBackDraft, bar(nav).button(.sendBack) != nil {
+                SendBackEditor(
+                    text: Binding(get: { draft }, set: { sendBackDraft = $0 }),
+                    hasLiveAgent: nav.hasLiveAgent,
+                    isSending: appModel.sliceActions.isRunning(.sendBack, sliceID: slice.id),
+                    error: appModel.sliceActions.error(.sendBack, sliceID: slice.id),
+                    onCancel: { sendBackDraft = nil },
+                    onSend: { sendBack(draft) })
+            }
+            actionButtons(nav)
+        }
+    }
+
+    private func actionButtons(_ nav: NavigatorModel) -> some View {
         NavigatorActionBar {
             switch bar(nav) {
             case .completed:
@@ -301,6 +345,9 @@ struct SliceNavigatorView: View {
         .onChange(of: canMerge, initial: true) { _, available in
             appModel.sliceActions.observe(.merge, sliceID: slice.id, available: available)
         }
+        .onChange(of: nav.showsSendBack && nav.canSendBack, initial: true) { _, available in
+            appModel.sliceActions.observe(.sendBack, sliceID: slice.id, available: available)
+        }
     }
 
     private func glyph(_ action: NavigatorBarAction) -> String? {
@@ -308,6 +355,7 @@ struct SliceNavigatorView: View {
         case .launch: return "arrow.right"
         case .approve: return "checkmark"
         case .merge: return nil
+        case .sendBack: return "arrow.uturn.left"
         }
     }
 
@@ -318,6 +366,25 @@ struct SliceNavigatorView: View {
         // and approves on the agent's next hand-back.
         case .approve: review.showApproveConfirm = true
         case .merge: showMergeConfirm = true
+        // Opens the editor, prefilled with the pull request's own trouble
+        // where it has any; a second press shuts it.
+        case .sendBack:
+            sendBackDraft = sendBackDraft == nil ? sendBackReason(checks: notice, conflict: conflictNotice) : nil
+        }
+    }
+
+    /// Send back to agent: the record, then the agent told or launched
+    /// (`AppModel.sendBack`); once it has gone, the editor shuts and the
+    /// terminal comes up beside the Task log, where the work now is.
+    private func sendBack(_ note: String) {
+        let appModel = appModel, slice = slice
+        let model = model.isEmpty ? nil : model
+        let effort = effort.isEmpty ? nil : effort
+        Task {
+            guard await appModel.sendBack(slice: slice, note: note, model: model, effort: effort) else { return }
+            sendBackDraft = nil
+            open.insert(.thread)
+            main = .terminal
         }
     }
 
@@ -547,7 +614,6 @@ struct SliceNavigatorView: View {
         if nav.state == .blocked {
             return .blocked(waitingOn: dependencies.filter { $0.status != "Done" }.map(\.name))
         }
-        if nav.launchIsFix { return .fix }
         // A relaunch only where nat recorded an earlier launch.
         return launchIsRelaunch(log: threadLog, hasLiveAgent: nav.hasLiveAgent) ? .relaunch : .launch
     }

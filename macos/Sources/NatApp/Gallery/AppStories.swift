@@ -12,7 +12,7 @@ import NatFixtures
 ///
 /// The catalog is the app's own shape: the window in each phase a slice goes
 /// through (the gnat design's own states — todo, working, waiting, review,
-/// pr, blocked, done, plus fixing), then the screens that are not a slice
+/// pr, blocked, done, plus resumed), then the screens that are not a slice
 /// (workshop, sessions, the Untitled starter, onboarding), then the sidebar
 /// and the status bar on their own, then the smaller pieces and settings.
 ///
@@ -33,11 +33,12 @@ enum AppStories {
     /// The whole window, held still and with the terminal drawn.
     private static func shell(
         _ appModel: AppModel, folds: [String: Bool] = [:], focus: NavigatorFocus? = nil,
-        containerFocus: ContainerFocus? = nil
+        containerFocus: ContainerFocus? = nil, sendBackOpen: Bool = false
     ) -> some View {
         WindowShellView(appModel: appModel, sidebarFolds: folds, focus: focus, containerFocus: containerFocus)
             .environment(\.terminalStubbed, true)
             .environment(\.pulsesPaused, true)
+            .environment(\.sendBackOpen, sendBackOpen)
     }
 
     /// The board with the Work source project beside the two others, its
@@ -95,27 +96,30 @@ enum AppStories {
         _ sliceID: String, agents: [AgentStatus] = Fixtures.agentStatuses, plan: ProjectInfo = Fixtures.projectInfo,
         prStatus: PRStatusDoc = Fixtures.prStatusDoc, pr: PRDetail = Fixtures.prGreen,
         details: [String: SliceDetail] = Fixtures.sliceDetails, focus: NavigatorFocus? = nil,
-        config: NatProjectConfig = Fixtures.twoProjectConfig,
+        config: NatProjectConfig = Fixtures.twoProjectConfig, sendBackOpen: Bool = false,
+        seen: SeenMemory = .inMemory(),
         configure: @MainActor (AppModel) async -> Void = { _ in }
     ) async -> some View {
         let appModel = await Fixtures.startedAppModel(
             client: FixtureNatClient(plan: plan, agents: agents, pr: pr, details: details, prStatus: prStatus),
-            config: config)
+            config: config, seenMemory: seen)
         appModel.selectedSliceID = sliceID
         for _ in 0..<50 where !agents.isEmpty && appModel.activityStore?.agents.isEmpty != false {
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
         await appModel.sliceDetailStore(projectID: Fixtures.projectID).fetch(sliceRef: sliceID)
         let store = appModel.diffStore(projectID: Fixtures.projectID)
-        let slice = Fixtures.slice(sliceID)
-        if slice.handedBack || !(slice.branch ?? "").isEmpty {
+        let slice = plan.slices.first { $0.id == sliceID } ?? Fixtures.slice(sliceID)
+        // A resumed slice's branch is read by its agent branch, its Branch
+        // cleared.
+        if slice.handedBack || !(slice.branch ?? "").isEmpty || slice.resumed || slice.takenBack {
             await store.fetch(projectID: Fixtures.projectID, sliceRef: sliceID)
         }
         if !slice.pr.isEmpty {
             await appModel.prStore(projectID: Fixtures.projectID).fetch(projectID: Fixtures.projectID, sliceRef: sliceID)
         }
         await configure(appModel)
-        return shell(appModel, focus: focus)
+        return shell(appModel, focus: focus, sendBackOpen: sendBackOpen)
     }
 
     /// Two projects with pull request trouble: the first's approved slice red
@@ -229,10 +233,11 @@ enum AppStories {
         }
     }
 
-    /// The handed-back slice after a second hand-in: the first render
-    /// re-rendered and unseen, folded so its section has not been on screen
-    /// — New on its row, its header and the section's — the second
-    /// re-rendered but seen, and the third unchanged.
+    /// The handed-back slice after a second hand-in, the first seen: the
+    /// first render re-rendered, folded so its section has not been on screen
+    /// — Updated on its row and its header — the second and third as they
+    /// were, and a fourth render the first hand-in did not have: New, and so
+    /// New on the section's header.
     private static func visualsNewPane() async -> some View {
         let sliceID = Fixtures.mergeBoxSliceID
         return await slicePane(
@@ -241,8 +246,8 @@ enum AppStories {
         ) { appModel in
             let store = appModel.visualStore(projectID: Fixtures.projectID)
             store.loader = Fixtures.visualImageLoader
+            await Fixtures.seedSeenVisuals(into: store)
             await store.load(sliceID: sliceID, visuals: Fixtures.visualChangesWithNews)
-            Fixtures.seedSeenVisual(into: store)
             store.toggleCollapsed(sliceID: sliceID, Fixtures.visualChangesWithNews[0])
         }
     }
@@ -516,19 +521,19 @@ enum AppStories {
 
         Story(
             name: "action-bar-merge",
-            summary: "An approved slice with a fix agent live: Merge PR alone in the bar, primary; Open in GitHub "
-                + "titled in the PR header.",
+            summary: "An approved slice with its agent still live from the hand-back: Send back to agent, "
+                + "secondary, then Merge PR, primary; Open in GitHub titled in the PR header.",
             size: window
         ) {
             await slicePane(
-                Fixtures.approveSliceID, agents: Fixtures.fixAgentStatuses, plan: Fixtures.fixingProjectInfo,
+                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses,
                 focus: NavigatorFocus(open: [.pr], main: .pr))
         },
 
         Story(
-            name: "action-bar-fix-launch-and-merge",
-            summary: "An approved slice with no agent: Launch fix agent, secondary, then Merge PR, primary, "
-                + "trailing.",
+            name: "action-bar-send-back-and-merge",
+            summary: "An approved slice with no agent: Send back to agent, secondary, then Merge PR, primary, "
+                + "trailing — no Launch, going back to the agent being Send back's.",
             size: window
         ) {
             await slicePane(Fixtures.approveSliceID, agents: [], focus: NavigatorFocus(open: [.pr], main: .pr))
@@ -554,12 +559,12 @@ enum AppStories {
 
         Story(
             name: "action-bar-fallback-merge",
-            summary: "A fix agent live on a slice whose pull request reads merged on GitHub, not yet settled: no "
-                + "Merge to offer, so the bar shows Merge PR disabled, the pull request no longer open.",
+            summary: "An agent live on a slice whose pull request reads merged on GitHub, not yet settled: no "
+                + "Merge or Send back to offer, so the bar shows Merge PR disabled, the pull request no longer open.",
             size: window
         ) {
             await slicePane(
-                Fixtures.approveSliceID, agents: Fixtures.fixAgentStatuses, plan: Fixtures.fixingProjectInfo,
+                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses,
                 pr: Fixtures.prGreenMergedOnGitHub, focus: NavigatorFocus(open: [.pr], main: .pr))
         },
 
@@ -789,25 +794,100 @@ enum AppStories {
         },
 
         Story(
-            name: "window-fixing",
-            summary: "An approved slice with a fix session on it, read off the record: Thread and the terminal, its Active row fixing and pulsing.",
-            size: window
-        ) {
-            await slicePane(Fixtures.approveSliceID, agents: Fixtures.fixAgentStatuses, plan: Fixtures.fixingProjectInfo)
-        },
-
-        Story(
-            name: "window-pr-fix-launch",
-            summary: "An approved slice with no agent on it: its Task log ends on the Fix item saying what a fix agent does, and the action bar offers Launch fix agent beside Merge PR.",
+            name: "window-resumed",
+            summary: "An approved slice sent back to its agent, read off the record (nat's resumed): the Task log ending on Work resumed and the live agent, the terminal up, its Active row working and pulsing; no Approve or Merge in the bar.",
             size: window
         ) {
             await slicePane(
-                Fixtures.approveSliceID, agents: [], focus: NavigatorFocus(open: [.thread], main: .pr))
+                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses, plan: Fixtures.resumedProjectInfo,
+                details: Fixtures.resumedVisualsSliceDetails
+            ) { appModel in
+                appModel.visualStore(projectID: Fixtures.projectID).loader = Fixtures.visualImageLoader
+            }
+        },
+
+        Story(
+            name: "window-resumed-notices",
+            summary: "The resumed slice with Changes, Visual changes and PR open and the diff up: each section's header wears Reworking (its tooltip the full warning), and the main pane over the diff says the agent is working on this again.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses, plan: Fixtures.resumedProjectInfo,
+                details: Fixtures.resumedVisualsSliceDetails,
+                focus: NavigatorFocus(open: [.changes, .visuals, .pr], main: .diff)
+            ) { appModel in
+                appModel.visualStore(projectID: Fixtures.projectID).loader = Fixtures.visualImageLoader
+            }
+        },
+
+        Story(
+            name: "window-taken-back",
+            summary: "A review sent back to its agent before any pull request (nat's taken_back): working again, Changes kept open on the diff, its header wearing Reworking and the main pane's banner saying the agent is working on this again; no PR section.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.mergeBoxSliceID, plan: Fixtures.takenBackProjectInfo,
+                focus: NavigatorFocus(open: [.changes], main: .diff))
+        },
+
+        Story(
+            name: "window-resumed-badges",
+            summary: "The resumed slice after its agent pushed, Changes and Visual changes open, the terminal up: a file the user had not seen New and one changed since Updated in the Changes list, the re-rendered image Updated and the added one New, Reworking then New on both headers; the folded PR section's header Reworking then Updated, its head moved.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses, plan: Fixtures.resumedProjectInfo,
+                details: Fixtures.resumedVisualsSliceDetails, focus: NavigatorFocus(open: [.changes, .visuals], main: .terminal),
+                seen: Fixtures.seenBeforeResume()
+            ) { appModel in
+                appModel.visualStore(projectID: Fixtures.projectID).loader = Fixtures.visualImageLoader
+            }
+        },
+
+        Story(
+            name: "window-pr-updated",
+            summary: "An approved slice whose pull request's head has moved since the user last opened its PR section, the Task log up: the PR section's header wears Updated until it is opened.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses,
+                focus: NavigatorFocus(open: [.thread], main: .terminal), seen: Fixtures.seenBeforeResume())
+        },
+
+        Story(
+            name: "window-task-log-resumed",
+            summary: "An approved slice sent back and handed back again: its Task log reads the hand-back, Work resumed with why as its body and its time, then the new hand-back, then the approve.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], details: Fixtures.resumedHandedBackSliceDetails,
+                focus: NavigatorFocus(open: [.thread], main: .pr))
+        },
+
+        Story(
+            name: "window-pr-send-back",
+            summary: "An approved slice with no agent, Send back to agent pressed: its editor over the action bar, the field empty — the pull request has no trouble to prefill — saying an agent will be launched.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], focus: NavigatorFocus(open: [.thread], main: .pr),
+                sendBackOpen: true)
+        },
+
+        Story(
+            name: "window-pr-send-back-prefilled",
+            summary: "The same, its pull request's checks failing and its agent live: Send back to agent opens prefilled with the failing check, saying the agent is told at once.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses, prStatus: Fixtures.prStatusChecksFailing,
+                pr: Fixtures.prFailingChecks, details: Fixtures.checksFailedSliceDetails,
+                focus: NavigatorFocus(open: [.pr], main: .pr), sendBackOpen: true)
         },
 
         Story(
             name: "window-pr-checks-failing",
-            summary: "An approved slice whose pull request reads checks failing, no agent on it, its PR section open: a danger icon on the PR header whose tooltip names the check; no notice in the PR body, and the action bar still offers Launch fix agent.",
+            summary: "An approved slice whose pull request reads checks failing, no agent on it, its PR section open: a danger icon on the PR header whose tooltip names the check; no notice in the PR body, and the action bar offers Send back to agent.",
             size: window
         ) {
             await slicePane(
@@ -817,11 +897,11 @@ enum AppStories {
 
         Story(
             name: "window-pr-checks-agent-told",
-            summary: "The same red pull request with its fix agent live and the nudge on record: the PR header's danger icon, whose tooltip says the failing check was sent to the agent to fix; no notice over the Task log, whose item reads Checks failed and ends its body Sent to the agent to fix.",
+            summary: "The same red pull request with its agent live and the nudge on record: the PR header's danger icon, whose tooltip says the failing check was sent to the agent to fix; no notice over the Task log, whose item reads Checks failed and ends its body Sent to the agent to fix.",
             size: window
         ) {
             await slicePane(
-                Fixtures.approveSliceID, agents: Fixtures.fixAgentStatuses, plan: Fixtures.fixingProjectInfo,
+                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses,
                 prStatus: Fixtures.prStatusChecksFailing, pr: Fixtures.prFailingChecks, details: Fixtures.checksNudgedSliceDetails)
         },
 
@@ -953,7 +1033,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-conflicting",
-            summary: "An approved slice whose pull request conflicts with main, no agent on it, its PR section open: a danger icon on the PR header, and a notice atop the PR body saying the branch conflicts with main and to launch a fix agent.",
+            summary: "An approved slice whose pull request conflicts with main, no agent on it, its PR section open: a danger icon on the PR header, and a notice atop the PR body saying the branch conflicts with main and to send it back to the agent.",
             size: window
         ) {
             await slicePane(
@@ -1665,7 +1745,7 @@ enum AppStories {
         Story(
             name: "sidebar-state-dots",
             summary: "Every slice dot side by side as sidebar rows: todo, blocked, working (live and not), "
-                + "fixing, waiting, review, pr open and done, with a folded project's needs-you dot.",
+                + "waiting, review, pr open and done, with a folded project's needs-you dot.",
             size: CGSize(width: 300, height: 330)
         ) {
             StateDotsStory()
@@ -2651,7 +2731,6 @@ private struct StateDotsStory: View {
         ("blocked", .blocked, false),
         ("working — agent live", .working, true),
         ("working — no agent", .working, false),
-        ("fixing", .fixing, true),
         ("on standby", .waiting, true),
         ("review", .review, false),
         ("pr open", .pr, false),

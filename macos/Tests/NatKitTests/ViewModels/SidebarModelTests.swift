@@ -4,11 +4,11 @@ import XCTest
 final class SidebarModelTests: XCTestCase {
     private func slice(
         _ id: String, status: String = "Todo", milestone: String = "M1", branch: String? = nil,
-        handedBack: Bool = false, pr: String = "", blocked: Bool = false, fixing: Bool = false
+        handedBack: Bool = false, pr: String = "", blocked: Bool = false, resumed: Bool = false
     ) -> Slice {
         Slice(
             id: id, name: "Slice \(id)", status: status, milestoneID: milestone, assignee: "", pr: pr, url: "",
-            branch: branch, blocked: blocked, handedBack: handedBack, fixing: fixing)
+            branch: branch, blocked: blocked, handedBack: handedBack, resumed: resumed)
     }
 
     private func plan(_ slices: [Slice], milestones: [String] = ["M1", "M2"]) -> ProjectInfo {
@@ -34,15 +34,15 @@ final class SidebarModelTests: XCTestCase {
             displayState(for: slice("a", status: "In progress", branch: "b", handedBack: true), agent: .waiting),
             .review, "a live session never moves a handed-back slice")
         XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1"), agent: nil), .pr)
-        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1", fixing: true), agent: .working), .fixing)
-        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1", fixing: true), agent: .waiting), .waiting)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1", resumed: true), agent: .working), .working)
+        XCTAssertEqual(displayState(for: slice("a", status: "In progress", pr: "https://x/pull/1", resumed: true), agent: .waiting), .waiting)
         XCTAssertEqual(displayState(for: slice("a", status: "Done", pr: "https://x/pull/1"), agent: .working), .done)
     }
 
     func testTheStatesFlagsAreTheDesigns() {
         XCTAssertEqual(SliceDisplayState.allCases.filter(\.needsYou), [.waiting, .review, .pr])
         XCTAssertEqual(SliceDisplayState.allCases.filter { !$0.isLaunched }, [.todo, .blocked])
-        XCTAssertEqual(SliceDisplayState.allCases.filter(\.isInFlight), [.working, .waiting, .review, .pr, .fixing])
+        XCTAssertEqual(SliceDisplayState.allCases.filter(\.isInFlight), [.working, .waiting, .review, .pr])
     }
 
     // MARK: - The tree
@@ -235,7 +235,7 @@ final class SidebarModelTests: XCTestCase {
 
     func testEveryStateHasItsOwnWord() {
         let words = SliceDisplayState.allCases.map(\.word)
-        XCTAssertEqual(words, ["To do", "Working", "Waiting for you", "In review", "PR open", "Fixing", "Blocked", "Done"])
+        XCTAssertEqual(words, ["To do", "Working", "Waiting for you", "In review", "PR open", "Blocked", "Done"])
     }
 
     /// Hiding done items drops the Done folder and every done slice still

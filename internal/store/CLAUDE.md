@@ -70,7 +70,7 @@ no working dir.
 
 - Every task-log section either store writes opens with a stamp paragraph,
   `At <RFC 3339, local time with offset>` (`stamped`): Handed back /
-  Blocked / Summary (`CompleteSlice`), Sent back, Note (stamp, then the
+  Blocked / Summary (`CompleteSlice`), Sent back, Resumed, Note (stamp, then the
   `From …` provenance, then the note), Launched, Relaunched, Follow-ups and
   Follow-ups triaged. `PR description` is **never** stamped — every line under
   it is the PR's body. The released line carries its time in the sentence

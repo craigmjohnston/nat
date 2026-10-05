@@ -920,6 +920,102 @@ final class DiffStoreTests: XCTestCase {
         XCTAssertEqual(store.pendingCommentCount, 0)
     }
 
+    /// A resumed slice is not handed back: its agent is already at work and
+    /// hands back of its own accord, so the comments go with no hand-back
+    /// line and no rework — which nat would refuse with no branch recorded.
+    @MainActor
+    func testSendCommentsToAResumedSliceAsksForNoHandBackAndReworksNothing() async throws {
+        let client = MockDiffClient(response: .success(makeDiff()))
+        let store = DiffStore(client: client)
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        let rowID = store.loadState.diff!.files[0].rows[0].id
+        store.setComment(path: "a.go", anchorRowIDs: [rowID], text: "clamp this")
+
+        let count = try await store.sendComments(projectID: "proj-1", sliceRef: "slice-1", handedBack: false)
+
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(client.reworkCalls, [])
+        XCTAssertEqual(client.sentPrompts.count, 1)
+        XCTAssertFalse(client.sentPrompts[0].text.contains("complete-slice"))
+        XCTAssertTrue(client.sentPrompts[0].text.contains("clamp this"))
+        XCTAssertEqual(store.pendingCommentCount, 0)
+    }
+
+    // MARK: - New and Updated
+
+    private func oneLineDiff(_ files: [(String, String)]) -> SliceDiff {
+        SliceDiff(base: "main", branch: "nat/example", files: files.map { path, line in
+            SliceDiffFile(path: path, oldPath: path, adds: 1, dels: 0, described: false, lines: [
+                "diff --git a/\(path) b/\(path)", "--- a/\(path)", "+++ b/\(path)", "@@ -0,0 +1,1 @@", "+\(line)",
+            ])
+        })
+    }
+
+    /// The first reading of a slice's Changes badges nothing; a later one
+    /// badges a file not there before New and one whose diff changed Updated,
+    /// each until it is on screen or marked viewed; and it is all per slice.
+    @MainActor
+    func testFilesAreNewOrUpdatedAgainstTheReadingLastSeen() async throws {
+        let seen = SeenMemory.inMemory()
+        let client = MockDiffClient(response: .success(oneLineDiff([("a.go", "one"), ("b.go", "two")])))
+        let store = DiffStore(client: client, seen: seen)
+        XCTAssertNil(store.badge("a.go"), "nothing read")
+        await store.fetch(projectID: "p", sliceRef: "s")
+        XCTAssertNil(store.badge("a.go"))
+        XCTAssertNil(store.badge("b.go"))
+        XCTAssertNil(store.sectionStatus)
+
+        client.setResponse(.success(oneLineDiff([("a.go", "one, again"), ("b.go", "two"), ("c.go", "three")])))
+        await store.refresh()
+        XCTAssertEqual(store.badge("a.go"), .updated)
+        XCTAssertNil(store.badge("b.go"), "as it was")
+        XCTAssertEqual(store.badge("c.go"), .new)
+        XCTAssertNil(store.badge("gone.go"), "not in the diff")
+        XCTAssertEqual(store.sectionStatus, .new)
+
+        store.markSeen("c.go")
+        XCTAssertNil(store.badge("c.go"), "on screen is seen")
+        XCTAssertEqual(store.sectionStatus, .updated)
+        store.markSeen("b.go")
+        store.toggleViewed("a.go")
+        XCTAssertNil(store.badge("a.go"), "marking viewed sees it")
+        XCTAssertNil(store.sectionStatus)
+
+        // Another slice starts with nothing seen, and its first reading is
+        // its own first look.
+        await store.fetch(projectID: "p", sliceRef: "t")
+        XCTAssertNil(store.badge("a.go"))
+        XCTAssertNotNil(seen.snapshot(projectID: "p", sliceID: "t", .changes))
+
+        // Back to the first, from the session's cache: its badges as left.
+        client.setResponse(.success(oneLineDiff([("a.go", "one, again"), ("b.go", "two")])))
+        await store.fetch(projectID: "p", sliceRef: "s")
+        XCTAssertNil(store.badge("a.go"))
+        await store.refresh()
+        XCTAssertEqual(seen.snapshot(projectID: "p", sliceID: "s", .changes).map { Set($0.keys) }, ["a.go", "b.go"],
+                       "a file gone from the diff is forgotten")
+
+        store.clear()
+        XCTAssertNil(store.badge("a.go"), "cleared reads nothing")
+    }
+
+    /// A file's fingerprint is its change, not where it sits: the same lines
+    /// at other numbers read the same, other lines or another source do not.
+    func testAFilesFingerprintIsItsChangeNotItsLineNumbers() {
+        func file(_ hunk: String, _ line: String, oldPath: String = "a.go") -> DiffFileModel {
+            buildDiffModel(from: SliceDiff(base: "main", branch: "b", files: [
+                SliceDiffFile(path: "a.go", oldPath: oldPath, adds: 1, dels: 0, described: false, lines: [
+                    "diff --git a/a.go b/a.go", "--- a/a.go", "+++ b/a.go", hunk, "+\(line)",
+                ]),
+            ]), expandable: true).files[0]
+        }
+        let base = file("@@ -10,0 +11,1 @@", "x")
+        XCTAssertEqual(base.seenFingerprint, file("@@ -40,0 +41,1 @@", "x").seenFingerprint)
+        XCTAssertNotEqual(base.seenFingerprint, file("@@ -10,0 +11,1 @@", "y").seenFingerprint)
+        XCTAssertNotEqual(base.seenFingerprint, file("@@ -10,0 +11,1 @@", "x", oldPath: "old.go").seenFingerprint)
+        XCTAssertEqual(base.seenFingerprint.count, 64)
+    }
+
     @MainActor
     func testSendCommentsApprovingAsksForTheHandBackAndReworksTheSlice() async throws {
         let client = MockDiffClient(response: .success(makeDiff()))

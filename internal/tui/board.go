@@ -202,6 +202,9 @@ type row struct {
 // Groups are flattened into a list of rows on every change, so the cursor is a
 // single index and navigation does not care about the tree underneath.
 type Board struct {
+	// hasBranch is whether the project has a Branch column — see
+	// [Board.SetHasBranch].
+	hasBranch bool
 	styles Styles
 	keys   boardKeyMap
 

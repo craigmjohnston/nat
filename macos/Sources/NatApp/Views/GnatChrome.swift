@@ -116,7 +116,7 @@ struct StateDot: View {
                 .font(.system(size: size + 2, weight: .bold))
                 .foregroundStyle(DesignTokens.ink(.tertiary, on: ground))
                 .frame(width: size, height: size)
-        case .working, .fixing:
+        case .working:
             let dot = Circle().fill(DesignTokens.accent).frame(width: size, height: size)
             if live && !pulsesPaused {
                 dot.modifier(PulseModifier())
@@ -143,7 +143,7 @@ struct StateSymbol: View {
         let glyph = Image(systemName: symbol)
             .font(.system(size: 10, weight: .medium))
             .foregroundStyle(ink)
-        if live && !pulsesPaused && (state == .working || state == .fixing) {
+        if live && !pulsesPaused && state == .working {
             glyph.modifier(PulseModifier())
         } else {
             glyph
@@ -152,7 +152,7 @@ struct StateSymbol: View {
 
     private var ink: Color {
         switch state {
-        case .working, .fixing: DesignTokens.accent
+        case .working: DesignTokens.accent
         case .waiting, .review, .pr: DesignTokens.hot
         case .todo, .blocked, .done: DesignTokens.ink(.tertiary, on: ground)
         }

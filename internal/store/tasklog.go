@@ -39,6 +39,18 @@ func (n *Notion) RecordSentBack(ctx context.Context, id, comments string) error 
 	return nil
 }
 
+// RecordResumed files why work on a handed-back slice was taken back up on
+// the slice page under a heading of its own, stamped, in one append — before
+// `slice-resume`'s own [Notion.ClearBranch], for [Notion.RecordSentBack]'s
+// reason.
+func (n *Notion) RecordResumed(ctx context.Context, id, note string) error {
+	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.ResumedHeading, stamped(clockOr(n.Clock), note))); err != nil {
+		return err
+	}
+	logging.Action("slice resumed", "slice", id)
+	return nil
+}
+
 // RecordChecksFailed files the checks a pull request failed on the slice page
 // under a heading of their own, stamped, in one append.
 func (n *Notion) RecordChecksFailed(ctx context.Context, id, checks string) error {
@@ -89,6 +101,16 @@ func (l *Local) RecordSentBack(ctx context.Context, id, comments string) error {
 	return nil
 }
 
+// RecordResumed appends why the work was taken back up to the slice's body,
+// in the markdown Notion would render the same section to.
+func (l *Local) RecordResumed(ctx context.Context, id, note string) error {
+	if err := l.appendToBody(ctx, id, "resume the slice", notion.ResumedHeading, stamped(clockOr(l.Clock), note)); err != nil {
+		return err
+	}
+	logging.Action("slice resumed", "slice", id)
+	return nil
+}
+
 // RecordChecksFailed appends the failed checks to the slice's body, in the
 // markdown Notion would render the same section to.
 func (l *Local) RecordChecksFailed(ctx context.Context, id, checks string) error {
@@ -134,6 +156,16 @@ func (m *Mirrored) RecordSentBack(ctx context.Context, id, comments string) erro
 		return err
 	}
 	m.push(ctx, id, func() error { return m.remote.RecordSentBack(ctx, id, comments) })
+	return nil
+}
+
+// RecordResumed files the resumption locally, then pushes it to the
+// workspace.
+func (m *Mirrored) RecordResumed(ctx context.Context, id, note string) error {
+	if err := m.local.RecordResumed(ctx, id, note); err != nil {
+		return err
+	}
+	m.push(ctx, id, func() error { return m.remote.RecordResumed(ctx, id, note) })
 	return nil
 }
 

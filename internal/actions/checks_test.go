@@ -16,7 +16,23 @@ import (
 type checksStore struct {
 	bodies              map[string]string
 	bodyErr, recordErr  error
+	resumeErr           error
 	sentBack, failedRec []string
+	resumed, cleared    []string
+}
+
+func (s *checksStore) RecordResumed(_ context.Context, id, note string) error {
+	if s.resumeErr != nil {
+		return s.resumeErr
+	}
+	s.resumed = append(s.resumed, id)
+	s.bodies[id] += "\n### Resumed\n\n" + note + "\n"
+	return nil
+}
+
+func (s *checksStore) ClearBranch(_ context.Context, id string) error {
+	s.cleared = append(s.cleared, id)
+	return nil
 }
 
 func (s *checksStore) Body(_ context.Context, id string) (string, error) {
@@ -88,6 +104,14 @@ func TestNoticeFailingChecksNudgesALiveAgentOncePerFailure(t *testing.T) {
 	}
 	if !strings.Contains(st.bodies["s1"], "- test: https://github.test/runs/1") {
 		t.Errorf("record = %q, want the check and its URL", st.bodies["s1"])
+	}
+	// The nudge is a resumption, recorded before the send: a Resumed with the
+	// branch cleared, then the Sent back after it.
+	if len(st.resumed) != 1 || len(st.cleared) != 1 {
+		t.Errorf("resumed %v, cleared %v, want the slice once each", st.resumed, st.cleared)
+	}
+	if r, sb := strings.Index(st.bodies["s1"], "### Resumed"), strings.Index(st.bodies["s1"], "### Sent back"); r < 0 || r > sb {
+		t.Errorf("body = %q, want a Resumed before the Sent back", st.bodies["s1"])
 	}
 	// The Sent back reads back as CI's, not the user's.
 	if events := store.TaskEvents(st.bodies["s1"]); events[len(events)-1].By != "CI" ||
@@ -172,5 +196,28 @@ func TestSameFailure(t *testing.T) {
 	}
 	if sameFailure("- test: https://x/1\n- other", checks) {
 		t.Error("a record of the same size naming another check matched")
+	}
+}
+
+// A slice Resume refuses — Done, with an agent still live on it — is told
+// nothing and has nothing written: the refusal is logged and the slice passed
+// over. A Resumed that cannot be filed stops the nudge the same way.
+func TestNoticeFailingChecksSendsNothingWhereTheResumeFails(t *testing.T) {
+	ctx := context.Background()
+	done := redSlice
+	done.Status, done.StatusName = domain.SliceDone, "Done"
+	failing := red("https://github.test/runs/1")
+	failing[0].Slice = done
+	st := &checksStore{bodies: map[string]string{"s1": ""}}
+	sender := &promptSender{}
+	if NoticeFailingChecks(ctx, st, sender, map[string]string{"s1": "nat-s1"}, "proj", failing) ||
+		len(sender.sent) != 0 || len(st.sentBack) != 0 {
+		t.Errorf("a Done slice: sent %d, sent back %d, want nothing", len(sender.sent), len(st.sentBack))
+	}
+
+	st = &checksStore{bodies: map[string]string{"s1": ""}, resumeErr: errors.New("notion down")}
+	if NoticeFailingChecks(ctx, st, sender, map[string]string{"s1": "nat-s1"}, "proj", red("https://github.test/runs/1")) ||
+		len(sender.sent) != 0 || len(st.cleared) != 0 {
+		t.Errorf("a failed Resumed: sent %d, cleared %v, want nothing", len(sender.sent), st.cleared)
 	}
 }

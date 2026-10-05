@@ -486,6 +486,29 @@ final class NatClientTests: XCTestCase {
         }
     }
 
+    /// Send back to agent's record: the note over stdin, as the rework's
+    /// comments go.
+    func testSliceResumePassesTheNoteOverStdin() async throws {
+        let fakeRunner = FakeRunner(fixture: .agentSendSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.sliceResume(projectID: "proj-123", sliceRef: "slice-1", note: "Checks are failing.")
+
+        XCTAssertEqual(
+            fakeRunner.lastArguments, ["slice-resume", "--project", "proj-123", "slice-1", "--note", "-"])
+        XCTAssertEqual(fakeRunner.lastStandardInput, "Checks are failing.".data(using: .utf8))
+    }
+
+    func testAClientWithoutResumeRefuses() async {
+        let client = MockActivityClient(response: .agents([]))
+        do {
+            try await client.sliceResume(projectID: "p", sliceRef: "s", note: "x")
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("slice-resume"))
+        }
+    }
+
     func testAgentSendNoSession() async throws {
         let fakeRunner = FakeRunner(fixture: .agentSendNoSession)
         let client = NatClient(commandRunner: fakeRunner)

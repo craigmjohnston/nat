@@ -180,8 +180,8 @@ final class ProjectAttentionTests: XCTestCase {
         XCTAssertNil(attention.badge)
     }
 
-    /// A live agent on a Done slice — a fix session answering review comments
-    /// on a pull request the merge has not landed yet — is not this count's
+    /// A live agent on a Done slice — one marked Done under the old rule,
+    /// its pull request not merged yet — is not this count's
     /// either, exactly as it is not `domain.StateOf`'s on the Go side: Notion's
     /// status is read straight, before presence is ever asked about, so a
     /// Done slice contributes nothing here whatever is running on it. The

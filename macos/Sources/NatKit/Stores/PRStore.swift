@@ -105,15 +105,28 @@ public final class PRStore {
     /// serve a reading already known to be stale.
     private var prCache: [String: PRDetail] = [:]
 
+    /// What the user last saw of each slice's pull request — its head commit
+    /// (`SeenMemory`, `.pr`), what the section's Updated badge reads.
+    private let seen: SeenMemory
+    /// Bumped on every seen mark written, so a view reading `badge` redraws:
+    /// the memory itself is not observable.
+    private var seenTick = 0
+    /// The one item the PR section's snapshot holds.
+    public nonisolated static let seenHead = "head"
+
     /// - Parameter pollIntervalNanoseconds: how long the poll loop sleeps
     ///   between readings — 5 seconds in the app, short enough that a check
     ///   going green shows while the user is actually watching for it (the
     ///   poll only runs at all while a check is pending, so the cost is a
     ///   few `gh` reads across a CI run); overridable so a test does not
     ///   have to wait 5 real seconds to see it fire twice.
-    public init(client: NatClientProtocol = NatClient(), pollIntervalNanoseconds: UInt64 = 5 * 1_000_000_000) {
+    public init(
+        client: NatClientProtocol = NatClient(), pollIntervalNanoseconds: UInt64 = 5 * 1_000_000_000,
+        seen: SeenMemory = .inMemory()
+    ) {
         self.client = client
         self.pollIntervalNanoseconds = pollIntervalNanoseconds
+        self.seen = seen
     }
 
     /// Fetch the pull request for a slice, unless it is already loaded (or
@@ -293,6 +306,27 @@ public final class PRStore {
         isPolling = false
     }
 
+    // MARK: - Updated
+
+    /// The PR section's badge for a slice: Updated where the pull request
+    /// this store holds is that slice's and its head has moved since the user
+    /// last opened the section — nil otherwise, and nil before any head was
+    /// read.
+    public func badge(sliceID: String) -> SeenBadge? {
+        _ = seenTick
+        guard let projectID, sessionID == nil, sliceRef == sliceID,
+              let head = loadState.pr?.headRefOid, !head.isEmpty
+        else { return nil }
+        return seen.badge(projectID: projectID, sliceID: sliceID, .pr, item: Self.seenHead, fingerprint: head)
+    }
+
+    /// The user has opened a slice's PR section: its head as read is seen.
+    public func markSeen(sliceID: String) {
+        guard badge(sliceID: sliceID) != nil, let projectID, let head = loadState.pr?.headRefOid else { return }
+        seen.markSeen(projectID: projectID, sliceID: sliceID, .pr, item: Self.seenHead, fingerprint: head)
+        seenTick += 1
+    }
+
     // MARK: - Private
 
     private func load() async {
@@ -318,6 +352,14 @@ public final class PRStore {
             }
             prCache[sliceRef] = pr
             loadState = .loaded(pr)
+            // The first reading of a slice's pull request is its first look:
+            // nothing is Updated before the user has seen a head to compare
+            // with. A session's pull request, and a head nat did not say,
+            // take no part.
+            if sessionID == nil, !pr.headRefOid.isEmpty {
+                seen.baseline(projectID: projectID, sliceID: sliceRef, .pr, [Self.seenHead: pr.headRefOid])
+                seenTick += 1
+            }
         } catch {
             // The reading is kept and said to be stale rather than dropped:
             // see `PRLoadState`. The cache goes even so, so a later switch

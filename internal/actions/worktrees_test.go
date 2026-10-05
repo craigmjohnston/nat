@@ -91,7 +91,7 @@ func (f *fakeWorktrees) Reset(path, ref string) error {
 }
 
 // fakeRepo stands in for git: what the fetch was asked of, what origin's HEAD
-// is read as afterwards, and the log/diff-stat gather a resume or fix launch
+// is read as afterwards, and the log/diff-stat gather a resume launch
 // makes once the worktree is placed. The real one never fails a fetch or a
 // Base read — a fetch that could not reach the remote is swallowed, and an
 // unreadable HEAD falls back to main — so there is nothing here for a test

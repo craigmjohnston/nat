@@ -15,6 +15,31 @@ struct MainPaneNote: View {
     }
 }
 
+/// A notice across the top of the main pane, over what it shows — a resumed
+/// slice's warning that the diff, images or pull request beneath are of work
+/// the agent is redoing (`NavigatorModel.resumedNotice`). The navigator's
+/// own `NavNotice`, ruled off from the pane under it.
+struct MainPaneNotice: View {
+    let text: String
+    var role: InkRole = .warning
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 12))
+                .ink(role)
+            Text(text)
+                .font(.system(size: Typo.scaled(13)))
+                .ink(role)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .rule(.separator, edges: [.bottom], width: 1)
+    }
+}
+
 /// The main pane with nothing selected, an editor's watermark: the gnat
 /// mark, large and barely there, over the keyboard shortcuts that work with
 /// nothing selected — each the menu bar's own. Set a little above centre,
@@ -155,6 +180,10 @@ struct ContinuousDiffView: View {
         state.canComment = review != nil && store != nil && (store?.commentsEditable ?? false) && review?.draft == nil
         state.showsViewed = showsViewed
         state.wrap = wrapsLines
+        if let store {
+            state.badges = Dictionary(
+                paths.compactMap { path in store.badge(path).map { (path, $0) } }, uniquingKeysWith: { first, _ in first })
+        }
         return state
     }
 
@@ -180,6 +209,11 @@ struct ContinuousDiffView: View {
         actions.collapseToggled = { onToggleCollapsed($0) }
         // A diff with no store takes no marks — a session's diff.
         guard let review, let store else { return actions }
+        // A file whose rows have been on screen is seen. After the view has
+        // drawn, never during — the store is observed by what is drawing.
+        actions.filesShown = { paths in
+            Task { @MainActor in paths.forEach(store.markSeen) }
+        }
         actions.gapExpanded = { file, gap, control in
             Task { await store.expand(path: file.path, gap: gap, control: control) }
         }
@@ -217,6 +251,11 @@ struct SliceMainPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // A resumed slice's diff, images and pull request are of work the
+            // agent is redoing: said once, across the top of each.
+            if nav.worksAgain && (mode == .diff || mode == .visuals || mode == .pr) {
+                MainPaneNotice(text: NavigatorModel.resumedNotice)
+            }
             switch mode {
             case .terminal:
                 if appModel.sliceActions.advance(for: slice.id)?.to == .agent {

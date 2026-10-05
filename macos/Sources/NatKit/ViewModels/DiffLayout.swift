@@ -224,6 +224,18 @@ public struct DiffLayout: Sendable {
         }
     }
 
+    /// The files any of whose rows fall between `minY` and `maxY`, in order —
+    /// what a view of that stretch shows of their changes. A collapsed file,
+    /// its header alone, shows none.
+    public func shownFiles(from minY: CGFloat, to maxY: CGFloat) -> [Int] {
+        guard maxY > minY, !items.isEmpty else { return [] }
+        var files: [Int] = []
+        for index in indices(from: minY, to: maxY) {
+            if case .row(let file, _) = items[index], files.last != file { files.append(file) }
+        }
+        return files
+    }
+
     /// The file whose header is pinned at the top of a view scrolled to
     /// `y`, and how far up the next file's header has pushed it (zero or
     /// less) — nil above the first header or once the closing line is

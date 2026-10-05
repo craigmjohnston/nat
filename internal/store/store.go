@@ -247,6 +247,10 @@ type Store interface {
 	// Sent back heading, which `slice-rework` writes before it clears the
 	// slice's Branch — the task-log counterpart of a hand-back's own note.
 	RecordSentBack(ctx context.Context, id, comments string) error
+	// RecordResumed files why work on a handed-back slice was taken back up
+	// under a Resumed heading, which `slice-resume` writes before it clears
+	// the slice's Branch — the same order RecordSentBack keeps.
+	RecordResumed(ctx context.Context, id, note string) error
 	// RecordChecksFailed files the checks a slice's pull request failed under
 	// a Checks failed heading — what a failing reading leaves on the record
 	// where no agent was live to be told instead.

@@ -23,6 +23,7 @@ const fullPROpenJSON = `{
   "author": {"login": "craig"},
   "baseRefName": "main",
   "headRefName": "slice/read-pr",
+  "headRefOid": "0123abc",
   "url": "https://github.test/craig/nat/pull/7",
   "reviewDecision": "APPROVED",
   "mergeable": "MERGEABLE",
@@ -152,7 +153,7 @@ func TestPRViewJSON(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
 	}
-	if got.Number != 7 || got.Title != "Read a pull request" || got.State != "OPEN" {
+	if got.Number != 7 || got.Title != "Read a pull request" || got.State != "OPEN" || got.HeadRefOid != "0123abc" {
 		t.Errorf("json = %+v", got)
 	}
 	if len(got.Checks) != 1 || got.Checks[0] != (checkJSON{Name: "test", State: "SUCCESS", Link: "https://ci.test/1"}) {

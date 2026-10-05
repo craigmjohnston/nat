@@ -149,14 +149,17 @@ type commentJSON struct {
 // wrote them — GitHub's own vocabulary rather than a word this command
 // invented, exactly as [gh.PR] itself does.
 type prDoc struct {
-	Number           int           `json:"number"`
-	Title            string        `json:"title"`
-	Body             string        `json:"body"`
-	State            string        `json:"state"`
-	IsDraft          bool          `json:"is_draft"`
-	Author           string        `json:"author"`
-	BaseRefName      string        `json:"base_ref_name"`
-	HeadRefName      string        `json:"head_ref_name"`
+	Number      int    `json:"number"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	State       string `json:"state"`
+	IsDraft     bool   `json:"is_draft"`
+	Author      string `json:"author"`
+	BaseRefName string `json:"base_ref_name"`
+	HeadRefName string `json:"head_ref_name"`
+	// HeadRefOid is the commit the head is at — how the app tells a pull
+	// request whose branch has moved since it was last opened.
+	HeadRefOid       string        `json:"head_ref_oid"`
 	URL              string        `json:"url"`
 	Checks           []checkJSON   `json:"checks"`
 	Reviews          []reviewJSON  `json:"reviews"`
@@ -187,6 +190,7 @@ func prJSON(pr gh.PR) prDoc {
 		Author:           pr.Author,
 		BaseRefName:      pr.BaseRefName,
 		HeadRefName:      pr.HeadRefName,
+		HeadRefOid:       pr.HeadRefOid,
 		URL:              pr.URL,
 		Checks:           make([]checkJSON, 0, len(pr.Checks)),
 		Reviews:          make([]reviewJSON, 0, len(pr.Reviews)),

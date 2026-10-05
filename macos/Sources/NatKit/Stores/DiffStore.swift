@@ -142,8 +142,20 @@ public final class DiffStore {
     /// The gaps a read is already out for, so a second press waits for it.
     private var expanding: Set<String> = []
 
-    public init(client: NatClientProtocol = NatClient()) {
+    /// What the user last saw of each slice's Changes (`SeenMemory`,
+    /// `.changes`) — each file by path at a fingerprint of its rows — what
+    /// the New and Updated badges read.
+    private let seen: SeenMemory
+    /// The branch-wide diff's files as fingerprints, by path — what each
+    /// badge compares, whichever commit is on screen.
+    private var fingerprints: [String: String] = [:]
+    /// Bumped on every seen mark written, so a view reading `badge` redraws:
+    /// the memory itself is not observable.
+    private var seenTick = 0
+
+    public init(client: NatClientProtocol = NatClient(), seen: SeenMemory = .inMemory()) {
         self.client = client
+        self.seen = seen
     }
 
     /// Fetch the diff for a slice, unless it is already loaded (or loading)
@@ -174,12 +186,14 @@ public final class DiffStore {
             collapsedFiles = []
             revealed = [:]
             fileEnds = [:]
+            fingerprints = [:]
         }
         self.projectID = projectID
         self.sliceRef = sliceRef
 
         if let cached = branchDiffCache[sliceRef] {
             branchDiff = cached
+            fingerprints = Self.fingerprints(cached)
             loadState = .loaded(displayed(cached, view: ""))
             return
         }
@@ -263,6 +277,7 @@ public final class DiffStore {
         } else {
             viewedFiles.insert(path)
             collapsedFiles.insert(path)
+            markSeen(path)
         }
     }
 
@@ -292,6 +307,39 @@ public final class DiffStore {
         branchDiffCache = [:]
         revealed = [:]
         fileEnds = [:]
+        fingerprints = [:]
+    }
+
+    // MARK: - New and Updated
+
+    /// A file's badge (`SeenMemory`'s one rule): New where the file was not
+    /// in the diff when the user last looked, Updated where it was and its
+    /// diff has changed since — none the first time the slice's Changes are
+    /// ever read, or for a file seen as it is. Read against the branch as a
+    /// whole, whichever commit is on screen.
+    public func badge(_ path: String) -> SeenBadge? {
+        _ = seenTick
+        guard let projectID, let sliceRef, let fingerprint = fingerprints[path] else { return nil }
+        return seen.badge(projectID: projectID, sliceID: sliceRef, .changes, item: path, fingerprint: fingerprint)
+    }
+
+    /// The Changes header's badge: New while any file is, else Updated while
+    /// any file is.
+    public var sectionStatus: NavSectionStatus? {
+        .of(fingerprints.keys.map(badge))
+    }
+
+    /// The user has seen a file as it now is: its rows have been on screen
+    /// in the diff, or it has been marked viewed.
+    public func markSeen(_ path: String) {
+        guard badge(path) != nil, let projectID, let sliceRef, let fingerprint = fingerprints[path] else { return }
+        seen.markSeen(projectID: projectID, sliceID: sliceRef, .changes, item: path, fingerprint: fingerprint)
+        seenTick += 1
+    }
+
+    /// Every file of a diff as its seen fingerprint, by path.
+    private static func fingerprints(_ model: DiffModel) -> [String: String] {
+        Dictionary(model.files.map { ($0.path, $0.seenFingerprint) }, uniquingKeysWith: { _, last in last })
     }
 
     // MARK: - Expanding
@@ -393,23 +441,31 @@ public final class DiffStore {
     /// pending, because they are held nowhere else and retyping a review is
     /// not a thing to ask of anybody.
     ///
-    /// The prompt always tells the agent to finish with its `complete-slice`
-    /// hand-back, and once it has been delivered the slice is taken out of
-    /// review (`nat slice-rework`) so that hand-back is visible as the slice
-    /// coming back. With `approving`, that hand-back also opens the pull
-    /// request. The comments are gone by then either way: a rework that failed
-    /// still leaves the agent with its instructions, and the throw says what
-    /// the caller still has to tell the user.
+    /// Where the slice is handed back, the prompt tells the agent to finish
+    /// with its `complete-slice` hand-back, and once it has been delivered the
+    /// slice is taken out of review (`nat slice-rework`) so that hand-back is
+    /// visible as the slice coming back. With `approving`, that hand-back also
+    /// opens the pull request. The comments are gone by then either way: a
+    /// rework that failed still leaves the agent with its instructions, and the
+    /// throw says what the caller still has to tell the user. Where it is not
+    /// handed back — a resumed slice, its agent already at work and bound to
+    /// hand back of its own accord — neither is done, as `VisualStore`'s send
+    /// does: nat would refuse the rework of a slice with no branch recorded.
     @discardableResult
-    public func sendComments(projectID: String, sliceRef: String, approving: Bool = false) async throws -> Int {
+    public func sendComments(
+        projectID: String, sliceRef: String, approving: Bool = false, handedBack: Bool = true
+    ) async throws -> Int {
         guard let diff = loadState.diff, !comments.isEmpty else { return 0 }
-        let handBack = HandBackInstruction(projectID: projectID, sliceRef: sliceRef, opensPullRequest: approving)
+        let handBack = handedBack
+            ? HandBackInstruction(projectID: projectID, sliceRef: sliceRef, opensPullRequest: approving) : nil
         let prompt = commentsPrompt(comments, diff: diff, handBack: handBack)
         let record = commentsRecord(comments, diff: diff)
         let count = comments.count
         try await client.agentSend(projectID: projectID, sliceRef: sliceRef, text: prompt)
         comments = []
-        try await client.sliceRework(projectID: projectID, sliceRef: sliceRef, comments: record)
+        if handedBack {
+            try await client.sliceRework(projectID: projectID, sliceRef: sliceRef, comments: record)
+        }
         return count
     }
 
@@ -453,6 +509,12 @@ public final class DiffStore {
             fileEnds[""] = nil
             branchDiff = model
             branchDiffCache[sliceRef] = model
+            // The first reading of a slice's Changes is its first look:
+            // nothing is badged until there is a reading to compare with.
+            fingerprints = Self.fingerprints(model)
+            seen.retain(projectID: projectID, sliceID: sliceRef, .changes, items: Set(fingerprints.keys))
+            seen.baseline(projectID: projectID, sliceID: sliceRef, .changes, fingerprints)
+            seenTick += 1
             // A re-read's marks are the previous diff's, not the one that
             // has just replaced it — dropped only once a read has actually
             // landed, so a refresh that failed leaves the files the user

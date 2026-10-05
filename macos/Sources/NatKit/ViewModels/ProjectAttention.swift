@@ -66,7 +66,7 @@ public struct ProjectAttention: Equatable, Sendable {
 ///
 /// What counts towards the pill is a thing needing the user *now*: an agent
 /// waiting for input, a slice handed back for review, a pull request ready to
-/// merge, and one whose checks are failing (at the PR stage or under a fix). Counted per slice rather than per fact, so a handed-back
+/// merge, and one whose checks are failing (at the PR stage). Counted per slice rather than per fact, so a handed-back
 /// slice whose agent is also waiting is one thing to attend to and not two;
 /// a waiting planning agent is one more, being nobody's slice.
 ///
@@ -116,7 +116,7 @@ public func projectAttention(
                 let stage = stage(for: $0, agent: nil)
                 let reading = prReadiness[$0.id]
                 return stage == .review || (stage == .pr && reading == PRStatusSlice.readyToMerge)
-                    || ((stage == .pr || stage == .fixing) && reading == PRStatusSlice.checksFailing)
+                    || (stage == .pr && reading == PRStatusSlice.checksFailing)
             }
             .map(\.id)
     )

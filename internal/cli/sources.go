@@ -285,7 +285,7 @@ func containerShow(ctx context.Context, args []string, env Env) error {
 	tasks := []sliceJSON{}
 	for _, s := range plan.Project.Slices {
 		if s.MilestoneID == id {
-			tasks = append(tasks, sliceJSONOf(s, slicesByID))
+			tasks = append(tasks, sliceJSONOf(s, slicesByID, plan.Shape.HasBranch))
 		}
 	}
 

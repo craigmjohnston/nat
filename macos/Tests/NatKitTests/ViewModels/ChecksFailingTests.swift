@@ -5,12 +5,12 @@ import XCTest
 /// the rail marked and the task log drawn.
 final class ChecksFailingTests: XCTestCase {
     private func slice(
-        _ id: String = "s-1", status: String = "In progress", pr: String = "https://pr/1", fixing: Bool = false,
+        _ id: String = "s-1", status: String = "In progress", pr: String = "https://pr/1", resumed: Bool = false,
         handedBack: Bool = false, branch: String? = nil
     ) -> Slice {
         Slice(
             id: id, name: "Slice \(id)", status: status, milestoneID: "M1", assignee: "", pr: pr, url: "",
-            branch: branch, blocked: false, handedBack: handedBack, fixing: fixing)
+            branch: branch, blocked: false, handedBack: handedBack, resumed: resumed)
     }
 
     // MARK: - Decoding
@@ -31,10 +31,12 @@ final class ChecksFailingTests: XCTestCase {
         XCTAssertNil(doc.slices[2].checks)
     }
 
-    func testSliceDecodesFixingAndDefaultsItFalse() throws {
+    func testSliceDecodesResumedAndDefaultsItFalse() throws {
         let base = #""id":"s","name":"n","status":"In progress","milestone_id":"m","assignee":"","pr":"u","url":"","blocked":false,"handed_back":false"#
-        XCTAssertTrue(try JSONDecoder().decode(Slice.self, from: Data("{\(base),\"fixing\":true}".utf8)).fixing)
-        XCTAssertFalse(try JSONDecoder().decode(Slice.self, from: Data("{\(base)}".utf8)).fixing)
+        XCTAssertTrue(try JSONDecoder().decode(Slice.self, from: Data("{\(base),\"resumed\":true}".utf8)).resumed)
+        XCTAssertFalse(try JSONDecoder().decode(Slice.self, from: Data("{\(base)}".utf8)).resumed)
+        // An older nat's key means nothing now.
+        XCTAssertFalse(try JSONDecoder().decode(Slice.self, from: Data("{\(base),\"fixing\":true}".utf8)).resumed)
     }
 
     func testTaskLogDecodesChecksFailed() throws {
@@ -44,24 +46,25 @@ final class ChecksFailingTests: XCTestCase {
 
     // MARK: - The stage
 
-    func testFixingIsReadOffTheSlice() {
-        XCTAssertEqual(stage(for: slice(fixing: true), agent: nil), .fixing)
+    func testResumedIsReadOffTheSlice() {
+        XCTAssertEqual(stage(for: slice(resumed: true), agent: nil), .working)
         XCTAssertEqual(stage(for: slice(), agent: .working), .pr, "a live session moves nothing")
-        XCTAssertEqual(displayState(for: slice(fixing: true), agent: nil), .fixing, "no agent: drawn as fixing, relaunchable")
-        XCTAssertTrue(NavigatorModel(slice: slice(fixing: true), agent: nil).showsLaunch)
+        XCTAssertEqual(displayState(for: slice(resumed: true), agent: nil), .working, "no agent: drawn as working, relaunchable")
+        XCTAssertEqual(displayState(for: slice(resumed: true), agent: .waiting), .waiting)
+        XCTAssertTrue(NavigatorModel(slice: slice(resumed: true), agent: nil).showsLaunch)
     }
 
     // MARK: - The notice
 
-    func testNoticeOffersTheFixLaunchWithNoAgent() {
+    func testNoticeOffersSendBackWithNoAgent() {
         let notice = checksNotice(slice: slice(), failing: ["test", "lint"], hasLiveAgent: false, events: nil)
-        XCTAssertEqual(notice, ChecksNotice(checks: ["test", "lint"], action: .launchFix))
+        XCTAssertEqual(notice, ChecksNotice(checks: ["test", "lint"], action: .sendBack))
         XCTAssertEqual(notice?.text, "Checks failing: test, lint.")
     }
 
     func testNoticeSaysTheAgentWasToldWhenTheNudgeIsTheLatestEvent() {
         let told: [TaskLogEvent] = [TaskLogEvent(.handedBack), TaskLogEvent(.sentBack, note: "x"), TaskLogEvent(.approved, pr: "u")]
-        let notice = checksNotice(slice: slice(fixing: true), failing: ["test"], hasLiveAgent: true, events: told)
+        let notice = checksNotice(slice: slice(), failing: ["test"], hasLiveAgent: true, events: told)
         XCTAssertEqual(notice?.action, .sentToAgent)
         XCTAssertEqual(notice?.text, "Checks failing: test — sent to the agent to fix.")
 
@@ -70,11 +73,13 @@ final class ChecksFailingTests: XCTestCase {
         XCTAssertEqual(checksNotice(slice: slice(), failing: ["test"], hasLiveAgent: true, events: nil)?.action, ChecksNotice.Action.none)
     }
 
-    func testNoticeIsDrawnOnlyAtThePRStageOrUnderAFix() {
+    func testNoticeIsDrawnOnlyAtThePRStage() {
         XCTAssertNil(checksNotice(slice: slice(), failing: nil, hasLiveAgent: false, events: nil), "green, pending or unread")
         XCTAssertNil(checksNotice(slice: slice(status: "Done"), failing: ["test"], hasLiveAgent: false, events: nil))
         XCTAssertNil(checksNotice(slice: slice(pr: "", handedBack: true, branch: "b"), failing: ["test"], hasLiveAgent: false, events: nil))
-        XCTAssertNotNil(checksNotice(slice: slice(fixing: true), failing: ["test"], hasLiveAgent: false, events: nil))
+        XCTAssertNil(
+            checksNotice(slice: slice(resumed: true), failing: ["test"], hasLiveAgent: false, events: nil),
+            "resumed: the red reading is of a commit its agent is replacing")
         XCTAssertEqual(ChecksNotice(checks: [], action: .none).text, "Checks failing.")
     }
 
@@ -84,16 +89,17 @@ final class ChecksFailingTests: XCTestCase {
         let plan = ProjectInfo(
             project: Project(id: "p", name: "P", conventions: ""),
             milestones: [Milestone(id: "M1", name: "M1", order: 0, status: "Active")],
-            slices: [slice("a"), slice("b", fixing: true), slice("c", pr: "")])
+            slices: [slice("a"), slice("b"), slice("c", pr: ""), slice("d", resumed: true)])
         let model = buildSidebarModel(
             projects: [SidebarProjectInput(id: "p", name: "P", plan: plan)],
-            liveAgents: ["b": .waiting, "c": .working],
+            liveAgents: ["b": .waiting, "c": .working, "d": .working],
             prMarks: ["a": PRMarks(failingChecks: ["test"]), "b": PRMarks(failingChecks: ["lint"]),
-                      "c": PRMarks(failingChecks: ["stale"])])
+                      "c": PRMarks(failingChecks: ["stale"]), "d": PRMarks(failingChecks: ["old"])])
         let marks = Dictionary(uniqueKeysWithValues: model.active.map { ($0.targetID, $0.marks.failingChecks) })
         XCTAssertEqual(marks["a"], ["test"])
-        XCTAssertEqual(marks["b"], ["lint"], "under a fix, its agent waiting")
+        XCTAssertEqual(marks["b"], ["lint"], "at its pull request, its agent waiting")
         XCTAssertEqual(marks["c"], .some(nil), "a working slice has no pull request to mark")
+        XCTAssertEqual(marks["d"], .some(nil), "nor does a resumed one, its agent at it again")
     }
 
     // MARK: - The task log

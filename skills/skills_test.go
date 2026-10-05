@@ -267,7 +267,7 @@ func TestQueueProjectSendsTheUserToTheSwitchPicker(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // describes what a command does is not read as a call to it.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-visuals|slice-checks-rerun|slice-checks-cancel|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-resume|slice-visuals|slice-checks-rerun|slice-checks-cancel|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
 
 // fencedNatCommands are the `nat` invocations inside a skill's fenced code
 // blocks: the lines an agent copies and runs, as against the backticked prose
@@ -469,6 +469,27 @@ func TestNextSliceReadsCIWithSliceChecks(t *testing.T) {
 		"It reads a check still running", "nat slice-checks-rerun <slice> --check '<check name>' --project <project>",
 		"Never use it to\nretry a real failure without fixing it"} {
 		if !strings.Contains(string(body), want) {
+			t.Errorf("the next-slice skill does not say %q", want)
+		}
+	}
+}
+
+// The next-slice skill tells its agent to put a request for more after its
+// hand-back on the record with slice-resume before changing anything, pinned
+// to the project, and what a Done refusal means — as every slice prompt does.
+func TestNextSliceSkillCarriesTheResumePassage(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the next-slice skill: %v", err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		"If the user asks for more or different work after you have handed back",
+		"nat slice-resume <slice> --project <project> --note '<what they asked for>'",
+		"same\n`complete-slice --branch` command",
+		"the slice is Done, the\nwork is merged",
+	} {
+		if !strings.Contains(text, want) {
 			t.Errorf("the next-slice skill does not say %q", want)
 		}
 	}
