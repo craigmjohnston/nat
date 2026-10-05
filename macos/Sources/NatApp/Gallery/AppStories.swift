@@ -252,6 +252,11 @@ enum AppStories {
     private static let longBandTitle =
         "Rework the navigator and main pane titlebars into one band, tabs right-aligned, the title ellipsizing into the gap"
 
+    /// A slice name long enough that the band's room runs out at an
+    /// ordinary window width, short enough that each stage of giving way
+    /// (`BreadcrumbFit`) is reached before the next.
+    private static let fitBandTitle = "Persist an unlaunched workshop across relaunches"
+
     private static let bandAgent = AgentStatus(
         sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
         model: "Sonnet 5", effort: "high", contextPercent: 42, contextTokens: 84_120)
@@ -261,12 +266,16 @@ enum AppStories {
     /// then the tabs at the trailing edge.
     private static func band(
         tabs: [MainPaneTab], selected: MainPaneMode?, crumbs: TitlebarCrumbs, state: SliceDisplayState = .working,
-        identity: TitlebarIdentity? = nil, hoveredTab: MainPaneTab? = nil
+        identity: TitlebarIdentity? = nil, hoveredTab: MainPaneTab? = nil, runs: Bool = false
     ) -> some View {
         TitlebarBand(
             navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs.map(\.titlebarTab),
             selected: tabs.first { $0.mode == selected }?.titlebarTab.id,
-            hoveredTab: hoveredTab?.titlebarTab.id
+            hoveredTab: hoveredTab?.titlebarTab.id,
+            trailing: runs
+                ? AnyView(RunSplitButton(runs: Fixtures.runs.sliceRuns, menuOpen: .constant(false)) { _ in }
+                    .frame(maxHeight: .infinity))
+                : nil
         ) {
             TitlebarBreadcrumb(
                 crumbs: crumbs,
@@ -453,9 +462,106 @@ enum AppStories {
 
         // MARK: - The window, one slice in each phase
 
+        // MARK: - The navigator's action bar
+
+        Story(
+            name: "action-bar-launch",
+            summary: "A Todo slice: the bar at the navigator's foot holds Launch agent, primary; the Task header "
+                + "carries nothing.",
+            size: window
+        ) {
+            await slicePane(Fixtures.fixturesSliceID)
+        },
+
+        Story(
+            name: "action-bar-launch-blocked",
+            summary: "A Todo slice blocked on a dependency: Launch agent drawn disabled, the launch item "
+                + "quietened above it.",
+            size: window
+        ) {
+            await slicePane(Fixtures.cacheSliceID)
+        },
+
+        Story(
+            name: "action-bar-approve",
+            summary: "A handed-back slice with no comments: the bar reads Approve changes, primary; the Changes "
+                + "header is empty.",
+            size: window
+        ) {
+            await slicePane(Fixtures.mergeBoxSliceID)
+        },
+
+        Story(
+            name: "action-bar-approve-with-comments",
+            summary: "The same review with comments pending: the bar's button becomes Approve with comments, and "
+                + "Send 2 comments sits in the Changes header, secondary.",
+            size: window
+        ) {
+            await slicePane(Fixtures.mergeBoxSliceID) { appModel in
+                Fixtures.seedPendingComments(into: appModel.diffStore(projectID: Fixtures.projectID))
+            }
+        },
+
+        Story(
+            name: "action-bar-merge",
+            summary: "An approved slice with a fix agent live: Merge PR alone in the bar, primary; Open in GitHub "
+                + "titled in the PR header.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: Fixtures.fixAgentStatuses, plan: Fixtures.fixingProjectInfo,
+                focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
+            name: "action-bar-fix-launch-and-merge",
+            summary: "An approved slice with no agent: Launch fix agent, secondary, then Merge PR, primary, "
+                + "trailing.",
+            size: window
+        ) {
+            await slicePane(Fixtures.approveSliceID, agents: [], focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
+            name: "action-bar-fallback-launch",
+            summary: "An agent still working with no branch yet: nothing to press, so the bar shows Launch agent "
+                + "disabled, its tooltip saying the agent is still working.",
+            size: window
+        ) {
+            await slicePane(Fixtures.diffPaneSliceID)
+        },
+
+        Story(
+            name: "action-bar-fallback-approve",
+            summary: "An agent still working on a recorded branch: Changes is the latest section, so the bar shows "
+                + "Approve changes disabled, waiting on the agent's hand-back.",
+            size: window
+        ) {
+            await slicePane(Fixtures.diffPaneSliceID, plan: Fixtures.branchedWorkingProjectInfo)
+        },
+
+        Story(
+            name: "action-bar-fallback-merge",
+            summary: "A fix agent live on a slice whose pull request reads merged on GitHub, not yet settled: no "
+                + "Merge to offer, so the bar shows Merge PR disabled, the pull request no longer open.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: Fixtures.fixAgentStatuses, plan: Fixtures.fixingProjectInfo,
+                pr: Fixtures.prGreenMergedOnGitHub, focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
+            name: "action-bar-completed",
+            summary: "A merged slice: the bar holds no button, only the quiet Task completed.",
+            size: window
+        ) {
+            await slicePane(Fixtures.shellSliceID)
+        },
+
         Story(
             name: "window-review",
-            summary: "A handed-back slice: Changes open with Send and Approve, the continuous diff in the main pane.",
+            summary: "A handed-back slice: Changes open, Approve changes in the action bar, the continuous diff in the main pane.",
             size: window
         ) {
             await slicePane(Fixtures.mergeBoxSliceID)
@@ -463,7 +569,7 @@ enum AppStories {
 
         Story(
             name: "window-review-comments",
-            summary: "The same review with comments pending: the count on Send, the dot on the file row, the inline cards in the diff.",
+            summary: "The same review with comments pending: the count on Send, secondary in the Changes header, Approve with comments in the bar, the dot on the file row, the inline cards in the diff.",
             size: window
         ) {
             await slicePane(Fixtures.mergeBoxSliceID) { appModel in
@@ -656,7 +762,7 @@ enum AppStories {
 
         Story(
             name: "window-pr",
-            summary: "An approved slice: PR open on its checks and review, Merge in the header, its description and conversation in the main pane.",
+            summary: "An approved slice: PR open on its checks and review, Open in GitHub in the header, Merge PR in the action bar, its description and conversation in the main pane.",
             size: window
         ) {
             await slicePane(Fixtures.approveSliceID)
@@ -672,7 +778,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-fix-launch",
-            summary: "An approved slice with no agent on it: its Task log ends on the Fix item saying what a fix agent does, and the header offers Launch fix agent.",
+            summary: "An approved slice with no agent on it: its Task log ends on the Fix item saying what a fix agent does, and the action bar offers Launch fix agent beside Merge PR.",
             size: window
         ) {
             await slicePane(
@@ -681,7 +787,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-checks-failing",
-            summary: "An approved slice whose pull request reads checks failing, no agent on it, its PR section open: a danger icon on the PR header whose tooltip names the check; no notice in the PR body, and the header still offers Launch fix agent.",
+            summary: "An approved slice whose pull request reads checks failing, no agent on it, its PR section open: a danger icon on the PR header whose tooltip names the check; no notice in the PR body, and the action bar still offers Launch fix agent.",
             size: window
         ) {
             await slicePane(
@@ -1640,10 +1746,34 @@ enum AppStories {
             name: "titlebar-band-slice",
             summary: "The titlebar band over a slice: the breadcrumb at the navigator\u{2019}s inset \u{2014} project, "
                 + "milestone, then the slice\u{2019}s dot and title with no project tag, the project crumb naming it "
-                + "already \u{2014} no rule at the split, the tabs at the trailing edge and nothing beside them.",
+                + "already \u{2014} no rule at the split, the tabs filling from the trailing edge (PR, Changes, "
+                + "Terminal left to right, Terminal rightmost) and nothing beside them.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .terminal, crumbs: sliceCrumbs("Draw the box"))
+        },
+
+        Story(
+            name: "titlebar-band-run",
+            summary: "A handed-back slice\u{2019}s band in a project with runs: the run split button the "
+                + "band\u{2019}s rightmost item, the tabs \u{2014} PR, Visual changes, Changes, Terminal \u{2014} "
+                + "right-aligned against it.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes, .visuals, .pr], selected: .diff, crumbs: sliceCrumbs("Draw the box"),
+                state: .review, runs: true)
+        },
+
+        Story(
+            name: "titlebar-band-run-narrow",
+            summary: "The same band in a narrow window: the run button keeps its width and the tabs give way, cut "
+                + "at their leading edge at the navigator split.",
+            size: CGSize(width: 640, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes, .visuals, .pr], selected: .diff, crumbs: sliceCrumbs("Draw the box"),
+                state: .review, runs: true)
         },
 
         Story(
@@ -1659,8 +1789,8 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-long-title",
-            summary: "A long task name runs on past the navigator\u{2019}s width into the gap, the tabs still at "
-                + "the right and never left of the split.",
+            summary: "A long task name runs on past the navigator\u{2019}s width into the gap, the project crumb "
+                + "turned to its tag to give it room, the tabs still at the right and never left of the split.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(longBandTitle))
@@ -1668,11 +1798,43 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-long-title-narrow",
-            summary: "The same band in a narrower window: the last crumb\u{2019}s title gives way first, ending in "
-                + "an ellipsis with the chevron beside it.",
+            summary: "The same band in a narrower window: too little room for the name at 80% with any crumb "
+                + "before it, so just the Active row\u{2019}s line \u{2014} dot, tag, name ellipsized, the chevron beside it.",
             size: CGSize(width: 760, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(longBandTitle))
+        },
+
+        Story(
+            name: "titlebar-band-fit-title",
+            summary: "Room running out, first step: the task\u{2019}s name ellipsizes, still showing at least 80% of itself; project and milestone whole.",
+            size: CGSize(width: 860, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
+        },
+
+        Story(
+            name: "titlebar-band-fit-project-tag",
+            summary: "Second step: the project crumb turns into the project\u{2019}s tag, GNA, and the name has its whole width back.",
+            size: CGSize(width: 800, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
+        },
+
+        Story(
+            name: "titlebar-band-fit-milestone",
+            summary: "Third step: the name held at 80%, the milestone ellipsizes, down to half of itself.",
+            size: CGSize(width: 680, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
+        },
+
+        Story(
+            name: "titlebar-band-fit-minimal",
+            summary: "Past every floor: no breadcrumb, just the Active row\u{2019}s line \u{2014} state dot, GNA, the name, which alone ellipsizes.",
+            size: CGSize(width: 620, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
         },
 
         Story(
@@ -2029,9 +2191,9 @@ enum AppStories {
 
         Story(
             name: "window-run-heading",
-            summary: "A handed-back slice of a project with runs: the run split button among the Task "
-                + "section\u{2019}s header actions, full bleed; the play button in the sidebar\u{2019}s "
-                + "titlebar segment.",
+            summary: "A handed-back slice of a project with runs: the run split button at the titlebar "
+                + "band\u{2019}s trailing edge, full height, the tabs filling leftwards from it; the play button "
+                + "in the sidebar\u{2019}s titlebar segment.",
             size: window
         ) {
             await slicePane(Fixtures.mergeBoxSliceID, config: Fixtures.runsConfig)
@@ -2039,8 +2201,8 @@ enum AppStories {
 
         Story(
             name: "window-run-heading-merged",
-            summary: "The same slice once merged: the Task header\u{2019}s run button greyed and disabled, "
-                + "the worktree being gone.",
+            summary: "The same slice once merged: the titlebar\u{2019}s run button greyed and disabled, "
+                + "the worktree being gone; the action bar reads Task completed.",
             size: window
         ) {
             await slicePane(

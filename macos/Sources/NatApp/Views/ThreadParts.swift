@@ -250,7 +250,7 @@ struct ThreadFactKey: View {
 // MARK: - Launch
 
 /// The Task log's last item while the slice can be launched — not yet
-/// anything that happened: what Launch (the section header's) will do, then
+/// anything that happened: what Launch (the action bar's) will do, then
 /// the model and effort it will run with, each a chip opening a menu, and
 /// the base the worktree is cut from. Blocked, it is the same item quietened:
 /// the chips disabled, and what it waits on said.
@@ -266,12 +266,13 @@ struct LaunchCard: View {
         /// The dependencies still unfinished, by name.
         case blocked(waitingOn: [String])
 
-        /// The Thread header's launch button, as this mode launches.
+        /// The action bar's launch button, as this mode launches — naming
+        /// its object, as no section heading beside it does.
         var actionTitle: String {
             switch self {
-            case .relaunch: return "Relaunch"
+            case .relaunch: return "Relaunch agent"
             case .fix: return "Launch fix agent"
-            case .launch, .blocked: return "Launch"
+            case .launch, .blocked: return "Launch agent"
             }
         }
     }
