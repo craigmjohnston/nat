@@ -121,12 +121,15 @@ enum AppStories {
     /// Two projects with pull request trouble: the first's approved slice red
     /// and conflicting, the second ("gnat", never activated) with one red and
     /// one conflicting — waited for until its background reading has landed.
+    /// `prStatus` is the first project's reading.
     @MainActor
-    private static func prMarksAppModel() async -> AppModel {
+    private static func prMarksAppModel(
+        prStatus: PRStatusDoc = Fixtures.prStatusChecksFailingAndConflicting
+    ) async -> AppModel {
         let appModel = await Fixtures.startedAppModel(
             client: FixtureNatClient(
                 otherPlans: [Fixtures.secondProjectID: Fixtures.secondProjectInfoWithPRs],
-                prStatus: Fixtures.prStatusChecksFailingAndConflicting,
+                prStatus: prStatus,
                 prStatusByProject: [Fixtures.secondProjectID: Fixtures.secondProjectPRStatus]),
             config: Fixtures.twoProjectConfig)
         for _ in 0..<100 where appModel.prStatusStore?.readings[Fixtures.secondProjectID] == nil {
@@ -902,6 +905,30 @@ enum AppStories {
                 "m:\(Fixtures.projectID)/~sessions": true,
             ]
             return SidebarView(appModel: appModel, folded: open).environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "sidebar-pr-marks-passing",
+            summary: "As sidebar-pr-marks, but the approved slice's pull request reads mergeable with every check passed: its rows in Active and in the tree carry the green passing mark in the danger mark's slot; gnat's red and conflicting rows are as before.",
+            size: sidebar
+        ) {
+            let appModel = await prMarksAppModel(prStatus: Fixtures.prStatusChecksPassing)
+            let open: [String: Bool] = [
+                "p:\(Fixtures.projectID)": false, "p:\(Fixtures.secondProjectID)": false,
+                "m:\(Fixtures.projectID)/M2: Review flow": false, "m:\(Fixtures.secondProjectID)/Detail overhaul": false,
+                "m:\(Fixtures.projectID)/~sessions": true,
+            ]
+            return SidebarView(appModel: appModel, folded: open).environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "window-pr-checks-passing",
+            summary: "An approved slice whose pull request reads mergeable with every check passed, no agent on it, its PR section open: a green passing mark on the PR header where the danger icon would be.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusChecksPassing, pr: Fixtures.prGreen,
+                focus: NavigatorFocus(open: [.pr], main: .pr))
         },
 
         Story(

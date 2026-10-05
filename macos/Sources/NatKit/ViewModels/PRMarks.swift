@@ -18,23 +18,33 @@ public struct BranchConflict: Equatable, Sendable {
     }
 }
 
-/// What a sidebar row carries about its pull request's trouble: the checks it
-/// was last read failing, and whether it conflicts. Both can be set at once;
-/// `.none` draws nothing.
+/// What a sidebar row carries about its pull request: the checks it was last
+/// read failing, whether it conflicts, and whether its checks all passed.
+/// Failing and conflict can be set at once; `.none` draws nothing.
 public struct PRMarks: Equatable, Sendable {
     /// The failing checks by name — nil where the checks are not failing, and
     /// empty for a failure the reading named no check of.
     public let failingChecks: [String]?
     public let conflict: BranchConflict?
+    /// Whether the checks were last read passing. `PRReading.marks` sets it
+    /// from the verdict alone; `prMarks(_:for:agent:)` keeps it only where
+    /// the green tick can be trusted.
+    public let checksPassing: Bool
 
-    public init(failingChecks: [String]? = nil, conflict: BranchConflict? = nil) {
+    public init(failingChecks: [String]? = nil, conflict: BranchConflict? = nil, checksPassing: Bool = false) {
         self.failingChecks = failingChecks
         self.conflict = conflict
+        self.checksPassing = checksPassing
     }
 
     public static let none = PRMarks()
 
-    public var isEmpty: Bool { failingChecks == nil && conflict == nil }
+    public var isEmpty: Bool { failingChecks == nil && conflict == nil && !checksPassing }
+
+    /// The success mark's tooltip, where there is one.
+    public var passingHelp: String? {
+        checksPassing ? "Checks passing" : nil
+    }
 
     /// The danger mark's tooltip, where there is one.
     public var checksHelp: String? {
@@ -80,13 +90,19 @@ public struct PRReading: Equatable, Sendable {
         }
     }
 
+    /// Every pull request whose checks were read passing, by slice id.
+    public var passingChecks: Set<String> {
+        Set(doc.slices.filter { $0.checks?.verdict == PRStatusSlice.checksPassing }.map(\.sliceID))
+    }
+
     /// Each slice's marks, by slice id — only slices with one.
     public var marks: [String: PRMarks] {
         let failing = failingChecks
         let conflicts = conflicts
+        let passing = passingChecks
         var out: [String: PRMarks] = [:]
-        for id in Set(failing.keys).union(conflicts.keys) {
-            out[id] = PRMarks(failingChecks: failing[id], conflict: conflicts[id])
+        for id in Set(failing.keys).union(conflicts.keys).union(passing) {
+            out[id] = PRMarks(failingChecks: failing[id], conflict: conflicts[id], checksPassing: passing.contains(id))
         }
         return out
     }
@@ -155,4 +171,17 @@ public func atPullRequest(_ slice: Slice) -> Bool {
     case .pr, .fixing: return true
     case .todo, .working, .review, .done: return false
     }
+}
+
+/// The marks a slice's rows and PR heading draw, from its reading's `marks`:
+/// none off its pull request (`atPullRequest`); failing and conflict as read;
+/// and the passing tick only where it can be trusted — at the PR stage
+/// exactly (a fix is about to push, so the green is of the commit before),
+/// with no live agent working (an idle one left from hand-back is fine), and
+/// the pull request neither conflicting nor read failing.
+public func prMarks(_ marks: PRMarks, for slice: Slice, agent: AgentActivity?) -> PRMarks {
+    guard atPullRequest(slice) else { return .none }
+    let passing = marks.checksPassing && marks.failingChecks == nil && marks.conflict == nil
+        && stage(for: slice, agent: nil) == .pr && agent != .working
+    return PRMarks(failingChecks: marks.failingChecks, conflict: marks.conflict, checksPassing: passing)
 }
