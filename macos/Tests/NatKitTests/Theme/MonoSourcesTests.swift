@@ -35,9 +35,12 @@ final class MonoSourcesTests: XCTestCase {
     /// Where an input is set in the system's own face on purpose: the
     /// settings window, which is built as a built-in settings window is
     /// built — stock controls in the system font — and is the one place the
-    /// app's own chrome stops at the door. Named here rather than left to
-    /// each file, so widening the exception is an edit somebody reads.
-    private let mayUseTheSystemFaceForInputs = ["NatApp/Views/SettingsView.swift"]
+    /// app's own chrome stops at the door — and a project's settings sheet,
+    /// built the same way. Named here rather than left to each file, so
+    /// widening the exception is an edit somebody reads.
+    private let mayUseTheSystemFaceForInputs = [
+        "NatApp/Views/SettingsView.swift", "NatApp/Views/ProjectSettingsView.swift",
+    ]
 
     private let rules: [(String, String)] = [
         ("a monospaced system font at a call site", #"design:\s*\.monospaced\b"#),
