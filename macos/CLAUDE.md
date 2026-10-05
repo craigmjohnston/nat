@@ -198,6 +198,20 @@ sidebar's foot draws `MirrorNudgeCardView` while `mirrorNudgeShown` (armed **and
 `projectMirrored` hands the tab over in place. A refusal shows in the sheet and
 changes nothing. Stories: `window-plan-accepted`, `notion-page-picker`.
 
+## Closed tabs stay closed
+
+`AppModel.closeProject` records a closed project's ID in `ClosedTabMemory`
+(UserDefaults; `.inMemory()` for tests and stories) once the tab has gone —
+never on a refused close, never for an Untitled tab. It is app state only:
+the config entry stays, `nat` knows nothing of it. `start()` leaves recorded
+projects out of the strip (never scratch; all ignored for the launch where
+they would leave no closable tab) and drops any config no longer names. Every
+path that puts a config project's tab back (`addProject`,
+`ensureSourceProjects`, `projectMirrored`) forgets its close. The "+" tab's
+sheet offers the closed ones first (`AppModel.closedProjects`, read off
+config, not `project-list`) and opens one straight into `addProject`, writing
+nothing. Tests: `ClosedTabTests`.
+
 ## Release build quirks
 
 - Bundled `nat` and `gnat` itself are both **arm64 only** — Intel is not

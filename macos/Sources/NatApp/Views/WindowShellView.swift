@@ -66,6 +66,7 @@ struct WindowShellView: View {
         .sheet(isPresented: $showNewProjectSheet) {
             NewProjectSheetView(
                 onClose: { showNewProjectSheet = false },
+                closed: appModel.closedProjects,
                 onAdded: { id, name in
                     showNewProjectSheet = false
                     let untitled = appModel.activeTabIsUntitled ? appModel.activeProjectID : nil

@@ -15,6 +15,12 @@ import NatKit
 struct NewProjectSheetView: View {
     let onClose: () -> Void
 
+    /// The configured projects with no tab — the ones the user closed
+    /// (`AppModel.closedProjects`) — offered first on the open path. Picking
+    /// one writes nothing: it is already in config, so it goes straight to
+    /// `onAdded`.
+    var closed: [ProjectListingEntry] = []
+
     /// What a successful open or create hands back: the page ID `--project`
     /// takes and the name to label its tab with.
     let onAdded: (String, String) -> Void
@@ -41,13 +47,13 @@ struct NewProjectSheetView: View {
     @State private var isSubmitting = false
     @State private var error: String?
 
-    private var openable: [ProjectListingEntry] { NewProjectModel.openable(listing) }
+    private var openable: [ProjectListingEntry] { NewProjectModel.openable(listing, closed: closed) }
 
     private var canSubmit: Bool {
         guard !isSubmitting else { return false }
         switch mode {
         case .open:
-            return NewProjectModel.canOpen(selection: selectedProjectID, in: listing)
+            return NewProjectModel.canOpen(selection: selectedProjectID, in: listing, closed: closed)
         case .create:
             return NewProjectModel.canCreate(name: name, directory: directory)
         }
@@ -202,10 +208,11 @@ struct NewProjectSheetView: View {
         do {
             listing = try await NatClient().projectList()
         } catch {
-            // Only the open half is lost: the sheet opens on Create, which is
-            // what a machine with no readable workspace listing needs anyway.
+            // Only the workspace half is lost: the sheet opens on Create, which
+            // is what a machine with no readable workspace listing needs
+            // anyway — unless there are closed projects to open again.
             listingError = NewProjectModel.message(from: error)
-            mode = .create
+            if closed.isEmpty { mode = .create }
         }
         isListing = false
     }
@@ -217,8 +224,12 @@ struct NewProjectSheetView: View {
             do {
                 switch mode {
                 case .open:
-                    let entry = try await NatClient().projectOpen(pageRef: selectedProjectID)
-                    onAdded(entry.id, entry.name)
+                    if let entry = closed.first(where: { $0.id == selectedProjectID }) {
+                        onAdded(entry.id, entry.name)
+                    } else {
+                        let entry = try await NatClient().projectOpen(pageRef: selectedProjectID)
+                        onAdded(entry.id, entry.name)
+                    }
                 case .create:
                     let project = try await NatClient().projectCreate(
                         name: name.trimmingCharacters(in: .whitespacesAndNewlines),

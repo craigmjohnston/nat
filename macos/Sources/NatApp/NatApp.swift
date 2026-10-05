@@ -80,7 +80,8 @@ struct NatApp: App {
         // `Typo.mono` calls it too, so this is only about when it happens.
         MonoFont.register()
         _appModel = State(initialValue: AppModel(
-            mirrorNudgeMemory: MirrorNudgeMemory(), visualSeenMemory: VisualSeenMemory(), makesSourceProjects: true))
+            mirrorNudgeMemory: MirrorNudgeMemory(), visualSeenMemory: VisualSeenMemory(),
+            closedTabMemory: ClosedTabMemory(), makesSourceProjects: true))
         // A bare executable launched from a terminal (swift run, or
         // .build/debug/gnat directly) has no bundle, and AppKit leaves such
         // a process at the `.prohibited` activation policy: its window draws,
