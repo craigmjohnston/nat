@@ -37,6 +37,12 @@ enum GnatMetrics {
     static var body: CGFloat { Typo.body }
     /// The window titlebar's text — a step under the body.
     static var titlebarText: CGFloat { Typo.scaled(13) }
+    /// Where the titlebar band's breadcrumb starts: the navigator's inset.
+    static let breadcrumbInset: CGFloat = 10
+    /// The least room between the breadcrumb's end and what follows it in
+    /// the band — the first tab, else the run button — at every stage of
+    /// its fitting, since the breadcrumb measures its room inside it.
+    static let breadcrumbGap: CGFloat = 20
     /// Where a traffic-light window's titlebar content starts: past the lights.
     static let lightsInset: CGFloat = 72
 }
@@ -339,14 +345,16 @@ struct GnatLinkButtonStyle: ButtonStyle {
 }
 
 /// One of the main pane's titlebar tabs, as Zed draws them: the band's full
-/// height, square, a line on its leading edge (the run closes its own
-/// trailing one, beside the readout at the band's right). The picked one stands on the
-/// pane's own ground (`.window`) with no line under it, so it reads as open into the
-/// pane; the rest sit on the titlebar over its bottom line, in the band's
-/// quiet tertiary ink, washed under the pointer.
+/// height, square, a line on its leading edge — and, where `closed`, on its
+/// trailing edge too: the rightmost tab's, where the run button follows it
+/// (with nothing after it the run is open to the window's edge). The picked
+/// one stands on the pane's own ground (`.window`) with no line under it, so
+/// it reads as open into the pane; the rest sit on the titlebar over its
+/// bottom line, in the band's quiet tertiary ink, washed under the pointer.
 struct MainPaneTabButton: View {
     let title: String
     let selected: Bool
+    var closed = false
     let action: () -> Void
 
     var body: some View {
@@ -367,6 +375,13 @@ struct MainPaneTabButton: View {
                     }
                     .overlay(alignment: .leading) {
                         DesignTokens.rule(.separator, on: .header).frame(width: 1)
+                    }
+                    // Drawn over the tab's own trailing padding, so it takes
+                    // no width of the band's.
+                    .overlay(alignment: .trailing) {
+                        if closed {
+                            DesignTokens.rule(.separator, on: .header).frame(width: 1)
+                        }
                     }
                     .contentShape(Rectangle())
             }
