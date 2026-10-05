@@ -4,7 +4,10 @@
 
 <h1 align="center">gnat</h1>
 
-<p align="center">Run several Claude Code agents on one project, each on its own task, and keep track of all of it from one window.</p>
+<p align="center">
+  <em>Run several Claude Code agents on one project, each on its own task,<br>
+  and keep track of all of it from one window.</em>
+</p>
 
 Breaking a project into small, well-described tasks is what makes coding
 agents reliable. Running more than one of those agents at a time is what
