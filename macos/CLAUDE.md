@@ -115,10 +115,10 @@ Stories: `window-pr-fix-launch`, `window-fixing`, `sidebar-checks-failing`,
 **Re-running and cancelling checks.** The PR section's Checks block
 (`PRSectionBody`, `ChecksControlsView.swift`): each check row ends in a re-run
 (`arrow.clockwise`) and a cancel (`xmark`) icon button, and the Checks heading
-(`ChecksHeading`) in the same pair stacked — `StackedGlyph`, drawn because SF
-Symbols on macOS 15 has no stacked refresh or cross: the row glyph with a
-dimmer copy behind it, up and to the right, knocked out a point round the
-front one as `DoneFolderGlyph` cuts its check. All four sit in fixed
+(`ChecksHeading`) in the same pair badged for a group — `GroupBadgedGlyph`,
+drawn because SF Symbols on macOS 15 has no group variant of either: the row
+glyph with a mini `square.grid.2x2.fill` on its lower right, the glyph cut a
+point round it as `DoneFolderGlyph` cuts its check. All four sit in fixed
 `CheckControlSlot` columns at the trailing edge. Heading re-run is a menu: Re-run
 all, Re-run failed. Row re-run is `slice-checks-rerun --check`, row cancel
 `slice-checks-cancel --check`, heading cancel `slice-checks-cancel`; nat cancels

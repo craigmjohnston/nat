@@ -1,16 +1,19 @@
 import SwiftUI
 import NatKit
 
-/// A row glyph stacked on itself — the "every check" form of a check row's
-/// re-run or cancel, for the Checks heading. A second copy stands behind the
-/// glyph, up and to the right, and the front one is knocked out of its lines
-/// by a point all round, as the Done folder's check is cut out of its folder.
-/// Drawn because SF Symbols (macOS 15) has no stacked `arrow.clockwise` or
-/// `xmark` to pair with the rows'.
-struct StackedGlyph: View {
+/// A row glyph badged for a group — the "every check" form of a check row's
+/// re-run or cancel, for the Checks heading: the row's own glyph, with a mini
+/// group mark on its lower right, the glyph knocked out a point round the mark
+/// as the Done folder is cut round its check. Drawn because SF Symbols
+/// (macOS 15) has no group variant of `arrow.clockwise` or `xmark`.
+struct GroupBadgedGlyph: View {
     let systemName: String
     var size: CGFloat = 10
-    var weight: Font.Weight = .semibold
+    var weight: Font.Weight = .medium
+
+    /// The group mark: a 2×2 grid, which reads as "all of them" at this size
+    /// where a stack (a blob), lines (a menu) or dots (a spinner) did not.
+    static let badge = "square.grid.2x2.fill"
 
     /// The knock-out's copies, on a circle a point out (see `DoneFolderGlyph`).
     private static let halo: [CGSize] = (0..<16).map { step in
@@ -19,23 +22,22 @@ struct StackedGlyph: View {
     }
 
     var body: some View {
-        let side = size * 1.35
+        let side = size * 1.45
         ZStack {
             glyph
-                .frame(width: side, height: side, alignment: .topTrailing)
-                .opacity(0.6)
+                .frame(width: side, height: side, alignment: .topLeading)
                 .mask {
                     ZStack {
                         Rectangle()
                         ForEach(Array(Self.halo.enumerated()), id: \.offset) { _, nudge in
-                            glyph.offset(nudge)
-                                .frame(width: side, height: side, alignment: .bottomLeading)
+                            badge.offset(nudge)
+                                .frame(width: side, height: side, alignment: .bottomTrailing)
                                 .blendMode(.destinationOut)
                         }
                     }
                     .compositingGroup()
                 }
-            glyph.frame(width: side, height: side, alignment: .bottomLeading)
+            badge.frame(width: side, height: side, alignment: .bottomTrailing)
         }
         .frame(width: side, height: side)
     }
@@ -43,10 +45,14 @@ struct StackedGlyph: View {
     private var glyph: some View {
         Image(systemName: systemName).font(.system(size: size, weight: weight))
     }
+
+    private var badge: some View {
+        Image(systemName: Self.badge).font(.system(size: size * 0.62, weight: .bold))
+    }
 }
 
 /// The glyphs the check controls draw: a refresh to re-run, a cross to
-/// cancel — one check's on its row, every check's stacked on the heading.
+/// cancel — one check's on its row, every check's badged for a group on the heading.
 enum ChecksGlyph {
     static let rerun = "arrow.clockwise"
     static let cancel = "xmark"
@@ -93,7 +99,7 @@ struct ChecksHeading: View {
                         .disabled(!controls.rerunFailed)
                 } label: {
                     CheckControlSlot(busy: store.checksActionSource == .rerunAll) {
-                        StackedGlyph(systemName: ChecksGlyph.rerun)
+                        GroupBadgedGlyph(systemName: ChecksGlyph.rerun)
                     }
                 }
                 .menuStyle(.button)
@@ -105,7 +111,7 @@ struct ChecksHeading: View {
 
                 Button { run(store) { await $0.cancelChecks([], from: .cancelAll) } } label: {
                     CheckControlSlot(busy: store.checksActionSource == .cancelAll) {
-                        StackedGlyph(systemName: ChecksGlyph.cancel)
+                        GroupBadgedGlyph(systemName: ChecksGlyph.cancel)
                     }
                 }
                 .buttonStyle(GnatIconButtonStyle())
