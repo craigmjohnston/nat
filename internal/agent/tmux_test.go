@@ -331,10 +331,9 @@ func TestLaunch(t *testing.T) {
 			";", "set-option", "-t", "nat-b4463d8f", "mouse", "on",
 			// Server options, chained on too: shift+enter reaches the agent,
 			// and the URLs it prints stay clickable links — the latter added
-			// only where the server lacks it.
+			// at an index of nat's own, so once per server.
 			";", "set-option", "-s", "extended-keys", "on",
-			";", "if-shell", "-F", `#{m:*\*:extkeys:hyperlinks*,#{terminal-features}}`, "",
-			"set-option -s -a terminal-features '*:extkeys:hyperlinks'",
+			";", "set-option", "-s", "terminal-features[99]", "*:extkeys:hyperlinks",
 		}, append(clickBindingArgs(), copyModeDragEndArgs()...)...)},
 		// The tag the agent is found by.
 		{name: "tmux", args: []string{"-u", "set-option", "-p", "-t", "%7", "@nat_slice", id}},
@@ -808,7 +807,7 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 	joined := strings.Join(suffix, " ")
 	for _, want := range []string{
 		"; set-option -s extended-keys on",
-		"set-option -s -a terminal-features '*:extkeys:hyperlinks'",
+		"; set-option -s terminal-features[99] *:extkeys:hyperlinks",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("inputFeatureArgs = %q, want it to contain %q", joined, want)
@@ -822,11 +821,10 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 	}
 }
 
-// The terminal-features entry is appended only where the server lacks it:
-// chained onto every launch, an unconditional append left the user's server
-// holding one identical copy per agent ever launched. Run against a real tmux
-// on a private socket — the guard is a tmux format, so only tmux can say
-// whether it matches.
+// The terminal-features entry lands once per server: chained onto every
+// launch, an append left the user's server holding one identical copy per
+// agent ever launched. Run against a real tmux on a private socket, so it is
+// tmux itself saying how many copies there are.
 func TestInputFeaturesAddTheTerminalFeatureOnce(t *testing.T) {
 	if _, err := exec.LookPath(TmuxBinary); err != nil {
 		t.Skip("no tmux on PATH")

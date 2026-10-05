@@ -707,24 +707,24 @@ const terminalFeatures = "*:extkeys:hyperlinks"
 // and the terminal-features entry covers both directions of the outer
 // terminal. Both are server options — tmux has no narrower scope for them —
 // so they are chained onto the new-session commands rather than set per
-// session. Appending to terminal-features (-a) leaves whatever entries the
-// user has set; the append is guarded by a match on the option's current
-// value, so it happens once per server rather than once per launch — an
-// unguarded one left a long-lived server holding a copy for every agent ever
-// launched on it.
+// session. The terminal-features entry is written at an index of nat's own
+// ([terminalFeaturesSlot]) rather than appended, so it lands once per server
+// however many agents launch on it — an append (-a) per launch left a
+// long-lived server holding a copy for every agent ever launched — and the
+// array being sparse, it leaves whatever entries the user has set alone.
 func inputFeatureArgs() []string {
 	return []string{
 		";", "set-option", "-s", "extended-keys", "on",
-		";", "if-shell", "-F", terminalFeaturesPresent, "",
-		"set-option -s -a terminal-features " + shellQuote(terminalFeatures),
+		";", "set-option", "-s", terminalFeaturesSlot, terminalFeatures,
 	}
 }
 
-// terminalFeaturesPresent is the tmux format that is true where the server's
-// terminal-features already holds [terminalFeatures]: an array option expands
-// in a format to its entries joined by spaces, and the entry's own leading `*`
-// is escaped so the match is for it literally.
-const terminalFeaturesPresent = `#{m:*\` + terminalFeatures + `*,#{terminal-features}}`
+// terminalFeaturesSlot is the terminal-features index [terminalFeatures] is
+// written at: high enough that a user's own entries, numbered up from 0 by
+// their config and by -a, never reach it. A guard on the option's current
+// value was tried first and works only on a newer tmux — 3.4 expands no array
+// option in a format, so the guard never matched there.
+const terminalFeaturesSlot = "terminal-features[99]"
 
 // LaunchBare starts a detached tmux session named session, with workdir as
 // its working directory, running a bare Claude Code with no prompt at all —
