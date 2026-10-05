@@ -36,17 +36,27 @@ public struct Chip: View {
     let label: String
     let tone: Tone
     let size: Size
+    /// An SF Symbol before the word, in the word's own ink — a section
+    /// header's Reworking. Nil draws the word alone.
+    let systemImage: String?
     @Environment(\.ground) private var ground
 
-    public init(_ label: String, tone: Tone, size: Size = .regular) {
+    public init(_ label: String, tone: Tone, size: Size = .regular, systemImage: String? = nil) {
         self.label = label
         self.tone = tone
         self.size = size
+        self.systemImage = systemImage
     }
 
     public var body: some View {
         let small = size == .small
-        Text(label)
+        HStack(spacing: small ? 3 : 4) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: small ? Typo.caption - 1 : Typo.subhead - 1, weight: .semibold))
+            }
+            Text(label)
+        }
             .font(.system(size: small ? Typo.caption : Typo.subhead, weight: small ? .regular : .semibold))
             .foregroundStyle(DesignTokens.chipInk(tone.chipTint, on: ground))
             .padding(.horizontal, small ? 5 : 10)

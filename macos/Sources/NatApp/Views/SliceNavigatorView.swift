@@ -11,7 +11,7 @@ import NatKit
 /// action bar holds the slice's major actions — Send back to agent, Launch,
 /// Approve, Merge — as `NavigatorModel.bar` decides them; the headers keep
 /// only secondaries. A resumed slice keeps Changes, Visual changes and PR,
-/// each carrying `NavigatorModel.resumedNotice`.
+/// each header wearing Reworking (`NavigatorModel.showsReworking`).
 struct SliceNavigatorView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
@@ -96,17 +96,15 @@ struct SliceNavigatorView: View {
                     // New or Updated while any file is, so a folded section
                     // says so.
                     status: diffStore.sectionStatus,
+                    reworking: reworking(nav, .changes),
                     onHead: { click(.changes) }, onFold: { fold(.changes) }
                 ) {
                     if nav.showsChangesSend { sendCommentsAction }
                 } content: {
-                    VStack(spacing: 0) {
-                        if nav.worksAgain { NavNotice(text: NavigatorModel.resumedNotice, role: .warning) }
-                        ChangesSectionBody(
-                            appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions
-                        ) {
-                            main = .diff
-                        }
+                    ChangesSectionBody(
+                        appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions
+                    ) {
+                        main = .diff
                     }
                 }
             }
@@ -118,15 +116,13 @@ struct SliceNavigatorView: View {
                     // New or Updated while any image is, so a folded section
                     // says so.
                     status: visualStore.sectionStatus(sliceID: slice.id, visuals),
+                    reworking: reworking(nav, .visuals),
                     onHead: { click(.visuals) }, onFold: { fold(.visuals) }
                 ) {
                     visualActions(nav)
                 } content: {
-                    VStack(spacing: 0) {
-                        if nav.worksAgain { NavNotice(text: NavigatorModel.resumedNotice, role: .warning) }
-                        VisualsSectionBody(appModel: appModel, review: visualReview, slice: slice, visuals: visuals) {
-                            main = .visuals
-                        }
+                    VisualsSectionBody(appModel: appModel, review: visualReview, slice: slice, visuals: visuals) {
+                        main = .visuals
                     }
                 }
             }
@@ -136,6 +132,7 @@ struct SliceNavigatorView: View {
                     // Merged once Done; else Updated while the head has moved
                     // since the section was last open.
                     status: nav.prStatus ?? NavSectionStatus(prStore.badge(sliceID: slice.id)),
+                    reworking: reworking(nav, .pr),
                     warning: prWarning, passing: prPassing, onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
                     PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
@@ -197,6 +194,11 @@ struct SliceNavigatorView: View {
             Button("Merge") { Task { await merge() } }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    /// A section header's Reworking tooltip, where it wears the badge.
+    private func reworking(_ nav: NavigatorModel, _ section: NavigatorSection) -> String? {
+        nav.showsReworking(section) ? NavigatorModel.resumedNotice : nil
     }
 
     // MARK: - Menu
@@ -709,7 +711,6 @@ struct SliceNavigatorView: View {
         VStack(spacing: 0) {
             // Drawn from the project's reading too, so it shows before the
             // pull request itself has been read.
-            if nav.worksAgain { NavNotice(text: NavigatorModel.resumedNotice, role: .warning) }
             if let conflictNotice {
                 NavNotice(text: conflictNotice.text, role: .danger)
             }

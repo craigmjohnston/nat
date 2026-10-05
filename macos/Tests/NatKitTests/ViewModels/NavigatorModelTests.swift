@@ -225,7 +225,8 @@ final class NavigatorModelTests: XCTestCase {
     }
 
     /// Its Branch cleared, a resumed slice keeps Changes (nat reads its
-    /// agent branch), Visual changes and PR, each with the resumed notice.
+    /// agent branch), Visual changes and PR, each header wearing Reworking —
+    /// the Task log never, and nothing on a slice not taken back.
     func testAResumedSliceKeepsItsSections() {
         let model = NavigatorModel(
             slice: slice(status: "In progress", pr: prURL, resumed: true), agent: .working, hasVisuals: true)
@@ -233,7 +234,12 @@ final class NavigatorModelTests: XCTestCase {
         XCTAssertTrue(model.hasBranch)
         XCTAssertEqual(NavigatorSection.allCases.filter(model.isLive), NavigatorSection.allCases)
         XCTAssertEqual(model.tabs, [.terminal, .changes, .visuals, .pr])
-        XCTAssertFalse(NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil).resumed)
+        XCTAssertEqual(NavigatorSection.allCases.filter(model.showsReworking), [.changes, .visuals, .pr])
+        let approved = NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL), agent: nil, hasVisuals: true)
+        XCTAssertFalse(approved.resumed)
+        XCTAssertEqual(NavigatorSection.allCases.filter(approved.showsReworking), [])
+        XCTAssertEqual(NavigatorModel.reworkingLabel, "Reworking")
+        XCTAssertEqual(NavigatorModel.reworkingSymbol, "arrow.triangle.2.circlepath")
         XCTAssertEqual(
             NavigatorModel.resumedNotice,
             "The agent is working on this again — what is here may change or be out of date.")
@@ -250,7 +256,11 @@ final class NavigatorModelTests: XCTestCase {
         XCTAssertTrue(model.isLive(.changes))
         XCTAssertTrue(model.isLive(.visuals))
         XCTAssertFalse(model.isLive(.pr), "no pull request to show")
-        XCTAssertTrue(model.worksAgain, "so Changes and Visual changes carry the resumed notice")
+        XCTAssertTrue(model.worksAgain)
+        XCTAssertTrue(model.showsReworking(.changes), "Changes' header wears Reworking")
+        XCTAssertTrue(model.showsReworking(.visuals))
+        XCTAssertFalse(model.showsReworking(.pr), "no PR section to wear it")
+        XCTAssertFalse(model.showsReworking(.thread))
         XCTAssertFalse(model.resumed)
         XCTAssertFalse(model.showsMerge)
         XCTAssertTrue(model.showsChangesSend, "its live agent can be told")

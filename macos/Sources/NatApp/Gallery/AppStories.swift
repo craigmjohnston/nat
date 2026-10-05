@@ -800,7 +800,7 @@ enum AppStories {
 
         Story(
             name: "window-resumed-notices",
-            summary: "The resumed slice with Changes, Visual changes and PR open and the diff up: each section, and the main pane over the diff, says the agent is working on this again and what is here may change.",
+            summary: "The resumed slice with Changes, Visual changes and PR open and the diff up: each section's header wears Reworking (its tooltip the full warning), and the main pane over the diff says the agent is working on this again.",
             size: window
         ) {
             await slicePane(
@@ -814,7 +814,7 @@ enum AppStories {
 
         Story(
             name: "window-taken-back",
-            summary: "A review sent back to its agent before any pull request (nat's taken_back): working again, Changes kept open on the diff with the warning that the agent is working on this again, in the foldout and over the main pane; no PR section.",
+            summary: "A review sent back to its agent before any pull request (nat's taken_back): working again, Changes kept open on the diff, its header wearing Reworking and the main pane's banner saying the agent is working on this again; no PR section.",
             size: window
         ) {
             await slicePane(
@@ -824,7 +824,7 @@ enum AppStories {
 
         Story(
             name: "window-resumed-badges",
-            summary: "The resumed slice after its agent pushed, Changes and Visual changes open, the terminal up: a file the user had not seen New and one changed since Updated in the Changes list, the re-rendered image Updated and the added one New, New on both headers; the folded PR section's header Updated, its head moved.",
+            summary: "The resumed slice after its agent pushed, Changes and Visual changes open, the terminal up: a file the user had not seen New and one changed since Updated in the Changes list, the re-rendered image Updated and the added one New, Reworking then New on both headers; the folded PR section's header Reworking then Updated, its head moved.",
             size: window
         ) {
             await slicePane(

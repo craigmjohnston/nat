@@ -23,6 +23,10 @@ struct NavSectionView<Actions: View, Content: View>: View {
     /// A status badge just after the label, drawn open or folded — the PR
     /// section's Merged.
     var status: NavSectionStatus?
+    /// Reworking, before the status: the agent is at this work again
+    /// (`NavigatorModel.showsReworking`). The text is its tooltip; nil draws
+    /// nothing.
+    var reworking: String?
     /// A warning after the label and status, drawn open or folded as a small
     /// danger icon whose tooltip is its text — the PR section's failing
     /// checks. Nil draws nothing.
@@ -69,7 +73,16 @@ struct NavSectionView<Actions: View, Content: View>: View {
                     // A label longer than the column ("Visual changes") takes
                     // the room it needs rather than truncating.
                     .fixedSize(horizontal: true, vertical: false)
-                // The status, a badge just after the label.
+                // Reworking, then the status — badges just after the label.
+                if let reworking {
+                    Chip(
+                        NavigatorModel.reworkingLabel, tone: .warning, size: .small,
+                        systemImage: NavigatorModel.reworkingSymbol
+                    )
+                    .fixedSize()
+                    .help(reworking)
+                    .accessibilityLabel(reworking)
+                }
                 if let status {
                     Chip(status.label, tone: status.tone, size: .small).fixedSize()
                 }
@@ -87,7 +100,7 @@ struct NavSectionView<Actions: View, Content: View>: View {
                 }
             }
             .frame(minWidth: 58, alignment: .leading)
-            if status == nil, let meta, !open {
+            if status == nil, reworking == nil, let meta, !open {
                 Text(meta).monoXS().ink(.tertiary).lineLimit(1)
             }
             Spacer(minLength: 0)
@@ -105,11 +118,12 @@ struct NavSectionView<Actions: View, Content: View>: View {
 extension NavSectionView where Actions == EmptyView {
     init(
         label: String, open: Bool, selected: Bool = false, meta: String? = nil, status: NavSectionStatus? = nil,
-        warning: String? = nil, passing: String? = nil, onHead: @escaping () -> Void, onFold: (() -> Void)? = nil,
-        @ViewBuilder content: @escaping () -> Content
+        reworking: String? = nil, warning: String? = nil, passing: String? = nil, onHead: @escaping () -> Void,
+        onFold: (() -> Void)? = nil, @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
-            label: label, open: open, selected: selected, meta: meta, status: status, warning: warning,
+            label: label, open: open, selected: selected, meta: meta, status: status, reworking: reworking,
+            warning: warning,
             passing: passing, onHead: onHead, onFold: onFold,
             actions: { EmptyView() }, content: content)
     }

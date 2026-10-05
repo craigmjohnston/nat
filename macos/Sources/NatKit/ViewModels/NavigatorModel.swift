@@ -127,6 +127,10 @@ public struct NavigatorModel: Equatable, Sendable {
     /// What every section a resumed slice keeps — Changes, Visual changes,
     /// PR — says, in its navigator foldout and its main pane alike.
     public static let resumedNotice = "The agent is working on this again — what is here may change or be out of date."
+    /// The one word, and the glyph beside it, that a section header carries
+    /// in `resumedNotice`'s place — the notice itself its tooltip.
+    public static let reworkingLabel = "Reworking"
+    public static let reworkingSymbol = "arrow.triangle.2.circlepath"
 
     public let state: SliceDisplayState
     public let hasPR: Bool
@@ -263,6 +267,14 @@ public struct NavigatorModel: Equatable, Sendable {
     /// taken back with no PR: what puts `resumedNotice` on Changes, Visual
     /// changes and PR (where there is one), and on their main panes.
     public var worksAgain: Bool { resumed || takenBack }
+
+    /// Whether a section's header wears Reworking (`reworkingLabel`, its
+    /// tooltip `resumedNotice`): Changes, Visual changes and PR while the
+    /// agent is at the handed-back work again — each only where the section
+    /// is drawn at all. The Task log, where the work now is, never does.
+    public func showsReworking(_ section: NavigatorSection) -> Bool {
+        worksAgain && section != .thread && isLive(section)
+    }
 
     /// Whether Visual changes carries Send: comments go to the agent, so
     /// only while there is one to receive them.
