@@ -208,6 +208,31 @@ final class VisualStoreTests: XCTestCase {
         XCTAssertNil(store.comments[slice])
     }
 
+    func testASliceShownBeforeItsDetailLoadsKeepsItsCommentsAndMarks() async {
+        let store = VisualStore(client: FixtureNatClient())
+        store.loader = { _ in .unavailable }
+        await store.load(sliceID: slice, handIn: [wide, tall])
+        set(store, wide, nil, "kept")
+        store.toggleViewed(sliceID: slice, tall)
+
+        // Its cached detail dropped by a refresh while another slice was
+        // selected, the slice is drawn with no detail on its way back.
+        await store.load(sliceID: slice, handIn: nil)
+        XCTAssertEqual(store.comments(for: slice).map(\.text), ["kept"])
+        XCTAssertTrue(store.isViewed(sliceID: slice, tall))
+        XCTAssertTrue(store.isCollapsed(sliceID: slice, tall))
+
+        await store.load(sliceID: slice, handIn: [wide, tall])
+        XCTAssertEqual(store.comments(for: slice).map(\.text), ["kept"])
+        XCTAssertTrue(store.isViewed(sliceID: slice, tall))
+
+        // A hand-in that really removes every image still clears them.
+        await store.load(sliceID: slice, handIn: [])
+        XCTAssertNil(store.comments[slice])
+        XCTAssertNil(store.viewed[slice])
+        XCTAssertNil(store.collapsed[slice])
+    }
+
     // MARK: - Re-renders, pairs and New
 
     func testAReRenderAtTheSamePathIsReadAgainAndTheOldOneDropped() async {

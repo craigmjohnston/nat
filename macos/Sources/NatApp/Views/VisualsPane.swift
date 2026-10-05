@@ -17,13 +17,17 @@ struct VisualsPane: View {
     @Bindable var appModel: AppModel
     let review: VisualReview
     let slice: Slice
-    let visuals: [VisualChange]
+    /// The slice's hand-in as its detail reads it, nil while that detail has
+    /// not loaded — when nothing is loaded into the store, so the pending
+    /// comments on a slice coming back to the screen are not dropped.
+    let handIn: [VisualChange]?
     let authorName: String
     /// Where each image's sideways scroll starts — the gallery's seam for a
     /// zoomed image shown scrolled along.
     var horizontalAnchor: UnitPoint = .leading
 
     private var store: VisualStore { review.store(appModel) }
+    private var visuals: [VisualChange] { handIn ?? [] }
 
     var body: some View {
         Group {
@@ -37,7 +41,7 @@ struct VisualsPane: View {
             }
         }
         .task(id: "\(slice.id)|\(VisualChange.loadIdentity(visuals))") {
-            await store.load(sliceID: slice.id, visuals: visuals)
+            await store.load(sliceID: slice.id, handIn: handIn)
         }
     }
 

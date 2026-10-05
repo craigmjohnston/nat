@@ -164,6 +164,17 @@ public final class VisualStore {
         }
     }
 
+    /// `load(sliceID:visuals:)` over a slice's hand-in as its detail reads it,
+    /// nil while that detail has not loaded — which loads nothing and drops
+    /// nothing. A slice whose cached detail was dropped is drawn with no
+    /// hand-in on its way back to the screen, and loading that as one naming
+    /// nothing would throw away every pending comment, viewed mark and fold
+    /// on it; a hand-in that really is empty still clears them.
+    public func load(sliceID: String, handIn visuals: [VisualChange]?) async {
+        guard let visuals else { return }
+        await load(sliceID: sliceID, visuals: visuals)
+    }
+
     /// Whether every image of a hand-in, befores included, is loaded, which
     /// is when the pane draws them.
     public func isLoaded(_ visuals: [VisualChange]) -> Bool {

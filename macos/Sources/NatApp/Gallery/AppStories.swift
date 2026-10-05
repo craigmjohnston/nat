@@ -2187,7 +2187,7 @@ private enum VisualsPaneStory {
         }
         return VisualsPane(
             appModel: appModel, review: review, slice: Fixtures.slice(Fixtures.mergeBoxSliceID),
-            visuals: Fixtures.visualChanges, authorName: "Craig Johnston",
+            handIn: Fixtures.visualChanges, authorName: "Craig Johnston",
             horizontalAnchor: zoomFirst > 1 ? .center : .leading)
         .surface(.window)
     }
@@ -2212,7 +2212,7 @@ private enum VisualsPaneStory {
         if highlight { await store.toggleHighlight(sliceID: sliceID, visual: visual) }
         return VisualsPane(
             appModel: appModel, review: review, slice: Fixtures.slice(sliceID),
-            visuals: [visual], authorName: "Craig Johnston")
+            handIn: [visual], authorName: "Craig Johnston")
         .surface(.window)
     }
 }
