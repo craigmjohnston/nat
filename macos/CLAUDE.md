@@ -296,7 +296,12 @@ as its Active row names it (`TitlebarIdentityLabel` over
 `ActiveIdentityLabel`: dot, project tag, title, read through
 `AppModel.titlebarIdentity`; the tag dropped where a crumb before it names
 the project, `TitlebarIdentity.lastCrumb`) — free to run past the
-navigator's width and ellipsize at its tail, then the `MainPaneTab`s at the
+navigator's width. As room runs out the selection's name is kept longest
+(`BreadcrumbFit`, from widths the breadcrumb measures): it ellipsizes to
+80% of itself, then the project crumb turns into the project's tag, then the
+milestone (or container) ellipsizes to half of itself, and past that the
+breadcrumb gives way to the Active row's line alone — dot, tag, name
+(stories `titlebar-band-fit-*`). Then the `MainPaneTab`s at the
 right — Zed-style tabs, full height and square, one per section that would
 put its view up (`NavigatorModel.tabs`, `MainPaneTab.forSession`,
 `WorkshopTab.available`, which say which exist) — **filling from the right**

@@ -140,64 +140,184 @@ struct TitlebarCrumbs: Equatable {
 /// opens it on itself; `openPicker` is which one is open. Moving between
 /// selections slides the crumbs rather than snapping them: each part keeps
 /// its place in the row, so a name that changes width pushes its neighbours
-/// along while the words cross-fade, and a part that comes or goes fades. As
-/// room runs out the last crumb's title gives way first, ending in an
-/// ellipsis with its chevron still beside it.
+/// along while the words cross-fade, and a part that comes or goes fades.
+///
+/// As room runs out the selection's name is kept longest: it ellipsizes to
+/// 80% of itself, then the project crumb turns into the project's tag, then
+/// the milestone ellipsizes to half of itself, and past that the breadcrumb
+/// gives way to the selection's Active row line alone — dot, tag, name
+/// (`BreadcrumbFit`, from each crumb's width as measured here).
 struct TitlebarBreadcrumb<Picker: View>: View {
     let crumbs: TitlebarCrumbs
     let identity: TitlebarIdentity?
     @Binding var openPicker: CrumbPickerOrigin?
     @ViewBuilder var picker: (CrumbPickerOrigin) -> Picker
 
+    @State private var widths: [CrumbMeasure: CGFloat] = [:]
+
+    private static var spacing: CGFloat { 10 }
+
+    /// The project's tag, for the crumb naming the project to turn into.
+    private var tag: String { identity?.tag ?? "" }
+
+    /// The crumb naming the project: the project crumb, or a workshop's or
+    /// session's project name standing where a milestone would.
+    private var projectName: String? {
+        crumbs.project ?? (crumbs.parentKind == .project ? crumbs.parent : nil)
+    }
+
+    /// The milestone or container crumb — the one that shortens.
+    private var shortenable: String? { crumbs.parentKind == .project ? nil : crumbs.parent }
+
+    private var fit: BreadcrumbFit {
+        func width(_ group: CrumbMeasure, _ text: CrumbMeasure) -> CrumbWidth {
+            CrumbWidth(group: Double(widths[group] ?? 0), text: Double(widths[text] ?? 0))
+        }
+        return BreadcrumbFit(
+            available: Double(widths[.available] ?? .infinity), spacing: Double(Self.spacing),
+            project: projectName.map { _ in width(.projectGroup, .projectText) },
+            projectTag: tag.isEmpty ? nil : width(.tagGroup, .tagText),
+            parent: shortenable.map { _ in width(.parentGroup, .parentText) },
+            title: width(.titleGroup, .titleText))
+    }
+
     var body: some View {
-        HStack(spacing: 10) {
-            if let project = crumbs.project {
-                HStack(spacing: 10) {
-                    crumbButton(.project) { ProjectCrumbLabel(name: project) }
-                    CrumbSlash()
+        let fit = fit
+        Group {
+            if fit.stage == .minimal {
+                if !crumbs.title.isEmpty {
+                    // The Active row's line: dot, the project's tag, the name.
+                    crumbButton(.title) { TitlebarIdentityLabel(identity: identity, title: crumbs.title) }
                 }
-                .transition(.opacity)
-            }
-            if let parent = crumbs.parent {
-                HStack(spacing: 10) {
-                    switch crumbs.parentKind {
-                    case .milestone, .container:
-                        crumbButton(.milestone) {
-                            HStack(spacing: 7) {
-                                if crumbs.parentKind == .container {
-                                    // A source task's container: the sidebar's card mark.
-                                    Image(systemName: SourceGlyph.container)
-                                        .font(.system(size: 10))
-                                        .ink(.tertiary)
-                                        .frame(width: 13, height: CrumbLine.height)
-                                } else {
-                                    // The sidebar's own milestone mark, open.
-                                    FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
-                                        .frame(height: CrumbLine.height)
-                                }
-                                Text(parent).ink(.tertiary)
-                            }
-                        }
-                    case .project:
-                        ProjectCrumbLabel(name: parent)
-                    }
-                    CrumbSlash()
-                }
-                .transition(.opacity)
-            }
-            if !crumbs.title.isEmpty {
-                crumbButton(.title) {
-                    TitlebarIdentityLabel(
-                        identity: identity?.lastCrumb(afterProjectCrumb: crumbs.namesProject), title: crumbs.title)
-                }
-                .layoutPriority(-1)
+            } else {
+                row(fit)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { widths[.available] = $0 }
+        .background(alignment: .leading) { measurements.hidden() }
         .contentTransition(.interpolate)
         .font(.system(size: GnatMetrics.titlebarText))
         .lineLimit(1)
         .truncationMode(.tail)
         .animation(Motion.breadcrumb, value: crumbs)
+    }
+
+    private func row(_ fit: BreadcrumbFit) -> some View {
+        HStack(spacing: Self.spacing) {
+            if let project = crumbs.project {
+                projectGroup(project, asTag: fit.projectAsTag, picks: true)
+                    .transition(.opacity)
+            }
+            if let parent = crumbs.parent {
+                Group {
+                    switch crumbs.parentKind {
+                    case .milestone, .container:
+                        parentGroup(parent, picks: true)
+                            .frame(maxWidth: fit.parentWidth.map { CGFloat($0) }, alignment: .leading)
+                    case .project:
+                        projectGroup(parent, asTag: fit.projectAsTag, picks: false)
+                    }
+                }
+                .transition(.opacity)
+            }
+            if !crumbs.title.isEmpty {
+                crumbButton(.title) { titleLabel }
+                    .frame(maxWidth: fit.titleWidth.map { CGFloat($0) }, alignment: .leading)
+                    .layoutPriority(-1)
+            }
+        }
+    }
+
+    private var titleLabel: TitlebarIdentityLabel {
+        TitlebarIdentityLabel(identity: identity?.lastCrumb(afterProjectCrumb: crumbs.namesProject), title: crumbs.title)
+    }
+
+    /// The crumb naming the project, then its slash: the project's name, or
+    /// its tag. `picks`: whether it opens the tree picker (the project
+    /// crumb does; a workshop's or session's project name does not).
+    @ViewBuilder
+    private func projectGroup(_ name: String, asTag: Bool, picks: Bool) -> some View {
+        HStack(spacing: Self.spacing) {
+            if picks {
+                crumbButton(.project) { projectLabel(name, asTag: asTag) }
+            } else {
+                projectLabel(name, asTag: asTag)
+            }
+            CrumbSlash()
+        }
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private func projectLabel(_ name: String, asTag: Bool) -> some View {
+        if asTag {
+            CrumbTagLabel(tag: tag)
+        } else {
+            ProjectCrumbLabel(name: name)
+        }
+    }
+
+    /// The milestone or container crumb, then its slash; the name alone
+    /// ellipsizes.
+    private func parentGroup(_ parent: String, picks: Bool) -> some View {
+        HStack(spacing: Self.spacing) {
+            if picks {
+                crumbButton(.milestone) { parentLabel(parent) }
+            } else {
+                parentLabel(parent)
+            }
+            CrumbSlash().fixedSize()
+        }
+    }
+
+    private func parentLabel(_ parent: String) -> some View {
+        HStack(spacing: 7) {
+            Group {
+                if crumbs.parentKind == .container {
+                    // A source task's container: the sidebar's card mark.
+                    Image(systemName: SourceGlyph.container)
+                        .font(.system(size: 10))
+                        .ink(.tertiary)
+                        .frame(width: 13, height: CrumbLine.height)
+                } else {
+                    // The sidebar's own milestone mark, open.
+                    FolderGlyph(open: true, color: DesignTokens.ink(.tertiary, on: .header))
+                        .frame(height: CrumbLine.height)
+                }
+            }
+            .fixedSize()
+            Text(parent).ink(.tertiary)
+        }
+    }
+
+    /// Every crumb at its whole width, and its words alone, unseen — what
+    /// `fit` weighs the room against.
+    private var measurements: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let projectName {
+                measured(.projectGroup) { projectGroup(projectName, asTag: false, picks: false) }
+                measured(.projectText) { Text(projectName) }
+            }
+            if !tag.isEmpty {
+                measured(.tagGroup) { projectGroup(tag, asTag: true, picks: false) }
+                measured(.tagText) { CrumbTagLabel(tag: tag) }
+            }
+            if let shortenable {
+                measured(.parentGroup) { parentGroup(shortenable, picks: false) }
+                measured(.parentText) { Text(shortenable) }
+            }
+            measured(.titleGroup) { titleLabel }
+            measured(.titleText) { Text(identity?.title ?? crumbs.title) }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func measured<Content: View>(_ key: CrumbMeasure, @ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .fixedSize()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { widths[key] = $0 }
     }
 
     /// A crumb that opens the tree picker on itself.
@@ -216,6 +336,25 @@ struct TitlebarBreadcrumb<Picker: View>: View {
         ), arrowEdge: .top) {
             picker(origin)
         }
+    }
+}
+
+/// What the breadcrumb measures to fit itself (`BreadcrumbFit`).
+private enum CrumbMeasure: Hashable {
+    case available
+    case projectGroup, projectText, tagGroup, tagText, parentGroup, parentText, titleGroup, titleText
+}
+
+/// The project crumb as the project's tag, set as the Active row sets it.
+private struct CrumbTagLabel: View {
+    let tag: String
+
+    var body: some View {
+        Text(tag)
+            .font(Typo.mono(size: Typo.scaled(10), weight: .medium))
+            .tracking(1)
+            .ink(.secondary)
+            .frame(height: CrumbLine.height)
     }
 }
 

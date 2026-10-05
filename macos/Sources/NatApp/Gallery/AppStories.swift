@@ -235,6 +235,11 @@ enum AppStories {
     private static let longBandTitle =
         "Rework the navigator and main pane titlebars into one band, tabs right-aligned, the title ellipsizing into the gap"
 
+    /// A slice name long enough that the band's room runs out at an
+    /// ordinary window width, short enough that each stage of giving way
+    /// (`BreadcrumbFit`) is reached before the next.
+    private static let fitBandTitle = "Persist an unlaunched workshop across relaunches"
+
     private static let bandAgent = AgentStatus(
         sliceID: Fixtures.diffPaneSliceID, session: "nat-1", activity: .working,
         model: "Sonnet 5", effort: "high", contextPercent: 42, contextTokens: 84_120)
@@ -1705,8 +1710,8 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-long-title",
-            summary: "A long task name runs on past the navigator\u{2019}s width into the gap, the tabs still at "
-                + "the right and never left of the split.",
+            summary: "A long task name runs on past the navigator\u{2019}s width into the gap, the project crumb "
+                + "turned to its tag to give it room, the tabs still at the right and never left of the split.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(longBandTitle))
@@ -1714,11 +1719,43 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-long-title-narrow",
-            summary: "The same band in a narrower window: the last crumb\u{2019}s title gives way first, ending in "
-                + "an ellipsis with the chevron beside it.",
+            summary: "The same band in a narrower window: too little room for the name at 80% with any crumb "
+                + "before it, so just the Active row\u{2019}s line \u{2014} dot, tag, name ellipsized, the chevron beside it.",
             size: CGSize(width: 760, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(longBandTitle))
+        },
+
+        Story(
+            name: "titlebar-band-fit-title",
+            summary: "Room running out, first step: the task\u{2019}s name ellipsizes, still showing at least 80% of itself; project and milestone whole.",
+            size: CGSize(width: 860, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
+        },
+
+        Story(
+            name: "titlebar-band-fit-project-tag",
+            summary: "Second step: the project crumb turns into the project\u{2019}s tag, GNA, and the name has its whole width back.",
+            size: CGSize(width: 800, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
+        },
+
+        Story(
+            name: "titlebar-band-fit-milestone",
+            summary: "Third step: the name held at 80%, the milestone ellipsizes, down to half of itself.",
+            size: CGSize(width: 680, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
+        },
+
+        Story(
+            name: "titlebar-band-fit-minimal",
+            summary: "Past every floor: no breadcrumb, just the Active row\u{2019}s line \u{2014} state dot, GNA, the name, which alone ellipsizes.",
+            size: CGSize(width: 620, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
         },
 
         Story(
