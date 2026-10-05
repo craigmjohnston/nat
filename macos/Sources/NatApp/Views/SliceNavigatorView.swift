@@ -119,7 +119,7 @@ struct SliceNavigatorView: View {
         // saved over the same path — which a nudge's re-read carries as a new
         // hash — loads afresh.
         .task(id: "\(slice.id)|\(VisualChange.loadIdentity(visuals))") {
-            await visualStore.load(sliceID: slice.id, visuals: visuals)
+            await visualStore.load(sliceID: slice.id, handIn: detail.detail?.visuals)
         }
         .focusedSceneValue(\.sliceMenu, menuActions(nav))
         .sheet(isPresented: $editingBrief) {

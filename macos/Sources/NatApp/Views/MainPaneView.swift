@@ -204,9 +204,10 @@ struct SliceMainPane: View {
     let review: DiffReview
     let visualReview: VisualReview
 
-    private var visuals: [VisualChange] {
+    /// Nil while the slice's detail has not loaded (`VisualsPane.handIn`).
+    private var visuals: [VisualChange]? {
         appModel.sliceDetailStore(projectID: appModel.projectStore?.projectID ?? "")
-            .state(for: slice.id).detail?.visuals ?? []
+            .state(for: slice.id).detail?.visuals
     }
 
     private var nav: NavigatorModel {
@@ -229,7 +230,7 @@ struct SliceMainPane: View {
                 diffPane
             case .visuals:
                 VisualsPane(
-                    appModel: appModel, review: visualReview, slice: slice, visuals: visuals,
+                    appModel: appModel, review: visualReview, slice: slice, handIn: visuals,
                     authorName: appModel.config?.assigneeUserName ?? "You")
             case .pr:
                 PRConversationPane(
