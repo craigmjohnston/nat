@@ -322,7 +322,7 @@ func TestLaunch(t *testing.T) {
 			// own nat commands resolve against it whoever started the server.
 			"-e", "PATH=/Applications/gnat.app/Contents/MacOS:/opt/homebrew/bin:/usr/bin",
 			"-P", "-F", "#{pane_id}",
-			"sh", "-c", `claude --settings ` + shellQuote(statuslineSettings(sink)) + ` "$(cat '/tmp/prompt.md')"`,
+			"sh", "-c", `cd '/Users/craig/Projects/x' && claude --settings ` + shellQuote(statuslineSettings(sink)) + ` "$(cat '/tmp/prompt.md')"`,
 			// Chained onto the creation, so the session never shows a status
 			// bar — not even to someone attaching straight away.
 			";", "set-option", "-t", "nat-b4463d8f", "status", "off",
@@ -330,9 +330,10 @@ func TestLaunch(t *testing.T) {
 			// click binding fires there.
 			";", "set-option", "-t", "nat-b4463d8f", "mouse", "on",
 			// Server options, chained on too: shift+enter reaches the agent,
-			// and the URLs it prints stay clickable links.
+			// and the URLs it prints stay clickable links — the latter added
+			// at an index of nat's own, so once per server.
 			";", "set-option", "-s", "extended-keys", "on",
-			";", "set-option", "-s", "-a", "terminal-features", "*:extkeys:hyperlinks",
+			";", "set-option", "-s", "terminal-features[99]", "*:extkeys:hyperlinks",
 		}, append(clickBindingArgs(), copyModeDragEndArgs()...)...)},
 		// The tag the agent is found by.
 		{name: "tmux", args: []string{"-u", "set-option", "-p", "-t", "%7", "@nat_slice", id}},
@@ -711,7 +712,7 @@ func TestLaunchArgsQuotesThePromptPath(t *testing.T) {
 		t.Fatalf("args = %v, want an sh -c command in there", args)
 	}
 	got := args[sh+2]
-	want := `claude --settings '{"theme":"auto"}' "$(cat '/tmp/craig'\''s prompt.md')"`
+	want := `cd '/tmp' && claude --settings '{"theme":"auto"}' "$(cat '/tmp/craig'\''s prompt.md')"`
 	if got != want {
 		t.Errorf("command = %q, want %q", got, want)
 	}
@@ -727,17 +728,17 @@ func TestLaunchArgsCarryTheModelFlags(t *testing.T) {
 		model config.AgentModel
 		want  string
 	}{
-		{"unset", config.AgentModel{}, `claude --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
+		{"unset", config.AgentModel{}, `cd '/tmp' && claude --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
 		{"both", config.AgentModel{Model: "sonnet", Effort: "medium"},
-			`claude --model 'sonnet' --effort 'medium' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && claude --model 'sonnet' --effort 'medium' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
 		{"model only", config.AgentModel{Model: "opus"},
-			`claude --model 'opus' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && claude --model 'opus' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
 		{"effort only", config.AgentModel{Effort: "high"},
-			`claude --effort 'high' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && claude --effort 'high' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
 		// Whatever the value is, the shell reads it as one word: a model name
 		// is not a place to let a stray quote start a command.
 		{"quoted", config.AgentModel{Model: "cra'ig"},
-			`claude --model 'cra'\''ig' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && claude --model 'cra'\''ig' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -766,7 +767,7 @@ func TestLaunchArgsCarryTheThemeFlag(t *testing.T) {
 	if sh < 0 || sh+2 >= len(args) {
 		t.Fatalf("args = %v, want an sh -c command in there", args)
 	}
-	want := `claude --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`
+	want := `cd '/tmp' && claude --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`
 	if got := args[sh+2]; got != want {
 		t.Errorf("command = %q, want %q", got, want)
 	}
@@ -806,7 +807,7 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 	joined := strings.Join(suffix, " ")
 	for _, want := range []string{
 		"; set-option -s extended-keys on",
-		"; set-option -s -a terminal-features *:extkeys:hyperlinks",
+		"; set-option -s terminal-features[99] *:extkeys:hyperlinks",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("inputFeatureArgs = %q, want it to contain %q", joined, want)
@@ -817,6 +818,40 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 	args := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{}, false)
 	if !reflect.DeepEqual(args[len(args)-len(suffix):], suffix) {
 		t.Errorf("args = %v, want them to end with %v", args, suffix)
+	}
+}
+
+// The terminal-features entry lands once per server: chained onto every
+// launch, an append left the user's server holding one identical copy per
+// agent ever launched. Run against a real tmux on a private socket, so it is
+// tmux itself saying how many copies there are.
+func TestInputFeaturesAddTheTerminalFeatureOnce(t *testing.T) {
+	if _, err := exec.LookPath(TmuxBinary); err != nil {
+		t.Skip("no tmux on PATH")
+	}
+	// A short directory: a socket path past ~104 bytes is refused, and the
+	// test temp dir on macOS is longer than that.
+	dir, err := os.MkdirTemp("/tmp", "nat-tmux-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "s")
+	tmux := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command(TmuxBinary, append([]string{"-S", socket, "-f", "/dev/null"}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("tmux %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	t.Cleanup(func() { _ = exec.Command(TmuxBinary, "-S", socket, "kill-server").Run() })
+
+	for i := range 2 {
+		tmux(append([]string{"new-session", "-d", "-s", fmt.Sprintf("s%d", i), "sleep 30"}, inputFeatureArgs()...)...)
+	}
+	if n := strings.Count(tmux("show-options", "-s", "terminal-features"), " "+terminalFeatures+"\n"); n != 1 {
+		t.Errorf("terminal-features holds %d copies of %q after two launches, want 1", n, terminalFeatures)
 	}
 }
 
@@ -1040,6 +1075,76 @@ func TestExecRunnerMissingBinary(t *testing.T) {
 	var notFound *exec.Error
 	if !errors.As(err, &notFound) {
 		t.Fatalf("err = %v, want *exec.Error", err)
+	}
+}
+
+// Every tmux nat runs is run from the home directory, so a server it starts
+// has a working directory nat never deletes — a server started in a worktree
+// is left sitting in it after the merge removes it, and every pane it makes
+// starts there.
+func TestExecRunnerRunsFromHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	out, err := ExecRunner{}.Run("pwd", "-P")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	want, _ := filepath.EvalSymlinks(home)
+	if got := strings.TrimSpace(out); got != want {
+		t.Errorf("pwd = %q, want %q", got, want)
+	}
+}
+
+// With no home to be had, the root: still a directory nothing deletes.
+func TestExecRunnerFallsBackToRoot(t *testing.T) {
+	t.Setenv("HOME", "")
+	out, err := ExecRunner{}.Run("pwd", "-P")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := strings.TrimSpace(out); got != "/" {
+		t.Errorf("pwd = %q, want /", got)
+	}
+}
+
+// The shell an agent's session runs moves into the workdir itself before
+// starting claude, rather than trusting tmux's -c: on a server whose own
+// working directory has been deleted, a new pane starts in that deleted
+// directory whatever -c says, and claude refuses to start in one. Each launch
+// command is run here by a real shell started in a directory already gone,
+// with a stub claude that reports where it was started.
+func TestLaunchCommandsMoveIntoTheWorkdir(t *testing.T) {
+	bin := t.TempDir()
+	stub := "#!/bin/sh\npwd -P\n"
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workdir := t.TempDir()
+	want, _ := filepath.EvalSymlinks(workdir)
+	prompt := filepath.Join(t.TempDir(), "p.md")
+	if err := os.WriteFile(prompt, []byte("go"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bare := bareLaunchArgs("nat-1", workdir, config.AgentModel{}, false, "")
+	commands := map[string]string{
+		"slice": agentCommand(workdir, prompt, config.AgentModel{}, ""),
+		"bare":  bare[slices.Index(bare, "sh")+2],
+		"usage": usageProbeCommand(workdir, "/tmp/settings.json"),
+	}
+	for name, command := range commands {
+		t.Run(name, func(t *testing.T) {
+			dead := filepath.Join(t.TempDir(), "dead")
+			// Into a directory, delete it, then run the command from there.
+			cmd := exec.Command("sh", "-c", `mkdir "$1" && cd "$1" && rmdir "$1" && sh -c "$2"`, "sh", dead, command)
+			cmd.Env = append(os.Environ(), "PATH="+bin+":/usr/bin:/bin")
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("run %q: %v\n%s", command, err, out)
+			}
+			if got := strings.TrimSpace(string(out)); got != want {
+				t.Errorf("claude started in %q, want %q", got, want)
+			}
+		})
 	}
 }
 

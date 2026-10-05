@@ -97,8 +97,8 @@ func TestWriteUsageProbeSettingsWriteFailure(t *testing.T) {
 }
 
 func TestUsageProbeCommand(t *testing.T) {
-	got := usageProbeCommand("/tmp/probe/settings.json")
-	want := "claude --model haiku --settings " + shellQuote("/tmp/probe/settings.json")
+	got := usageProbeCommand("/tmp/probe", "/tmp/probe/settings.json")
+	want := "cd '/tmp/probe' && claude --model haiku --settings " + shellQuote("/tmp/probe/settings.json")
 	if got != want {
 		t.Errorf("command = %s, want %s", got, want)
 	}
@@ -117,7 +117,7 @@ func TestLaunchUsageProbe(t *testing.T) {
 		"new-session", "-d",
 		"-s", UsageProbeSession,
 		"-c", "/tmp/probe",
-		"sh", "-c", usageProbeCommand("/tmp/probe/settings.json"),
+		"sh", "-c", usageProbeCommand("/tmp/probe", "/tmp/probe/settings.json"),
 		";", "set-option", "-t", UsageProbeSession, "status", "off",
 	}
 	if r.calls[0].name != TmuxBinary || !slices.Equal(r.calls[0].args, want) {

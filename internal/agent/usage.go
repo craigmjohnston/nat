@@ -90,8 +90,8 @@ func WriteUsageProbeSettings(dir, sinkPath string) (string, error) {
 // local /usage slash command instead (internal/cli's probeUsage), which
 // costs nothing — so --model haiku is pinned only as a precaution, not
 // because anything here is expected to turn a reply.
-func usageProbeCommand(settingsPath string) string {
-	return fmt.Sprintf("claude --model haiku --settings %s", shellQuote(settingsPath))
+func usageProbeCommand(workdir, settingsPath string) string {
+	return inWorkdir(workdir, fmt.Sprintf("claude --model haiku --settings %s", shellQuote(settingsPath)))
 }
 
 // LaunchUsageProbe starts the probe's detached tmux session in workdir,
@@ -103,7 +103,7 @@ func (t *Tmux) LaunchUsageProbe(session, workdir, settingsPath string) error {
 		"new-session", "-d",
 		"-s", session,
 		"-c", workdir,
-		"sh", "-c", usageProbeCommand(settingsPath),
+		"sh", "-c", usageProbeCommand(workdir, settingsPath),
 	}
 	args = append(args, statusOffArgs(session)...)
 	if _, err := t.run(args...); err != nil {

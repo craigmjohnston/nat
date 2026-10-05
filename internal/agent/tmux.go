@@ -196,6 +196,7 @@ func (ExecRunner) Run(name string, args ...string) (string, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = stableDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -207,6 +208,19 @@ func (ExecRunner) Run(name string, args ...string) (string, error) {
 		return stdout.String(), err
 	}
 	return stdout.String(), nil
+}
+
+// stableDir is the directory every tmux nat runs is run from: the home
+// directory, else the root. The first tmux command on a machine with no server
+// running starts one, and the server keeps the working directory it was
+// started in for its whole life — run from wherever nat happened to be, that
+// can be a worktree a merge later removes, leaving the server sitting in a
+// deleted directory.
+func stableDir() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		return home
+	}
+	return "/"
 }
 
 // Tmux drives the tmux sessions agents run in.
@@ -512,7 +526,7 @@ func launchArgs(session, workdir, promptFile string, m config.AgentModel, carryE
 	}
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", agentCommand(promptFile, m, sink),
+		"sh", "-c", agentCommand(workdir, promptFile, m, sink),
 	)
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
@@ -693,15 +707,24 @@ const terminalFeatures = "*:extkeys:hyperlinks"
 // and the terminal-features entry covers both directions of the outer
 // terminal. Both are server options — tmux has no narrower scope for them —
 // so they are chained onto the new-session commands rather than set per
-// session; appending to terminal-features (-a) leaves whatever entries the
-// user has set, at the cost of a repeated identical entry per launch, which
-// tmux reads happily.
+// session. The terminal-features entry is written at an index of nat's own
+// ([terminalFeaturesSlot]) rather than appended, so it lands once per server
+// however many agents launch on it — an append (-a) per launch left a
+// long-lived server holding a copy for every agent ever launched — and the
+// array being sparse, it leaves whatever entries the user has set alone.
 func inputFeatureArgs() []string {
 	return []string{
 		";", "set-option", "-s", "extended-keys", "on",
-		";", "set-option", "-s", "-a", "terminal-features", terminalFeatures,
+		";", "set-option", "-s", terminalFeaturesSlot, terminalFeatures,
 	}
 }
+
+// terminalFeaturesSlot is the terminal-features index [terminalFeatures] is
+// written at: high enough that a user's own entries, numbered up from 0 by
+// their config and by -a, never reach it. A guard on the option's current
+// value was tried first and works only on a newer tmux — 3.4 expands no array
+// option in a format, so the guard never matched there.
+const terminalFeaturesSlot = "terminal-features[99]"
 
 // LaunchBare starts a detached tmux session named session, with workdir as
 // its working directory, running a bare Claude Code with no prompt at all —
@@ -737,7 +760,7 @@ func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool,
 	}
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", "claude"+modelFlags(m, sink),
+		"sh", "-c", inWorkdir(workdir, "claude"+modelFlags(m, sink)),
 	)
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
@@ -778,8 +801,18 @@ func modelFlags(m config.AgentModel, sink string) string {
 // Either half of the model may be unset, and an unset one contributes no flag
 // at all rather than an empty value: Claude Code then decides for itself,
 // which is what it did before there was anywhere to say otherwise.
-func agentCommand(promptFile string, m config.AgentModel, sink string) string {
-	return fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m, sink), shellQuote(promptFile))
+func agentCommand(workdir, promptFile string, m config.AgentModel, sink string) string {
+	return inWorkdir(workdir, fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m, sink), shellQuote(promptFile)))
+}
+
+// inWorkdir prefixes command with a cd into workdir, so the shell a session
+// runs moves there itself rather than trusting new-session's -c alone. On a
+// server whose own working directory has been deleted — one started from a
+// worktree a merge since removed — a new pane starts in that deleted
+// directory whatever -c says, and claude refuses to start in one, taking
+// the session with it before it writes a word.
+func inWorkdir(workdir, command string) string {
+	return "cd " + shellQuote(workdir) + " && " + command
 }
 
 // promptBuffer is the tmux paste buffer a prompt goes through on its way into
