@@ -418,9 +418,7 @@ struct HeaderActionLabel: View {
             if isBusy {
                 ProgressView().controlSize(.mini).frame(width: 13, height: 13)
             } else if glyph == .merge {
-                MergeGlyph()
-                    .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                    .frame(width: 13, height: 13)
+                MergeIcon(size: 13)
             } else if let systemImage {
                 Image(systemName: systemImage).font(.system(size: 12, weight: .semibold))
             }
@@ -462,6 +460,20 @@ enum HeaderGlyph {
     /// joining it from the side — square, where `arrow.triangle.merge` is a
     /// thin, tall fork that reads as nothing in particular at this size.
     case merge
+}
+
+/// gnat's one merge icon — the merge button's — stroked in the current ink:
+/// wherever the app draws "merge" (the button, the Task log's Merged item, a
+/// conflict mark), it draws this, never `arrow.triangle.merge`.
+struct MergeIcon: View {
+    var size: CGFloat = 13
+    var lineWidth: CGFloat = 1.5
+
+    var body: some View {
+        MergeGlyph()
+            .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            .frame(width: size, height: size)
+    }
 }
 
 /// The merge glyph's strokes, on a 14-unit square: the main line's two

@@ -1,15 +1,14 @@
 import SwiftUI
 import NatKit
 
-/// A branch that conflicts with its base, as a row marks it: a merge glyph in
-/// the danger ink, the base named under the pointer. A piece of its own, so a
+/// A branch that conflicts with its base, as a row marks it: gnat's merge
+/// icon (the merge button's) in the danger ink, the base named under the pointer. A piece of its own, so a
 /// conflicting branch with no pull request can carry the same mark.
 struct ConflictMark: View {
     let conflict: BranchConflict
 
     var body: some View {
-        Image(systemName: "arrow.triangle.merge")
-            .font(.system(size: 10, weight: .bold))
+        MergeIcon(size: 11, lineWidth: 1.4)
             .ink(.danger)
             .help(conflict.help)
             .accessibilityLabel(conflict.help)

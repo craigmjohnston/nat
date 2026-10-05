@@ -115,7 +115,7 @@ first fresh read (`restore`). `PRStatusStore.marks` (by slice id) puts
 `PRMarks` on **both** sidebar row kinds — `SidebarActiveRow.marks` and
 `SidebarSliceRow.marks`, pr/fixing stage only (`atPullRequest`) — drawn by
 `PRMarksView`: the checks' `xmark.octagon.fill` and the conflict's own
-`ConflictMark` (`arrow.triangle.merge`, "Conflicts with <base>" / "Merge
+`ConflictMark` (`MergeIcon`, "Conflicts with <base>" / "Merge
 conflicts"), which takes a `BranchConflict` and nothing about a PR, for a
 conflicting branch with no PR to reuse. `attention(projectID:)` reads the
 project's own reading. In the navigator, `checksNotice` and `conflictNotice`
@@ -288,7 +288,9 @@ placeholder. The PR's title heads the PR view's own body. The Thread ends, while
 quietened, chips disabled, when blocked — with Launch itself only in the
 section header; its prose items cut short as the brief does (`Excerpt`). View ▸ Hide done items
 (`showsDoneItems`) drops done slices, ended sessions and the Done folder from
-the sidebar. A sidebar milestone row (and the Done and Ad hoc sessions folders)
+the sidebar. Every "merge" icon is `MergeIcon` — the Merge button's own `MergeGlyph`,
+never `arrow.triangle.merge` (the Task log's Merged item through
+`ThreadIcon`, the conflict mark). A sidebar milestone row (and the Done and Ad hoc sessions folders)
 folds as a project row does: washed under the pointer, its folder giving way
 to the chevron (`TreeMilestoneLine.folds`; story `sidebar-milestone-hovered`). `AppModel` keeps its one *active* project —
 every per-project reading is keyed by it — and the sidebar selects across
