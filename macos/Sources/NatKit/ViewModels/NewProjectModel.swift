@@ -4,20 +4,27 @@ import Foundation
 /// projects its open picker offers, when each path's button can act, and what
 /// a refusal reads as. The sheet itself is fields and buttons over these.
 public enum NewProjectModel {
-    /// The rows the open picker offers: the workspace projects this machine
-    /// does not track yet, in the order the listing gave them. The configured
-    /// half is already the tab strip — offering it again would be a picker
-    /// whose pick does nothing.
-    public static func openable(_ listing: ProjectListing) -> [ProjectListingEntry] {
-        listing.projects.filter { !$0.configured }
+    /// The rows the open picker offers: the projects this machine tracks but
+    /// has no tab for — the ones the user closed (`AppModel.closedProjects`)
+    /// — first, then the workspace projects it does not track yet, in the
+    /// order the listing gave them. The rest of the configured half is already
+    /// the tab strip — offering it again would be a picker whose pick does
+    /// nothing.
+    public static func openable(
+        _ listing: ProjectListing, closed: [ProjectListingEntry] = []
+    ) -> [ProjectListingEntry] {
+        let closedIDs = Set(closed.map(\.id))
+        return closed + listing.projects.filter { !$0.configured && !closedIDs.contains($0.id) }
     }
 
     /// Whether the open path has anything to act on: a project picked out of
     /// what the listing offered. A pick that is no longer in the listing —
     /// the listing having been read again under the picker — is no pick at
     /// all, which is what stops "Open" acting on a stale ID.
-    public static func canOpen(selection: String, in listing: ProjectListing) -> Bool {
-        !selection.isEmpty && openable(listing).contains { $0.id == selection }
+    public static func canOpen(
+        selection: String, in listing: ProjectListing, closed: [ProjectListingEntry] = []
+    ) -> Bool {
+        !selection.isEmpty && openable(listing, closed: closed).contains { $0.id == selection }
     }
 
     /// Whether the create path has enough to act on: a name, and a directory

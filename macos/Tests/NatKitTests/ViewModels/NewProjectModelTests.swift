@@ -29,6 +29,22 @@ final class NewProjectModelTests: XCTestCase {
         XCTAssertFalse(NewProjectModel.canOpen(selection: "p9", in: listing))
     }
 
+    /// A closed project — configured, no tab — is offered ahead of the
+    /// workspace's untracked ones, once even where the listing names it too.
+    func testOpenableOffersTheClosedProjectsFirst() {
+        let closed = [ProjectListingEntry(id: "p1", name: "Tracked", configured: true, workingDir: "/src/p1")]
+        XCTAssertEqual(NewProjectModel.openable(listing, closed: closed).map(\.id), ["p1", "p2", "p3"])
+        let alsoListedUnconfigured = [ProjectListingEntry(id: "p2", name: "Untracked", configured: true)]
+        XCTAssertEqual(NewProjectModel.openable(listing, closed: alsoListedUnconfigured).map(\.id), ["p2", "p3"])
+        // With no workspace listing at all, the closed ones are still there.
+        XCTAssertEqual(NewProjectModel.openable(ProjectListing(projects: []), closed: closed).map(\.id), ["p1"])
+    }
+
+    func testCanOpenAClosedProject() {
+        let closed = [ProjectListingEntry(id: "p1", name: "Tracked", configured: true)]
+        XCTAssertTrue(NewProjectModel.canOpen(selection: "p1", in: listing, closed: closed))
+    }
+
     func testCanCreateWantsBothANameAndADirectory() {
         XCTAssertTrue(NewProjectModel.canCreate(name: "nat", directory: "/src/nat"))
         XCTAssertFalse(NewProjectModel.canCreate(name: "", directory: "/src/nat"))
