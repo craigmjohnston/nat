@@ -78,9 +78,12 @@ private struct TitlebarBandStack: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        guard subviews.count == 3 else { return }
+        // No trailing item is no subview at all — an empty view lays out as
+        // nothing — so the band has two parts or three.
+        guard subviews.count >= 2 else { return }
+        let trailingItem = subviews.count > 2 ? subviews[2] : nil
         let run = subviews[1].sizeThatFits(ProposedViewSize(width: nil, height: bounds.height)).width
-        let trailing = subviews[2].sizeThatFits(ProposedViewSize(width: nil, height: bounds.height)).width
+        let trailing = trailingItem?.sizeThatFits(ProposedViewSize(width: nil, height: bounds.height)).width ?? 0
         let layout = TitlebarBandLayout(
             bandWidth: bounds.width, navigatorWidth: navigatorWidth, runWidth: run, trailingWidth: trailing)
         subviews[0].place(
@@ -89,7 +92,7 @@ private struct TitlebarBandStack: Layout {
         subviews[1].place(
             at: CGPoint(x: bounds.minX + layout.runX, y: bounds.minY), anchor: .topLeading,
             proposal: ProposedViewSize(width: layout.runShownWidth, height: bounds.height))
-        subviews[2].place(
+        trailingItem?.place(
             at: CGPoint(x: bounds.minX + layout.trailingX, y: bounds.minY), anchor: .topLeading,
             proposal: ProposedViewSize(width: layout.trailingShownWidth, height: bounds.height))
     }
