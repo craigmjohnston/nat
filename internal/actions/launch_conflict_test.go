@@ -88,3 +88,28 @@ func TestLaunchTestsNoBranchWithAPullRequestOrNoHandBack(t *testing.T) {
 		t.Errorf("never handed back: ConflictBase %q, tested %v — want neither", c.ConflictBase, tested)
 	}
 }
+
+// A review sent back before any pull request — Branch cleared, no PR, a
+// hand-back on its log — is a resume: the launch gathers its git snapshot
+// and says it was handed back.
+func TestLaunchGathersTheGitSnapshotForATakenBackReview(t *testing.T) {
+	dir := repoDir(t)
+	w := &fakeWorktrees{existing: map[string]string{"slice/info-view": dir + "-worktrees/slice/info-view"}}
+	r := &fakeRepo{base: "origin/main", log: "abc1234 did the thing", stat: "a.go | 2 ++", merge: git.MergeClean}
+	client := &fakeClient{blocks: func(id string) ([]notion.Block, error) {
+		if id == "s5" {
+			return handedBackBody(t), nil
+		}
+		return nil, nil
+	}}
+	res, err := Launch(context.Background(), &fakeLauncher{}, w, r, client.store(), nil, "u1",
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed}, WorkingDir: dir},
+		config.AgentModel{})
+	if err != nil {
+		t.Fatalf("Launch() = %v, want it to go through", err)
+	}
+	c := res.Context
+	if !c.HandedBack || c.GitLog != "abc1234 did the thing" || c.GitDiffStat != "a.go | 2 ++" {
+		t.Errorf("context = %+v, want it handed back with the git snapshot gathered", c)
+	}
+}

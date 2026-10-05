@@ -92,11 +92,6 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 		return LaunchResult{Toast: p.Toast, Sev: p.Sev}, nil
 	}
 	c.WorkingDir, c.Branch, c.Repo = p.Dir, p.Branch, p.Repo
-	// A resume has commits already on the branch worth reading; a first-time
-	// launch has nothing yet to gather.
-	if c.Branch != "" && agent.Resuming(c) {
-		c.GitBase, c.GitLog, c.GitDiffStat = gitSnapshot(r, c.WorkingDir, c.Branch)
-	}
 	if err := ClaimSlice(ctx, st, c.Slice, assigneeID); err != nil {
 		return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
 	}
@@ -109,6 +104,14 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 		return LaunchResult{}, fmt.Errorf("claimed %q but could not read the project conventions: %w", c.Slice.Name, err)
 	}
 	c.Brief, c.Conventions = brief, conventions
+	// Whether it was handed back is the brief's to say — a review sent back
+	// has its Branch cleared and may have no pull request, and is resuming
+	// all the same — so the resume's git snapshot is gathered once the brief
+	// is read. A first-time launch has nothing yet to gather.
+	c.HandedBack = handedBack(brief)
+	if c.Branch != "" && agent.Resuming(c) {
+		c.GitBase, c.GitLog, c.GitDiffStat = gitSnapshot(r, c.WorkingDir, c.Branch)
+	}
 	c.MilestoneDigest = milestoneDigest(ctx, st, c.Milestone, c.MilestoneSlices)
 	// A slice with a pull request recorded is work already out: the prompt
 	// tells the agent so and carries the review as it stood at launch, read
@@ -121,7 +124,7 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 	// conflict tells the agent to rebase before anything else. One with a
 	// pull request has that from GitHub, and the user's own word sending it
 	// back says so.
-	if c.Slice.PRURL == "" && c.Branch != "" && handedBack(brief) {
+	if c.Slice.PRURL == "" && c.Branch != "" && c.HandedBack {
 		c.ConflictBase = conflictBase(r, c.WorkingDir, c.Branch)
 	}
 	// A relaunch — the slice's brief already carries history from an

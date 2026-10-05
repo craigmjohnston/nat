@@ -30,8 +30,9 @@ running agent's state.
 ## Prompts (`prompt.go`)
 
 - `Prompt(c PromptContext)` writes every slice session's brief. `Resuming(c)`
-  — placed on the branch the slice records, or a slice with a PR recorded
-  (resumed work has its branch cleared) — says whether it tells the agent
+  — placed on the branch the slice records, a slice with a PR recorded
+  (resumed work has its branch cleared), or `PromptContext.HandedBack` (a
+  hand-back on the task log: a review sent back before any PR) — says whether it tells the agent
   it's continuing rather than starting. A slice with a PR adds
   `pullRequestPassage` (the PR is open, a push updates it, the launch's
   review snapshot, `gh pr view <PR> --comments` the one `gh` allowed, never

@@ -65,6 +65,11 @@ import (
 // independently left empty on a failed read, the project's usual
 // reads-conclude-nothing posture — a launch never fails over missing context.
 //
+// HandedBack says the slice's task log holds a hand-back, read off the brief
+// by [actions.Launch]: work an earlier session pushed and gave up for review,
+// whether its Branch is still recorded or was cleared when it was sent back.
+// It is one of the ways [Resuming] knows a session is picking work up.
+//
 // ConflictBase is the base a handed-back branch with no pull request was found
 // conflicting with at launch ([git.CLI.ConflictsWithBase], run by
 // [actions.Launch]): set, the prompt tasks the agent with rebasing onto it
@@ -100,6 +105,7 @@ type PromptContext struct {
 	GitDiffStat     string
 	ReviewComments  string
 	ReviewChecks    string
+	HandedBack      bool
 	ConflictBase    string
 	Container       *PromptContainer
 	RepoUnknown     bool
@@ -611,8 +617,10 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 // Resuming reports whether the session is picking work up rather than
 // starting it: the worktree it is placed in is on the very branch the slice
 // records, or the slice has a pull request recorded — work handed back,
-// approved, then resumed, its branch cleared until the next hand-back — so
-// there are commits there already and an earlier session put them there.
+// approved, then resumed, its branch cleared until the next hand-back — or
+// its task log holds a hand-back (HandedBack) — a review sent back before any
+// pull request, its branch cleared the same way — so there are commits there
+// already and an earlier session put them there.
 //
 // It is the branch matching that says so rather than the slice's status alone,
 // because a released slice is back at Todo with its branch still recorded and
@@ -622,7 +630,7 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 // Exported for [actions.Launch]'s own use: whether a resume launch's git
 // snapshot is worth gathering is the same question this prompt already asks.
 func Resuming(c PromptContext) bool {
-	return c.Branch != "" && (c.Branch == strings.TrimSpace(c.Slice.Branch) || c.Slice.PRURL != "")
+	return c.Branch != "" && (c.Branch == strings.TrimSpace(c.Slice.Branch) || c.Slice.PRURL != "" || c.HandedBack)
 }
 
 // pullRequestPassage tells an agent launched on a slice with a pull request
