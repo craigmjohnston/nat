@@ -13,6 +13,22 @@ extension Fixtures {
             visuals: visualChangesWithNews)]) { _, new in new }
     }
 
+    /// The plan with the handed-back slice sent back from review before any
+    /// pull request: its Branch cleared, so not handed back, and nat reading
+    /// it `taken_back` (no PR, so not `resumed`).
+    public static var takenBackProjectInfo: ProjectInfo {
+        ProjectInfo(
+            project: projectInfo.project,
+            milestones: projectInfo.milestones,
+            slices: projectInfo.slices.map { s in
+                guard s.id == mergeBoxSliceID else { return s }
+                return Slice(
+                    id: s.id, name: s.name, status: s.status, milestoneID: s.milestoneID, assignee: s.assignee,
+                    pr: s.pr, url: s.url, branch: nil, repo: s.repo, dependsOn: s.dependsOn, blocked: s.blocked,
+                    handedBack: false, takenBack: true, state: s.state)
+            })
+    }
+
     /// The pull request's head as the user last saw it, before the resumed
     /// agent pushed — so the green pull request's head reads moved.
     public static let seenPRHeadSHA = "9e8d7c6b5a41"

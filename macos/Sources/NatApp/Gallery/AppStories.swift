@@ -112,7 +112,7 @@ enum AppStories {
         let slice = plan.slices.first { $0.id == sliceID } ?? Fixtures.slice(sliceID)
         // A resumed slice's branch is read by its agent branch, its Branch
         // cleared.
-        if slice.handedBack || !(slice.branch ?? "").isEmpty || slice.resumed {
+        if slice.handedBack || !(slice.branch ?? "").isEmpty || slice.resumed || slice.takenBack {
             await store.fetch(projectID: Fixtures.projectID, sliceRef: sliceID)
         }
         if !slice.pr.isEmpty {
@@ -810,6 +810,16 @@ enum AppStories {
             ) { appModel in
                 appModel.visualStore(projectID: Fixtures.projectID).loader = Fixtures.visualImageLoader
             }
+        },
+
+        Story(
+            name: "window-taken-back",
+            summary: "A review sent back to its agent before any pull request (nat's taken_back): working again, Changes kept open on the diff with the warning that the agent is working on this again, in the foldout and over the main pane; no PR section.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.mergeBoxSliceID, plan: Fixtures.takenBackProjectInfo,
+                focus: NavigatorFocus(open: [.changes], main: .diff))
         },
 
         Story(

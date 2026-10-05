@@ -338,8 +338,8 @@ func TestViewPRUnreadableJSON(t *testing.T) {
 	}
 }
 
-// TestReviewCommentsRunsGh pins the raw text form a fix launch's prompt is
-// handed, trimmed of its trailing newline.
+// TestReviewCommentsRunsGh pins the raw text form the launch prompt of a
+// slice with a pull request is handed, trimmed of its trailing newline.
 func TestReviewCommentsRunsGh(t *testing.T) {
 	runner := &fakeRunner{out: "craig: nit on naming\n\ncraig2: looks good\n"}
 	got, err := NewWithRunner(runner).ReviewComments("/repos/nat", "https://github.test/o/r/pull/1")
@@ -371,7 +371,8 @@ func TestReviewCommentsFailure(t *testing.T) {
 	}
 }
 
-// TestChecksRunsGh pins the raw check table a fix launch's prompt is handed.
+// TestChecksRunsGh pins the raw check table a pull request's launch prompt is
+// handed.
 func TestChecksRunsGh(t *testing.T) {
 	runner := &fakeRunner{out: "X  build  1m3s\n✓  lint  12s\n"}
 	got, err := NewWithRunner(runner).Checks("/repos/nat", "https://github.test/o/r/pull/1")
@@ -398,7 +399,7 @@ func TestChecksNeedsARef(t *testing.T) {
 
 // A failing check is not a failed read: gh exits non-zero whenever a check is
 // failing or still running, with the table printed regardless, and a check
-// failing is exactly why a fix session exists.
+// failing is exactly why work is resumed on a pull request.
 func TestChecksToleratesGhsNonZeroExitWhenChecksAreFailing(t *testing.T) {
 	runner := &fakeRunner{out: "X  build  1m3s\n", err: &ExitError{Code: 1, Stderr: "some checks were not successful\n"}}
 	got, err := NewWithRunner(runner).Checks("/repos/nat", "1")

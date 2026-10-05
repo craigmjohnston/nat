@@ -109,6 +109,13 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
     /// legitimately. Left by the agent's next hand-back. False where nat does
     /// not say.
     public let resumed: Bool
+    /// Taken back after a hand-back: In progress, its Branch cleared on a
+    /// project with a Branch column, and a Handed back on its task log —
+    /// nat's `taken_back`. True for a resumed slice too, and for a review
+    /// sent back with no PR, which `resumed` (PR recorded) does not cover:
+    /// what keeps its Changes and Visual changes on screen while the work is
+    /// redone. Never a stage of its own. False where nat does not say.
+    public let takenBack: Bool
     public let state: SliceState?
 
     enum CodingKeys: String, CodingKey {
@@ -125,6 +132,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         case blocked
         case handedBack = "handed_back"
         case resumed
+        case takenBack = "taken_back"
         case state
     }
 
@@ -142,6 +150,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         blocked: Bool,
         handedBack: Bool,
         resumed: Bool = false,
+        takenBack: Bool = false,
         state: SliceState? = nil
     ) {
         self.id = id
@@ -157,6 +166,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         self.blocked = blocked
         self.handedBack = handedBack
         self.resumed = resumed
+        self.takenBack = takenBack
         self.state = state
     }
 
@@ -175,6 +185,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         blocked = try c.decode(Bool.self, forKey: .blocked)
         handedBack = try c.decode(Bool.self, forKey: .handedBack)
         resumed = try c.decodeIfPresent(Bool.self, forKey: .resumed) ?? false
+        takenBack = try c.decodeIfPresent(Bool.self, forKey: .takenBack) ?? false
         state = try c.decodeIfPresent(SliceState.self, forKey: .state)
     }
 }

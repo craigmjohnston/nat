@@ -337,3 +337,104 @@ func TestSliceResumeMisuseAndFailures(t *testing.T) {
 		t.Errorf("appends %+v, updates %+v: want nothing written", broken.appends, broken.updates)
 	}
 }
+
+// takenBackFlags reads one slice's taken_back and resumed off info --json and
+// slice-show --json both.
+func (f resumeFixture) takenBackFlags(t *testing.T, id string) (info, show, resumed bool) {
+	t.Helper()
+	out, err := f.run(t, "info", "--json")
+	if err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	var doc struct {
+		Slices []struct {
+			ID        string `json:"id"`
+			TakenBack bool   `json:"taken_back"`
+		} `json:"slices"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("info json: %v", err)
+	}
+	for _, sj := range doc.Slices {
+		if sj.ID == id {
+			info = sj.TakenBack
+		}
+	}
+	out, err = f.run(t, "slice-show", id, "--json")
+	if err != nil {
+		t.Fatalf("slice-show: %v", err)
+	}
+	var sj struct {
+		TakenBack bool `json:"taken_back"`
+		Resumed   bool `json:"resumed"`
+	}
+	if err := json.Unmarshal([]byte(out), &sj); err != nil {
+		t.Fatalf("slice-show json: %v", err)
+	}
+	return info, sj.TakenBack, sj.Resumed
+}
+
+// A slice in review — handed back, no pull request yet — taken back to work
+// reads as taken back, and not as resumed, which needs a pull request; it
+// stops once it is handed back again. A slice resumed after its approval is
+// taken back too, and one never handed back never is.
+func TestInfoAndSliceShowReadTakenBack(t *testing.T) {
+	f := newResumeFixture(t)
+	ctx := context.Background()
+	sp := storeProject(f.id, config.ProjectConfig{})
+	sh, err := f.st.Shape(ctx, sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := f.st.Plan(ctx, sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	review, err := f.st.AddSlice(ctx, sp, store.NewSlice{Title: "in review", Milestone: plan.Shape.Milestones[0]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.st.ReopenSlice(ctx, review.ID, sh); err != nil {
+		t.Fatal(err)
+	}
+	if info, show, _ := f.takenBackFlags(t, review.ID); info || show {
+		t.Errorf("never handed back: taken_back = %v/%v, want false", info, show)
+	}
+	handBack := func() {
+		t.Helper()
+		if _, err := f.st.CompleteSlice(ctx, review.ID, sh, store.Outcome{Summary: "Done.", Branch: "slice/in-review"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handBack()
+	if info, show, _ := f.takenBackFlags(t, review.ID); info || show {
+		t.Errorf("handed back: taken_back = %v/%v, want false", info, show)
+	}
+	if _, err := f.run(t, "slice-resume", review.ID, "--note", "Rename it."); err != nil {
+		t.Fatalf("slice-resume: %v", err)
+	}
+	if info, show, resumed := f.takenBackFlags(t, review.ID); !info || !show || resumed {
+		t.Errorf("taken back with no PR: taken_back = %v/%v, resumed %v; want true, true, false", info, show, resumed)
+	}
+	handBack()
+	if info, show, _ := f.takenBackFlags(t, review.ID); info || show {
+		t.Errorf("handed back again: taken_back = %v/%v, want false", info, show)
+	}
+
+	if _, err := f.run(t, "slice-resume", f.slice.ID, "--note", "More."); err != nil {
+		t.Fatalf("slice-resume: %v", err)
+	}
+	if info, show, resumed := f.takenBackFlags(t, f.slice.ID); !info || !show || !resumed {
+		t.Errorf("resumed after approval: taken_back = %v/%v, resumed %v; want all true", info, show, resumed)
+	}
+}
+
+// takenBack needs a Branch column to have cleared: a project with none is
+// never read as taken back, and the hand-back question is not even asked.
+func TestTakenBackNeedsABranchColumn(t *testing.T) {
+	asked := false
+	s := domain.Slice{Status: domain.SliceClaimed}
+	if takenBack(s, false, func() bool { asked = true; return true }) || asked {
+		t.Errorf("no Branch column: taken back, or asked %v", asked)
+	}
+}

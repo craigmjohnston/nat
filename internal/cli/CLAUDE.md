@@ -228,9 +228,8 @@ on `approved`/`merged`, which have no time source), and a note from a slice
 `fromSlice: {name, milestone}` — by name, never resolved to an ID here, since
 slice-show reads no plan; the app matches it against the plan it holds.
 
-`slice-visuals` (held slices, or — `canHandInVisuals` — a Done slice with a
-PR recorded, assigned to you where the project has an Assignee column: a
-session that outlived its merge, its PR not re-checked with gh). Incremental, each flag repeatable:
+`slice-visuals` (held slices only — `store.Holds`; a Done slice is never
+held). Incremental, each flag repeatable:
 `--visual` (first line the name, the next the image's path or URI) adds or
 replaces by name in place, keeping the before it has; `--before` (the
 visual's name, then the before's path) sets the before of a visual in the
@@ -270,7 +269,11 @@ Resuming rule.
 `slice-show --json` and `info --json` carry `resumed` per slice
 (`domain.Slice.Resumed` against the plan's `Shape.HasBranch` — no body
 read), and their `state` is `domain.StateOf` with that same `HasBranch`.
-`container-show` passes the plan's shape too. `pr-view --json` carries
+`taken_back` (`takenBack`: In progress, `Branch` empty, `HasBranch`, and
+`holdsHandBack` on the body — `info` reads a body only for slices passing the
+rest, through `handedBackBefore`, an unreadable one concluding false;
+`container-show` leaves it false) marks any slice handed back and taken back
+to work, PR or not. `container-show` passes the plan's shape too. `pr-view --json` carries
 `head_ref_oid` (gh's `headRefOid`), how gnat tells a PR whose head moved.
 
 `slice-checks <slice> [--log] [--json]` (any status, a read only): the

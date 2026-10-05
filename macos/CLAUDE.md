@@ -129,10 +129,15 @@ slice-launch` (a relaunch). There is no fix launch and no `fixing` stage:
 its phase `.thread` — selecting it opens the Task log and the terminal — and
 neither Approve nor Merge is offered until the next hand-back (the bar's
 greyed stand-in is Launch). Its Changes, Visual changes and PR stay
-(`NavigatorModel.hasBranch` counts `resumed`: `slice-diff`/`slice-file` read
-its agent branch), each carrying `NavigatorModel.resumedNotice` as a warning
+(`NavigatorModel.hasBranch` counts `resumed` and `takenBack`: `slice-diff`/`slice-file` read
+its agent branch), each carrying `NavigatorModel.resumedNotice` (`worksAgain`) as a warning
 `NavNotice` atop its foldout and a `MainPaneNotice` across the top of its
-main pane. Changes' Send goes to a resumed slice's live agent too
+main pane. A review sent back before any PR is not `resumed` (that needs a
+PR) but nat's `taken_back` (`Slice.takenBack`: In progress, Branch cleared on
+a project with a Branch column, a Handed back on its log; true for a resumed
+slice too) — it keeps Changes and Visual changes with the same notice, and
+moves no stage or PR gate: `resumed` alone drives those. Story:
+`window-taken-back`. Changes' Send goes to a taken-back slice's live agent too
 (`showsChangesSend`), and `DiffStore.sendComments` — like `VisualStore`'s —
 asks for the hand-back and runs `slice-rework` only where the slice is
 handed back. Stories: `window-resumed`, `window-resumed-notices`,

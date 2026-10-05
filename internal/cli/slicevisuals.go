@@ -27,8 +27,8 @@ import (
 // here from the last one filed (see [handIn.apply]), since the last section is
 // the one that wins.
 //
-// Only a slice this user holds takes them — or one of theirs that is Done with
-// its pull request still out; see [canHandInVisuals].
+// Only a slice this user holds takes them: the agent working it is the one
+// with something to hand in.
 func sliceVisuals(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("slice-visuals", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -72,7 +72,7 @@ func sliceVisuals(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	if !canHandInVisuals(s, shape.On(pageShape), cfg.AssigneeUserID) {
+	if !store.Holds(s, shape.On(pageShape), cfg.AssigneeUserID) {
 		return visualsRefusal(s, cfg.AssigneeUserName)
 	}
 	body, err := st.Body(ctx, s.ID)
@@ -92,22 +92,6 @@ func sliceVisuals(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// canHandInVisuals says whether the caller's agent may hand images in on s: a
-// slice they hold, as complete-slice asks — the agent working it is the one
-// with something to hand in — or one of theirs that is Done with a pull
-// request recorded: a session that outlived its slice's merge, whose renders
-// are still review material. Whether that pull request is still open is not
-// asked of gh here: a read that fails concludes nothing.
-func canHandInVisuals(s domain.Slice, sh store.Shape, userID string) bool {
-	if store.Holds(s, sh, userID) {
-		return true
-	}
-	if s.Status != domain.SliceDone || s.PRURL == "" {
-		return false
-	}
-	return !sh.HasAssignee || slices.Contains(s.AssigneeIDs, userID)
-}
-
 // visualsRefusal says why a slice takes no visual changes from this user, and
 // what would.
 func visualsRefusal(s domain.Slice, assignee string) error {
@@ -118,8 +102,8 @@ func visualsRefusal(s domain.Slice, assignee string) error {
 	case s.AssigneeName != assignee:
 		held = ", held by " + s.AssigneeName
 	}
-	return fmt.Errorf("%q is %s%s: visual changes can be given only to a slice you hold, "+
-		"or one of yours that is Done with its pull request still open", s.Name, blank(s.StatusName), held)
+	return fmt.Errorf("%q is %s%s: visual changes can be given only to a slice you hold",
+		s.Name, blank(s.StatusName), held)
 }
 
 // uriScheme is the scheme a URI opens with, which is what tells one apart from

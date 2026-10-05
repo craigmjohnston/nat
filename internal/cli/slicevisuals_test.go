@@ -14,9 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // shot lays a file down under dir for a hand-in to name, and is its path.
@@ -205,8 +203,7 @@ func TestSliceVisualsRefusals(t *testing.T) {
 			"no image at " + filepath.Join(dir, "gone.png")},
 		{"missing file", notion.SliceInProgress, []string{"--visual", "A\n" + filepath.Join(dir, "gone.png")}, "no image at " + filepath.Join(dir, "gone.png")},
 		{"not held", notion.SliceTodo, []string{"--visual", "A\n" + path},
-			`"Render the board" is Todo: visual changes can be given only to a slice you hold, ` +
-				"or one of yours that is Done with its pull request still open"},
+			`"Render the board" is Todo: visual changes can be given only to a slice you hold`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -222,19 +219,18 @@ func TestSliceVisualsRefusals(t *testing.T) {
 	}
 }
 
-// A fix session works a Done slice whose pull request is still out, so a Done
-// slice of the caller's with a PR recorded takes visual changes too; a Done
-// slice of somebody else's, or one with no PR, does not.
-func TestSliceVisualsOnADoneSlice(t *testing.T) {
+// A Done slice is never held — its work is merged and no session is launched
+// on it — so it takes no visual changes, a pull request recorded or not,
+// whoever it was assigned to.
+func TestSliceVisualsRefusesADoneSlice(t *testing.T) {
 	path := shot(t, t.TempDir(), "a.png")
-	const want = ": visual changes can be given only to a slice you hold, " +
-		"or one of yours that is Done with its pull request still open"
+	const want = ": visual changes can be given only to a slice you hold"
 	tests := []struct {
 		name   string
 		update string
 		refuse string
 	}{
-		{"mine with a PR", `UPDATE slices SET pr = 'https://github.com/o/r/pull/9'`, ""},
+		{"mine with a PR", `UPDATE slices SET pr = 'https://github.com/o/r/pull/9'`, `"Render the board" is Done` + want},
 		{"someone else's", `UPDATE slices SET pr = 'https://github.com/o/r/pull/9', assignee = 'Someone Else',
 			assignee_name = 'Someone Else'`, `"Render the board" is Done, held by Someone Else` + want},
 		{"nobody's", `UPDATE slices SET pr = 'https://github.com/o/r/pull/9', assignee = '', assignee_name = ''`,
@@ -249,15 +245,6 @@ func TestSliceVisualsOnADoneSlice(t *testing.T) {
 				}
 			})
 			err := fp.run("slice-visuals", sliceID, "--visual", "A\n"+path)
-			if tt.refuse == "" {
-				if err != nil {
-					t.Fatalf("slice-visuals: %v", err)
-				}
-				if got := fp.shown(t).Visuals; !slices.Equal(got, []visualJSON{{Index: 1, Name: "A", URI: path, Hash: sum("png"), Changed: true}}) {
-					t.Errorf("visuals = %+v, want the one handed in", got)
-				}
-				return
-			}
 			if err == nil || err.Error() != tt.refuse {
 				t.Errorf("err = %v, want %q", err, tt.refuse)
 			}
@@ -265,23 +252,6 @@ func TestSliceVisualsOnADoneSlice(t *testing.T) {
 				t.Errorf("body = %q, want nothing written", body)
 			}
 		})
-	}
-}
-
-// A project with no Assignee column records no ownership, so — as Holds has it
-// — whose a Done slice is goes unasked. A local plan always has the column, so
-// this is asked of the helper directly.
-func TestCanHandInVisualsWithNoAssigneeColumn(t *testing.T) {
-	done := domain.Slice{Status: domain.SliceDone, PRURL: "https://github.com/o/r/pull/9", AssigneeIDs: []string{"them"}}
-	if !canHandInVisuals(done, store.Shape{}, "me") {
-		t.Error("a Done slice with a PR, no Assignee column: want it accepted")
-	}
-	if canHandInVisuals(done, store.Shape{HasAssignee: true}, "me") {
-		t.Error("a Done slice with a PR, somebody else's: want it refused")
-	}
-	done.PRURL = ""
-	if canHandInVisuals(done, store.Shape{}, "me") {
-		t.Error("a Done slice with no PR, no Assignee column: want it refused")
 	}
 }
 

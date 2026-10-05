@@ -93,9 +93,12 @@ type sliceShowJSON struct {
 	HandedBack bool     `json:"handed_back"`
 	// Resumed says the slice is work resumed on a published slice — see
 	// [domain.Slice.Resumed].
-	Resumed bool   `json:"resumed"`
-	State   string `json:"state,omitempty"`
-	Brief   string `json:"brief"`
+	Resumed bool `json:"resumed"`
+	// TakenBack says the slice was handed back and taken back to work — see
+	// [takenBack].
+	TakenBack bool   `json:"taken_back"`
+	State     string `json:"state,omitempty"`
+	Brief     string `json:"brief"`
 	// FollowUps are the follow-ups the slice's agent handed in that still
 	// await the user's decision, each by the index slice-triage takes.
 	FollowUps []followUpJSON `json:"followUps,omitempty"`
@@ -268,6 +271,7 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 		Blocked:    domain.Blocked(s, slicesByID),
 		HandedBack: s.HandedBack(),
 		Resumed:    s.Resumed(hasBranch),
+		TakenBack:  takenBack(s, hasBranch, func() bool { return holdsHandBack(brief) }),
 		Brief:      brief,
 		Events:     taskEventsJSON(s, brief),
 		Container:  container,

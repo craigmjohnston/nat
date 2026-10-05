@@ -38,7 +38,7 @@ type fakePRReader struct {
 	logs   map[string]string
 	logErr error
 	logged []string
-	// comments answers ReviewComments, the review a fix launch gathers.
+	// comments answers ReviewComments, the review a launch on a pull request gathers.
 	comments string
 }
 

@@ -101,7 +101,7 @@ struct SliceNavigatorView: View {
                     if nav.showsChangesSend { sendCommentsAction }
                 } content: {
                     VStack(spacing: 0) {
-                        if nav.resumed { NavNotice(text: NavigatorModel.resumedNotice, role: .warning) }
+                        if nav.worksAgain { NavNotice(text: NavigatorModel.resumedNotice, role: .warning) }
                         ChangesSectionBody(
                             appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions
                         ) {
@@ -123,7 +123,7 @@ struct SliceNavigatorView: View {
                     visualActions(nav)
                 } content: {
                     VStack(spacing: 0) {
-                        if nav.resumed { NavNotice(text: NavigatorModel.resumedNotice, role: .warning) }
+                        if nav.worksAgain { NavNotice(text: NavigatorModel.resumedNotice, role: .warning) }
                         VisualsSectionBody(appModel: appModel, review: visualReview, slice: slice, visuals: visuals) {
                             main = .visuals
                         }
@@ -709,7 +709,7 @@ struct SliceNavigatorView: View {
         VStack(spacing: 0) {
             // Drawn from the project's reading too, so it shows before the
             // pull request itself has been read.
-            if nav.resumed { NavNotice(text: NavigatorModel.resumedNotice, role: .warning) }
+            if nav.worksAgain { NavNotice(text: NavigatorModel.resumedNotice, role: .warning) }
             if let conflictNotice {
                 NavNotice(text: conflictNotice.text, role: .danger)
             }

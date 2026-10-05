@@ -61,7 +61,7 @@ func (f *fakeWorktrees) Branches(dir string) ([]string, error) { return nil, nil
 func (f *fakeWorktrees) Reset(path, ref string) error { return nil }
 
 // fakeRepo stands in for git: what the fetch was asked of, what origin's HEAD
-// is read as afterwards, and the log/diff-stat gather a resume or fix launch
+// is read as afterwards, and the log/diff-stat gather a resume launch
 // makes once the worktree is placed. The real one never fails a fetch or a
 // Base read, so there is nothing here for a test to make go wrong on those
 // two.

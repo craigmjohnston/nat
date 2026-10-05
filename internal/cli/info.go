@@ -65,7 +65,11 @@ func info(ctx context.Context, args []string, env Env) error {
 		if ss, ok := st.(sourceStore); ok {
 			src = sourceInfo(ctx, ss, project, p, expand)
 		}
-		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject, src, plan.Shape.HasBranch)
+		taken := map[string]bool{}
+		for _, s := range p.Slices {
+			taken[s.ID] = takenBack(s, plan.Shape.HasBranch, func() bool { return handedBackBefore(ctx, st, s.ID) })
+		}
+		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject, src, plan.Shape.HasBranch, taken)
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
@@ -154,8 +158,12 @@ type sliceJSON struct {
 	// Resumed says the slice is work resumed on a published slice — see
 	// [domain.Slice.Resumed]: in progress, a pull request recorded, its
 	// branch cleared, on a project with a Branch column.
-	Resumed bool   `json:"resumed"`
-	State   string `json:"state,omitempty"`
+	Resumed bool `json:"resumed"`
+	// TakenBack says the slice was handed back and taken back to work —
+	// resumed or sent back, with or without a pull request: see [takenBack].
+	// Only info sets it; container-show leaves it false.
+	TakenBack bool   `json:"taken_back"`
+	State     string `json:"state,omitempty"`
 }
 
 // writeInfoJSON encodes the project as JSON, indented: it is read by people as
@@ -163,7 +171,9 @@ type sliceJSON struct {
 // scratch says p is the scratch project, whose unfiledMilestone is marked.
 // hasBranch is whether the project has a Branch column, which is what tells
 // resumed work from a pull request recorded on a project that has none.
-func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool, src *sourceInfoJSON, hasBranch bool) error {
+// taken names the slices taken back to work after a hand-back — see
+// [takenBack].
+func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool, src *sourceInfoJSON, hasBranch bool, taken map[string]bool) error {
 	doc := infoJSON{
 		Project:    projectJSON{ID: p.ID, Name: p.Name, Conventions: conventions},
 		Milestones: make([]milestoneJSON, 0, len(p.Milestones)),
@@ -179,7 +189,9 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch 
 
 	slicesByID := domain.SlicesByID(p.Slices)
 	for _, s := range p.Slices {
-		doc.Slices = append(doc.Slices, sliceJSONOf(s, slicesByID, hasBranch))
+		sj := sliceJSONOf(s, slicesByID, hasBranch)
+		sj.TakenBack = taken[s.ID]
+		doc.Slices = append(doc.Slices, sj)
 	}
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")

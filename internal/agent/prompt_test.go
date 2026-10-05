@@ -623,7 +623,7 @@ func TestPromptDoesNotTellAResumingAgentGitStatusIsFresh(t *testing.T) {
 	}
 }
 
-// A resume or fix launch whose git gather succeeded carries the commit log
+// A resume launch whose git gather succeeded carries the commit log
 // and diff stat inline, framed so the agent knows not to re-run either.
 func TestPromptCarriesTheGatheredGitSnapshot(t *testing.T) {
 	c := resumeContext()

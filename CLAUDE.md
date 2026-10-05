@@ -116,7 +116,10 @@ the board's `l` on an In progress slice with a PR, note
 and `slice-show --json` per slice) is In progress, PR recorded, `Branch`
 empty, on a project whose shape has a `Branch` column — a project with
 none holds a PR and no branch legitimately. `StateOf` reads it as work in
-progress, gnat's stage as `.working`. `slice-diff`/`slice-file` read a
+progress, gnat's stage as `.working`. **`taken_back`** (both commands) is
+wider — In progress, `Branch` empty on a project with the column, a
+`Handed back` on the task log, PR or not — and is what keeps gnat's Changes
+and Visual changes on a slice sent back from review; it drives no stage. `slice-diff`/`slice-file` read a
 resumed (or sent-back) slice on `actions.AgentBranch` where its log holds a
 hand-back. A launch of a slice with a PR carries `agent.pullRequestPassage`:
 the PR is open, a push updates it, the review snapshot, and exactly one
@@ -223,8 +226,7 @@ included) from the section before's item of that name, or with none.
 `slice-show`'s `visuals` reads them (`store.VisualChanges`); gnat's Visual
 changes section shows them, and its comments go back by `agent-send`, then
 `slice-rework` only where the slice is handed back. Nothing blocks hand-back
-on them. A slice you hold may hand them in, and so may a Done one with a PR
-recorded, assigned to you — a session that outlived its merge.
+on them. Only a slice you hold may hand them in.
 
 **Approving** (`a` on the diff screen, or `nat slice-approve`) opens the PR
 and records only its URL — status stays In progress. **Done means the work

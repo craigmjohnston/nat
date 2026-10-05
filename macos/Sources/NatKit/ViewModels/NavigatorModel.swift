@@ -120,8 +120,9 @@ public enum MainPaneTab: CaseIterable, Equatable, Sendable {
 /// fact nat does: Changes reads a branch, and only a recorded one can be read
 /// (`nat slice-diff` refuses a slice with none), so it is live once a branch
 /// is recorded rather than the moment an agent is launched — or while the
-/// slice is resumed, whose cleared Branch nat still reads by its agent
-/// branch, so the work handed back stays on screen while it is redone.
+/// slice is taken back (resumed, or a review sent back with no PR), whose
+/// cleared Branch nat still reads by its agent branch, so the work handed
+/// back stays on screen while it is redone.
 public struct NavigatorModel: Equatable, Sendable {
     /// What every section a resumed slice keeps — Changes, Visual changes,
     /// PR — says, in its navigator foldout and its main pane alike.
@@ -134,6 +135,10 @@ public struct NavigatorModel: Equatable, Sendable {
     /// sections kept but each carrying `resumedNotice`, and neither Approve
     /// nor Merge offered until the next hand-back.
     public let resumed: Bool
+    /// Taken back after a hand-back (`Slice.takenBack`): resumed, or a
+    /// review sent back with no PR. Keeps Changes and Visual changes, each
+    /// with `resumedNotice`; moves no stage and gates nothing at the PR.
+    public let takenBack: Bool
     /// Whether Send back to agent can go: with a live agent, always (the
     /// note is recorded, then sent to it); with none, only where a launch
     /// can follow the record.
@@ -150,7 +155,8 @@ public struct NavigatorModel: Equatable, Sendable {
         self.state = displayState(for: slice, agent: agent)
         self.hasPR = !slice.pr.isEmpty
         self.resumed = slice.resumed
-        self.hasBranch = slice.handedBack || !(slice.branch ?? "").isEmpty || slice.resumed
+        self.takenBack = slice.takenBack
+        self.hasBranch = slice.handedBack || !(slice.branch ?? "").isEmpty || slice.resumed || slice.takenBack
         self.hasLiveAgent = agent != nil
         self.canLaunch = LaunchPlan(for: slice, hasLiveAgent: agent != nil).canLaunch
         self.canSendBack = agent != nil || LaunchPlan(for: slice, hasLiveAgent: false).canLaunch
@@ -251,7 +257,12 @@ public struct NavigatorModel: Equatable, Sendable {
     /// (Approve's companion), and on a resumed slice while its agent is live
     /// to be told — sent with no hand-back line, its agent bound to hand back
     /// of its own accord.
-    public var showsChangesSend: Bool { showsReviewActions || (resumed && hasLiveAgent) }
+    public var showsChangesSend: Bool { showsReviewActions || (worksAgain && hasLiveAgent) }
+
+    /// Whether the agent is at the handed-back work again — resumed, or
+    /// taken back with no PR: what puts `resumedNotice` on Changes, Visual
+    /// changes and PR (where there is one), and on their main panes.
+    public var worksAgain: Bool { resumed || takenBack }
 
     /// Whether Visual changes carries Send: comments go to the agent, so
     /// only while there is one to receive them.

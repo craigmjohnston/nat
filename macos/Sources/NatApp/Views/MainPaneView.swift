@@ -253,7 +253,7 @@ struct SliceMainPane: View {
         VStack(spacing: 0) {
             // A resumed slice's diff, images and pull request are of work the
             // agent is redoing: said once, across the top of each.
-            if nav.resumed && (mode == .diff || mode == .visuals || mode == .pr) {
+            if nav.worksAgain && (mode == .diff || mode == .visuals || mode == .pr) {
                 MainPaneNotice(text: NavigatorModel.resumedNotice)
             }
             switch mode {

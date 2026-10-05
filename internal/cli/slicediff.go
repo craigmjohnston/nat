@@ -234,10 +234,26 @@ func handedBackBefore(ctx context.Context, st store.Store, id string) bool {
 		logging.Action("could not read a slice's task log for an earlier hand-back", "slice", id, "err", err)
 		return false
 	}
+	return holdsHandBack(body)
+}
+
+// holdsHandBack reports whether a task log, read off body, holds a Handed
+// back.
+func holdsHandBack(body string) bool {
 	for _, e := range store.TaskEvents(body) {
 		if e.Kind == store.HandedBackKind {
 			return true
 		}
 	}
 	return false
+}
+
+// takenBack reports whether s is a slice handed back and then taken back to
+// work — resumed, or sent back: in progress, its Branch cleared on a project
+// that has the column, and a Handed back on its task log. handedBack answers
+// that last question, and is asked only once the rest hold, since it may cost
+// a body read. It is what keeps gnat's Changes section, read on
+// [actions.AgentBranch], on such a slice with or without a pull request.
+func takenBack(s domain.Slice, hasBranch bool, handedBack func() bool) bool {
+	return hasBranch && s.Status == domain.SliceClaimed && s.Branch == "" && handedBack()
 }

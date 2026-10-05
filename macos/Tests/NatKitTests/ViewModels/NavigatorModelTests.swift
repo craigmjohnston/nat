@@ -4,11 +4,11 @@ import XCTest
 final class NavigatorModelTests: XCTestCase {
     private func slice(
         status: String = "Todo", branch: String? = nil, handedBack: Bool = false, pr: String = "",
-        blocked: Bool = false, resumed: Bool = false
+        blocked: Bool = false, resumed: Bool = false, takenBack: Bool = false
     ) -> Slice {
         Slice(
             id: "s", name: "Slice", status: status, milestoneID: "M1", assignee: "", pr: pr, url: "",
-            branch: branch, blocked: blocked, handedBack: handedBack, resumed: resumed)
+            branch: branch, blocked: blocked, handedBack: handedBack, resumed: resumed, takenBack: takenBack)
     }
 
     private let prURL = "https://github.com/o/r/pull/40"
@@ -237,6 +237,31 @@ final class NavigatorModelTests: XCTestCase {
         XCTAssertEqual(
             NavigatorModel.resumedNotice,
             "The agent is working on this again — what is here may change or be out of date.")
+    }
+
+    /// A review sent back with no PR — taken back, not resumed — keeps its
+    /// Changes (nat reads the agent branch) with the resumed notice, and is
+    /// working: no PR section, no stage of its own, no PR gate moved.
+    func testAReviewTakenBackWithNoPRKeepsChangesWithTheNotice() {
+        let taken = slice(status: "In progress", branch: nil, pr: "", takenBack: true)
+        XCTAssertEqual(stage(for: taken, agent: nil), .working)
+        let model = NavigatorModel(slice: taken, agent: .working, hasVisuals: true)
+        XCTAssertEqual(model.state, .working)
+        XCTAssertTrue(model.isLive(.changes))
+        XCTAssertTrue(model.isLive(.visuals))
+        XCTAssertFalse(model.isLive(.pr), "no pull request to show")
+        XCTAssertTrue(model.worksAgain, "so Changes and Visual changes carry the resumed notice")
+        XCTAssertFalse(model.resumed)
+        XCTAssertFalse(model.showsMerge)
+        XCTAssertTrue(model.showsChangesSend, "its live agent can be told")
+        XCTAssertEqual(model.phase, .thread)
+        XCTAssertFalse(NavigatorModel(slice: slice(status: "In progress"), agent: nil).worksAgain)
+    }
+
+    func testTakenBackDecodesAndDefaultsFalse() throws {
+        let base = #""id":"s","name":"n","status":"In progress","milestone_id":"m","assignee":"","pr":"","url":"","blocked":false,"handed_back":false"#
+        XCTAssertTrue(try JSONDecoder().decode(Slice.self, from: Data("{\(base),\"taken_back\":true}".utf8)).takenBack)
+        XCTAssertFalse(try JSONDecoder().decode(Slice.self, from: Data("{\(base)}".utf8)).takenBack)
     }
 
     /// Comments on the diff go to a resumed slice's live agent — no review to
