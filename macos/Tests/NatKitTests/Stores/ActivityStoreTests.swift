@@ -292,6 +292,25 @@ final class ActivityStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testRereadReadsAtOnce() async throws {
+        // A live loop asleep for its interval is read again at once — an
+        // agent that has just marked itself waiting shows without waiting
+        // out the poll — and a stopped one is started.
+        let status = AgentStatus(sliceID: "slice-1", session: "nat-abc123", activity: .waiting)
+        let client = MockActivityClient(response: .agents([status]))
+        let store = ActivityStore(client: client)
+        defer { store.stop() }
+
+        store.reread()
+        try await waitUntil(timeout: 1) { client.callCount == 1 }
+        store.reread()
+        try await waitUntil(timeout: 1) { client.callCount == 2 }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(client.callCount, 2, "one loop, not two")
+        XCTAssertEqual(store.agents["slice-1"]?.activity, .waiting)
+    }
+
+    @MainActor
     func testFailedReadingKeepsPreviousState() async throws {
         // A failure on a store that has already loaded agents must keep
         // what it last saw rather than clearing it.

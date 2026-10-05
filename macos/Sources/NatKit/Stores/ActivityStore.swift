@@ -49,6 +49,15 @@ public final class ActivityStore {
         startPolling()
     }
 
+    /// Read now rather than at the next tick. A nudge is as often an agent
+    /// marking its own pane (`nat agent-waiting`/`agent-working`) as a plan
+    /// write, and the needs-attention state should follow at once: a live loop
+    /// is restarted, its reading taken now, and a stopped one is started.
+    public func reread() {
+        stop()
+        startPolling()
+    }
+
     /// Stop the poll loop and clean up.
     public func stop() {
         pollTask?.cancel()
@@ -64,6 +73,9 @@ public final class ActivityStore {
             while !Task.isCancelled {
                 do {
                     let statuses = try await client.status()
+                    // A loop cancelled mid-read (reread() replaced it) leaves
+                    // the store to the one that replaced it.
+                    if Task.isCancelled { break }
 
                     // Update the map keyed by slice ID
                     var newAgents: [String: AgentStatus] = [:]
@@ -91,6 +103,7 @@ public final class ActivityStore {
                 } catch is CancellationError {
                     break
                 } catch {
+                    if Task.isCancelled { break }
                     // Failed reading: keep previous state and log error
                     NSLog("ActivityStore: failed to read agent status: %@", error.localizedDescription)
 

@@ -190,6 +190,15 @@ success, not failure), `agent-send` (paste-buffer delivery, `--text` or
 stdin — same mechanism `internal/agent.SendPrompt` uses for review
 comments).
 
+`agent-waiting` / `agent-working` (`agentwaiting.go`): the calling agent
+marks its **own** pane — `$TMUX_PANE`, never an argument — waiting on the
+user or back at work (`Tmux.SetWaiting`), which is all `status` reads
+`waiting` from. Not project-scoped (no `--project`, refused as an unknown
+flag) and writes nothing to the plan. Idempotent; refused before any tmux
+write with `$TMUX_PANE` unset or a pane with no nat tag. Nudges on success,
+which gnat (`ActivityStore.reread`) and the board (`nudged`'s activity read)
+answer with an immediate activity reading.
+
 `slice-followups` (held slices only; `--follow-up` repeatable, first line
 title, rest brief; refuses none, an empty title/brief, a brief with no line
 beginning `Done when:` — a queued one is the new slice's brief verbatim — or a

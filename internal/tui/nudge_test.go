@@ -5,6 +5,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/craigmjohnston/nat/internal/agent"
 )
 
 // stubNudgeStat pins the marker's reading for a test, putting the quiet
@@ -87,6 +89,25 @@ func TestAMovedMarkerReloadsThePlan(t *testing.T) {
 	first[projectLoadedMsg](t, run(cmd))
 	if !app.nudgeSeen.Equal(moved) {
 		t.Errorf("nudgeSeen = %v, want the moved mtime %v", app.nudgeSeen, moved)
+	}
+}
+
+// A moved marker reads the agents again as well as the plan: an agent that has
+// just marked itself waiting nudges, and its star turns at once.
+func TestAMovedMarkerRereadsTheAgents(t *testing.T) {
+	app, launcher, _ := launchApp(t)
+	id, session := sliceAt(t, app, rowTodoSlice)
+	launcher.live = map[string]string{id: session}
+	drive(t, app, app.refreshLive())
+	launcher.activity = map[string]agent.Activity{id: agent.ActivityWaiting}
+	base := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
+	app.Update(nudgeMsg{mtime: base, ok: true})
+
+	_, cmd := app.Update(nudgeMsg{mtime: base.Add(time.Second), ok: true})
+
+	got := first[agentActivityMsg](t, run(cmd))
+	if got.activity[id] != PresenceWaiting {
+		t.Errorf("reading = %v, want %s waiting", got.activity, id)
 	}
 }
 

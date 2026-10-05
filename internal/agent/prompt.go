@@ -396,6 +396,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString(notesPassage(c))
 	b.WriteString(namingPassage)
 	b.WriteString(tmuxPassage)
+	b.WriteString(waitingPassage(true))
 
 	b.WriteString("\n## Finish\n\n")
 	b.WriteString(followUpsPassage(c))
@@ -576,6 +577,7 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 
 	b.WriteString(namingPassage)
 	b.WriteString(tmuxPassage)
+	b.WriteString(waitingPassage(true))
 
 	b.WriteString("\n## Guardrails\n\n")
 	b.WriteString("- Plan only. Never claim, start, or complete a slice — launching work is\n")
@@ -782,6 +784,30 @@ const tmuxPassage = "\n## tmux\n\n" +
 	"it a private socket — `tmux -L <name>` on every one of its commands — and\n" +
 	"kill only that socket's server when you are done. Setting `TMUX_TMPDIR`\n" +
 	"does not isolate you: `$TMUX` wins while it is set.\n"
+
+// waitingPassage tells every agent nat launches to say when it has stopped on
+// the user, since nothing else does: [Tmux.Activity] reads a live agent as
+// working until it runs `nat agent-waiting`, and as working again once it runs
+// `nat agent-working`. The two act on the caller's own pane and take no
+// --project, which a pinned prompt's passage says outright, since every such
+// prompt also says an unpinned command is refused; the new-project prompt,
+// which has no project and never names the flag, is given it without that. A
+// test walks every prompt for it; the skills do not carry it, since an agent
+// run by hand is not in a pane nat launched.
+func waitingPassage(pinned bool) string {
+	s := "\n## Waiting on the user\n\n" +
+		"Before you end a turn on a question, a decision or anything else only the\n" +
+		"user can supply, run `nat agent-waiting`: without it the user sees an\n" +
+		"agent still at work and will not look. On the next turn, once the user has\n" +
+		"answered, run `nat agent-working` before doing anything else. They are not\n" +
+		"for hand-back, follow-ups or a blocked note: those have their own commands\n" +
+		"and their own place in the app.\n"
+	if pinned {
+		s += "\nBoth act on this session's own tmux pane and take no `--project`: they\n" +
+			"are the one exception to pinning it.\n"
+	}
+	return s
+}
 
 // followUpBriefPassage says how a follow-up is written: as the brief of the
 // slice it becomes if queued, since slice-triage files it as one verbatim.
