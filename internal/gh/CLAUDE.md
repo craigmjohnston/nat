@@ -53,6 +53,13 @@ human has read the diff.
   `Mergeable`, `MergeStateStatus`) rather than translated, except a check —
   `CheckRun` vs `StatusContext` differ only in field names, not meaning, so
   both decode into one shape: a name, a state/conclusion, a link.
+  `checksOf` names and orders every check, for every face: a run reads
+  `<workflowName> / <job>` (`jobName`, the last ` / ` segment — `Pull
+  request / Gate`), and only runs that still clash take their full path
+  under the workflow; a StatusContext or a run with no workflow stays bare.
+  Never the triggering event — gh's rollup doesn't carry `(pull_request)`.
+  The list is sorted by that final name, case-insensitively and stably,
+  which is GitHub's own checks-list order (gh returns creation order).
 - `MergePR(dir, ref)` — `gh pr merge <ref> --merge`. The strategy flag is
   mandatory: a `Runner` subprocess has nothing on stdin, so without it gh
   prompts for a strategy and the merge hangs.

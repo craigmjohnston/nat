@@ -18,7 +18,7 @@ extension Fixtures {
         PRStatusSlice(
             sliceID: approveSliceID, name: "Approve opens the pull request", pr: prURL,
             readiness: PRStatusSlice.checksFailing,
-            checks: PRStatusChecks(verdict: "failing", failing: [PRStatusCheck(name: "test", url: failingRunURL)]),
+            checks: PRStatusChecks(verdict: "failing", failing: [PRStatusCheck(name: "CI / test", url: failingRunURL)]),
             conflicting: true, base: "main"),
     ])
 
@@ -62,7 +62,7 @@ extension Fixtures {
             sliceID: secondRedSliceID, name: "Cache series artwork on disk",
             pr: "https://github.com/craigmjohnston/gnat/pull/41", readiness: PRStatusSlice.checksFailing,
             checks: PRStatusChecks(verdict: "failing", failing: [
-                PRStatusCheck(name: "build", url: "https://github.com/craigmjohnston/gnat/actions/runs/7/job/1"),
+                PRStatusCheck(name: "CI / build", url: "https://github.com/craigmjohnston/gnat/actions/runs/7/job/1"),
             ]),
             base: "main"),
         PRStatusSlice(

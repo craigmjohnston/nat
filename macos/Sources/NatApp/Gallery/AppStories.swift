@@ -845,7 +845,7 @@ enum AppStories {
             summary: "Every Actions job still queued: the heading's re-run disabled (nothing has run), its cancel enabled; the hovered test row's re-run disabled and cancel enabled.",
             size: checksSize
         ) {
-            await checksSection(Fixtures.queuedChecks, hovered: "test")
+            await checksSection(Fixtures.queuedChecks, hovered: "CI / test")
         },
 
         Story(
