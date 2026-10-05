@@ -36,6 +36,8 @@ struct WindowShellView: View {
     /// Which crumb's tree picker is open: the project's, the milestone's or
     /// the selection's own.
     @State private var crumbPicker: CrumbPickerOrigin?
+    /// Whether the titlebar's slice run menu is open.
+    @State private var runMenuOpen = false
 
     /// The gallery's seam: a story seeds the sidebar folds it is a story
     /// about.
@@ -144,16 +146,37 @@ struct WindowShellView: View {
     /// The band over the navigator and the main pane: where the selection
     /// sits (`TitlebarBreadcrumb`) — its last crumb named as its Active row
     /// names it, state dot and title — each crumb opening the tree picker on
-    /// itself, then the main pane's tabs.
+    /// itself, then the main pane's tabs, then a handed-back slice's runs.
     private var titlebar: some View {
         TitlebarBand(
             navigatorWidth: liveNavigatorWidth ?? navigatorWidth, tabs: titlebarTabs, selected: selectedTabID,
-            onTab: showTitlebarTab
+            onTab: showTitlebarTab, trailing: sliceRunButton
         ) {
             TitlebarBreadcrumb(crumbs: crumbs, identity: titlebarIdentity, openPicker: $crumbPicker) { origin in
                 crumbTreePicker(openingOn: origin)
             }
         }
+    }
+
+    /// The project's slice-scoped runs, at the band's trailing edge, once the
+    /// selected slice has handed back — greyed once it is merged, its
+    /// worktree being gone; spinning while its run starts and for as long as
+    /// the run's session lives.
+    private var sliceRunButton: AnyView? {
+        guard !workshopShown, selectedSession == nil, let slice = selectedSlice, slice.handedBack else { return nil }
+        let projectID = appModel.projectStore?.projectID ?? ""
+        let runs = appModel.sliceRuns(ofProject: projectID)
+        guard !runs.isEmpty else { return nil }
+        return AnyView(
+            RunSplitButton(
+                runs: runs, isBusy: appModel.isRunBusy(projectID: projectID, sliceID: slice.id),
+                menuOpen: $runMenuOpen,
+                isRunning: { appModel.isRunning(projectID: projectID, sliceID: slice.id, label: $0) }
+            ) { label in
+                Task { await appModel.startRun(projectID: projectID, sliceID: slice.id, label: label) }
+            }
+            .frame(maxHeight: .infinity)
+            .disabled(stage(for: slice, agent: nil) == .done))
     }
 
     /// The agent the selection has, for the status bar's readout: a slice's,
@@ -190,7 +213,7 @@ struct WindowShellView: View {
         return nil
     }
 
-    /// The main pane's tabs, at the band's trailing edge — one per view the
+    /// The main pane's tabs, filling from the band's trailing edge — one per view the
     /// navigator's sections can put up, for a slice or a session; none
     /// otherwise.
     private var tabs: [MainPaneTab] {

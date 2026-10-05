@@ -5,14 +5,12 @@ final class SettingsModelTests: XCTestCase {
     private func fields(
         poll: String = "",
         workshopModel: String = "", workshopEffort: String = "",
-        sliceModel: String = "", sliceEffort: String = "",
-        projects: [String: String] = [:]
+        sliceModel: String = "", sliceEffort: String = ""
     ) -> SettingsFields {
         SettingsFields(
             pollSeconds: poll,
             workshopModel: workshopModel, workshopEffort: workshopEffort,
-            sliceModel: sliceModel, sliceEffort: sliceEffort,
-            projectWorkingDirs: projects
+            sliceModel: sliceModel, sliceEffort: sliceEffort
         )
     }
 
@@ -45,11 +43,10 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertEqual(fields.workshopEffort, "low")
         XCTAssertEqual(fields.sliceModel, "opus")
         XCTAssertEqual(fields.sliceEffort, "high")
-        XCTAssertEqual(fields.projectWorkingDirs["p1"], "/repo")
     }
 
     func testNoChangesProducesNoWrites() {
-        let original = fields(poll: "30", projects: ["p1": "/repo"])
+        let original = fields(poll: "30")
         let changes = SettingsModel.changes(from: original, to: original)
         XCTAssertTrue(changes.isEmpty)
     }
@@ -89,51 +86,8 @@ final class SettingsModelTests: XCTestCase {
         ]))
     }
 
-    func testProjectWorkingDirChangeUsesTheProjectKey() {
-        let original = fields(projects: ["p1": "/old"])
-        let edited = fields(projects: ["p1": "/new"])
-
-        let changes = SettingsModel.changes(from: original, to: edited)
-
-        XCTAssertEqual(changes, [ConfigChange(key: "project.p1.working_dir", value: "/new")])
-    }
-
-    func testMultipleProjectChangesAreSortedByID() {
-        let original = fields(projects: ["z-proj": "/old-z", "a-proj": "/old-a"])
-        let edited = fields(projects: ["z-proj": "/new-z", "a-proj": "/new-a"])
-
-        let changes = SettingsModel.changes(from: original, to: edited)
-
-        XCTAssertEqual(changes, [
-            ConfigChange(key: "project.a-proj.working_dir", value: "/new-a"),
-            ConfigChange(key: "project.z-proj.working_dir", value: "/new-z")
-        ])
-    }
-
-    func testUnchangedProjectProducesNoWrite() {
-        let original = fields(projects: ["p1": "/repo", "p2": "/repo2"])
-        let edited = fields(projects: ["p1": "/repo", "p2": "/changed"])
-
-        let changes = SettingsModel.changes(from: original, to: edited)
-
-        XCTAssertEqual(changes, [ConfigChange(key: "project.p2.working_dir", value: "/changed")])
-    }
-
     func testWorkingDirKeyFormat() {
         XCTAssertEqual(SettingsModel.workingDirKey(projectID: "abc-123"), "project.abc-123.working_dir")
-    }
-
-    func testApplyingMovesTheBaselineForwardOnlyForSucceededKeys() {
-        let original = fields(poll: "30", projects: ["p1": "/old", "p2": "/kept"])
-        let succeeded = [
-            ConfigChange(key: "project.p1.working_dir", value: "/new")
-        ]
-
-        let result = SettingsModel.applying(succeeded, to: original)
-
-        XCTAssertEqual(result.pollSeconds, "30")
-        XCTAssertEqual(result.projectWorkingDirs["p2"], "/kept")
-        XCTAssertEqual(result.projectWorkingDirs["p1"], "/new")
     }
 
     func testApplyingHandlesEveryScalarKey() {
@@ -156,20 +110,24 @@ final class SettingsModelTests: XCTestCase {
     }
 
     /// A key the form no longer writes — `agent_split_percent`, which stays
-    /// in nat's config for the TUI — is neither a scalar field nor a
-    /// project's working directory, and moves nothing.
+    /// in nat's config for the TUI — or a project's working directory (the
+    /// project settings sheet's) is no field here, and moves nothing.
     func testApplyingIgnoresAKeyTheFormDoesNotHold() {
-        let original = fields(poll: "30", projects: ["p1": "/repo"])
+        let original = fields(poll: "30")
 
         let result = SettingsModel.applying(
-            [ConfigChange(key: "agent_split_percent", value: "70")], to: original
+            [
+                ConfigChange(key: "agent_split_percent", value: "70"),
+                ConfigChange(key: "project.p1.working_dir", value: "/new")
+            ],
+            to: original
         )
 
         XCTAssertEqual(result, original)
     }
 
     func testApplyingWithNoChangesReturnsFieldsUnchanged() {
-        let original = fields(poll: "30", projects: ["p1": "/repo"])
+        let original = fields(poll: "30")
         let result = SettingsModel.applying([], to: original)
         XCTAssertEqual(result, original)
     }

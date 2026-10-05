@@ -487,6 +487,21 @@ extension Fixtures {
             })
     }
 
+    /// The plan with the working slice's branch recorded while its agent is
+    /// still at it — Changes live, nothing handed back to approve yet.
+    public static var branchedWorkingProjectInfo: ProjectInfo {
+        ProjectInfo(
+            project: projectInfo.project,
+            milestones: projectInfo.milestones,
+            slices: projectInfo.slices.map { s in
+                guard s.id == diffPaneSliceID else { return s }
+                return Slice(
+                    id: s.id, name: s.name, status: s.status, milestoneID: s.milestoneID, assignee: s.assignee,
+                    pr: s.pr, url: s.url, branch: diffBranch, repo: s.repo, dependsOn: s.dependsOn,
+                    blocked: s.blocked, handedBack: false, state: s.state)
+            })
+    }
+
     /// The second project's page ID, sorting after `projectID` so the
     /// fixture project stays the active tab.
     public static let secondProjectID = "f1x70000-0000-4000-8000-000000000002"

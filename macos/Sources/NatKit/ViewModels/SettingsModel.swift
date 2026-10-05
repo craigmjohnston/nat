@@ -24,26 +24,18 @@ public struct SettingsFields: Equatable, Sendable {
     public var sliceModel: String
     public var sliceEffort: String
 
-    /// Each tracked project's working directory, keyed by project ID —
-    /// there is one field per project rather than one for "the active
-    /// project", since a settings window has no notion of which project the
-    /// board happens to be showing.
-    public var projectWorkingDirs: [String: String]
-
     public init(
         pollSeconds: String,
         workshopModel: String,
         workshopEffort: String,
         sliceModel: String,
-        sliceEffort: String,
-        projectWorkingDirs: [String: String]
+        sliceEffort: String
     ) {
         self.pollSeconds = pollSeconds
         self.workshopModel = workshopModel
         self.workshopEffort = workshopEffort
         self.sliceModel = sliceModel
         self.sliceEffort = sliceEffort
-        self.projectWorkingDirs = projectWorkingDirs
     }
 
     /// Reads a loaded `ConfigDoc` into the form's own shape. An unset number
@@ -55,7 +47,6 @@ public struct SettingsFields: Equatable, Sendable {
         workshopEffort = config.workshopAgent.effort ?? ""
         sliceModel = config.sliceAgent.model ?? ""
         sliceEffort = config.sliceAgent.effort ?? ""
-        projectWorkingDirs = config.projects.mapValues { $0.workingDir }
     }
 }
 
@@ -71,15 +62,16 @@ public enum SettingsModel {
     private static let keySliceEffort = "slice_agent.effort"
 
     /// The key `config-set` reads a project's working directory from,
-    /// mirroring `internal/cli/configset.go`'s own `project.<id>.working_dir`.
+    /// mirroring `internal/cli/configset.go`'s own `project.<id>.working_dir`
+    /// — written from a project's own settings sheet (`ProjectSettingsModel`),
+    /// not from this window.
     public static func workingDirKey(projectID: String) -> String {
         "project.\(projectID).working_dir"
     }
 
     /// The `config-set` writes that would carry `edited` onto `original` —
     /// one per field that actually changed, nothing for a field left alone.
-    /// Order is fixed (the scalar fields, then projects sorted by ID) so a
-    /// save always writes in the same order twice.
+    /// Order is fixed so a save always writes in the same order twice.
     public static func changes(from original: SettingsFields, to edited: SettingsFields) -> [ConfigChange] {
         var changes: [ConfigChange] = []
 
@@ -93,12 +85,6 @@ public enum SettingsModel {
         addIfChanged(keyWorkshopEffort, original.workshopEffort, edited.workshopEffort)
         addIfChanged(keySliceModel, original.sliceModel, edited.sliceModel)
         addIfChanged(keySliceEffort, original.sliceEffort, edited.sliceEffort)
-
-        for projectID in edited.projectWorkingDirs.keys.sorted() {
-            let newValue = edited.projectWorkingDirs[projectID] ?? ""
-            let oldValue = original.projectWorkingDirs[projectID] ?? ""
-            addIfChanged(workingDirKey(projectID: projectID), oldValue, newValue)
-        }
 
         return changes
     }
@@ -116,25 +102,9 @@ public enum SettingsModel {
             case keyWorkshopEffort: result.workshopEffort = change.value
             case keySliceModel: result.sliceModel = change.value
             case keySliceEffort: result.sliceEffort = change.value
-            default:
-                if let projectID = projectID(fromWorkingDirKey: change.key) {
-                    result.projectWorkingDirs[projectID] = change.value
-                }
+            default: break
             }
         }
         return result
-    }
-
-    /// The project ID a `project.<id>.working_dir` key names, or nil for any
-    /// other key.
-    private static func projectID(fromWorkingDirKey key: String) -> String? {
-        let prefix = "project."
-        let suffix = ".working_dir"
-        guard key.hasPrefix(prefix), key.hasSuffix(suffix), key.count > prefix.count + suffix.count else {
-            return nil
-        }
-        let start = key.index(key.startIndex, offsetBy: prefix.count)
-        let end = key.index(key.endIndex, offsetBy: -suffix.count)
-        return String(key[start..<end])
     }
 }

@@ -66,8 +66,12 @@ struct TreeMilestoneLine: View {
     var isNew = false
     /// Whether a click folds it — what earns it the hover chevron and wash.
     var folds = false
+    /// The row's right-click menu, for the three-dot button that takes the
+    /// count's slot under the pointer — nil, no button.
+    var menu: (() -> AnyView)?
 
     var body: some View {
+        let showsMenu = menu != nil && (hovering || hoverForced)
         HStack(spacing: 7) {
             // A milestone's fold mark: one folder, outlined or open, always in
             // the muted ink — never the accent.
@@ -89,18 +93,34 @@ struct TreeMilestoneLine: View {
                 .lineLimit(1)
             if isNew { Chip("New", tone: .accent, size: .small) }
             Spacer(minLength: 0)
-            Text(count).monoXS().ink(isDone ? .quaternary : .tertiary)
+            // Under the pointer the three-dot takes the count's place — one
+            // slot, at least the button's width, holding both — so nothing
+            // on the row moves as it comes and goes.
+            ZStack(alignment: .trailing) {
+                Text(count).monoXS().ink(isDone ? .quaternary : .tertiary)
+                    .opacity(showsMenu ? 0 : 1)
+                    .accessibilityHidden(showsMenu)
+                if let menu {
+                    RowMenuButton(items: menu)
+                        .opacity(showsMenu ? 1 : 0)
+                        .allowsHitTesting(showsMenu)
+                        .accessibilityHidden(!showsMenu)
+                }
+            }
+            .frame(minWidth: menu == nil ? 0 : RowMenuSlot.tree, alignment: .trailing)
         }
         .padding(.leading, indent)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
         .gnatRow(hoverable: folds)
-        .onHover { if folds { hovering = $0 } }
+        .onHover { if folds || menu != nil { hovering = $0 } }
     }
 }
 
 /// A slice line of a plan tree, as the sidebar draws it: its dot and title.
 struct TreeSliceLine: View {
+    @Environment(\.hoverForced) private var hoverForced
+    @State private var hovering = false
     let title: String
     let state: SliceDisplayState
     var live = false
@@ -108,8 +128,12 @@ struct TreeSliceLine: View {
     var indent: CGFloat = 34
     /// Its pull request's marks, at the trailing edge.
     var marks: PRMarks = .none
+    /// The row's right-click menu, for the three-dot button at the trailing
+    /// edge under the pointer — nil, no button and no slot for one.
+    var menu: (() -> AnyView)?
 
     var body: some View {
+        let showsMenu = menu != nil && (hovering || hoverForced)
         // Done and blocked both recede to the faintest ink — blocked since it
         // is not available at all, done since it is finished — and done
         // fades further still under its strike, so finished work sits back
@@ -125,6 +149,14 @@ struct TreeSliceLine: View {
                 .lineLimit(1)
             Spacer(minLength: 0)
             PRMarksView(marks: marks)
+            // Its slot always kept, so the title does not re-truncate as
+            // the pointer comes and goes, and the marks keep their place.
+            if let menu {
+                RowMenuButton(items: menu)
+                    .opacity(showsMenu ? 1 : 0)
+                    .allowsHitTesting(showsMenu)
+                    .accessibilityHidden(!showsMenu)
+            }
         }
         .opacity(state == .done ? 0.7 : 1)
         .padding(.leading, indent)
@@ -132,5 +164,38 @@ struct TreeSliceLine: View {
         .frame(height: GnatMetrics.sidebarRowHeight)
         .gnatRow(selected: selected)
         .contentShape(Rectangle())
+        .onHover { if menu != nil { hovering = $0 } }
     }
+}
+
+/// A row's three-dot button: the very menu a right-click on the row opens,
+/// and nothing of its own — the source heads' ellipsis, as an icon button.
+/// Shown or hidden by its row (hidden is `opacity(0)`, its slot kept).
+struct RowMenuButton<Items: View>: View {
+    /// Its slot: the sidebar's trailing control width, every row's alike,
+    /// so the buttons down the tree share one centre.
+    var size: CGFloat = RowMenuSlot.tree
+    var glyph: CGFloat = 11
+    @ViewBuilder let items: () -> Items
+
+    var body: some View {
+        Menu {
+            items()
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: glyph, weight: .medium))
+                .ink(.tertiary)
+                .frame(width: size, height: size)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(GnatIconButtonStyle())
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("More")
+    }
+}
+
+enum RowMenuSlot {
+    static let tree: CGFloat = GnatMetrics.trailingControl
 }

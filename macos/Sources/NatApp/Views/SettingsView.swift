@@ -35,7 +35,7 @@ import NatKit
 /// The window's sections, in sidebar order, named so a story can open on one
 /// other than General.
 enum SettingsTab: Hashable, CaseIterable, Identifiable {
-    case general, agents, projects, sources, about
+    case general, agents, sources, about
 
     var id: Self { self }
 
@@ -43,7 +43,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         switch self {
         case .general: "General"
         case .agents: "Agents"
-        case .projects: "Projects"
         case .sources: "Sources"
         case .about: "About"
         }
@@ -53,7 +52,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape.fill"
         case .agents: "sparkles"
-        case .projects: "folder.fill"
         case .sources: "puzzlepiece.extension.fill"
         case .about: "info"
         }
@@ -66,7 +64,6 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         switch self {
         case .general: DesignTokens.tileNavy.gradient
         case .agents: DesignTokens.tileAmber.gradient
-        case .projects: DesignTokens.tileInkBlue.gradient
         case .sources: DesignTokens.tileAzure.gradient
         case .about: DesignTokens.tileIndigo.gradient
         }
@@ -124,13 +121,11 @@ struct SettingsView: View {
     @AppStorage(TypeSize.uiStorageKey) private var storedUISize = TypeSize.defaultUI
     @AppStorage(TypeSize.monoStorageKey) private var storedMonoSize = TypeSize.defaultMono
 
-    @State private var projectNames: [String: String] = [:]
     @State private var original: SettingsFields?
     @State private var edited = SettingsFields(
         pollSeconds: "",
         workshopModel: "", workshopEffort: "",
-        sliceModel: "", sliceEffort: "",
-        projectWorkingDirs: [:]
+        sliceModel: "", sliceEffort: ""
     )
     @State private var isLoading = true
     @State private var loadError: String?
@@ -198,7 +193,6 @@ struct SettingsView: View {
         switch selectedTab {
         case .general: generalTab
         case .agents: agentsTab
-        case .projects: projectsTab
         case .sources: sourcesTab
         case .about: aboutTab
         }
@@ -261,25 +255,6 @@ struct SettingsView: View {
                     model: $edited.workshopModel,
                     effort: $edited.workshopEffort
                 )
-            }
-        }
-        .settingsForm()
-    }
-
-    private var projectsTab: some View {
-        VStack(alignment: .leading, spacing: SettingsLayout.groupSpacing) {
-            configSection(
-                "Working directories",
-                footer: "Where a project's agents start, unless a task names its own repo. Applies at the next launch."
-            ) {
-                if sortedProjectIDs.isEmpty {
-                    Text("No projects are tracked on this Mac yet.")
-                        .ink(.secondary)
-                } else {
-                    ForEach(sortedProjectIDs, id: \.self) { projectID in
-                        workingDirRow(projectID: projectID)
-                    }
-                }
             }
         }
         .settingsForm()
@@ -633,58 +608,6 @@ struct SettingsView: View {
         }
     }
 
-    /// A path is as long as it is, so the field takes the whole value column
-    /// rather than a stub of it and says the rest in its tooltip — and beside
-    /// it the button every native path row has, since typing a path out is
-    /// not how anyone picks a directory.
-    private func workingDirRow(projectID: String) -> some View {
-        let path = workingDirBinding(projectID: projectID)
-        return settingRow(
-            title: projectNames[projectID] ?? projectID,
-            key: SettingsModel.workingDirKey(projectID: projectID)
-        ) {
-            HStack(spacing: 8) {
-                commitField(path)
-                    // All the width the value column has, whatever the path:
-                    // the tooltip says the rest.
-                    .frame(minWidth: 0, maxWidth: .infinity)
-                    .help(path.wrappedValue)
-                Button("Choose…") { chooseDirectory(into: path) }
-            }
-        }
-    }
-
-    /// The open panel as a settings window opens one: directories only,
-    /// started wherever the field already points when that is a directory
-    /// that exists, and writing what was chosen into the very binding the
-    /// field edits — so a choice commits exactly as a typed path does, and
-    /// one that changed nothing writes nothing, the diff having no change to
-    /// find. A cancelled panel writes nothing at all.
-    ///
-    /// `NSOpenPanel` rather than `fileImporter`: there is no presentation
-    /// state to hold per row, and the app is not sandboxed.
-    private func chooseDirectory(into path: Binding<String>) {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
-        if let start = existingDirectory(path.wrappedValue) {
-            panel.directoryURL = start
-        }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        path.wrappedValue = url.path
-        commit()
-    }
-
-    private func existingDirectory(_ path: String) -> URL? {
-        guard !path.isEmpty else { return nil }
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
-              isDirectory.boolValue else { return nil }
-        return URL(fileURLWithPath: path)
-    }
-
     // MARK: - Controls
 
     /// A text field that writes what it holds when the user is done with it:
@@ -780,17 +703,6 @@ struct SettingsView: View {
         )
     }
 
-    private func workingDirBinding(projectID: String) -> Binding<String> {
-        Binding(
-            get: { edited.projectWorkingDirs[projectID] ?? "" },
-            set: { edited.projectWorkingDirs[projectID] = $0 }
-        )
-    }
-
-    private var sortedProjectIDs: [String] {
-        projectNames.keys.sorted { (projectNames[$0] ?? $0) < (projectNames[$1] ?? $1) }
-    }
-
     // MARK: - Loading and saving
 
     private func load() async {
@@ -798,7 +710,6 @@ struct SettingsView: View {
         loadError = nil
         do {
             let doc = try await client.configShow()
-            projectNames = doc.projects.mapValues { $0.name }
             let fields = SettingsFields(from: doc)
             original = fields
             edited = fields

@@ -274,4 +274,15 @@ extension Fixtures {
             comments: prGreen.comments, reviewDecision: prGreen.reviewDecision, mergeable: prGreen.mergeable,
             mergeStateStatus: prGreen.mergeStateStatus)
     }
+
+    /// The approved slice's own pull request read merged on GitHub, before
+    /// the merge has been settled onto the slice: no Merge left to offer.
+    public static var prGreenMergedOnGitHub: PRDetail {
+        PRDetail(
+            number: prGreen.number, title: prGreen.title, body: prGreen.body, state: "MERGED",
+            isDraft: false, author: prGreen.author, baseRefName: prGreen.baseRefName,
+            headRefName: prGreen.headRefName, url: prGreen.url, checks: prGreen.checks, reviews: prGreen.reviews,
+            comments: prGreen.comments, reviewDecision: prGreen.reviewDecision, mergeable: prGreen.mergeable,
+            mergeStateStatus: prGreen.mergeStateStatus)
+    }
 }

@@ -80,10 +80,25 @@ the traffic lights over the sidebar; tile + name, each tile a fixed
 the accent; About apart under a rule) beside the section's groups (bold heading,
 `settingRow`s left-aligned under it), one fixed 760×560 window whose
 sections scroll — reads `nat config-show`, writes one `nat config-set <key>
-<value>` per changed key. About reads `Bundle.main` (`AppVersion`, `dev`
-where unset) and `nat --version` (`NatClient.natVersion`). Stories:
-`settings`, `settings-agents*`, `settings-projects`, `settings-sources*`,
-`settings-about`. `WorkflowStage`
+<value>` per changed key. Sections: General, Agents, Sources, About. About
+reads `Bundle.main` (`AppVersion`, `dev` where unset) and `nat --version`
+(`NatClient.natVersion`). Stories: `settings`, `settings-agents*`,
+`settings-sources*`, `settings-about`. **Per-project settings are not
+here**: the project menu's Project settings… (a project row's right-click
+or its hover-only three-dot) opens `ProjectSettingsView`, a sheet on the
+main window titled with the project's name — one grouped `Form`, no
+sidebar or tabs — holding the working directory (field + Choose…). Its
+logic is `ProjectSettingsModel` (NatKit, tested): the same one `config-set`
+per changed key (`SettingsModel.workingDirKey`), a refusal kept under its
+row with the baseline as read, `AppModel.reloadConfig` after any write so
+Reveal and launches use the new path at once. A further per-project row is
+a `ProjectSettingsFields` field and a row in the sheet. Stories:
+`project-settings`, `project-settings-refused`. Project, milestone and task
+rows in the sidebar tree each carry that hover-only three-dot
+(`RowMenuButton`), opening exactly the row's right-click menu — beside a
+project's `+`, in a milestone's count slot, in a kept slot at a task's
+trailing edge (stories `sidebar-project-hovered`,
+`sidebar-milestone-hovered`, `sidebar-slice-hover`). `WorkflowStage`
 (`stage(for:)`) is the one source of where a slice stands: the navigator's
 phase (`NavigatorModel`), the sidebar's dots (`displayState(for:)`) and
 `RailModel.isReviewSlice`/`isActiveSlice` all read it, and it mirrors
@@ -99,9 +114,9 @@ working one with none: relaunchable, not pulsing.
 
 **Fix launch and failing checks.** `LaunchPlan` admits an approved slice (In
 progress, PR recorded) with no live agent whatever its dependencies
-(`isFix`); `NavigatorModel.launchIsFix` (the `pr` state) makes the Thread's
-Launch say "Launch fix agent" (`LaunchCard.Mode.actionTitle`, "Relaunch" for
-a relaunch) and its launch item "Fix", through the ordinary
+(`isFix`); `NavigatorModel.launchIsFix` (the `pr` state) makes the action bar's
+Launch say "Launch fix agent" (`LaunchCard.Mode.actionTitle`, "Relaunch agent"
+for a relaunch, else "Launch agent") and its launch item "Fix", through the ordinary
 `nat slice-launch` and its one-shot optimistic advance to the terminal.
 `PRStatusStore` holds `pr-status`'s reading **per project, for every open
 project** (`PRReading`: readiness, failing checks, conflicts) — the active
@@ -124,7 +139,7 @@ project's own reading. In the navigator, `checksNotice` and `conflictNotice`
 (`NavSectionView`'s `warning`, both texts in its tooltip); the checks text
 says "sent to the agent to fix" when the latest recorded event is the
 nudge's Sent back (the fix launch itself is the Task log's launch item and
-the header's); the conflict's is also a `NavNotice` atop the PR body, drawn
+the action bar's); the conflict's is also a `NavNotice` atop the PR body, drawn
 before `pr-view` lands, offering the fix launch or naming the live agent.
 `projectAttention` counts a red pr/fixing slice once. Stories:
 `window-pr-fix-launch`, `window-fixing`, `sidebar-checks-failing`,
@@ -280,19 +295,32 @@ description and conversation (the PR section keeps checks and review) — and
 folds it again when that view is already up; the chevron only folds
 (`NavigatorFocus`). Folded bodies stay built, so unfolding reloads nothing.
 The main pane has no heading band: the titlebar band over it and the
-navigator (`TitlebarBand`) carries the breadcrumb and its tabs and nothing
-else. The live agent's model, effort and context — a slice's, a session's,
+navigator (`TitlebarBand`) carries the breadcrumb, its tabs and a
+handed-back slice's run button, and nothing else. The live agent's model, effort and context — a slice's, a session's,
 the planning agent's; none for a container — are the status bar's trailing
-item (`AgentModelHeading`, in the bar's own sans, a divider before the context clause, the long form as a tooltip). A view's
-actions live in the navigator section whose view they act on: the diff's
-commit switcher (`DiffCommitsMenu`) a row atop the Changes body, Open in
-GitHub in the PR head before Merge, a container's Open in <source> in its
-Story head before New task (both `HeaderLinkButton`, glyph-only where the head
-has no room); the workshop's launch shortcut is in the brief editor's
-placeholder. The PR's title heads the PR view's own body. The Thread ends, while the slice can be launched, on a
+item (`AgentModelHeading`, in the bar's own sans, a divider before the context clause, the long form as a tooltip). A
+slice's major actions — Launch agent / Relaunch agent / Launch fix agent,
+Approve changes (Approve with comments while comments are pending on the
+diff, opening the same confirmation), Merge PR — live only in the **action
+bar** pinned to the slice navigator's foot (`NavigatorActionBar`, a
+`NavigatorColumn` footer: header-band height, chrome, a top rule, no title,
+fold or body). `NavigatorModel.bar` decides it: each action only while
+relevant (absent, not greyed, otherwise; disabled where relevant but not
+pressable), the primary trailing; with none relevant, the latest live
+section's primary (Merge PR, else Approve changes, else Launch agent)
+greyed with a tooltip saying why; a Done slice just "Task completed". The
+Slice menu's Launch and Merge are nil exactly where the bar's button is absent
+or disabled. Section headers keep secondaries only: Send N comments in
+Changes and Visual changes, Open in GitHub in the PR head, a container's Open
+in <source> in its Story head before New task (both `HeaderLinkButton`,
+glyph-only where the head has no room); the Task head carries nothing. The
+session, workshop and container navigators have no bar — their actions stay
+in their headers. Other view actions live in the section whose view they act
+on: the diff's commit switcher (`DiffCommitsMenu`) a row atop the Changes
+body; the workshop's launch shortcut is in the brief editor's placeholder. The PR's title heads the PR view's own body. The Thread ends, while the slice can be launched, on a
 `LaunchCard` item — what Launch will do, model and effort as chips, the base;
 quietened, chips disabled, when blocked — with Launch itself only in the
-section header; its prose items cut short as the brief does (`Excerpt`). View ▸ Hide done items
+action bar; its prose items cut short as the brief does (`Excerpt`). View ▸ Hide done items
 (`showsDoneItems`) drops done slices, ended sessions and the Done folder from
 the sidebar. Every "merge" icon is `MergeIcon` — the Merge button's own `MergeGlyph`,
 never `arrow.triangle.merge` (the Task log's Merged item through
@@ -311,16 +339,26 @@ as its Active row names it (`TitlebarIdentityLabel` over
 `ActiveIdentityLabel`: dot, project tag, title, read through
 `AppModel.titlebarIdentity`; the tag dropped where a crumb before it names
 the project, `TitlebarIdentity.lastCrumb`) — free to run past the
-navigator's width and ellipsize at its tail, then the `MainPaneTab`s at the
+navigator's width. As room runs out the selection's name is kept longest
+(`BreadcrumbFit`, from widths the breadcrumb measures): it ellipsizes to
+80% of itself, then the project crumb turns into the project's tag, then the
+milestone (or container) ellipsizes to half of itself, and past that the
+breadcrumb gives way to the Active row's line alone — dot, tag, name
+(stories `titlebar-band-fit-*`). Then the `MainPaneTab`s at the
 right — Zed-style tabs, full height and square, one per section that would
-put its view up (`NavigatorModel.tabs`, `MainPaneTab.forSession`). The tabs
-live only in the main pane's part of the band (`TitlebarBandLayout`), cut at
-their leading edge rather than crossing the split; a tab is
+put its view up (`NavigatorModel.tabs`, `MainPaneTab.forSession`,
+`WorkshopTab.available`, which say which exist) — **filling from the right**
+(`TitlebarBandLayout.leftToRight`): the first rightmost, so a full slice
+reads PR, Visual changes, Changes, Terminal and Terminal never moves; then,
+rightmost of all, a handed-back slice's run button (`TitlebarBand.trailing`).
+Run button and tabs live only in the main pane's part of the band
+(`TitlebarBandLayout`, the run button taking its width first), cut at their
+leading edge rather than crossing the split; a tab is
 `NavigatorFocus.showing`, which opens and never folds. The project, milestone
 and container crumbs and the selection's own each open `CrumbTreePicker`
 (projects → milestones → slices, `CrumbTree`) on themselves; with nothing
 selected there is no breadcrumb. Stories: `titlebar-band-*`,
-`status-bar-agent-readout*`, `changes-section-commits`. The Thread is labelled "Task" whatever the
+`status-bar-agent-readout*`, `changes-section-commits`, `action-bar-*`. The Thread is labelled "Task" whatever the
 slice's state, and draws `slice-show`'s `events`
 in order — hand-backs, send-backs (`slice-rework --comments`), releases,
 relaunches, notes (`nat slice-note`, headed "Another agent left a note";
@@ -413,13 +451,15 @@ config entry alone (`ProjectConfig.runs`, `RunCommand`) — no settings screen.
 The titlebar's play button (`TitlebarRunButton`, beside Settings) opens
 `RunTreePicker`, `CrumbTreePicker`'s shape — every project with runs
 (`AppModel.runProjects`), then the open one's runs; a handed-back slice's
-Task section header carries `RunSplitButton`, greyed once the stage is done.
+`RunSplitButton` is the titlebar band's trailing item (`WindowShellView.sliceRunButton`),
+greyed once the stage is done.
 Both call `AppModel.startRun` → `nat run`; nothing in Swift picks a directory
 or default. No tab or pane opens on a run: its session is held in
 `AppModel.runs` until tmux says it is gone (`watchRun`,
 `TmuxSession.exists`), and the button spins meanwhile
 (`AppModel.isRunBusy`; the titlebar's `anyRunBusy`). Stories: `titlebar-run`,
-`titlebar-run-menu`, `window-run-heading`, `window-run-heading-merged`.
+`titlebar-run-menu`, `window-run-heading`, `window-run-heading-merged`,
+`titlebar-band-run`, `titlebar-band-run-narrow`.
 
 **Task sources.** There is no new-project entry for one: **connecting a
 plugin makes its section.** `AppModel.ensureSourceProjects` makes exactly one

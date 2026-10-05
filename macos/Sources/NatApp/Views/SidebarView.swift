@@ -9,10 +9,11 @@ import NatKit
 ///
 /// Everything the old project tabs and rail did that the design does not
 /// draw lives on here as the row it belongs to: a project's menu (its `+`'s
-/// items, then Open in Notion, Reveal, Close), a milestone's (New
-/// Slice, Rename, Move, Delete), a slice's (Launch, Edit, Open, Move, Delete),
-/// each project's own `+` (Workshop…, New Milestone, New Slice, New Ad Hoc
-/// Session), the titlebar's `+` (a new project, then any of those in a
+/// items, then Open in Notion, Reveal, Project settings…, Close), a
+/// milestone's (New Slice, Rename, Move, Delete), a slice's (Launch, Edit,
+/// Open, Move, Delete) — each also a three-dot button on its row under the
+/// pointer — each project's own `+` (Workshop…, New Milestone, New Slice, New
+/// Ad Hoc Session), the titlebar's `+` (a new project, then any of those in a
 /// project it asks for) beside its Settings cog, and an ended session under its
 /// project.
 struct SidebarView: View {
@@ -56,6 +57,9 @@ struct SidebarView: View {
     @State private var actionError: String?
     @State private var newMilestoneProject: String?
     @State private var newMilestoneText = ""
+    /// The project whose settings sheet is up (the project menu's Project
+    /// settings…).
+    @State private var projectForSettings: SidebarProject?
     /// The Projects and Scratch folds' trees at their natural heights: what
     /// each takes, at most — open sections share the room only where they
     /// want more than there is.
@@ -92,6 +96,7 @@ struct SidebarView: View {
     ///     target's ID.
     ///   - hoveredMilestone: a milestone row to draw under the pointer, by its
     ///     fold key.
+    ///   - hoveredProject: a project row to draw under the pointer, by ID.
     init(
         appModel: AppModel, onNewProject: @escaping () -> Void = {}, showsTitlebar: Bool = false,
         folded: [String: Bool] = [:], treeAnchor: UnitPoint? = nil,
@@ -99,7 +104,8 @@ struct SidebarView: View {
         hoveredGroup: (projectID: String, groupID: String)? = nil,
         hoveredSlice: String? = nil,
         hoveredActiveRow: String? = nil,
-        hoveredMilestone: String? = nil
+        hoveredMilestone: String? = nil,
+        hoveredProject: String? = nil
     ) {
         self.appModel = appModel
         self.onNewProject = onNewProject
@@ -109,6 +115,7 @@ struct SidebarView: View {
         self.hoveredActiveRow = hoveredActiveRow
         self.hoveredMilestone = hoveredMilestone
         _fold = State(initialValue: folded)
+        _hoveredProject = State(initialValue: hoveredProject)
         _hoveredSourceRow = State(initialValue: hoveredContainer.map {
             Self.sourceRowKey($0.projectID, container: $0.containerID)
         } ?? hoveredGroup.map { Self.sourceRowKey($0.projectID, group: $0.groupID) })
@@ -1036,6 +1043,15 @@ struct SidebarView: View {
             if !open && project.needsYou > 0 {
                 Circle().fill(DesignTokens.hot).frame(width: 6, height: 6)
             }
+            if projectMenuHasItems(project) {
+                // The right-click menu as a button, only under the pointer
+                // (unlike the `+`), its slot always kept.
+                let showsMenu = hoveredProject == project.id
+                RowMenuButton(glyph: 12) { projectMenu(project) }
+                    .opacity(showsMenu ? 1 : 0)
+                    .allowsHitTesting(showsMenu)
+                    .accessibilityHidden(!showsMenu)
+            }
             if project.kind != .untitled {
                 // Only on a project open on the tree or under the pointer —
                 // a column of `+`s down every row read as noise. Hidden
@@ -1097,7 +1113,7 @@ struct SidebarView: View {
             milestoneHead(
                 name: milestone.name.isEmpty ? "No milestone" : milestone.name,
                 count: "\(milestone.done)/\(milestone.total)", key: key, indent: 26 - outdent,
-                openByDefault: opensItself)
+                openByDefault: opensItself, menu: { AnyView(milestoneMenu(project.id, milestone.name)) })
                 .contextMenu { milestoneMenu(project.id, milestone.name) }
             if isOpen(key, byDefault: opensItself) {
                 ForEach(milestone.slices) { sliceRow($0, indent: 34 - outdent) }
@@ -1240,10 +1256,11 @@ struct SidebarView: View {
 
     private func milestoneHead(
         name: String, count: String, key: String, indent: CGFloat = 26, openByDefault: Bool = true,
-        isDone: Bool = false
+        isDone: Bool = false, menu: (() -> AnyView)? = nil
     ) -> some View {
         let open = isOpen(key, byDefault: openByDefault)
-        return TreeMilestoneLine(name: name, count: count, open: open, indent: indent, isDone: isDone, folds: true)
+        return TreeMilestoneLine(
+            name: name, count: count, open: open, indent: indent, isDone: isDone, folds: true, menu: menu)
             .transformEnvironment(\.hoverForced) { if key == hoveredMilestone { $0 = true } }
             .contentShape(Rectangle())
             .onTapGesture { toggle(key, open: open) }
@@ -1252,20 +1269,19 @@ struct SidebarView: View {
     private func sliceRow(_ row: SidebarSliceRow, indent: CGFloat = 34) -> some View {
         let selected = appModel.activeProjectID == row.projectID && appModel.selectedSliceID == row.sliceID
         return sliceLine(
-            title: row.title, state: row.state, live: row.live, selected: selected, indent: indent, marks: row.marks)
+            title: row.title, state: row.state, live: row.live, selected: selected, indent: indent, marks: row.marks,
+            menu: { AnyView(sliceRowMenu(row)) })
             .transformEnvironment(\.hoverForced) { if row.sliceID == hoveredSlice { $0 = true } }
             .onTapGesture { Task { await appModel.selectSlice(row.sliceID, inProject: row.projectID) } }
-            .contextMenu {
-                sliceMenu(row, milestone: appModel.plan(projectID: row.projectID)?
-                    .slices.first { $0.id == row.sliceID }?.milestoneID ?? "")
-            }
+            .contextMenu { sliceRowMenu(row) }
     }
 
     private func sliceLine(
         title: String, state: SliceDisplayState, live: Bool, selected: Bool, indent: CGFloat = 34,
-        marks: PRMarks = .none
+        marks: PRMarks = .none, menu: (() -> AnyView)? = nil
     ) -> some View {
-        TreeSliceLine(title: title, state: state, live: live, selected: selected, indent: indent, marks: marks)
+        TreeSliceLine(
+            title: title, state: state, live: live, selected: selected, indent: indent, marks: marks, menu: menu)
     }
 
     /// The project's finished milestones, once it has one: a Done folder at
@@ -1287,7 +1303,8 @@ struct SidebarView: View {
                     let opensItself = selected.map { id in milestone.slices.contains { $0.sliceID == id } } ?? false
                     milestoneHead(
                         name: milestone.name, count: "\(milestone.done)/\(milestone.total)", key: milestoneKey,
-                        indent: 36 - outdent, openByDefault: opensItself)
+                        indent: 36 - outdent, openByDefault: opensItself,
+                        menu: { AnyView(milestoneMenu(project.id, milestone.name)) })
                         .contextMenu { milestoneMenu(project.id, milestone.name) }
                     if isOpen(milestoneKey, byDefault: opensItself) {
                         ForEach(milestone.slices) { sliceRow($0, indent: 44 - outdent) }
@@ -1338,10 +1355,22 @@ struct SidebarView: View {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: directory)])
             }
         }
+        if project.kind == .project {
+            Button("Project settings\u{2026}", systemImage: "gearshape") { projectForSettings = project }
+        }
         if ProjectTabRules.showsClose(tabCount: appModel.closableTabCount, isScratch: project.kind == .scratch) {
             Divider()
             Button("Close project", systemImage: "xmark.circle") { requestClose(project.id) }
         }
+    }
+
+    /// Whether `projectMenu` has anything to show — what earns a row its
+    /// three-dot button. Every project and Scratch has its add items; an
+    /// Untitled tab only Reveal and Close.
+    private func projectMenuHasItems(_ project: SidebarProject) -> Bool {
+        project.kind != .untitled
+            || workingDirectory(of: project.id) != nil
+            || ProjectTabRules.showsClose(tabCount: appModel.closableTabCount, isScratch: false)
     }
 
     @ViewBuilder
@@ -1367,6 +1396,13 @@ struct SidebarView: View {
         Divider()
         Button("Delete", systemImage: "trash", role: .destructive) { milestoneForDeletion = MilestoneRef(projectID: projectID, name: name) }
             .disabled(!actions.canDelete)
+    }
+
+    /// A slice row's menu, its right-click's and its three-dot's alike.
+    @ViewBuilder
+    private func sliceRowMenu(_ row: SidebarSliceRow) -> some View {
+        sliceMenu(row, milestone: appModel.plan(projectID: row.projectID)?
+            .slices.first { $0.id == row.sliceID }?.milestoneID ?? "")
     }
 
     /// A slice's menu — the rail's own, each item enabled exactly when the
@@ -1607,6 +1643,9 @@ struct SidebarView: View {
                             Task { await appModel.refresh(.replica) }
                         }
                     )
+                }
+                .sheet(item: view.$projectForSettings) { project in
+                    ProjectSettingsView(appModel: appModel, projectID: project.id, projectName: project.name)
                 }
                 .sheet(isPresented: Bindable(appModel).mirrorPickerPresented) {
                     NotionPickerSheetView(
