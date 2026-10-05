@@ -8,7 +8,14 @@
 # generated icns files are committed, so a machine without rsvg-convert can
 # still build the app.
 #
-# Requires: rsvg-convert (brew install librsvg) and iconutil (macOS's own).
+# It also renders each source's ink alone into AppIcon.icon, the layered icon
+# macOS 26 draws itself — plate, rim and shadow are the system's there, and
+# the light/dark choice follows the system with the app closed (make-app.sh
+# compiles it into the bundle). icon.json beside the layers is written by
+# hand: the two paper colours as its fill, the two layers as its one mark.
+#
+# Requires: rsvg-convert (brew install librsvg), and iconutil and sips
+# (macOS's own).
 
 set -e
 
@@ -31,5 +38,27 @@ render() {
     echo "✓ Icon written to $icns"
 }
 
+# The ink of one source on a transparent 1024px canvas: the plate's shadow,
+# mesh and rim hidden, and the sheet masked down to the ink so the paper it
+# is blended into survives only under the line. The source's squircle is 824
+# of its 1024 units, and a layer's canvas is the whole icon, so it is rendered
+# at 1024/824 and the centre 1024px kept.
+layer() {
+    local svg="$1" png="$2"
+    local tmp
+    tmp="$(mktemp -d)"
+    cat > "$tmp/layer.css" <<'CSS'
+#plate-shadow, #mesh, #rim-stroke { display: none; }
+#sheet { mask: url(#ink-only); }
+CSS
+    rsvg-convert -w 1273 -h 1273 -s "$tmp/layer.css" "$svg" -o "$tmp/layer.png"
+    mkdir -p "$(dirname "$png")"
+    sips -c 1024 1024 "$tmp/layer.png" --out "$png" >/dev/null
+    rm -rf "$tmp"
+    echo "✓ Layer written to $png"
+}
+
 render "$SCRIPT_DIR/Resources/gnat-paper.svg" "$OUT/AppIcon.icns"
 render "$SCRIPT_DIR/Resources/gnat-paper-dark-navy.svg" "$OUT/AppIconDark.icns"
+layer "$SCRIPT_DIR/Resources/gnat-paper.svg" "$SCRIPT_DIR/Resources/AppIcon.icon/Assets/mark.png"
+layer "$SCRIPT_DIR/Resources/gnat-paper-dark-navy.svg" "$SCRIPT_DIR/Resources/AppIcon.icon/Assets/mark-dark.png"

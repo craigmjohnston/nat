@@ -110,7 +110,15 @@ struct NatApp: App {
     /// It also follows the appearance: the paper icon while the app is light,
     /// the dark-navy one while it is dark — for the bundled app too, whose
     /// plist icon (the light one) is only what Finder shows.
+    ///
+    /// Except on macOS 26, where the bundled app's layered icon
+    /// (`CFBundleIconName`) is the system's to draw, light or dark, whether
+    /// the app is running or not: an image set here would replace it for as
+    /// long as the app ran, so nothing is set.
     private static func setDockIcon() {
+        if #available(macOS 26, *), Bundle.main.object(forInfoDictionaryKey: "CFBundleIconName") != nil {
+            return
+        }
         applyDockIcon()
         appearanceObservation = NSApplication.shared.observe(\.effectiveAppearance) { _, _ in
             DispatchQueue.main.async { applyDockIcon() }

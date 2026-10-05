@@ -182,7 +182,13 @@ changes nothing. Stories: `window-plan-accepted`, `notion-page-picker`.
   never `swift build --arch arm64 --arch x86_64` in one call, which routes
   through XCBuild's cross-arch path and can't resolve SwiftTerm's build-tool
   plugin (swiftlang/swift-package-manager#7442). Needs the Go toolchain too.
-- Only `Contents/Resources/AppIcon*.icns` ship: SwiftPM's
+- The icon ships twice: `Assets.car`, compiled by make-app.sh's `actool`
+  from the layered `Resources/AppIcon.icon` (`CFBundleIconName`) — what
+  macOS 26 draws, light or dark by the system's own setting, app open or
+  not — and the two icns for anything older, where `NatApp.setDockIcon`
+  swaps them by hand while the app runs. On 26 a bundled app leaves the
+  dock alone. `make-icon.sh` renders both from the same two SVGs.
+- Of the icns, only `Contents/Resources/AppIcon*.icns` ship: SwiftPM's
   `nat_NatApp.bundle` (the same two icns, for the bare `swift run`
   executable) is not copied in, as nothing reads it through `Bundle.module`.
   Copy it back if NatApp ever does, or the generated accessor traps.
