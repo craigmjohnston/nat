@@ -368,7 +368,7 @@ final class DesignTokensTests: XCTestCase {
     // MARK: - Settings tiles
 
     private let tiles = [
-        DesignTokens.tileNavy, DesignTokens.tileAmber, DesignTokens.tileInkBlue,
+        DesignTokens.tileNavy, DesignTokens.tileAmber,
         DesignTokens.tileAzure, DesignTokens.tileIndigo,
     ]
 
@@ -390,7 +390,7 @@ final class DesignTokensTests: XCTestCase {
     /// The gradient is built from the two ends, top to bottom; that it
     /// builds at all is what there is to check of a `LinearGradient`.
     func testTileGradientBuilds() {
-        _ = DesignTokens.tileInkBlue.gradient
+        _ = DesignTokens.tileAzure.gradient
     }
 
     private func hsl(_ hex: String) -> (hue: Double, lightness: Double) {
