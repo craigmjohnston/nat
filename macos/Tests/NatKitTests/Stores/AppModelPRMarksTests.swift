@@ -35,7 +35,7 @@ final class AppModelPRMarksTests: XCTestCase {
         model.sidebarModel.projects.flatMap(\.milestones).flatMap(\.slices).first { $0.sliceID == id }?.marks
     }
 
-    private let redMarks = PRMarks(failingChecks: ["build"])
+    private let redMarks = PRMarks(failingChecks: ["CI / build"])
     private let conflictMarks = PRMarks(conflict: BranchConflict(base: "main"))
 
     func testABackgroundProjectsPullRequestsAreMarkedWithoutOpeningIt() async {

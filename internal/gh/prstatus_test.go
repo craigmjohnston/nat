@@ -166,11 +166,11 @@ func TestOpenPRsChecksVerdict(t *testing.T) {
 	}
 }
 
-// TestOpenPRsFailingChecks names every failed check with its run URL, in the
-// rollup's order, whatever else is pending beside them — a run's detailsUrl, a
-// status context's targetUrl — and nothing for a pull request that is not red.
-// A run goes by its job's own name — the last segment of a reusable
-// workflow's caller-job path, never led by its workflow.
+// TestOpenPRsFailingChecks names every failed check with its run URL, in
+// GitHub's name order, whatever else is pending beside them — a run's
+// detailsUrl, a status context's targetUrl — and nothing for a pull request
+// that is not red. A run goes by its workflow and its job's own name — the
+// last segment of a reusable workflow's caller-job path.
 func TestOpenPRsFailingChecks(t *testing.T) {
 	const out = `[{"url":"https://github.test/pr/1","statusCheckRollup":[` +
 		`{"__typename":"CheckRun","name":"lint","workflowName":"CI","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.test/runs/1"},` +
@@ -187,10 +187,10 @@ func TestOpenPRsFailingChecks(t *testing.T) {
 	}
 	red := open["https://github.test/pr/1"]
 	want := []Check{
-		{Name: "lint", State: "FAILURE", URL: "https://github.test/runs/1"},
-		{Name: "Gate", State: "FAILURE", URL: "https://github.test/runs/2"},
 		{Name: "bare", State: "FAILURE", URL: "https://github.test/runs/3"},
+		{Name: "CI / lint", State: "FAILURE", URL: "https://github.test/runs/1"},
 		{Name: "deploy", State: "ERROR", URL: "https://ci.test/9"},
+		{Name: "Pull request / Gate", State: "FAILURE", URL: "https://github.test/runs/2"},
 	}
 	if red.Checks != ChecksFailing || !reflect.DeepEqual(red.Failing, want) {
 		t.Errorf("red PR = %v %+v, want failing %+v", red.Checks, red.Failing, want)

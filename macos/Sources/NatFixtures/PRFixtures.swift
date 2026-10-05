@@ -18,17 +18,17 @@ extension Fixtures {
     """
 
     static let passingChecks: [PRCheck] = [
+        PRCheck(name: "CI / lint", state: "SUCCESS", link: prURL + "/checks?check_run_id=2"),
         PRCheck(name: "CI / test", state: "SUCCESS", link: prURL + "/checks?check_run_id=1"),
-        PRCheck(name: "lint", state: "SUCCESS", link: prURL + "/checks?check_run_id=2"),
+        PRCheck(name: "CodeQL / Analyze", state: "SKIPPED", link: prURL + "/checks?check_run_id=4"),
         PRCheck(name: "macOS App CI / test", state: "SUCCESS", link: prURL + "/checks?check_run_id=3"),
-        PRCheck(name: "codeql", state: "SKIPPED", link: prURL + "/checks?check_run_id=4"),
     ]
 
     static let failingChecks: [PRCheck] = [
+        PRCheck(name: "CI / lint", state: "SUCCESS", link: prURL + "/checks?check_run_id=2"),
         PRCheck(name: "CI / test", state: "FAILURE", link: prURL + "/checks?check_run_id=1"),
-        PRCheck(name: "lint", state: "SUCCESS", link: prURL + "/checks?check_run_id=2"),
+        PRCheck(name: "CodeQL / Analyze", state: "SKIPPED", link: prURL + "/checks?check_run_id=4"),
         PRCheck(name: "macOS App CI / test", state: "IN_PROGRESS", link: prURL + "/checks?check_run_id=3"),
-        PRCheck(name: "codeql", state: "SKIPPED", link: prURL + "/checks?check_run_id=4"),
     ]
 
     static func actionsLink(run: Int, job: Int) -> String {
@@ -39,17 +39,17 @@ extension Fixtures {
     /// and another service: one run finished with a failure, one still going
     /// (a job running, a sibling queued), and a status Vercel reported.
     public static let mixedChecks: [PRCheck] = [
-        PRCheck(name: "Gate", state: "SUCCESS", link: actionsLink(run: 901, job: 11), rerunnable: true, run: "901"),
-        PRCheck(name: "test", state: "FAILURE", link: actionsLink(run: 901, job: 12), rerunnable: true, run: "901"),
+        PRCheck(name: "CI / Gate", state: "SUCCESS", link: actionsLink(run: 901, job: 11), rerunnable: true, run: "901"),
+        PRCheck(name: "CI / test", state: "FAILURE", link: actionsLink(run: 901, job: 12), rerunnable: true, run: "901"),
+        PRCheck(name: "macOS App CI / lint", state: "QUEUED", link: actionsLink(run: 902, job: 22), rerunnable: true, run: "902"),
         PRCheck(name: "macOS App CI / test", state: "IN_PROGRESS", link: actionsLink(run: 902, job: 21), rerunnable: true, run: "902"),
-        PRCheck(name: "lint", state: "QUEUED", link: actionsLink(run: 902, job: 22), rerunnable: true, run: "902"),
         PRCheck(name: "Vercel", state: "PENDING", link: "https://vercel.com/craig/nat/1"),
     ]
 
     /// Checks none of which has started: every Actions job queued.
     public static let queuedChecks: [PRCheck] = [
-        PRCheck(name: "Gate", state: "QUEUED", link: actionsLink(run: 903, job: 31), rerunnable: true, run: "903"),
-        PRCheck(name: "test", state: "QUEUED", link: actionsLink(run: 903, job: 32), rerunnable: true, run: "903"),
+        PRCheck(name: "CI / Gate", state: "QUEUED", link: actionsLink(run: 903, job: 31), rerunnable: true, run: "903"),
+        PRCheck(name: "CI / test", state: "QUEUED", link: actionsLink(run: 903, job: 32), rerunnable: true, run: "903"),
         PRCheck(name: "Vercel", state: "PENDING", link: "https://vercel.com/craig/nat/1"),
     ]
 

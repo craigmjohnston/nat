@@ -89,11 +89,11 @@ func TestViewPROpen(t *testing.T) {
 		Checks: []Check{
 			// A finished run is worth its conclusion, one still going its
 			// status, and a StatusContext has only ever had the one word. A
-			// run goes by its job's own name, never under its workflow.
-			{Name: "test", State: "SUCCESS",
-				URL: "https://github.com/craigmjohnston/nat/actions/runs/1/job/1"},
-			{Name: "lint", State: "IN_PROGRESS",
+			// run goes under its workflow, and the list is in name order.
+			{Name: "CI / lint", State: "IN_PROGRESS",
 				URL: "https://github.com/craigmjohnston/nat/actions/runs/1/job/2"},
+			{Name: "CI / test", State: "SUCCESS",
+				URL: "https://github.com/craigmjohnston/nat/actions/runs/1/job/1"},
 			{Name: "ci/legacy", State: "PENDING", URL: "https://ci.test/build/1"},
 		},
 		Reviews: []Review{
@@ -198,7 +198,7 @@ func TestViewPRChecksFailing(t *testing.T) {
 		Mergeable:        "CONFLICTING",
 		MergeStateStatus: "DIRTY",
 		Checks: []Check{
-			{Name: "test", State: "FAILURE",
+			{Name: "CI / test", State: "FAILURE",
 				URL: "https://github.com/craigmjohnston/nat/actions/runs/9/job/1"},
 			{Name: "ci/legacy", State: "ERROR", URL: "https://ci.test/build/9"},
 		},
@@ -227,49 +227,56 @@ func TestViewPRUnknownCheckKind(t *testing.T) {
 	}
 	want := []Check{
 		{Name: "newfangled", State: "QUEUED", URL: "https://gh.test/1"},
-		{Name: "build", State: "QUEUED"},
 		{Name: "old/style", State: "SUCCESS", URL: "https://ci.test/2"},
+		{Name: "Release / build", State: "QUEUED"},
 	}
 	if !reflect.DeepEqual(pr.Checks, want) {
 		t.Errorf("checks = %+v, want %+v", pr.Checks, want)
 	}
 }
 
-// TestViewPRCheckNameClashes names every run by its job alone unless another
-// check in the rollup shares that name, when each clashing run is led by the
-// one name outward: the caller job of a reusable workflow's path, else its
-// workflow. A StatusContext stays whole and only the run beside it grows a
-// prefix; names that still clash, or have nothing outward, are left as they
-// are.
-func TestViewPRCheckNameClashes(t *testing.T) {
+// TestViewPRCheckNames leads every run with its workflow, clash or none —
+// a reusable workflow's run by its job alone under it — and gives the whole
+// path back only to runs that still read the same. A StatusContext and a run
+// with no workflow keep their bare names; names that clash even then are left.
+// The list comes out sorted by name, case-insensitively and stably, as
+// GitHub's own checks list shows it, and never carries the triggering event.
+func TestViewPRCheckNames(t *testing.T) {
 	cases := []struct {
 		name   string
 		rollup string
 		want   []string
 	}{
-		{"no clash is bare",
-			`{"__typename":"CheckRun","name":"lint","workflowName":"CI"},` +
-				`{"__typename":"CheckRun","name":"checks / Gate","workflowName":"Pull request"}`,
-			[]string{"lint", "Gate"}},
-		{"a clash across workflows is led by each workflow",
+		{"every run is led by its workflow, in GitHub's order",
 			`{"__typename":"CheckRun","name":"test","workflowName":"CI"},` +
-				`{"__typename":"CheckRun","name":"lint","workflowName":"CI"},` +
-				`{"__typename":"CheckRun","name":"test","workflowName":"macOS App CI"}`,
-			[]string{"CI / test", "lint", "macOS App CI / test"}},
-		{"a reusable workflow's clash is led by its caller job, not its workflow",
-			`{"__typename":"CheckRun","name":"checks / Gate","workflowName":"Pull request"},` +
-				`{"__typename":"CheckRun","name":"nightly / Gate","workflowName":"Nightly"}`,
-			[]string{"checks / Gate", "nightly / Gate"}},
-		{"a status context stays whole and only the run grows a prefix",
+				`{"__typename":"CheckRun","name":"test","workflowName":"macOS App CI"},` +
+				`{"__typename":"CheckRun","name":"lint","workflowName":"CI"}`,
+			[]string{"CI / lint", "CI / test", "macOS App CI / test"}},
+		{"a reusable workflow's job goes under its workflow",
+			`{"__typename":"CheckRun","name":"checks / Gate","workflowName":"Pull request"}`,
+			[]string{"Pull request / Gate"}},
+		{"a clash still standing takes the full path",
+			`{"__typename":"CheckRun","name":"nightly / Gate","workflowName":"Pull request"},` +
+				`{"__typename":"CheckRun","name":"checks / Gate","workflowName":"Pull request"},` +
+				`{"__typename":"CheckRun","name":"lint","workflowName":"Pull request"}`,
+			[]string{"Pull request / checks / Gate", "Pull request / lint", "Pull request / nightly / Gate"}},
+		{"no workflow, or a status context, is bare",
 			`{"__typename":"StatusContext","context":"deploy"},` +
+				`{"__typename":"CheckRun","name":"vet"},` +
 				`{"__typename":"CheckRun","name":"deploy","workflowName":"Release"}`,
-			[]string{"deploy", "Release / deploy"}},
-		{"a clash still standing, or with nothing outward, is left",
-			`{"__typename":"CheckRun","name":"build","workflowName":"CI"},` +
-				`{"__typename":"CheckRun","name":"build","workflowName":"CI"},` +
+			[]string{"deploy", "Release / deploy", "vet"}},
+		{"names that clash even then are left",
+			`{"__typename":"CheckRun","name":"build","workflowName":"CI","detailsUrl":"2"},` +
+				`{"__typename":"CheckRun","name":"build","workflowName":"CI","detailsUrl":"1"},` +
 				`{"__typename":"CheckRun","name":"vet"},` +
 				`{"__typename":"CheckRun","name":"vet"}`,
 			[]string{"CI / build", "CI / build", "vet", "vet"}},
+		{"case is ignored and equal names keep rollup order",
+			`{"__typename":"StatusContext","context":"beta","targetUrl":"1"},` +
+				`{"__typename":"StatusContext","context":"Alpha"},` +
+				`{"__typename":"StatusContext","context":"BETA","targetUrl":"2"},` +
+				`{"__typename":"StatusContext","context":"alpha"}`,
+			[]string{"Alpha", "alpha", "beta", "BETA"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

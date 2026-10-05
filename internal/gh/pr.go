@@ -3,6 +3,7 @@ package gh
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -75,9 +76,9 @@ const (
 // which the older commit status API does — and the difference is in the
 // wording rather than in anything a viewer would draw differently, so both
 // arrive here as a name, a state and a link. A CheckRun's name is its job's
-// own ("Gate"), never the workflow or caller-job path GitHub leads it with —
-// see [ghRoll.jobName] — unless another check in the rollup has that name
-// too, when it is led by the one name outward ("CI / test"; [checksOf]).
+// own led by its workflow ("CI / test", "Pull request / Gate"), as GitHub's
+// checks list shows it — see [checksOf], which also orders them as that list
+// does.
 type Check struct {
 	Name  string
 	State string
@@ -293,8 +294,8 @@ type ghRoll struct {
 	TypeName string `json:"__typename"`
 	Name     string `json:"name"`
 	// WorkflowName is the Actions workflow a CheckRun ran under ("CI"), ""
-	// for a StatusContext — what tells two workflows' "test" jobs apart
-	// where their names clash ([checksOf]).
+	// for a StatusContext or a check from an app outside Actions — what
+	// leads every run's name ([checksOf]).
 	WorkflowName string `json:"workflowName"`
 	Status       string `json:"status"`
 	Conclusion   string `json:"conclusion"`
@@ -304,34 +305,46 @@ type ghRoll struct {
 	TargetURL    string `json:"targetUrl"`
 }
 
-// checkNameSep is what GitHub joins a job's path with, and what a clashing
-// job's prefix is joined to it with.
+// checkNameSep is what GitHub joins a job's path with, and what a run's
+// workflow is joined to it with.
 const checkNameSep = " / "
 
-// checksOf is a whole rollup as [Check]s, in its order. Each run goes by its
-// job's own name ([ghRoll.jobName]) unless another check in the same rollup
-// goes by that name too: two rows both reading "test" can't be told apart by a
-// reader glancing down the list, so each clashing run is led by the next name
-// outward ([ghRoll.outerName]) — "CI / test" beside "macOS App CI / test". A
-// StatusContext keeps its context whole and only ever clashes as that; it is
-// the run beside it that grows a prefix. Names that still clash after that are
-// left so: the run's URL tells them apart.
+// checksOf is a whole rollup as [Check]s, in the order GitHub's own checks
+// list shows them. Every run is led by its workflow ([ghRoll.workflowLed]):
+// "CI / lint", "CI / test", "macOS App CI / test". Where two runs still read
+// the same after that — two workflows calling one reusable job — those alone
+// take the full path GitHub gives them under their workflow ("Pull request /
+// checks / Gate"); names that clash even then are left so, since the run's
+// URL tells them apart. A StatusContext keeps its context whole, and an entry
+// with no workflow its bare name, with nothing leading it. The triggering
+// event GitHub's page appends ("(pull_request)") is not in gh's rollup and is
+// never added.
+//
+// GitHub's list is the rollup sorted by its displayed name — gh hands the
+// rollup back in the order the runs were created, which put "CI / lint" after
+// both tests on this repo's own pull requests (checked against one of them,
+// October 2026) — so the checks are sorted here by their final name,
+// case-insensitively and stably, so names that compare equal keep the
+// rollup's order. Sorted once, here, so no face reorders them.
 func checksOf(rollup []ghRoll) []Check {
 	var checks []Check
 	uses := map[string]int{}
 	for _, entry := range rollup {
 		check := entry.check()
+		if entry.isRun() && entry.WorkflowName != "" {
+			check.Name = entry.workflowLed(entry.jobName())
+		}
 		checks = append(checks, check)
 		uses[check.Name]++
 	}
 	for i, entry := range rollup {
-		if uses[checks[i].Name] < 2 || !entry.isRun() {
-			continue
-		}
-		if outer := entry.outerName(); outer != "" {
-			checks[i].Name = outer + checkNameSep + checks[i].Name
+		if uses[checks[i].Name] > 1 && entry.isRun() && entry.WorkflowName != "" {
+			checks[i].Name = entry.workflowLed(entry.Name)
 		}
 	}
+	slices.SortStableFunc(checks, func(a, b Check) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
 	return checks
 }
 
@@ -341,9 +354,16 @@ func (r ghRoll) isRun() bool {
 	return r.TypeName != typeStatusContext && r.Name != ""
 }
 
+// workflowLed is name led by the workflow the run ran under, as GitHub's
+// checks list leads it.
+func (r ghRoll) workflowLed(name string) string {
+	return r.WorkflowName + checkNameSep + name
+}
+
 // check is the entry as one thing: the name it goes by and the state it is in.
-// A CheckRun goes by its job's own name alone ([ghRoll.jobName]); a
-// StatusContext by its context, which is no job path and is left whole.
+// A CheckRun goes by its job's own name ([ghRoll.jobName]), which [checksOf]
+// leads with its workflow; a StatusContext by its context, which is no job
+// path and is left whole.
 // A CheckRun that has finished is worth its conclusion — SUCCESS, FAILURE,
 // CANCELLED — and one still going is worth its status instead, since a run
 // that has not concluded has no conclusion to report; a StatusContext has only
@@ -371,28 +391,15 @@ func (r ghRoll) check() Check {
 
 // jobName is a CheckRun-shaped entry's name cut to its last " / " segment —
 // the job's own. GitHub names a job run through a reusable workflow by its
-// caller-job path ("checks / Gate"), and a viewer leads that with the workflow
-// too ("Pull request / checks / Gate"); a row is for a reader glancing down a
-// list, to whom all of that is noise beside "Gate", and the run's URL still
-// leads to the full context. Only a clash in the rollup earns it more
-// ([checksOf]).
+// caller-job path ("checks / Gate"); a row is for a reader glancing down a
+// list, to whom the caller job is noise beside the workflow and "Gate"
+// ("Pull request / Gate"), and the run's URL still leads to the full context.
+// Only a clash in the rollup earns the whole path back ([checksOf]).
 func (r ghRoll) jobName() string {
 	if i := strings.LastIndex(r.Name, checkNameSep); i >= 0 {
 		return r.Name[i+len(checkNameSep):]
 	}
 	return r.Name
-}
-
-// outerName is the one name outward of the job's own, for a run whose job name
-// clashes: the caller job where GitHub's name is a reusable workflow's path
-// ("checks" of "checks / Gate"), else the workflow it ran under ("CI"). Never
-// both — "Pull request / checks / Gate" is the noise the bare name cut away.
-func (r ghRoll) outerName() string {
-	segments := strings.Split(r.Name, checkNameSep)
-	if len(segments) > 1 {
-		return segments[len(segments)-2]
-	}
-	return r.WorkflowName
 }
 
 // pr is the decoded view flattened into what the viewer draws.
