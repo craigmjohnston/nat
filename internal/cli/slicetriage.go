@@ -19,10 +19,12 @@ import (
 // agent that proposed them is waiting on, so it ends by telling that agent —
 // one message, whatever the mix.
 //
-// Every pending follow-up is decided at once or none is: a partial triage is
-// refused before anything is written, which is what lets the app's sidebar
-// going away mean "all dealt with". Folding one in needs an agent to tell, so
-// any --fold is refused where the slice has no live session.
+// Each Follow-ups section is a batch, decided whole: a call decides every
+// pending follow-up of each batch it touches and may leave other batches
+// untouched, and a partial batch is refused before anything is written, which
+// is what lets a triage card going away mean "all dealt with". Folding one in
+// needs an agent to tell, so any --fold is refused where the slice has no live
+// session.
 //
 // The record goes on the page before the message goes to the agent, since the
 // record is what stops complete-slice refusing: an agent that hands back the
@@ -79,7 +81,7 @@ func sliceTriage(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("read the slice for follow-ups: %w", err)
 	}
-	pending := store.PendingFollowUps(body)
+	pending := store.PendingFollowUpsOf(s, body)
 	if len(pending) == 0 {
 		return fmt.Errorf("%q has no follow-ups awaiting a decision", s.Name)
 	}
@@ -101,9 +103,18 @@ func sliceTriage(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("%q has no live agent to fold anything into: relaunch it first, or queue instead", s.Name)
 	}
 
+	// What this call decides, in pending order — the order the record's lines
+	// go in, so a title two batches share is decided earlier batch first, as
+	// [store.TaskEvents] reads the record back.
+	var decided []store.FollowUp
+	for _, f := range pending {
+		if _, ok := decisions[f.Index]; ok {
+			decided = append(decided, f)
+		}
+	}
 	var outcome triageJSON
-	record := make([]store.Triaged, len(pending))
-	for i, f := range pending {
+	record := make([]store.Triaged, len(decided))
+	for i, f := range decided {
 		switch decisions[f.Index] {
 		case store.Queued:
 			q, err := st.AddSlice(ctx, storeProject(projectID, project), store.NewSlice{
@@ -131,7 +142,7 @@ func sliceTriage(ctx context.Context, args []string, env Env) error {
 	env.nudged()
 
 	if live {
-		if err := env.NewTmux().SendPrompt(session, triageMessage(pending, decisions)); err != nil {
+		if err := env.NewTmux().SendPrompt(session, triageMessage(decided, decisions)); err != nil {
 			return fmt.Errorf("the triage is recorded, but telling the agent failed: %w", err)
 		}
 	}
@@ -165,8 +176,10 @@ func (l *indexList) Set(v string) error {
 	return nil
 }
 
-// decide settles what becomes of each pending follow-up, by index, refusing
-// any index pending does not hold, any named twice, and any left out.
+// decide settles what becomes of each pending follow-up it names, by index,
+// refusing any index pending does not hold, any named twice, any batch named
+// only in part, and any follow-up whose title an earlier batch left pending
+// also proposes — the record's line for it would decide that one instead.
 func decide(pending []store.FollowUp, queue, fold, drop []int, dropAll bool) (map[int]store.Decision, error) {
 	decisions := map[int]store.Decision{}
 	if dropAll {
@@ -193,14 +206,38 @@ func decide(pending []store.FollowUp, queue, fold, drop []int, dropAll bool) (ma
 			decisions[n] = d.decision
 		}
 	}
-	var missing []string
+	touched := map[int]bool{}
 	for _, f := range pending {
-		if _, ok := decisions[f.Index]; !ok {
-			missing = append(missing, strconv.Itoa(f.Index))
+		if _, ok := decisions[f.Index]; ok {
+			touched[f.Batch] = true
+		}
+	}
+	var missing, batches []string
+	seen := map[int]bool{}
+	for _, f := range pending {
+		if _, ok := decisions[f.Index]; ok || !touched[f.Batch] {
+			continue
+		}
+		missing = append(missing, strconv.Itoa(f.Index))
+		if !seen[f.Batch] {
+			seen[f.Batch] = true
+			batches = append(batches, strconv.Itoa(f.Batch))
 		}
 	}
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("follow-up %s undecided: decide every one, or pass --drop-all", strings.Join(missing, ", "))
+		return nil, fmt.Errorf("follow-up %s undecided: a batch is decided whole — decide every follow-up of batch %s, or pass --drop-all",
+			strings.Join(missing, ", "), strings.Join(batches, ", "))
+	}
+	for i, f := range pending {
+		if _, ok := decisions[f.Index]; !ok {
+			continue
+		}
+		for _, e := range pending[:i] {
+			if _, ok := decisions[e.Index]; !ok && e.Title == f.Title {
+				return nil, fmt.Errorf("follow-up %d (%q) shares its title with follow-up %d, of an earlier batch still pending: decide that batch first, or both together",
+					f.Index, f.Title, e.Index)
+			}
+		}
 	}
 	return decisions, nil
 }
@@ -239,13 +276,13 @@ func linkOf(s domain.Slice) string {
 	return s.ID
 }
 
-// triageMessage is what the agent waiting on the decision is told: what was
-// queued and dropped, then the follow-ups to fold in with their briefs, or that
+// triageMessage is what the agent waiting on the decision is told of the
+// follow-ups this call decided: what was queued and dropped, then the follow-ups to fold in with their briefs, or that
 // there is nothing to fold in — and in either case how to finish.
-func triageMessage(pending []store.FollowUp, decisions map[int]store.Decision) string {
+func triageMessage(decided []store.FollowUp, decisions map[int]store.Decision) string {
 	var queued, dropped []string
 	var folds []store.FollowUp
-	for _, f := range pending {
+	for _, f := range decided {
 		switch decisions[f.Index] {
 		case store.Queued:
 			queued = append(queued, fmt.Sprintf("%d (%s)", f.Index, f.Title))

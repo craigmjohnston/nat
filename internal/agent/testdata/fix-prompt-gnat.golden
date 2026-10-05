@@ -152,10 +152,12 @@ at". If saying what to change needs a look at the code, take that look
 now — it is usually one read; if it genuinely needs investigation, the
 investigation is the deliverable and `Done when:` says what it produces.
 
-`--follow-up` repeats, one per follow-up. The user decides in the app —
-queue it as a slice, fold it into this one, or drop it — and the decision
-arrives here as a message naming what to fold in. Do that, then hand back
-as below. `complete-slice` refuses while the decision is outstanding.
+`--follow-up` repeats, one per follow-up. A later hand-in carries only
+what is new — never a repeat of a follow-up already handed in. The user
+decides in the app — queue it as a slice, fold it into this one, or drop
+it — and the decision arrives here as a message naming what to fold in.
+Do that, then hand back as below. `complete-slice` refuses while the
+decision is outstanding.
 Never widen your branch to include a follow-up on your own, and never
 write them into the summary or the brief instead. No follow-ups: hand
 back straight away.

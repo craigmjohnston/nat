@@ -457,9 +457,10 @@ struct SliceNavigatorView: View {
         case folded(ThreadEvent)
         /// A run of quiet items folded into one (`ThreadLogItem.group`).
         case group([ThreadEvent])
-        /// The pending follow-ups, awaiting the user's decision — and when
-        /// they were proposed, where the log says.
-        case triage(Date?)
+        /// One batch's pending follow-ups, awaiting the user's decision — its
+        /// batch (nil: every pending one, for a log with no proposal in it)
+        /// and when it was proposed, where the log says.
+        case triage(batch: Int?, when: Date?)
         case launch
     }
 
@@ -487,9 +488,10 @@ struct SliceNavigatorView: View {
                                 event: event, connector: connector, collapsible: true, taskRow: { taskRow(id: $0) })
                         case .group(let events):
                             ThreadGroupCard(events: events, connector: connector, taskRow: { taskRow(id: $0) })
-                        case .triage(let when):
+                        case .triage(let batch, let when):
                             FollowUpCards(
-                                appModel: appModel, slice: slice, followUps: followUps, milestone: milestoneName,
+                                appModel: appModel, slice: slice, batch: batch ?? 0,
+                                followUps: pendingFollowUps(batch: batch, in: followUps), milestone: milestoneName,
                                 hasLiveAgent: agent != nil, when: when, connector: connector)
                         case .launch:
                             LaunchCard(
@@ -510,7 +512,7 @@ struct SliceNavigatorView: View {
     private var threadLog: [ThreadEvent] {
         buildThreadEvents(
             slice: slice, agent: agent, brief: detail.detail?.brief, events: detail.detail?.events,
-            plan: plan, milestones: milestones)
+            plan: plan, milestones: milestones, pending: detail.detail?.followUps)
     }
 
     private func threadItems(_ nav: NavigatorModel) -> [ThreadItem] {
@@ -521,10 +523,12 @@ struct SliceNavigatorView: View {
         for item in threadLogItems(log) {
             switch item {
             case .card(let event):
-                if !event.awaitsTriage {
+                // A proposal awaiting triage is its own batch's card; the log
+                // has it awaiting only where nat lists items of that batch.
+                if event.awaitsTriage {
+                    items.append(.triage(batch: event.batch, when: event.when))
+                } else {
                     items.append(.event(event))
-                } else if !followUps.isEmpty {
-                    items.append(.triage(event.when))
                 }
             case .folded(let event):
                 items.append(.folded(event))
@@ -534,7 +538,7 @@ struct SliceNavigatorView: View {
         }
         // A reading with no proposal in its log (a nat too old to report
         // one) still gets its pending follow-ups' item.
-        if !followUps.isEmpty && !log.contains(where: \.awaitsTriage) { items.append(.triage(nil)) }
+        if !followUps.isEmpty && !log.contains(where: \.awaitsTriage) { items.append(.triage(batch: nil, when: nil)) }
         if nav.showsLaunch { items.append(.launch) }
         return items
     }

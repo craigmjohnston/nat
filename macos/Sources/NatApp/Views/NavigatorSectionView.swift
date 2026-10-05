@@ -335,11 +335,13 @@ struct LogFoldButton: View {
 
 /// A run of quiet log items folded into one (`ThreadLogItem.group`): a
 /// stacked icon, how many items it holds, in italic, and when the first and
-/// the last of them happened. Opened, it is that header, then each of its
-/// items folded as it would be on its own, then a foot whose chevron folds
-/// the group again — so it shuts from below without scrolling back up — and
-/// a thin rule beside the items, from the header down to the foot, says they
-/// are the group's.
+/// the last of them happened. Opened, its items sit in one quiet recessed well
+/// under the header — a tinted, rounded fill inset from the log's rule, which
+/// runs on past it unbroken — each a step in from the header and folded as it
+/// would be on its own, and the well's last line is the control that folds
+/// the group again, "Hide 5 items", so it shuts from below. Folding from there
+/// keeps the group's header in view: the log scrolls back to it where it had
+/// gone off the top.
 struct ThreadGroupCard: View {
     let events: [ThreadEvent]
     var connector: LogConnector = .none
@@ -352,28 +354,43 @@ struct ThreadGroupCard: View {
     @State private var expanded: Bool?
     @State private var hoveringHead = false
     @State private var hoveringFoot = false
+    /// Whether the header is on screen, for the foot's fold to know whether
+    /// to bring it back.
+    @State private var headVisible = true
+    /// The header's scroll anchor.
+    @State private var headID = UUID()
 
     private var isOpen: Bool { expanded ?? foldsOpen }
 
     var body: some View {
-        if isOpen {
-            VStack(alignment: .leading, spacing: LogMetrics.spacing) {
-                head(connector: .solid)
-                ForEach(Array(events.enumerated()), id: \.offset) { _, event in
-                    ThreadEventCard(event: event, connector: .solid, collapsible: true, taskRow: taskRow)
+        ScrollViewReader { proxy in
+            if isOpen {
+                VStack(alignment: .leading, spacing: 6) {
+                    head(connector: .none)
+                    well { foldFromFoot(proxy) }
                 }
-                foot
+                // The log's rule from the header's icon down past the well to
+                // the next item, unbroken.
+                .overlay(alignment: .topLeading) { LogConnectorRule(connector: connector) }
+            } else {
+                head(connector: connector)
             }
-            // Its items start folded, whatever opened the group.
-            .environment(\.threadFoldsOpen, false)
-            .overlay(alignment: .topLeading) { groupRule }
-        } else {
-            head(connector: connector)
         }
     }
 
     private func toggle() {
         withAnimation(Motion.stateChange) { expanded = !isOpen }
+    }
+
+    /// Folds the group from its foot, bringing its header back on screen
+    /// where it had scrolled off — so the log does not leave the reader past
+    /// a group that has just shrunk to one line.
+    private func foldFromFoot(_ proxy: ScrollViewProxy) {
+        let bringBack = !headVisible
+        withAnimation(Motion.stateChange) {
+            expanded = false
+            if bringBack { proxy.scrollTo(headID, anchor: .top) }
+        }
     }
 
     private func head(connector: LogConnector) -> some View {
@@ -388,25 +405,43 @@ struct ThreadGroupCard: View {
         .overlay(alignment: .top) {
             LogFoldButton(open: isOpen, hovering: $hoveringHead, action: toggle)
         }
+        .id(headID)
+        .onScrollVisibilityChange(threshold: 0.5) { headVisible = $0 }
     }
 
-    /// The group's last row: a chevron pointing up, nothing else, folding the
-    /// group as its header does. The log's rule runs on from it as the
-    /// group's own would.
-    private var foot: some View {
-        LogItem(
-            symbol: "",
-            glyph: AnyView(
-                DisclosureChevron(open: false)
-                    .rotationEffect(.degrees(-90))
-                    .opacity(hoveringFoot || hoverForced ? 1 : 0.7)),
-            who: "", connector: connector
-        ) {
-            EmptyView()
+    /// The open group's items, each folded as it would be on its own, then
+    /// its foot, on the recessed ground.
+    private func well(fold: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: LogMetrics.wellSpacing) {
+            ForEach(Array(events.enumerated()), id: \.offset) { _, event in
+                ThreadEventCard(event: event, collapsible: true, taskRow: taskRow)
+            }
+            foot(fold: fold)
         }
-        .overlay(alignment: .top) {
-            LogFoldButton(open: true, hovering: $hoveringFoot, action: toggle)
+        // Its items start folded, whatever opened the group.
+        .environment(\.threadFoldsOpen, false)
+        .padding(LogMetrics.wellPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .surface(.rowAlt, radius: LogMetrics.wellRadius)
+        .padding(.leading, LogMetrics.wellInset)
+    }
+
+    /// The well's last line: what folding does, in the header's own italic
+    /// secondary, lit under the pointer as the log's other fold controls are,
+    /// under the items' titles.
+    private func foot(fold: @escaping () -> Void) -> some View {
+        Button(action: fold) {
+            Text(threadGroupFoldTitle(count: events.count))
+                .font(.system(size: Typo.scaled(13.5)))
+                .italic()
+                .ink(hoveringFoot || hoverForced ? .primary : .secondary)
+                .frame(minHeight: LogMetrics.headHeight)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .onHover { hoveringFoot = $0 }
+        .padding(.leading, LogMetrics.margin)
+        .accessibilityLabel("Fold \(threadGroupTitle(count: events.count))")
     }
 
     /// The first two kinds of item the group holds, one behind the other:
@@ -423,19 +458,6 @@ struct ThreadGroupCard: View {
             ThreadIcon(symbol: symbols.first ?? "", role: .tertiary)
                 .background(Circle().fill(DesignTokens.fill(.window)).padding(-1.5))
         }
-    }
-
-    /// The rule beside an open group's items: from under its header to above
-    /// its foot, in the margin column's gutter between the log's own rule
-    /// and the items' text.
-    private var groupRule: some View {
-        DesignTokens.rule(.separator, on: .window)
-            .frame(width: 1)
-            .padding(.top, LogMetrics.headHeight + 4)
-            .padding(.bottom, LogMetrics.headHeight + 4)
-            .offset(x: LogMetrics.groupRuleX)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 }
 

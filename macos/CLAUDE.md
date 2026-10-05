@@ -377,8 +377,18 @@ notes ahead of every other recorded event sit before Launched),
 follow-ups (a proposal is its count line, then one item per decided
 follow-up — headed "<Queued | Folded in | Dismissed> proposed follow-up"
 (`followUpDecisionHeading`), its title then its brief as the body, a queued
-one's slice as a `task` row; pending ones as the triage item in their place), then approve
-and merge. No item is boxed: each is a `LogItem` — its icon in a margin
+one's slice as a `task` row; a proposal still pending is its batch's own
+triage item in its place — `FollowUpCards`, drawing only the items
+`pendingFollowUps(batch:in:)` pairs with it (`slice-show`'s `followUps` and
+the event share a `batch`), with its own Discard all and Apply; a proposal
+awaits triage only where nat lists items of its batch, so a Done slice's
+never-triaged batch draws as a record. `FollowUpStore` keys choices (by
+place in the batch, not nat's index, which moves as other batches are
+decided), the apply in flight and the error by slice **and batch**; any
+batch's apply holds every card of that slice through the re-read that
+follows, so none applies stale indexes. Stories: `window-followups`,
+`window-followups-two-batches`, `window-followups-decided-and-pending`),
+then approve and merge. No item is boxed: each is a `LogItem` — its icon in a margin
 column, who and its meta (in its tone) as the header — and a rule runs down
 the margin from one icon to the next (`LogConnector`, chosen by
 `threadBody`, which knows the sequence): none after the last, dashed after it
@@ -398,8 +408,12 @@ decisions (`ThreadEvent.isCollapsible`) — draw folded to icon, title and
 time, a click on the header row opening one and its icon a chevron under the
 pointer; three or more in a row fold into one group (`threadLogItems`:
 stacked icon, "N other items" in italic, `threadTimestampRange`), which
-opens onto its items, each folded, beside a thin rule, with an up-chevron
-foot. `threadFoldsOpen` (`StorySeams`) opens them for a story. Stories:
+opens onto its items, each folded, in one recessed well (`.rowAlt`, rounded,
+inset from the log's rule — `LogConnectorRule` runs on past it unbroken —
+its items a step in from the header), its last line "Hide N items"
+(`threadGroupFoldTitle`, the header's italic secondary, lit under the
+pointer), which folds the group and scrolls back to its header where that
+had gone off screen. `threadFoldsOpen` (`StorySeams`) opens them for a story. Stories:
 `window-task-log-notes`, `window-task-log-note-todo`, `window-task-log-folds`,
 `window-task-log-folds-open`, `task-log-fold-hover`. Selecting sets the selection *before* awaiting the project's
 activation (`AppModel.select(inProject:)`), so a later click is never

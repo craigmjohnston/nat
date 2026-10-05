@@ -444,20 +444,26 @@ enum AppStories {
             .environment(\.pulsesPaused, true)
     }
 
-    /// An app model on the activity slice with its three follow-ups pending
-    /// and its agent waiting, the choices given already made.
-    private static func followUpsModel(choices: [Int: FollowUpChoice]) async -> AppModel {
+    /// An app model on the activity slice with its follow-ups pending — its
+    /// three, or as `detail` has them — and its agent waiting, the choices
+    /// given (by batch, then by place in the batch) already made.
+    private static func followUpsModel(
+        detail: SliceDetail = Fixtures.followUpsSliceDetail, choices: [Int: [Int: FollowUpChoice]]
+    ) async -> AppModel {
         let sliceID = Fixtures.activitySliceID
+        let details = Fixtures.sliceDetails.merging([sliceID: detail]) { _, new in new }
         let appModel = await Fixtures.startedAppModel(
-            client: FixtureNatClient(agents: Fixtures.agentStatuses, details: Fixtures.followUpsSliceDetails),
+            client: FixtureNatClient(agents: Fixtures.agentStatuses, details: details),
             config: Fixtures.twoProjectConfig)
         appModel.selectedSliceID = sliceID
         await appModel.sliceDetailStore(projectID: Fixtures.projectID).fetch(sliceRef: sliceID)
         for _ in 0..<50 where appModel.activityStore?.agents[sliceID] == nil {
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
-        for (index, choice) in choices {
-            appModel.followUpStore.setChoice(choice, sliceID: sliceID, index: index)
+        for (batch, batchChoices) in choices {
+            for (position, choice) in batchChoices {
+                appModel.followUpStore.setChoice(choice, sliceID: sliceID, batch: batch, position: position)
+            }
         }
         return appModel
     }
@@ -1048,7 +1054,29 @@ enum AppStories {
             summary: "A waiting agent that proposed three follow-ups: their triage item last in the Thread, its dashed tail under it, Apply at its foot.",
             size: window
         ) {
-            shell(await followUpsModel(choices: [1: .queue, 2: .fold, 3: .drop]))
+            shell(await followUpsModel(choices: [1: [1: .queue, 2: .fold, 3: .drop]]))
+        },
+
+        Story(
+            name: "window-followups-two-batches",
+            summary: "Two batches of follow-ups pending at once, a note between them: each its own triage item in "
+                + "its place in the log, with its own items, choices, Discard all and Apply — the first fully "
+                + "decided and ready to apply, the second with one choice made.",
+            size: CGSize(width: window.width, height: 1300)
+        ) {
+            shell(await followUpsModel(
+                detail: Fixtures.twoBatchesSliceDetail,
+                choices: [1: [1: .queue, 2: .fold, 3: .drop], 2: [1: .drop]]))
+        },
+
+        Story(
+            name: "window-followups-decided-and-pending",
+            summary: "A first batch decided (one queued, one folded in, one dismissed) drawn as its record, its "
+                + "proposal and decisions folded into one group of four, then a second batch still pending as its "
+                + "own triage item.",
+            size: CGSize(width: window.width, height: 1000)
+        ) {
+            shell(await followUpsModel(detail: Fixtures.decidedAndPendingSliceDetail, choices: [:]))
         },
 
         Story(
@@ -1293,9 +1321,9 @@ enum AppStories {
 
         Story(
             name: "window-task-log-folds-open",
-            summary: "The same log with its folds open: the group's header, each of its six items folded to "
-                + "icon, title and time beside the group's thin rule, and the foot's up chevron that folds it "
-                + "again; the lone note open below.",
+            summary: "The same log with its folds open: the group's header, then its six items folded to icon, "
+                + "title and time in one recessed well a step in from it, the log's rule running on past the well, "
+                + "and the well's last line, \"Hide 6 items\", that folds it again; the lone note open below.",
             size: window
         ) {
             await slicePane(

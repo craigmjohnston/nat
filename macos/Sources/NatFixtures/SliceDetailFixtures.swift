@@ -79,19 +79,19 @@ extension Fixtures {
     /// drop.
     public static let proposedFollowUps: [FollowUp] = [
         FollowUp(
-            index: 1,
+            batch: 1, index: 1,
             title: "Persist the conversation split width per project",
             brief: "The split's width lives under one AppStorage key, so every project shares it. "
                 + "The PR sidebar has the same problem. Store both per project the way pane widths already are."
         ),
         FollowUp(
-            index: 2,
+            batch: 1, index: 2,
             title: "Render the emoji picker open in a gallery story",
             brief: "The picker is open-state only and no story draws it, so StoryNamesTests can't guard it. "
                 + "Add pr-composer-emoji with the picker open over the composer."
         ),
         FollowUp(
-            index: 3,
+            batch: 1, index: 3,
             title: "Remove the dead reply-threading code in PRConversationView",
             brief: "replyTargets and its two helpers haven't been read since the inline composer landed. "
                 + "Delete them and the fake in FakeRunner that feeds them."
@@ -115,7 +115,7 @@ extension Fixtures {
         followUps: proposedFollowUps,
         // The proposal on the page, undecided, stamped 25 minutes before `now`.
         events: [TaskLogEvent(
-            .followUps, at: now.addingTimeInterval(-25 * 60),
+            .followUps, at: now.addingTimeInterval(-25 * 60), batch: 1,
             followUps: proposedFollowUps.map { TaskFollowUp(index: $0.index, title: $0.title, brief: $0.brief) })]
     )
 
@@ -123,6 +123,84 @@ extension Fixtures {
     public static var followUpsSliceDetails: [String: SliceDetail] {
         sliceDetails.merging([activitySliceID: followUpsSliceDetail]) { _, new in new }
     }
+
+    /// The two follow-ups the activity slice's agent handed in as a second
+    /// batch, after talking to the user about the first: each pending item's
+    /// index counts on from the first batch's, as `slice-triage` takes it.
+    public static func secondBatchFollowUps(from first: Int) -> [FollowUp] {
+        [
+            FollowUp(
+                batch: 2, index: first,
+                title: "Name the pane's activity states in one enum",
+                brief: "Activity is a string compared in three places. Make it an enum in NatKit and switch on it."),
+            FollowUp(
+                batch: 2, index: first + 1,
+                title: "Log a capture tmux refuses",
+                brief: "A failed capture-pane is dropped silently. Log it once per pane, with tmux's own error."),
+        ]
+    }
+
+    /// A batch's proposals as its log event names them, each still pending.
+    private static func undecided(_ followUps: [FollowUp]) -> [TaskFollowUp] {
+        followUps.enumerated().map { TaskFollowUp(index: $0.offset + 1, title: $0.element.title, brief: $0.element.brief) }
+    }
+
+    /// The activity slice with two batches of follow-ups pending at once:
+    /// three proposed 50 minutes before `now`, then — the agent handed back
+    /// between them — two more 10 minutes before it.
+    public static let twoBatchesSliceDetail = SliceDetail(
+        id: activitySliceID,
+        name: "Poll tmux for agent activity",
+        url: "https://notion.so/\(activitySliceID)",
+        status: "In progress",
+        milestone: "M2: Review flow",
+        assignee: "Craig Johnston",
+        blocked: false,
+        handedBack: false,
+        state: "in progress",
+        brief: "Poll tmux every second for each agent's activity.",
+        followUps: proposedFollowUps + secondBatchFollowUps(from: 4),
+        events: [
+            TaskLogEvent(
+                .followUps, at: now.addingTimeInterval(-50 * 60), batch: 1, followUps: undecided(proposedFollowUps)),
+            TaskLogEvent(.note, note: "Asked about the split width: per project, as the pane widths are.",
+                         by: "Craig Johnston", at: now.addingTimeInterval(-30 * 60)),
+            TaskLogEvent(
+                .followUps, at: now.addingTimeInterval(-10 * 60), batch: 2,
+                followUps: undecided(secondBatchFollowUps(from: 4))),
+        ]
+    )
+
+    /// The activity slice with its first batch decided — one queued, one
+    /// folded in, one dropped, 20 minutes before `now` — and its second still
+    /// pending, its items' indexes counting from 1 again now nothing is pending
+    /// before them.
+    public static let decidedAndPendingSliceDetail = SliceDetail(
+        id: activitySliceID,
+        name: "Poll tmux for agent activity",
+        url: "https://notion.so/\(activitySliceID)",
+        status: "In progress",
+        milestone: "M2: Review flow",
+        assignee: "Craig Johnston",
+        blocked: false,
+        handedBack: false,
+        state: "in progress",
+        brief: "Poll tmux every second for each agent's activity.",
+        followUps: secondBatchFollowUps(from: 1),
+        events: [
+            TaskLogEvent(
+                .followUps, at: now.addingTimeInterval(-50 * 60), batch: 1,
+                followUps: zip(proposedFollowUps, [TaskFollowUp.Decision.queued, .folded, .dropped]).map {
+                    TaskFollowUp(
+                        index: $0.0.index, title: $0.0.title, brief: $0.0.brief, decision: $0.1,
+                        link: $0.1 == .queued ? "https://notion.so/\(cacheSliceID)" : nil,
+                        decidedAt: now.addingTimeInterval(-20 * 60))
+                }),
+            TaskLogEvent(
+                .followUps, at: now.addingTimeInterval(-10 * 60), batch: 2,
+                followUps: undecided(secondBatchFollowUps(from: 1))),
+        ]
+    )
 
     /// A merged slice with a history: handed back three times, sent back
     /// with comments between them twice, three follow-ups triaged on the way

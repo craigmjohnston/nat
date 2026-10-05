@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -31,38 +32,43 @@ func TestPendingFollowUps(t *testing.T) {
 	}{
 		{"none", "Do the thing.\n\n### Handed back\n\nDid it.", nil},
 		{"one section", "Do the thing.\n\n" + section, []FollowUp{
-			{1, proposals[0].Title, proposals[0].Brief},
-			{2, proposals[1].Title, proposals[1].Brief},
-			{3, proposals[2].Title, proposals[2].Brief},
+			{1, 1, proposals[0].Title, proposals[0].Brief},
+			{1, 2, proposals[1].Title, proposals[1].Brief},
+			{1, 3, proposals[2].Title, proposals[2].Brief},
 		}},
-		{"superseded", section + "\n\n### Follow-ups\n\n1. A newer one\n   Its brief.",
-			[]FollowUp{{1, "A newer one", "Its brief."}}},
+		{"a later batch supersedes nothing", section + "\n\n### Follow-ups\n\n1. A newer one\n   Its brief.",
+			[]FollowUp{
+				{1, 1, proposals[0].Title, proposals[0].Brief},
+				{1, 2, proposals[1].Title, proposals[1].Brief},
+				{1, 3, proposals[2].Title, proposals[2].Brief},
+				{2, 4, "A newer one", "Its brief."},
+			}},
 		{"partially triaged", section + "\n\n### Follow-ups triaged\n\n" +
 			"- Queued: " + proposals[0].Title + " → https://notion.so/abc\n" +
 			"- Dropped: " + proposals[2].Title + "\n- Something else entirely",
-			[]FollowUp{{2, proposals[1].Title, proposals[1].Brief}}},
+			[]FollowUp{{1, 1, proposals[1].Title, proposals[1].Brief}}},
 		{"wholly triaged", section + "\n\n### Follow-ups triaged\n\n" +
 			"- Queued: " + proposals[0].Title + " → abc\n" +
 			"- Folded in: " + proposals[1].Title + "\n" +
 			"- Dropped: " + proposals[2].Title, nil},
 		{"a record before the section counts for nothing",
 			"### Follow-ups triaged\n\n- Dropped: A\n\n### Follow-ups\n\n1. A\n   Brief.",
-			[]FollowUp{{1, "A", "Brief."}}},
+			[]FollowUp{{1, 1, "A", "Brief."}}},
 		{"a later heading ends the section",
 			"### Follow-ups\n\n1. A\n   Brief.\n\n### Handed back\n\n1. Not a follow-up",
-			[]FollowUp{{1, "A", "Brief."}}},
+			[]FollowUp{{1, 1, "A", "Brief."}}},
 		{"a record ends at the next heading",
 			"### Follow-ups\n\n1. A\n   Brief.\n\n### Follow-ups triaged\n\n### Notes\n\n- Dropped: A",
-			[]FollowUp{{1, "A", "Brief."}}},
+			[]FollowUp{{1, 1, "A", "Brief."}}},
 		{"a deeper heading inside the section is passed over",
 			"### Follow-ups\n\n#### Aside\n\n1. A\n   Brief.",
-			[]FollowUp{{1, "A", "Brief."}}},
+			[]FollowUp{{1, 1, "A", "Brief."}}},
 		{"a fence at the margin is passed over whole",
 			"### Follow-ups\n\n1. A\n   Brief.\n\n```\n### Follow-ups\n2. Not an item\n```\n\n2. B\n   More.",
-			[]FollowUp{{1, "A", "Brief."}, {2, "B", "More."}}},
+			[]FollowUp{{1, 1, "A", "Brief."}, {1, 2, "B", "More."}}},
 		{"a new section while an item is open",
 			"### Follow-ups\n\n1. A\n   Brief.\n#### Follow-ups\n\n1. B\n   Other.",
-			[]FollowUp{{1, "B", "Other."}}},
+			[]FollowUp{{1, 1, "A", "Brief."}, {2, 2, "B", "Other."}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -73,6 +79,60 @@ func TestPendingFollowUps(t *testing.T) {
 	}
 }
 
+// Every Follow-ups section is a batch of its own, pending until its own items
+// are decided: none supersedes another, a record decides only what it names,
+// and a batch filed after a record is pending beside whatever the record left.
+func TestPendingFollowUpsAcrossBatches(t *testing.T) {
+	first := "### Follow-ups\n\n1. A\n   Brief A.\n2. B\n   Brief B."
+	second := "### Follow-ups\n\n1. C\n   Brief C."
+	third := "### Follow-ups\n\n1. D\n   Brief D.\n2. E\n   Brief E."
+	tests := []struct {
+		name string
+		body string
+		want []FollowUp
+	}{
+		{"two undecided batches are both pending", first + "\n\n" + second, []FollowUp{
+			{1, 1, "A", "Brief A."}, {1, 2, "B", "Brief B."}, {2, 3, "C", "Brief C."},
+		}},
+		{"triaging the second leaves the first pending",
+			first + "\n\n" + second + "\n\n### Follow-ups triaged\n\n- Dropped: C",
+			[]FollowUp{{1, 1, "A", "Brief A."}, {1, 2, "B", "Brief B."}}},
+		{"triaging the first leaves the second pending",
+			first + "\n\n" + second + "\n\n### Follow-ups triaged\n\n- Dropped: A\n- Folded in: B",
+			[]FollowUp{{2, 1, "C", "Brief C."}}},
+		{"a third batch after a triage changes neither of the others",
+			first + "\n\n" + second + "\n\n### Follow-ups triaged\n\n- Dropped: A\n- Dropped: B\n\n" + third,
+			[]FollowUp{{2, 1, "C", "Brief C."}, {3, 2, "D", "Brief D."}, {3, 3, "E", "Brief E."}}},
+		{"two batches sharing a title are two items",
+			first + "\n\n### Follow-ups\n\n1. A\n   Again.\n\n### Follow-ups triaged\n\n- Dropped: A",
+			[]FollowUp{{1, 1, "B", "Brief B."}, {2, 2, "A", "Again."}}},
+		{"a record names nothing written after it",
+			first + "\n\n### Follow-ups triaged\n\n- Dropped: A\n- Dropped: B\n- Dropped: C\n\n" + second,
+			[]FollowUp{{2, 1, "C", "Brief C."}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := PendingFollowUps(tt.body); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("PendingFollowUps() =\n%#v\nwant\n%#v", got, tt.want)
+			}
+		})
+	}
+}
+
+// A Done slice's undecided items are history — a batch the old rule
+// superseded and nobody triaged — so nothing is pending on it; any other
+// status reads the body as it is.
+func TestPendingFollowUpsOf(t *testing.T) {
+	body := "### Follow-ups\n\n1. A\n   Brief A."
+	if got := PendingFollowUpsOf(domain.Slice{Status: domain.SliceDone}, body); got != nil {
+		t.Errorf("Done: PendingFollowUpsOf() = %#v, want nil", got)
+	}
+	want := []FollowUp{{1, 1, "A", "Brief A."}}
+	if got := PendingFollowUpsOf(domain.Slice{Status: domain.SliceClaimed}, body); !reflect.DeepEqual(got, want) {
+		t.Errorf("In progress: PendingFollowUpsOf() = %#v, want %#v", got, want)
+	}
+}
+
 // A tenth item's marker is a character wider, and so is the indent under it.
 func TestPendingFollowUpsPastNine(t *testing.T) {
 	var items []FollowUp
@@ -80,7 +140,7 @@ func TestPendingFollowUpsPastNine(t *testing.T) {
 		items = append(items, FollowUp{Title: string(rune('A' + i)), Brief: "Brief\nover two lines."})
 	}
 	got := PendingFollowUps("### Follow-ups\n\n" + followUpsMarkdown(items))
-	if len(got) != 10 || got[9] != (FollowUp{10, "J", "Brief\nover two lines."}) {
+	if len(got) != 10 || got[9] != (FollowUp{1, 10, "J", "Brief\nover two lines."}) {
 		t.Errorf("PendingFollowUps() = %#v, want ten, the last de-indented", got)
 	}
 }

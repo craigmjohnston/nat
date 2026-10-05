@@ -112,14 +112,14 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return notOursError(s, cfg.AssigneeUserName, "closed out")
 	}
 	// Follow-ups the agent handed in are the user's to decide before the slice
-	// goes to review, so a hand-back waits on that decision. Blocked work is
+	// goes to review, so a hand-back waits on that decision — every batch's. Blocked work is
 	// exempt: an agent that cannot go on is allowed to stop.
 	if !*blocked {
 		body, err := st.Body(ctx, s.ID)
 		if err != nil {
 			return fmt.Errorf("read the slice for follow-ups: %w", err)
 		}
-		if n := len(store.PendingFollowUps(body)); n > 0 {
+		if n := len(store.PendingFollowUpsOf(s, body)); n > 0 {
 			verb := "await"
 			if n == 1 {
 				verb = "awaits"

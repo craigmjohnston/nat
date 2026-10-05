@@ -36,6 +36,10 @@ type TaskEvent struct {
 	// (or, for a release, the time its line names) — the zero time for one
 	// written before sections were stamped.
 	At time.Time
+	// Batch is a "follow_ups" event's Follow-ups section's ordinal among the
+	// body's Follow-ups sections, 1-based — the batch [FollowUp.Batch] names
+	// its pending items by — and 0 for every other kind.
+	Batch int
 	// FollowUps is the proposals of a "follow_ups" event alone.
 	FollowUps []TaskFollowUp
 }
@@ -80,8 +84,8 @@ func sliceLabelOf(label string) (NoteSource, bool) {
 }
 
 // TaskFollowUp is one follow-up as a "follow_ups" event names it: the
-// proposal [PendingFollowUps] itself would read, plus whatever a later
-// Follow-ups triaged section decided about it.
+// proposal as its section holds it, plus whatever a later Follow-ups triaged
+// section decided about it. Index is its place in its own section, 1-based.
 type TaskFollowUp struct {
 	Index int
 	Title string
@@ -124,20 +128,20 @@ func releasedBy(line string) (string, time.Time, bool) {
 // Visual changes, a brief's own — is not an event and simply ends whatever
 // section came before it.
 //
-// It walks the body exactly as [lastMarkdownSection] and [PendingFollowUps]
-// do: fence-aware, so a section quoting a diff or a shell session is not cut
-// short by a line of its own that happens to look like a heading, and a
-// heading nested deeper than the section's own is passed over rather than
-// ending it — the one difference being that every *matching* heading always
-// opens a fresh section of its kind even where it is nested, which is what
-// lets a superseded Follow-ups section (one agent's proposals overtaken by a
-// later pass before the first was ever triaged) still read as two events
-// rather than one.
+// It walks the body as [lastMarkdownSection] does: fence-aware, so a section
+// quoting a diff or a shell session is not cut short by a line of its own that
+// happens to look like a heading, and a heading nested deeper than the
+// section's own is passed over rather than ending it — the one difference
+// being that every *matching* heading always opens a fresh section of its kind
+// even where it is nested.
 //
-// A Follow-ups section's items are [PendingFollowUps]'s own item parsing,
-// unfiltered — every item, not merely the ones still pending — decorated
-// with whatever the *next* Follow-ups triaged section after it decided, by
-// title, the same match [PendingFollowUps] itself makes.
+// Every Follow-ups section is a batch, an event of its own numbered by its
+// ordinal among them (Batch); its items open at a numbered line at the margin —
+// the title — with the brief the lines indented under it, de-indented. A
+// Follow-ups triaged section decides items of any batch written before it:
+// each of its lines decides the earliest still-undecided item with that title,
+// exactly, so two batches proposing the same title are two items, decided by
+// two lines. [PendingFollowUps] is this reading's undecided items.
 //
 // Each section's stamp — its first paragraph, `At <RFC 3339>` — is read off
 // into the event's At and is no part of its text; a section with none (one
@@ -159,7 +163,7 @@ func TaskEvents(body string) []TaskEvent {
 	// proposedAt is the stamp the Follow-ups section being read opened with,
 	// and decidedAt the Follow-ups triaged section's.
 	var proposedAt, decidedAt time.Time
-	lastFollowUpsIdx := -1
+	batches := 0
 
 	in, level, fence, indent := outside, 0, "", ""
 	briefFence := false
@@ -197,8 +201,8 @@ func TaskEvents(body string) []TaskEvent {
 	}
 	closeProposals := func() {
 		closeItem()
-		events = append(events, TaskEvent{Kind: followUpsKind, FollowUps: taskFollowUpsOf(items), At: proposedAt})
-		lastFollowUpsIdx = len(events) - 1
+		batches++
+		events = append(events, TaskEvent{Kind: followUpsKind, Batch: batches, FollowUps: taskFollowUpsOf(items), At: proposedAt})
 		items, proposedAt = nil, time.Time{}
 	}
 	closeCurrent := func() {
@@ -304,7 +308,7 @@ func TaskEvents(body string) []TaskEvent {
 			}
 		case record:
 			if title, dec, link, ok := triagedEntry(line); ok {
-				applyDecision(events, lastFollowUpsIdx, title, dec, link, decidedAt)
+				applyDecision(events, title, dec, link, decidedAt)
 			} else if t, ok := stampAt(line); ok && decidedAt.IsZero() {
 				// The stamp is the section's first paragraph, before any entry.
 				decidedAt = t
@@ -405,22 +409,19 @@ func taskFollowUpsOf(items []FollowUp) []TaskFollowUp {
 	return out
 }
 
-// applyDecision records a triage record's line on the most recent follow_ups
-// event's matching item, by title — the same match [PendingFollowUps] makes
-// against its own record. idx is that event's place in events, or -1 where a
-// Follow-ups triaged section turns up with no Follow-ups section before it at
-// all, which names nothing to decide. at is the record's stamp, the zero
-// time where it has none.
-func applyDecision(events []TaskEvent, idx int, title string, dec Decision, link string, at time.Time) {
-	if idx < 0 || idx >= len(events) {
-		return
-	}
-	for i := range events[idx].FollowUps {
-		if events[idx].FollowUps[i].Title == title {
-			events[idx].FollowUps[i].Decision = decisionString(dec)
-			events[idx].FollowUps[i].Link = link
-			events[idx].FollowUps[i].DecidedAt = at
-			return
+// applyDecision records a triage record's line on the earliest still-undecided
+// follow-up with its title among events — every batch read so far, which is
+// every batch written before the record. A line matching none (a record with
+// no batch before it, or naming a title nothing proposed) decides nothing. at
+// is the record's stamp, the zero time where it has none.
+func applyDecision(events []TaskEvent, title string, dec Decision, link string, at time.Time) {
+	for i := range events {
+		for j := range events[i].FollowUps {
+			f := &events[i].FollowUps[j]
+			if f.Decision == "" && f.Title == title {
+				f.Decision, f.Link, f.DecidedAt = decisionString(dec), link, at
+				return
+			}
 		}
 	}
 }

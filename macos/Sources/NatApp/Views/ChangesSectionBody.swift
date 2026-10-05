@@ -101,13 +101,17 @@ struct ChangesSectionBody: View {
     }
 }
 
-/// The agent's proposed follow-ups as one item of the Thread's log, headed
-/// with how many there are — its icon and meta in the hue of what waits on
-/// the user — each follow-up a row of it with its Queue / Fold in / Drop
-/// picker, and under them the item's own two actions, Discard all and Apply.
+/// One batch of the agent's proposed follow-ups as one item of the Thread's
+/// log, headed with how many there are — its icon and meta in the hue of what
+/// waits on the user — each follow-up a row of it with its Queue / Fold in /
+/// Drop picker, and under them the item's own two actions, Discard all and
+/// Apply, which decide this batch alone. Its choices, apply and error are its
+/// batch's own in `FollowUpStore`.
 struct FollowUpCards: View {
     @Bindable var appModel: AppModel
     let slice: Slice
+    let batch: Int
+    /// This batch's pending follow-ups.
     let followUps: [FollowUp]
     let milestone: String
     let hasLiveAgent: Bool
@@ -118,8 +122,11 @@ struct FollowUpCards: View {
     @Environment(\.clock) private var clock
 
     private var store: FollowUpStore { appModel.followUpStore }
-    private var choices: [Int: FollowUpChoice] { store.choices(sliceID: slice.id) }
-    private var isApplying: Bool { store.isApplying(sliceID: slice.id) }
+    private var choices: [Int: FollowUpChoice] { store.choices(sliceID: slice.id, batch: batch) }
+    /// This batch's own apply or discard, which spins its button.
+    private var isApplying: Bool { store.isApplying(sliceID: slice.id, batch: batch) }
+    /// Any batch's of the slice, which holds every card's controls.
+    private var isBusy: Bool { store.isApplying(sliceID: slice.id) }
 
     var body: some View {
         LogItem(
@@ -141,7 +148,7 @@ struct FollowUpCards: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .textSelection(.enabled)
                         }
-                        picker(followUp)
+                        picker(followUp, position: offset + 1)
                     }
                     .padding(.vertical, 8)
                     .overlay(alignment: .top) {
@@ -165,16 +172,16 @@ struct FollowUpCards: View {
             HStack(spacing: 6) {
                 Spacer(minLength: 0)
                 Button("Discard all") {
-                    let sliceID = slice.id
-                    Task { await appModel.discardFollowUps(sliceID: sliceID) }
+                    let sliceID = slice.id, batch = batch, followUps = followUps
+                    Task { await appModel.discardFollowUps(sliceID: sliceID, batch: batch, followUps: followUps) }
                 }
                 .buttonStyle(GnatButtonStyle())
-                .disabled(isApplying)
+                .disabled(isBusy)
                 Button(action: apply) {
                     HeaderActionLabel(title: "Apply", systemImage: "checkmark", isBusy: isApplying)
                 }
                 .buttonStyle(GnatButtonStyle(primary: true))
-                .disabled(!canApply || isApplying)
+                .disabled(!canApply || isBusy)
             }
         }
         .padding(.top, 8)
@@ -187,24 +194,24 @@ struct FollowUpCards: View {
     }
 
     private func apply() {
-        let sliceID = slice.id, followUps = followUps
-        Task { await appModel.applyFollowUps(sliceID: sliceID, followUps: followUps) }
+        let sliceID = slice.id, batch = batch, followUps = followUps
+        Task { await appModel.applyFollowUps(sliceID: sliceID, batch: batch, followUps: followUps) }
     }
 
     /// What the foot says above the actions: only what stands in the way —
     /// a refusal, or no live agent to fold anything into.
     private var notice: (text: String, role: InkRole)? {
-        if let error = store.error(sliceID: slice.id) { return (error, .danger) }
+        if let error = store.error(sliceID: slice.id, batch: batch) { return (error, .danger) }
         if !hasLiveAgent {
             return ("No live agent, so nothing can be folded in. Relaunch the task first, or queue it instead.", .warning)
         }
         return nil
     }
 
-    private func picker(_ followUp: FollowUp) -> some View {
+    private func picker(_ followUp: FollowUp, position: Int) -> some View {
         let selection = Binding<FollowUpChoice?>(
-            get: { choices[followUp.index] },
-            set: { store.setChoice($0, sliceID: slice.id, index: followUp.index) }
+            get: { choices[position] },
+            set: { store.setChoice($0, sliceID: slice.id, batch: batch, position: position) }
         )
         return Picker("", selection: selection) {
             ForEach(FollowUpChoice.allCases, id: \.self) { choice in
@@ -215,7 +222,7 @@ struct FollowUpCards: View {
         }
         .labelsHidden()
         .pickerStyle(.segmented)
-        .disabled(isApplying)
+        .disabled(isBusy)
         .accessibilityLabel(followUp.title)
     }
 }

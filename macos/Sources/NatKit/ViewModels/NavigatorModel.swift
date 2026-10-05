@@ -421,11 +421,15 @@ public struct ThreadEvent: Equatable, Sendable {
     /// end by `threadTimestamp`. Nil for a card nat records no time for. A
     /// `var` so a recorded event's card takes its event's time in one place.
     public var when: Date?
+    /// A proposal's batch (`TaskLogEvent.batch`), which pending follow-ups
+    /// its triage card draws (`pendingFollowUps(batch:in:)`); nil for every
+    /// other card.
+    public let batch: Int?
 
     public init(
         _ kind: ThreadEventKind, who: String, meta: String? = nil, tone: ThreadTone = .muted,
         body: String? = nil, facts: [ThreadFact] = [], awaitsTriage: Bool = false, isLive: Bool = false,
-        metaIsAction: Bool = true, when: Date? = nil
+        metaIsAction: Bool = true, when: Date? = nil, batch: Int? = nil
     ) {
         self.kind = kind
         self.who = who
@@ -437,6 +441,7 @@ public struct ThreadEvent: Equatable, Sendable {
         self.isLive = isLive
         self.metaIsAction = metaIsAction
         self.when = when
+        self.batch = batch
     }
 
     /// The card's first line where the meta is an action: who, then what
@@ -502,6 +507,12 @@ public func threadLogItems(_ log: [ThreadEvent]) -> [ThreadLogItem] {
 /// A group's title: how many quiet items it folds — "13 other items".
 public func threadGroupTitle(count: Int) -> String {
     "\(count) other item\(count == 1 ? "" : "s")"
+}
+
+/// An open group's foot, the control that folds it again: what it does and
+/// to how many items — "Hide 5 items".
+public func threadGroupFoldTitle(count: Int) -> String {
+    "Hide \(count) item\(count == 1 ? "" : "s")"
 }
 
 /// When a group's items happened, as its header says it: the earliest and
@@ -578,16 +589,22 @@ public func agentFacts(_ agent: AgentStatus?) -> (model: [ThreadFact], context: 
 /// `fromSlice` is matched against to name the slice it came from as a task
 /// on the plan (see `noteSourceSlice`). Without them every note's source is
 /// plain text.
+///
+/// `pending` is `slice-show`'s `followUps`, where read: a proposal with an
+/// undecided item awaits triage only where it lists an item of that
+/// proposal's batch. nat lists none on a Done slice, so a batch an older nat
+/// let a later one supersede, never triaged, draws there as a plain record.
+/// Nil, every undecided item awaits triage.
 public func buildThreadEvents(
     slice: Slice, agent: AgentStatus?, brief: String?, events: [TaskLogEvent]? = nil,
-    plan: [Slice] = [], milestones: [Milestone] = []
+    plan: [Slice] = [], milestones: [Milestone] = [], pending: [FollowUp]? = nil
 ) -> [ThreadEvent] {
     let state = displayState(
         for: slice, agent: agent.map { AgentActivity($0.activity) })
     // Each card takes its event's time, but for one that has its own — a
     // decided follow-up's, the time it was decided.
     let cards = { (event: TaskLogEvent) -> [ThreadEvent] in
-        threadEvents(event, plan: plan, milestones: milestones).map { card in
+        threadEvents(event, plan: plan, milestones: milestones, pending: pending).map { card in
             var card = card
             if card.when == nil { card.when = event.at }
             return card
@@ -670,8 +687,10 @@ public func followUpSlice(link: String?, plan: [Slice]) -> Slice? {
 /// headed by the decision ("Queued proposed follow-up"), its title then its
 /// brief as the body, a `task` row for the slice a queued one became where
 /// the plan holds it, and the time it was decided where nat read one.
-private func threadEvents(_ event: TaskLogEvent, plan: [Slice], milestones: [Milestone]) -> [ThreadEvent] {
-    [threadEvent(event, plan: plan, milestones: milestones)] + event.followUps.compactMap { followUp in
+private func threadEvents(
+    _ event: TaskLogEvent, plan: [Slice], milestones: [Milestone], pending: [FollowUp]?
+) -> [ThreadEvent] {
+    [threadEvent(event, plan: plan, milestones: milestones, pending: pending)] + event.followUps.compactMap { followUp in
         followUp.decision.map { decision in
             let queued = decision == .queued ? followUpSlice(link: followUp.link, plan: plan) : nil
             // Two newlines, so markdown sets the title and brief as paragraphs.
@@ -686,8 +705,11 @@ private func threadEvents(_ event: TaskLogEvent, plan: [Slice], milestones: [Mil
 }
 
 /// One recorded event as its Task log card — a proposal of follow-ups as
-/// its count line.
-private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Milestone]) -> ThreadEvent {
+/// its count line, awaiting triage while `pending` (where read) still lists
+/// items of its batch.
+private func threadEvent(
+    _ event: TaskLogEvent, plan: [Slice], milestones: [Milestone], pending: [FollowUp]?
+) -> ThreadEvent {
     let note = event.note.flatMap { $0.isEmpty ? nil : $0 }
     switch event.kind {
     case .handedBack:
@@ -721,10 +743,11 @@ private func threadEvent(_ event: TaskLogEvent, plan: [Slice], milestones: [Mile
         return ThreadEvent(.closed, who: "Closed", body: note)
     case .followUps:
         let count = event.followUps.count
-        let pending = event.followUps.contains { $0.decision == nil }
+        let awaits = event.followUps.contains { $0.decision == nil }
+            && (pending.map { $0.contains { $0.batch == event.batch } } ?? true)
         return ThreadEvent(
             .followUps, who: "Agent", meta: "proposed \(count) follow-up\(count == 1 ? "" : "s")",
-            tone: pending ? .hot : .muted, awaitsTriage: pending, isLive: pending)
+            tone: awaits ? .hot : .muted, awaitsTriage: awaits, isLive: awaits, batch: event.batch)
     case .note:
         guard let by = event.by.flatMap({ $0.isEmpty ? nil : $0 }) else {
             return ThreadEvent(.note, who: "Note", body: note)

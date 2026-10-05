@@ -142,14 +142,22 @@ section, since a slice handed back twice has one per hand-back.
 noticed but didn't do with `nat slice-followups` and stops; the proposals are
 a `Follow-ups` section of the slice body (numbered items), and the user's
 decision a later `Follow-ups triaged` section (bullets) — no column, both
-stores write the same markdown. `store.PendingFollowUps` reads what's still
-undecided; `complete-slice` refuses while any is (`--blocked` exempt).
-`nat slice-triage` decides every pending index at once (queue → Todo slice
-under the parent's milestone, blocked on it; fold in → needs a live agent;
-drop), writes the record **before** its one `agent-send`. Only the gnat
-prompt and `/next-slice` carry the passage — the TUI has no triage surface.
-gnat's `FollowUpsSidebarView` is pane-level, shown while `slice-show`'s
-`followUps` is non-empty. Design: `docs/design/follow-up-triage/`.
+stores write the same markdown. Every `Follow-ups` section is a **batch**,
+pending until its own items are decided — none supersedes another, and a
+later hand-in carries only what is new. A triage record decides items of any
+batch before it, each line the earliest still-undecided item of its title
+(`store.TaskEvents` holds the matching; `store.PendingFollowUps` is its
+undecided items, each with its `Batch` and an `Index` over every pending
+item; `PendingFollowUpsOf` reads none on a Done slice, whose leftovers are
+history). `complete-slice` refuses while any is pending (`--blocked` exempt).
+`nat slice-triage` decides whole batches — every pending item of each batch
+it touches, others left alone, a partial batch refused; `--drop-all` every
+batch (queue → Todo slice under the parent's milestone, blocked on it; fold
+in → needs a live agent; drop), and writes the record **before** its one
+`agent-send`. Only the gnat prompt and `/next-slice` carry the passage — the
+TUI has no triage surface. gnat draws one triage card per pending batch in
+the Task log (`slice-show`'s `followUps` and each `follow_ups` event carry the
+`batch` that pairs them). Design: `docs/design/follow-up-triage/`.
 
 **Notes.** `nat slice-note <slice> --note TEXT|- [--from <slice>]
 [--milestone NAME]` appends a `Note` section to a Todo or In progress
