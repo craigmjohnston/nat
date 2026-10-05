@@ -173,7 +173,23 @@ step's log — with:
 nat slice-checks <slice> --log --project <project>
 ```
 
-That is the one way to read CI: never `gh`.
+That is the one way to read CI: never `gh`. It reads a check still running
+too — the step it is on and how long it has been there — so look there, not at
+`gh`, when one check has sat pending far longer than the rest or than it
+usually takes.
+
+When a check fails or stalls for a reason that is not your change's — a flaky
+test, a runner that died, a job stuck on a step — re-run it:
+
+```
+nat slice-checks-rerun <slice> --check '<check name>' --project <project>
+```
+
+`--failed` in place of `--check` re-runs every failed job. If the check is
+still running, the re-run cancels it first on its own; a cancel stops every
+job of that run, and the output says which ones it stopped. Never use it to
+retry a real failure without fixing it — pushing a commit re-runs CI by itself
+— and never `gh` for it either.
 
 If this session finds out something a *later* slice needs to know — a
 constraint, a seam that moved, an assumption in another slice's brief that is

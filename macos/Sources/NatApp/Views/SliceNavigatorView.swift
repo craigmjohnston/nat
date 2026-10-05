@@ -607,6 +607,7 @@ struct SliceNavigatorView: View {
             PRSectionBody(
                 pr: pr,
                 reviewerStore: prStore,
+                checksStore: prStore,
                 staleMessage: prStore.loadState.errorMessage,
                 actionError: appModel.sliceActions.error(.merge, sliceID: slice.id),
                 note: detail.detail?.container?.taskNote
@@ -633,6 +634,12 @@ struct PRSectionBody: View {
     /// for an ad hoc session's, which lists its requests but cannot edit
     /// them (`nat pr-reviewers` names a slice).
     var reviewerStore: PRStore?
+    /// The store checks are re-run and cancelled through — a slice's pull
+    /// request. Nil for an ad hoc session's, whose rows carry no controls
+    /// (`nat slice-checks-rerun` names a slice).
+    var checksStore: PRStore?
+    /// A check drawn as under the pointer whether it is or not — a story's.
+    var hoveredCheck: String?
     var staleMessage: String?
     var actionError: String?
     /// A source container's word on its tasks' pull requests (`task_note`),
@@ -641,44 +648,68 @@ struct PRSectionBody: View {
 
     var body: some View {
         let verdict = reviewVerdict(reviewDecision: pr.reviewDecision)
-        ScrollView {
-            NavProse {
-                if let staleMessage {
-                    Text("The refresh failed, so this is the last reading: \(staleMessage)").ink(.warning)
-                }
-                if let actionError {
-                    Text(actionError).ink(.danger)
-                }
+        let controls = ChecksControls(checks: pr.checks)
+        VStack(spacing: 0) {
+            if let notice = checksStore?.checksNotice {
+                NavNotice(text: notice.text, role: notice.isError ? .danger : .secondary)
+            }
+            ScrollView {
+                NavProse {
+                    if let staleMessage {
+                        Text("The refresh failed, so this is the last reading: \(staleMessage)").ink(.warning)
+                    }
+                    if let actionError {
+                        Text(actionError).ink(.danger)
+                    }
 
-                NavHeading(text: "Checks")
-                if pr.checks.isEmpty {
-                    Text("No checks have run.").ink(.secondary)
-                } else {
-                    VStack(alignment: .leading, spacing: 3) {
-                        ForEach(Array(pr.checks.enumerated()), id: \.offset) { _, check in
-                            checkLine(check)
+                    ChecksHeading(controls: controls, store: checksStore)
+                    if pr.checks.isEmpty {
+                        Text("No checks have run.").ink(.secondary)
+                    } else {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(pr.checks.enumerated()), id: \.offset) { _, check in
+                                checkRow(check, controls: controls)
+                            }
                         }
                     }
-                }
 
-                NavHeading(text: "Review")
-                Text(verdict.outcome == .passing
-                     ? approvedBy(reviews: pr.reviews).map { "\(sentenceCase(verdict.word)) by \($0)" } ?? sentenceCase(verdict.word)
-                     : sentenceCase(verdict.word))
-                    .ink(.secondary)
-
-                ReviewersBlock(pr: pr, store: reviewerStore)
-
-                if let note {
-                    Text(note)
-                        .font(.system(size: GnatMetrics.xs))
+                    NavHeading(text: "Review")
+                    Text(verdict.outcome == .passing
+                         ? approvedBy(reviews: pr.reviews).map { "\(sentenceCase(verdict.word)) by \($0)" } ?? sentenceCase(verdict.word)
+                         : sentenceCase(verdict.word))
                         .ink(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 4)
+
+                    ReviewersBlock(pr: pr, store: reviewerStore)
+
+                    if let note {
+                        Text(note)
+                            .font(.system(size: GnatMetrics.xs))
+                            .ink(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 4)
+                    }
                 }
             }
+            .thinScrollers()
         }
-        .thinScrollers()
+    }
+
+    /// A check's row: its line, then — on a slice's pull request with an
+    /// Actions run behind any check — its re-run and cancel at the trailing
+    /// edge, in the heading's columns. Under the pointer the whole row is
+    /// washed, full bleed to the section's edges.
+    private func checkRow(_ check: PRCheck, controls: ChecksControls) -> some View {
+        HStack(spacing: 6) {
+            checkLine(check)
+            Spacer(minLength: 4)
+            if let checksStore, controls.hasControls {
+                CheckRowControls(check: check, controls: controls, store: checksStore)
+            }
+        }
+        .frame(minHeight: CheckControlSlot<EmptyView>.side + 2)
+        .padding(.horizontal, 12)
+        .gnatRow(washed: hoveredCheck == check.name)
+        .padding(.horizontal, -12)
     }
 
     /// A check's line, led by a circle of its outcome: empty for one that

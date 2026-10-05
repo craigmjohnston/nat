@@ -91,7 +91,22 @@ failed step's log — with:
 
     nat slice-checks 3b738308-f654-8170-8c99-eccab4463d8f --log --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
+The same command shows what a check still running is doing — the step
+it is on and for how long — so a check that has sat pending far longer
+than its siblings or its usual run is read there, never with `gh`.
+
 That is the one way to read CI: never `gh`.
+
+Where a check failed or stalled for a reason that is not the change's —
+a flake, a runner that died, a job that has stalled — re-run it with:
+
+    nat slice-checks-rerun 3b738308-f654-8170-8c99-eccab4463d8f --check '<check name>' --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+
+(`--failed` instead of `--check` re-runs every failed job.) A check still
+running is cancelled first by the re-run itself, and a cancel stops every
+job of that run — the output says which. It is never a way to retry a
+real failure without a fix: a pushed commit re-runs CI by itself. Never
+`gh` for this either.
 
 ## Notes for later slices
 

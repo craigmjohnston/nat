@@ -58,8 +58,9 @@ func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
 // GH is everything the pull request commands need of the GitHub CLI:
 // [actions.PRCreator] for slice-approve, [PRViewer] for pr-view, [PRMerger]
 // for pr-merge, [PRReader] for pr-status, [PRCommenter] for pr-comment and
-// [PRReviewerEditor] for pr-reviewers, [RunLogReader] for slice-checks --log
-// and [actions.PRReviewReader] for a fix launch's review snapshot. One gh.CLI
+// [PRReviewerEditor] for pr-reviewers, [RunLogReader] and [JobReader] for
+// slice-checks --log, [RunController] for slice-checks-rerun and
+// slice-checks-cancel, and [actions.PRReviewReader] for a fix launch's review snapshot. One gh.CLI
 // answers all of them, and a headless command names whichever of them it
 // actually calls, the way [GitCLI] combines git's two seams for the same
 // reason.
@@ -72,6 +73,8 @@ type GH interface {
 	PRHeadLister
 	PRReviewerEditor
 	RunLogReader
+	JobReader
+	RunController
 	actions.PRReviewReader
 }
 
@@ -528,7 +531,20 @@ usage:
                       how the checks on a slice's pull request stand: one
                       verdict, then each check's name, state and run URL;
                       --log adds each failed GitHub Actions check's failed
-                      steps' log, its last 200 lines
+                      steps' log, its last 200 lines, and for each one still
+                      running, where its job stands — waiting for a runner,
+                      or the step it is on and for how long — and its steps
+  nat slice-checks-rerun <slice> (--all | --failed | --check NAME...) [--json] --project ID
+                      re-run the pull request's GitHub Actions checks: every
+                      run whole, each run's failed jobs, or named checks' jobs
+                      (--check repeats). A run still going is cancelled first,
+                      waited on and re-run whole; what was cancelled is said
+                      apart from what was re-run
+  nat slice-checks-cancel <slice> [--check NAME...] [--json] --project ID
+                      cancel every GitHub Actions run behind the pull
+                      request's checks still going, or only named checks'
+                      runs; a cancel stops every job of its run, and each
+                      check stopped is named
   nat slice-rework <slice> [--comments TEXT] --project ID
                       take a handed-back slice back out of review: its branch is
                       cleared and nothing else, so it reads as in progress until
@@ -709,6 +725,10 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceNote(ctx, args[1:], env)
 	case "slice-checks":
 		return sliceChecks(ctx, args[1:], env)
+	case "slice-checks-rerun":
+		return sliceChecksRerun(ctx, args[1:], env)
+	case "slice-checks-cancel":
+		return sliceChecksCancel(ctx, args[1:], env)
 	case "release-slice":
 		return releaseSlice(ctx, args[1:], env)
 	case "pr-view":

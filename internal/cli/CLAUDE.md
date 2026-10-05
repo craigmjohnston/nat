@@ -252,7 +252,47 @@ no PR says so and exits 0. `--log` adds, per failed GitHub Actions check,
 that because a sibling job is still running, the job's whole log through `gh
 api` (`gh.CLI.FailedLog`); an external status has its URL alone, an
 unreadable log is logged and shown as `log not available: <why>` under its
-check (`log_error` in JSON).
+check (`log_error` in JSON). For a **pending** check whose URL names an
+Actions job, `--log` reads the job (`gh.CLI.ActionsJob`) and prints under the
+check where it stands — `queued, no runner yet — waiting <d>` (from
+`created_at`), or `in progress for <d> on <runner>, at step "<s>" for <d>` —
+then every step with its status/conclusion and duration (`… so far` for the
+step under way), all against `checksNow` (a package var, pinned in tests);
+then its log (`gh.CLI.JobLog`), cut as a failed one is under a `## <name> log`
+heading, or — GitHub gives none until the job ends (`gh.ErrLogNotReady`) — the
+plain line `log: GitHub gives no log until the job ends` (`log_pending` in
+JSON, never `log_error`). JSON adds `job` (`status`, `created_at`,
+`started_at`, `runner`, `steps[]`) and `job_error`, all `omitempty`; a
+failed job read is `job not available: <why>`, logged, and concludes nothing.
+A run-only URL or another service's status gets nothing extra.
+
+`slice-checks-rerun <slice> (--all | --failed | --check NAME...)` and
+`slice-checks-cancel <slice> [--check NAME...]` (`slicechecksrerun.go`) are
+the one way gnat or an agent re-runs or cancels CI. Both: any status with a PR
+recorded, the PR re-read with `ViewPR` and refused unless `OPEN` (a failed
+read refuses — the cost of being wrong is CI spent on a finished review); the
+checks grouped into Actions runs by owner/repo/run (`loadCITarget`), so a run
+is one gh call whatever number of its checks; a check with no run behind it is
+`skipped` (`--check` naming one is refused, as is a name that is no check,
+listing the names). `rerun`: exactly one mode; `--all` re-runs every run whole,
+`--failed` each run with a failing check (`--failed`; none refused), `--check`
+each named check's job (`RerunJob`; a run-only URL re-runs the run whole). A
+run still going (any of its checks pending) is **cancelled first, every such
+run before any wait**, then polled (`RunStatus`) to `completed` —
+`rerunPolls`×`rerunPollEvery`, about two minutes, through `checksSleep`; a
+timeout is the error, says what was cancelled and that nothing was re-run —
+and then re-run **whole**, whatever the mode: a cancel stops every job of the
+run, and GitHub's docs don't say "failed jobs" picks cancelled ones up.
+`cancel`: every run still going, or only the named checks' runs; none going is
+refused; returns once the cancels are sent. Output and `--json`
+(`{cancelled, rerun, skipped}`, always arrays; cancel has no `rerun`) name
+every check stopped — the asked-for and their pending siblings — apart from
+those re-run. A failure part-way names what was already sent. Nudge on
+success only.
+
+`pr-view --json`'s checks carry `rerunnable` (an Actions run behind it) and
+`run` (that run's id, omitted otherwise) — how gnat tells which checks stop
+together.
 
 PR actions: `slice-approve` (`actions.OpenPR` + `actions.RecordPR`, the
 approve key's two-step write, headless), `pr-comment` (`gh pr comment

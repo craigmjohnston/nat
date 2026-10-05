@@ -712,7 +712,7 @@ func TestPromptFlagsAWorktreesOverrideByItsCheckout(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // merely says "the `nat` commands" is not read as one.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|plan-propose|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|slice-checks-rerun|slice-checks-cancel|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|plan-propose|project-create)\b`)
 
 // natCommands are the invocations a prompt names: each from the command word to
 // the end of its line, and on through the lines a trailing backslash continues
@@ -744,6 +744,9 @@ func TestSlicePromptReadsCIWithSliceChecks(t *testing.T) {
 		for _, want := range []string{
 			"    nat slice-checks " + c.Slice.ID + " --log --project " + testProjectID + "\n",
 			"That is the one way to read CI: never `gh`.",
+			"shows what a check still running is doing",
+			"    nat slice-checks-rerun " + c.Slice.ID + " --check '<check name>' --project " + testProjectID + "\n",
+			"never a way to retry a\nreal failure without a fix",
 		} {
 			if !strings.Contains(got, want) {
 				t.Errorf("the %q slice prompt does not say %q", f, want)

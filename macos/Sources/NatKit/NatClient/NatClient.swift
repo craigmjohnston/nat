@@ -555,6 +555,48 @@ public final class NatClient: Sendable {
         return try decodeJSON(PRReviewers.self, from: output)
     }
 
+    /// Re-run a slice's pull request's GitHub Actions checks — `nat
+    /// slice-checks-rerun`, which cancels a run still going first, waits for
+    /// it, and says what it cancelled apart from what it re-ran.
+    ///
+    /// - Throws: NatError if the slice has no open pull request, nothing
+    ///   matches, or gh refuses
+    public func sliceChecksRerun(
+        projectID: String, sliceRef: String, mode: ChecksRerunMode
+    ) async throws -> ChecksActionResult {
+        let output = try await runNat(arguments: Self.checksRerunArguments(projectID: projectID, sliceRef: sliceRef, mode: mode))
+        return try decodeJSON(ChecksActionResult.self, from: output)
+    }
+
+    /// Cancel the Actions runs still going behind a slice's pull request's
+    /// checks — all of them, or only the named checks' runs — `nat
+    /// slice-checks-cancel`. Returns once the cancels are sent.
+    public func sliceChecksCancel(
+        projectID: String, sliceRef: String, checks: [String]
+    ) async throws -> ChecksActionResult {
+        let output = try await runNat(arguments: Self.checksCancelArguments(projectID: projectID, sliceRef: sliceRef, checks: checks))
+        return try decodeJSON(ChecksActionResult.self, from: output)
+    }
+
+    /// `slice-checks-rerun`'s command line, each named check under its own
+    /// repeated flag.
+    static func checksRerunArguments(projectID: String, sliceRef: String, mode: ChecksRerunMode) -> [String] {
+        var args = ["slice-checks-rerun", sliceRef, "--project", projectID, "--json"]
+        switch mode {
+        case .all: args.append("--all")
+        case .failed: args.append("--failed")
+        case .checks(let names): for name in names { args += ["--check", name] }
+        }
+        return args
+    }
+
+    /// `slice-checks-cancel`'s command line.
+    static func checksCancelArguments(projectID: String, sliceRef: String, checks: [String]) -> [String] {
+        var args = ["slice-checks-cancel", sliceRef, "--project", projectID, "--json"]
+        for name in checks { args += ["--check", name] }
+        return args
+    }
+
     /// Launch the planning agent, detached in tmux, on the active project —
     /// the wand toolbar button's own action, mirroring the board's `W`
     /// (`internal/cli/workshoplaunch.go`). The model and effort are the

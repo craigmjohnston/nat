@@ -44,7 +44,9 @@ func ChecksPrompt(c ChecksContext) string {
 	}
 	b.WriteString("\nRead what failed, with the failed steps' logs, with:\n\n")
 	fmt.Fprintf(&b, "    nat slice-checks %s --log --project %s\n\n", c.SliceID, c.ProjectID)
-	b.WriteString("Fix the cause on the same branch, run the project's verification gate,\n")
+	b.WriteString(runningChecksSentence)
+	b.WriteString(rerunPassage(c.SliceID, c.ProjectID))
+	b.WriteString("\nOtherwise fix the cause on the same branch, run the project's verification gate,\n")
 	fmt.Fprintf(&b, "then commit and push %s — the branch the pull request is built\n", c.Branch)
 	b.WriteString("from, which picks up the push by itself. Then hand it back as a slice\n")
 	b.WriteString("ends:\n\n")

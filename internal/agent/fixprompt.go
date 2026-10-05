@@ -76,7 +76,9 @@ func fixPrompt(c PromptContext) string {
 	b.WriteString("checks with each failed step's log:\n\n")
 	fmt.Fprintf(&b, "    gh pr view %s --comments\n", c.Slice.PRURL)
 	fmt.Fprintf(&b, "    nat slice-checks %s --log --project %s\n\n", c.Slice.ID, c.ProjectID)
-	b.WriteString("That `gh pr view` is the only `gh` you may run. Never open, merge, close\n")
+	b.WriteString(runningChecksSentence)
+	b.WriteString(rerunPassage(c.Slice.ID, c.ProjectID))
+	b.WriteString("\nThat `gh pr view` is the only `gh` you may run. Never open, merge, close\n")
 	if c.Frontend == FrontendGnat {
 		b.WriteString("or reopen a pull request: merging this one is a button in the app's PR\n")
 		b.WriteString("tab, pressed once they are satisfied with what you did.\n\n")

@@ -18,6 +18,8 @@ func TestChecksPrompt(t *testing.T) {
 		"- test: https://github.test/runs/1\n",
 		"- deploy\n",
 		"nat slice-checks s1 --log --project " + testProjectID,
+		"shows what a check still running is doing",
+		"nat slice-checks-rerun s1 --check '<check name>' --project " + testProjectID,
 		"push slice/red",
 		"nat complete-slice s1 --branch slice/red --summary '<what you fixed>' --project " + testProjectID,
 		"Never run `gh`",

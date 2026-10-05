@@ -353,3 +353,19 @@ func TestPRViewReportsAFailedHydrate(t *testing.T) {
 		t.Errorf("err = %v, want the failed hydrate named", err)
 	}
 }
+
+// TestPRJSONRerunnable marks a check with an Actions run behind it
+// rerunnable, with its run's id, and one another service reported neither.
+func TestPRJSONRerunnable(t *testing.T) {
+	doc := prJSON(gh.PR{Checks: []gh.Check{
+		{Name: "test", State: "FAILURE", URL: "https://github.com/o/r/actions/runs/11/job/21"},
+		{Name: "deploy", State: "SUCCESS", URL: "https://ci.example.com/9"},
+	}})
+	want := []checkJSON{
+		{Name: "test", State: "FAILURE", Link: "https://github.com/o/r/actions/runs/11/job/21", Rerunnable: true, Run: "11"},
+		{Name: "deploy", State: "SUCCESS", Link: "https://ci.example.com/9"},
+	}
+	if len(doc.Checks) != 2 || doc.Checks[0] != want[0] || doc.Checks[1] != want[1] {
+		t.Errorf("checks = %+v, want %+v", doc.Checks, want)
+	}
+}

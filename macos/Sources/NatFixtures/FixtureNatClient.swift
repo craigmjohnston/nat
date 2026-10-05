@@ -44,6 +44,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     private let acceptHangs = Box<Bool>(false)
     /// The same for a workshop launch — the launching story's state.
     private let launchHangs = Box<Bool>(false)
+    /// The same for a checks re-run or cancel — the mid-call story's state.
+    private let checksHang = Box<Bool>(false)
     private let acceptRefusal = Box<String?>(nil)
     private let diff: SliceDiff
     private let pr: PRDetail
@@ -138,6 +140,12 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// a proposal the plan has moved out from under.
     public func refuseAccepts(_ message: String) {
         acceptRefusal.set(message)
+    }
+
+    /// Hold every checks re-run and cancel from now on, so the PR section
+    /// stays mid-call.
+    public func holdChecksActions() {
+        checksHang.set(true)
     }
 
     /// Hold every workshop launch from now on, so the app stays mid-launch.
@@ -415,6 +423,43 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         return try await answer(PRReviewers(
             pr: pr.url, requested: requested,
             candidates: Fixtures.collaborators.filter { $0 != pr.author && !requested.contains($0) }))
+    }
+
+    /// What nat would say re-running the fixture pull request's checks: a
+    /// run with any check still going cancelled first (its going checks named)
+    /// and re-run whole; otherwise the mode's own checks.
+    public func sliceChecksRerun(projectID: String, sliceRef: String, mode: ChecksRerunMode) async throws -> ChecksActionResult {
+        if checksHang.get() { try await Self.never() }
+        try await record("slice-checks-rerun \(sliceRef) \(mode)")
+        let actions = pr.checks.filter(\.rerunnable)
+        let touched: [PRCheck] = switch mode {
+        case .all: actions
+        case .failed: actions.filter { checkOutcome(state: $0.state) == .failing }
+        case .checks(let names): actions.filter { names.contains($0.name) }
+        }
+        var cancelled: [String] = []
+        var rerun: [String] = []
+        for run in touched.compactMap(\.run).reduce(into: [String](), { if !$0.contains($1) { $0.append($1) } }) {
+            let ofRun = actions.filter { $0.run == run }
+            let going = ofRun.filter { checkOutcome(state: $0.state) == .pending }
+            if going.isEmpty {
+                rerun += touched.filter { $0.run == run }.map(\.name)
+            } else {
+                cancelled += going.map(\.name)
+                rerun += ofRun.map(\.name)
+            }
+        }
+        return ChecksActionResult(cancelled: cancelled, rerun: rerun)
+    }
+
+    /// What nat would say cancelling the fixture pull request's runs still
+    /// going: every check still going in each run touched.
+    public func sliceChecksCancel(projectID: String, sliceRef: String, checks: [String]) async throws -> ChecksActionResult {
+        if checksHang.get() { try await Self.never() }
+        try await record("slice-checks-cancel \(sliceRef) \(checks)")
+        let going = pr.checks.filter { $0.rerunnable && checkOutcome(state: $0.state) == .pending }
+        let runs = Set(checks.isEmpty ? going.compactMap(\.run) : pr.checks.filter { checks.contains($0.name) }.compactMap(\.run))
+        return ChecksActionResult(cancelled: going.filter { $0.run.map(runs.contains) ?? false }.map(\.name))
     }
 
     public func workshopLaunch(

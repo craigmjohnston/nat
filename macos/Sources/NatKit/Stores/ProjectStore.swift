@@ -26,6 +26,8 @@ public protocol NatClientProtocol: Sendable {
     func prMerge(projectID: String, sliceRef: String) async throws -> Void
     func prComment(projectID: String, sliceRef: String, body: String) async throws -> Void
     func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers
+    func sliceChecksRerun(projectID: String, sliceRef: String, mode: ChecksRerunMode) async throws -> ChecksActionResult
+    func sliceChecksCancel(projectID: String, sliceRef: String, checks: [String]) async throws -> ChecksActionResult
     func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult
     func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult
     func configShow() async throws -> ConfigDoc
@@ -89,6 +91,16 @@ extension NatClientProtocol {
     /// the same reasoning as `workspaceLaunch`.
     public func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers {
         throw NatError.commandFailed("pr-reviewers: not supported by this client")
+    }
+
+    /// Re-running and cancelling checks: only `NatClient` and the fixture
+    /// client implement these, the same reasoning as `workspaceLaunch`.
+    public func sliceChecksRerun(projectID: String, sliceRef: String, mode: ChecksRerunMode) async throws -> ChecksActionResult {
+        throw NatError.commandFailed("slice-checks-rerun: not supported by this client")
+    }
+
+    public func sliceChecksCancel(projectID: String, sliceRef: String, checks: [String]) async throws -> ChecksActionResult {
+        throw NatError.commandFailed("slice-checks-cancel: not supported by this client")
     }
 
     /// Triaging follow-ups: only `NatClient` and the fixture client

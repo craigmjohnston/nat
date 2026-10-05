@@ -82,6 +82,8 @@ func TestFixPromptSendsTheAgentAtTheReview(t *testing.T) {
 		"- Pull request: " + c.Slice.PRURL,
 		"gh pr view " + c.Slice.PRURL + " --comments",
 		"nat slice-checks " + c.Slice.ID + " --log --project " + c.ProjectID,
+		"shows what a check still running is doing",
+		"nat slice-checks-rerun " + c.Slice.ID + " --check '<check name>' --project " + c.ProjectID,
 		"answer the\ncomments left on the review, and fix whatever checks are failing",
 		"That `gh pr view` is the only `gh` you may run.",
 		"Never open, merge, close\nor reopen a pull request",
