@@ -114,7 +114,7 @@ public enum MainPaneTab: CaseIterable, Equatable, Sendable {
 }
 
 /// The navigator's reading of one slice: which sections are live, which open
-/// first, which header actions it offers, and what the main pane lands on.
+/// first, which actions its bar offers, and what the main pane lands on.
 /// The design's `phaseOf`/`launched`/`handed`/`hasPR`, over the slice's real
 /// facts — and, where the design assumed a fact nat does not have, over the
 /// fact nat does: Changes reads a branch, and only a recorded one can be read
@@ -125,7 +125,7 @@ public struct NavigatorModel: Equatable, Sendable {
     public let hasPR: Bool
     public let hasBranch: Bool
     public let hasLiveAgent: Bool
-    /// The Thread header's Launch: `LaunchPlan`'s own answer, so the header,
+    /// The action bar's Launch: `LaunchPlan`'s own answer, so the bar,
     /// the slice menu and the CLI never disagree.
     public let canLaunch: Bool
     /// Whether the slice's agent has handed in any images — the Visual
@@ -209,7 +209,7 @@ public struct NavigatorModel: Equatable, Sendable {
     /// one name the user knows it by, before launch and after.
     public var threadLabel: String { NavigatorSection.thread.label }
 
-    /// Whether the Thread header offers Launch: a slice not yet launched (a
+    /// Whether the action bar offers Launch: a slice not yet launched (a
     /// blocked one drawn disabled, as the design draws it), one being worked
     /// or fixed whose agent is gone — a relaunch where nat recorded the first
     /// launch (`launchIsRelaunch`), else a launch — and one approved and at
@@ -224,15 +224,15 @@ public struct NavigatorModel: Equatable, Sendable {
         }
     }
 
-    /// Whether Changes carries Send and Approve: only a hand-back awaiting
-    /// review has anything to approve.
+    /// Whether the action bar offers Approve (and Changes Send): only a
+    /// hand-back awaiting review has anything to approve.
     public var showsReviewActions: Bool { state == .review }
 
     /// Whether Visual changes carries Send: comments go to the agent, so
     /// only while there is one to receive them.
     public var showsVisualActions: Bool { hasVisuals && hasLiveAgent }
 
-    /// Whether the PR header carries Merge: an open pull request on a slice
+    /// Whether the action bar offers Merge: an open pull request on a slice
     /// not yet Done.
     public var showsMerge: Bool { hasPR && state != .done }
 
@@ -241,6 +241,93 @@ public struct NavigatorModel: Equatable, Sendable {
     /// slice's own status is read for it.
     public var prStatus: NavSectionStatus? {
         state == .done && hasPR ? .merged : nil
+    }
+
+    /// The action bar at the navigator's foot: the slice's major actions,
+    /// each drawn only while relevant — Launch where `showsLaunch`, Approve
+    /// where `showsReviewActions`, Merge where `showsMerge` and the pull
+    /// request is not read as merged or closed — in that order, so the
+    /// primary trails. With none relevant, the latest live section's primary
+    /// drawn disabled with why; a Done slice, no button at all.
+    ///
+    /// What only the view can read comes in: the launch's words (a relaunch
+    /// is read off the Task log), the comments pending on the diff, whether
+    /// approving is available (`canApprove`) and why not (`approveHelp`),
+    /// whether GitHub would take the merge (`canMerge`) and whether the pull
+    /// request is still open (`prOpen`, true while unread — a failed read
+    /// concludes nothing).
+    public func bar(
+        launchTitle: String, pendingComments: Int = 0, canApprove: Bool = false, approveHelp: String? = nil,
+        canMerge: Bool = false, prOpen: Bool = true
+    ) -> NavigatorBar {
+        guard state != .done else { return .completed }
+        let approveTitle = pendingComments > 0 ? "Approve with comments" : "Approve changes"
+        let launch = NavigatorBarButton(
+            action: .launch, title: launchTitle, enabled: canLaunch, primary: launchIsPrimary)
+        let approve = NavigatorBarButton(
+            action: .approve, title: approveTitle, enabled: canApprove, primary: true,
+            help: canApprove ? nil : approveHelp)
+        let merge = NavigatorBarButton(action: .merge, title: "Merge PR", enabled: canMerge, primary: true)
+        var buttons: [NavigatorBarButton] = []
+        if showsLaunch { buttons.append(launch) }
+        if showsReviewActions { buttons.append(approve) }
+        if showsMerge && prOpen { buttons.append(merge) }
+        if !buttons.isEmpty { return .buttons(buttons) }
+        // Nothing to press: the latest section's own primary, greyed.
+        if isLive(.pr) {
+            return .buttons([merge.fallback("The pull request is no longer open")])
+        }
+        if isLive(.changes) {
+            return .buttons([approve.fallback("Waiting on the agent's hand-back")])
+        }
+        return .buttons([launch.fallback(
+            state == .waiting ? "The agent is waiting on you in its terminal" : "The agent is still working")])
+    }
+}
+
+/// What the navigator's action bar holds (`NavigatorModel.bar`).
+public enum NavigatorBar: Equatable, Sendable {
+    /// Its buttons, left to right — never empty.
+    case buttons([NavigatorBarButton])
+    /// A Done slice: "Task completed", and no button.
+    case completed
+
+    public static let completedText = "Task completed"
+
+    /// The bar's button for an action, where the bar has one.
+    public func button(_ action: NavigatorBarAction) -> NavigatorBarButton? {
+        guard case .buttons(let buttons) = self else { return nil }
+        return buttons.first { $0.action == action }
+    }
+}
+
+/// The slice's major actions, as the action bar names them.
+public enum NavigatorBarAction: Equatable, Sendable {
+    case launch, approve, merge
+}
+
+/// One button of the action bar.
+public struct NavigatorBarButton: Equatable, Sendable {
+    public let action: NavigatorBarAction
+    public let title: String
+    /// Whether the slice allows it now; the one-shot gate
+    /// (`SliceActions.isEnabled`) is the view's on top.
+    public let enabled: Bool
+    public let primary: Bool
+    /// The tooltip: why a greyed button is greyed, where that is known.
+    public let help: String?
+
+    public init(action: NavigatorBarAction, title: String, enabled: Bool, primary: Bool, help: String? = nil) {
+        self.action = action
+        self.title = title
+        self.enabled = enabled
+        self.primary = primary
+        self.help = help
+    }
+
+    /// The button drawn as the bar's stand-in: greyed, primary, saying why.
+    func fallback(_ why: String) -> NavigatorBarButton {
+        NavigatorBarButton(action: action, title: title, enabled: false, primary: true, help: why)
     }
 }
 

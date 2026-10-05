@@ -116,18 +116,24 @@ extension NavSectionStatus {
 }
 
 /// The navigator column: whatever sections the selection has, and a filler
-/// taking the column's slack when every section is folded. Its title is the
-/// window titlebar's, drawn by the shell.
-struct NavigatorColumn<Sections: View>: View {
+/// taking the column's slack when every section is folded — then, pinned to
+/// the column's foot under them all, its `footer` (a slice's action bar),
+/// where it has one. Its title is the window titlebar's, drawn by the shell.
+struct NavigatorColumn<Sections: View, Footer: View>: View {
     var anyOpen: Bool
     @ViewBuilder var sections: () -> Sections
+    @ViewBuilder var footer: () -> Footer
 
     var body: some View {
         VStack(spacing: 0) {
-            sections()
-            if !anyOpen {
-                Spacer(minLength: 0)
+            VStack(spacing: 0) {
+                sections()
+                if !anyOpen {
+                    Spacer(minLength: 0)
+                }
             }
+            .frame(maxHeight: .infinity, alignment: .top)
+            footer()
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .rule(.separator, edges: [.trailing], width: 1)
@@ -135,6 +141,34 @@ struct NavigatorColumn<Sections: View>: View {
         // top line rather than one point above it, so the two are one.
         .padding(.bottom, -1)
         .surface(.chrome)
+    }
+}
+
+extension NavigatorColumn where Footer == EmptyView {
+    init(anyOpen: Bool, @ViewBuilder sections: @escaping () -> Sections) {
+        self.init(anyOpen: anyOpen, sections: sections, footer: { EmptyView() })
+    }
+}
+
+/// The slice navigator's action bar: a row of header-band height on the
+/// chrome, pinned to the column's foot — no title, no chevron, no fold, no
+/// body — its buttons flush against its trailing edge (`content`), and a
+/// rule over it. The rule is drawn a point up, over the last section's own
+/// bottom rule where one sits right above, so the two are one line.
+struct NavigatorActionBar<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            content()
+        }
+        .frame(height: GnatMetrics.sectionHeadHeight)
+        .frame(maxWidth: .infinity)
+        .background(DesignTokens.fill(.chrome))
+        .overlay(alignment: .top) {
+            DesignTokens.rule(.separator, on: .chrome).frame(height: 1).offset(y: -1)
+        }
     }
 }
 

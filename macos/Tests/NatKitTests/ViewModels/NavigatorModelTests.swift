@@ -205,6 +205,100 @@ final class NavigatorModelTests: XCTestCase {
         XCTAssertFalse(done.showsMerge)
     }
 
+    // MARK: - The action bar
+
+    private func bar(
+        _ s: Slice, _ agent: AgentActivity? = nil, pending: Int = 0, canApprove: Bool = true,
+        canMerge: Bool = true, prOpen: Bool = true
+    ) -> NavigatorBar {
+        NavigatorModel(slice: s, agent: agent).bar(
+            launchTitle: "Launch agent", pendingComments: pending, canApprove: canApprove,
+            approveHelp: "All commits only", canMerge: canMerge, prOpen: prOpen)
+    }
+
+    func testATodoSlicesBarIsItsPrimaryLaunch() {
+        XCTAssertEqual(bar(slice()), .buttons([
+            NavigatorBarButton(action: .launch, title: "Launch agent", enabled: true, primary: true),
+        ]))
+    }
+
+    func testABlockedSlicesLaunchIsDrawnDisabled() {
+        XCTAssertEqual(bar(slice(blocked: true)), .buttons([
+            NavigatorBarButton(action: .launch, title: "Launch agent", enabled: false, primary: false),
+        ]))
+    }
+
+    func testAStalledSliceOffersASecondaryRelaunch() {
+        XCTAssertEqual(bar(slice(status: "In progress")).button(.launch)?.primary, false)
+        XCTAssertEqual(bar(slice(status: "In progress")).button(.launch)?.enabled, true)
+    }
+
+    func testApproveReadsApproveChangesWithNoCommentsAndWithCommentsOtherwise() {
+        let handed = slice(status: "In progress", branch: "b", handedBack: true)
+        XCTAssertEqual(bar(handed), .buttons([
+            NavigatorBarButton(action: .approve, title: "Approve changes", enabled: true, primary: true),
+        ]))
+        XCTAssertEqual(bar(handed, pending: 2).button(.approve)?.title, "Approve with comments")
+    }
+
+    func testAnApproveThatCannotBePressedIsGreyedSayingWhy() {
+        let handed = slice(status: "In progress", branch: "b", handedBack: true)
+        XCTAssertEqual(
+            bar(handed, canApprove: false).button(.approve),
+            NavigatorBarButton(
+                action: .approve, title: "Approve changes", enabled: false, primary: true, help: "All commits only"))
+    }
+
+    func testASliceAtItsPROffersFixLaunchBesideMergeThePrimaryTrailing() {
+        let approved = slice(status: "In progress", branch: "b", pr: prURL)
+        XCTAssertEqual(bar(approved), .buttons([
+            NavigatorBarButton(action: .launch, title: "Launch agent", enabled: true, primary: false),
+            NavigatorBarButton(action: .merge, title: "Merge PR", enabled: true, primary: true),
+        ]))
+        XCTAssertEqual(bar(approved, canMerge: false).button(.merge)?.enabled, false)
+    }
+
+    func testAFixAgentLiveLeavesMergeAlone() {
+        let fixing = slice(status: "In progress", branch: "b", pr: prURL, fixing: true)
+        XCTAssertEqual(bar(fixing, .working), .buttons([
+            NavigatorBarButton(action: .merge, title: "Merge PR", enabled: true, primary: true),
+        ]))
+    }
+
+    func testWithNothingRelevantTheLatestSectionsPrimaryIsGreyedSayingWhy() {
+        XCTAssertEqual(bar(slice(status: "In progress"), .working), .buttons([
+            NavigatorBarButton(
+                action: .launch, title: "Launch agent", enabled: false, primary: true,
+                help: "The agent is still working"),
+        ]))
+        XCTAssertEqual(
+            bar(slice(status: "In progress"), .waiting).button(.launch)?.help,
+            "The agent is waiting on you in its terminal")
+        XCTAssertEqual(bar(slice(status: "In progress", branch: "b"), .working), .buttons([
+            NavigatorBarButton(
+                action: .approve, title: "Approve changes", enabled: false, primary: true,
+                help: "Waiting on the agent's hand-back"),
+        ]))
+        XCTAssertEqual(bar(slice(status: "In progress", branch: "b", pr: prURL), .working, prOpen: false), .buttons([
+            NavigatorBarButton(
+                action: .merge, title: "Merge PR", enabled: false, primary: true,
+                help: "The pull request is no longer open"),
+        ]))
+    }
+
+    func testAMergedPRIsNoMergeButAFixLaunchStillStands() {
+        let approved = slice(status: "In progress", branch: "b", pr: prURL)
+        XCTAssertEqual(bar(approved, prOpen: false).button(.merge), nil)
+        XCTAssertNotNil(bar(approved, prOpen: false).button(.launch))
+    }
+
+    func testADoneSlicesBarIsTaskCompleted() {
+        XCTAssertEqual(bar(slice(status: "Done", branch: "b", pr: prURL)), .completed)
+        XCTAssertEqual(bar(slice(status: "Done")), .completed)
+        XCTAssertNil(NavigatorBar.completed.button(.launch))
+        XCTAssertEqual(NavigatorBar.completedText, "Task completed")
+    }
+
     func testThePRHeaderSaysMergedOnlyOnceTheSliceIsDoneWithAPR() {
         let merged = NavigatorModel(slice: slice(status: "Done", pr: prURL), agent: nil)
         XCTAssertEqual(merged.prStatus, .merged)

@@ -1,8 +1,8 @@
 import SwiftUI
 import NatKit
 
-/// A handed-back slice's runs, among its Task section's header actions: a
-/// split button. The main part,
+/// A handed-back slice's runs, the titlebar band's trailing item: a split
+/// button. The main part,
 /// `<label> ▶`, runs the default — `nat run` with no `--label`, so nat picks
 /// it — and the split part, past a thin divider, is a chevron opening the
 /// menu of every run the slice is offered (`RunMenuList`), the default

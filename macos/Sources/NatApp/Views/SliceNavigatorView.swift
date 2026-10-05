@@ -7,7 +7,9 @@ import NatKit
 /// on the brief. Which are open and what the main pane shows are the shell's
 /// (`open`, `main`) — the design's own pairing: a header puts its section's
 /// view up (the Thread the terminal, Changes the diff, PR its conversation),
-/// its chevron only folds.
+/// its chevron only folds. Under them all, pinned to the column's foot, the
+/// action bar holds the slice's major actions — Launch, Approve, Merge — as
+/// `NavigatorModel.bar` decides them; the headers keep only secondaries.
 struct SliceNavigatorView: View {
     @Bindable var appModel: AppModel
     let slice: Slice
@@ -24,11 +26,8 @@ struct SliceNavigatorView: View {
     @State private var agentOptions = AgentOptions.fallback
     @State private var launchWarning: String?
     @State private var showMergeConfirm = false
-    /// Whether the Task header's run menu is open — a story's seam too.
-    @State private var runMenuOpen = false
 
     private var projectID: String { appModel.projectStore?.projectID ?? "" }
-    private var sliceRuns: [RunCommand] { appModel.sliceRuns(ofProject: projectID) }
     private var agent: AgentStatus? { appModel.activityStore?.agents[slice.id] }
     private var nav: NavigatorModel {
         NavigatorModel(
@@ -59,8 +58,6 @@ struct SliceNavigatorView: View {
                 selected: main == .terminal && nav.agentAvailable,
                 onHead: { click(.thread) }, onFold: { fold(.thread) }
             ) {
-                threadActions(nav)
-            } content: {
                 threadBody(nav)
             }
             // Changes and PR are only there once there is a branch, and a
@@ -70,7 +67,7 @@ struct SliceNavigatorView: View {
                     label: "Changes", open: open.contains(.changes), selected: main == .diff,
                     onHead: { click(.changes) }, onFold: { fold(.changes) }
                 ) {
-                    if nav.showsReviewActions { reviewActions }
+                    if nav.showsReviewActions { sendCommentsAction }
                 } content: {
                     ChangesSectionBody(appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions) {
                         main = .diff
@@ -99,11 +96,12 @@ struct SliceNavigatorView: View {
                     warning: notice?.text, onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
                     PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
-                    if nav.showsMerge { mergeAction }
                 } content: {
                     prReading
                 }
             }
+        } footer: {
+            actionBar(nav)
         }
         .task(id: slice.id) {
             resetLaunchForm()
@@ -157,11 +155,9 @@ struct SliceNavigatorView: View {
     /// The Slice menu and View's sections — each nil, and so disabled,
     /// exactly where the control it mirrors is.
     private func menuActions(_ nav: NavigatorModel) -> SliceMenuActions {
-        let canLaunch = nav.showsLaunch
-            && appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch)
-        let canMerge = nav.showsMerge
-            && appModel.sliceActions.isEnabled(
-                .merge, sliceID: slice.id, available: prStore.loadState.pr.map(mergeIsEnabled) ?? false)
+        let bar = bar(nav)
+        let canLaunch = bar.button(.launch).map(isEnabled) ?? false
+        let canMerge = bar.button(.merge).map(isEnabled) ?? false
         let prURL = URL(string: prStore.loadState.pr?.url ?? slice.pr)
         let notionURL = URL(string: slice.url) ?? NotionPageURL.forPage(slice.id)
         var actions = SliceMenuActions(title: slice.name)
@@ -207,6 +203,99 @@ struct SliceNavigatorView: View {
         // hidden at once.
         open = focus.open
         if focus.main != main { main = focus.main }
+    }
+
+    // MARK: - Action bar
+
+    /// The pull request as read, where the reading is this slice's own.
+    private var readPR: PRDetail? {
+        prStore.loadState.pr.flatMap { pr in
+            pullRequestNumber(slice.pr).map { $0 == pr.number } ?? true ? pr : nil
+        }
+    }
+
+    /// Whether approving is available: a hand-back, read on All commits,
+    /// with no send out.
+    private var canApprove: Bool {
+        slice.handedBack && diffStore.commentsEditable && !review.isSending
+    }
+
+    private var canMerge: Bool { readPR.map(mergeIsEnabled) ?? false }
+
+    private func bar(_ nav: NavigatorModel) -> NavigatorBar {
+        let state = readPR?.state
+        return nav.bar(
+            launchTitle: launchMode(nav).actionTitle, pendingComments: diffStore.pendingCommentCount,
+            canApprove: canApprove, approveHelp: "Approving is only available while viewing All commits",
+            canMerge: canMerge, prOpen: state != PRLifecycleState.merged && state != PRLifecycleState.closed)
+    }
+
+    private func kind(_ action: NavigatorBarAction) -> SliceActionKind {
+        switch action {
+        case .launch: return .launch
+        case .approve: return .approve
+        case .merge: return .merge
+        }
+    }
+
+    /// A bar button's own reading, under the one-shot gate.
+    private func isEnabled(_ button: NavigatorBarButton) -> Bool {
+        appModel.sliceActions.isEnabled(kind(button.action), sliceID: slice.id, available: button.enabled)
+    }
+
+    /// The bar at the column's foot: each action the slice has now, the
+    /// primary trailing; "Task completed" alone for a Done slice.
+    private func actionBar(_ nav: NavigatorModel) -> some View {
+        NavigatorActionBar {
+            switch bar(nav) {
+            case .completed:
+                Text(NavigatorBar.completedText)
+                    .font(.system(size: GnatMetrics.body))
+                    .ink(.tertiary)
+                    .padding(.horizontal, 12)
+            case .buttons(let buttons):
+                ForEach(buttons, id: \.title) { button in
+                    Button(action: { press(button.action) }) {
+                        HeaderActionLabel(
+                            title: button.title, systemImage: glyph(button.action),
+                            isBusy: appModel.sliceActions.isRunning(kind(button.action), sliceID: slice.id),
+                            glyph: button.action == .merge ? .merge : nil)
+                    }
+                    .buttonStyle(GnatHeaderButtonStyle(primary: button.primary))
+                    .disabled(!isEnabled(button))
+                    .help(button.help ?? "")
+                }
+            }
+        }
+        // Each one-shot outlives its success only once the slice has moved
+        // on: fed every availability change, drawn or not.
+        .onChange(of: nav.canLaunch, initial: true) { _, available in
+            appModel.sliceActions.observe(.launch, sliceID: slice.id, available: available)
+        }
+        .onChange(of: canApprove, initial: true) { _, available in
+            appModel.sliceActions.observe(.approve, sliceID: slice.id, available: available)
+        }
+        .onChange(of: canMerge, initial: true) { _, available in
+            appModel.sliceActions.observe(.merge, sliceID: slice.id, available: available)
+        }
+    }
+
+    private func glyph(_ action: NavigatorBarAction) -> String? {
+        switch action {
+        case .launch: return "arrow.right"
+        case .approve: return "checkmark"
+        case .merge: return nil
+        }
+    }
+
+    private func press(_ action: NavigatorBarAction) {
+        switch action {
+        case .launch: launch()
+        // With comments pending, the same confirmation says it sends them
+        // and approves on the agent's next hand-back.
+        case .approve: review.showApproveConfirm = true
+        case .merge: showMergeConfirm = true
+        }
     }
 
     // MARK: - Brief
@@ -337,35 +426,6 @@ struct SliceNavigatorView: View {
     private var launchError: String? { appModel.sliceActions.error(.launch, sliceID: slice.id) }
     private var followUps: [FollowUp] { detail.detail?.followUps ?? [] }
 
-    @ViewBuilder
-    private func threadActions(_ nav: NavigatorModel) -> some View {
-        if nav.showsLaunch {
-            let enabled = appModel.sliceActions.isEnabled(.launch, sliceID: slice.id, available: nav.canLaunch)
-            Button(action: launch) {
-                HeaderActionLabel(title: launchMode(nav).actionTitle, systemImage: "arrow.right", isBusy: isLaunching)
-            }
-            .buttonStyle(GnatHeaderButtonStyle(primary: nav.launchIsPrimary))
-            .disabled(!enabled)
-            .onChange(of: nav.canLaunch, initial: true) { _, available in
-                appModel.sliceActions.observe(.launch, sliceID: slice.id, available: available)
-            }
-        }
-        // The project's slice-scoped runs, once the slice has handed back —
-        // greyed once it is merged, its worktree being gone; spinning while
-        // its run starts and for as long as the run's session lives.
-        if slice.handedBack, !sliceRuns.isEmpty {
-            RunSplitButton(
-                runs: sliceRuns, isBusy: appModel.isRunBusy(projectID: projectID, sliceID: slice.id),
-                menuOpen: $runMenuOpen,
-                isRunning: { appModel.isRunning(projectID: projectID, sliceID: slice.id, label: $0) }
-            ) { label in
-                Task { await appModel.startRun(projectID: projectID, sliceID: slice.id, label: label) }
-            }
-            .frame(maxHeight: .infinity)
-            .disabled(stage(for: slice, agent: nil) == .done)
-        }
-    }
-
     /// One item of the Thread's log, in the order `threadBody` draws them.
     private enum ThreadItem {
         case brief
@@ -494,57 +554,22 @@ struct SliceNavigatorView: View {
 
     // MARK: - Changes
 
-    private var reviewActions: some View {
+    /// Send, while comments are pending on the diff — secondary, the bar's
+    /// Approve with comments being the default.
+    @ViewBuilder
+    private var sendCommentsAction: some View {
         let pending = diffStore.pendingCommentCount
         let editable = diffStore.commentsEditable
-        let canApprove = slice.handedBack && editable && !review.isSending
-        let approving = appModel.sliceActions.isRunning(.approve, sliceID: slice.id)
-        let approveEnabled = appModel.sliceActions.isEnabled(.approve, sliceID: slice.id, available: canApprove)
-        return HStack(spacing: 0) {
-            if pending > 0 {
-                // With comments pending, sending them is the default; the
-                // split ahead of it holds approving with them — they go to
-                // the agent and the pull request opens on its next hand-back.
-                Menu {
-                    Button("Approve with comments") { review.showApproveConfirm = true }
-                        .disabled(!approveEnabled)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 26)
-                        .frame(maxHeight: .infinity)
-                        .foregroundStyle(DesignTokens.ink(.primary, on: .chrome))
-                        .hoverWash(cornerRadius: 0)
-                        .contentShape(Rectangle())
-                }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(maxHeight: .infinity)
-                .disabled(review.isSending || approving)
-                .help("Approve with the comments instead")
-
-                Button(action: { Task { await review.sendComments(appModel: appModel, slice: slice) } }) {
-                    HeaderActionLabel(
-                        title: "Send \(pending) \(plural(pending, "comment", "comments"))",
-                        systemImage: "arrow.right",
-                        isBusy: review.isSending)
-                }
-                .buttonStyle(GnatHeaderButtonStyle(primary: true))
-                .disabled(review.isSending || approving || !editable)
-                .help(editable ? "" : "Comments are only sent while viewing All commits")
-            } else {
-                Button(action: { review.showApproveConfirm = true }) {
-                    HeaderActionLabel(title: "Approve", systemImage: "checkmark", isBusy: approving)
-                }
-                .buttonStyle(GnatHeaderButtonStyle(primary: true))
-                .disabled(!approveEnabled)
-                .help(editable ? "" : "Approving is only available while viewing All commits")
+        if pending > 0 {
+            Button(action: { Task { await review.sendComments(appModel: appModel, slice: slice) } }) {
+                HeaderActionLabel(
+                    title: "Send \(pending) \(plural(pending, "comment", "comments"))",
+                    systemImage: "arrow.right",
+                    isBusy: review.isSending)
             }
-        }
-        .onChange(of: canApprove, initial: true) { _, available in
-            appModel.sliceActions.observe(.approve, sliceID: slice.id, available: available)
+            .buttonStyle(GnatHeaderButtonStyle(primary: false))
+            .disabled(review.isSending || appModel.sliceActions.isRunning(.approve, sliceID: slice.id) || !editable)
+            .help(editable ? "" : "Comments are only sent while viewing All commits")
         }
     }
 
@@ -570,26 +595,13 @@ struct SliceNavigatorView: View {
                     systemImage: "arrow.right",
                     isBusy: visualReview.isSending)
             }
-            .buttonStyle(GnatHeaderButtonStyle(primary: true))
+            .buttonStyle(GnatHeaderButtonStyle(primary: false))
             .disabled(visualReview.isSending || !nav.showsVisualActions)
             .help(nav.showsVisualActions ? "" : "No live agent to send the comments to")
         }
     }
 
     // MARK: - PR
-
-    private var mergeAction: some View {
-        let available = prStore.loadState.pr.map(mergeIsEnabled) ?? false
-        return Button(action: { showMergeConfirm = true }) {
-            HeaderActionLabel(
-                title: "Merge", isBusy: appModel.sliceActions.isRunning(.merge, sliceID: slice.id), glyph: .merge)
-        }
-        .buttonStyle(GnatHeaderButtonStyle(primary: true))
-        .disabled(!appModel.sliceActions.isEnabled(.merge, sliceID: slice.id, available: available))
-        .onChange(of: available, initial: true) { _, available in
-            appModel.sliceActions.observe(.merge, sliceID: slice.id, available: available)
-        }
-    }
 
     private func mergeIsEnabled(_ pr: PRDetail) -> Bool {
         guard pr.state != PRLifecycleState.merged, pr.state != PRLifecycleState.closed, !pr.isDraft else { return false }

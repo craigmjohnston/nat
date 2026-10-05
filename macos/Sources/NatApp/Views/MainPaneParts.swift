@@ -7,12 +7,14 @@ import NatKit
 /// columns meet. It holds two things: the selection's breadcrumb
 /// (`TitlebarBreadcrumb`), from the navigator's leading inset and free to run
 /// on past its width, and the main pane's tabs (`TitlebarTab` — a slice's
-/// or session's `MainPaneTab`, or the workshop's `WorkshopTab`) against the
-/// band's trailing edge. The tabs live in the main pane's part of the band
-/// alone (`TitlebarBandLayout`): a breadcrumb with no room left ellipsizes,
-/// and a main pane narrower than the tabs cuts them at their leading edge
-/// rather than letting them cross the split. The agent's readout is the
-/// status bar's; the views' actions are their navigator sections'.
+/// or session's `MainPaneTab`, or the workshop's `WorkshopTab`) filling from
+/// the band's trailing edge leftwards, the first rightmost — with only the
+/// `trailing` item, a handed-back slice's run button, to their right. Both
+/// live in the main pane's part of the band alone (`TitlebarBandLayout`): a
+/// breadcrumb with no room left ellipsizes, and a main pane narrower than the
+/// two cuts them at their leading edge rather than letting them cross the
+/// split. The agent's readout is the status bar's; a slice's actions are its
+/// navigator's action bar.
 struct TitlebarBand<Identity: View>: View {
     /// The navigator's width: the band's main-pane part is what is left.
     let navigatorWidth: Double
@@ -23,6 +25,8 @@ struct TitlebarBand<Identity: View>: View {
     /// A tab's `id` to draw under the pointer — a story's, since a render
     /// has no pointer; nil, `.onHover` alone decides.
     var hoveredTab: String?
+    /// The band's rightmost item, after the tabs — the slice's run button.
+    var trailing: AnyView?
     @ViewBuilder var identity: () -> Identity
 
     var body: some View {
@@ -31,7 +35,7 @@ struct TitlebarBand<Identity: View>: View {
                 identity()
                     .padding(.horizontal, 10)
                 HStack(spacing: 0) {
-                    ForEach(tabs, id: \.self) { tab in
+                    ForEach(TitlebarBandLayout.leftToRight(tabs), id: \.self) { tab in
                         MainPaneTabButton(title: tab.label, selected: tab.id == selected) { onTab(tab) }
                             .transformEnvironment(\.hoverForced) { if tab.id == hoveredTab { $0 = true } }
                     }
@@ -41,6 +45,10 @@ struct TitlebarBand<Identity: View>: View {
                 // trailing edge and anything past its leading edge cut.
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .trailing)
                 .clipped()
+                (trailing ?? AnyView(EmptyView()))
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    .clipped()
             }
             .frame(maxHeight: .infinity)
             // The band's line, behind the tabs: the picked one's own ground
@@ -58,10 +66,10 @@ extension TitlebarBand where Identity == EmptyView {
     }
 }
 
-/// The band's two parts laid out as `TitlebarBandLayout` places them: the
+/// The band's three parts laid out as `TitlebarBandLayout` places them: the
 /// breadcrumb from the leading edge, offered the room up to the tabs; the
-/// tabs offered what of the main pane's part they take, against the trailing
-/// edge.
+/// trailing item offered what of the main pane's part it takes, against the
+/// trailing edge; the tabs what of the rest they take, just before it.
 private struct TitlebarBandStack: Layout {
     let navigatorWidth: Double
 
@@ -70,15 +78,20 @@ private struct TitlebarBandStack: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        guard subviews.count == 2 else { return }
+        guard subviews.count == 3 else { return }
         let run = subviews[1].sizeThatFits(ProposedViewSize(width: nil, height: bounds.height)).width
-        let layout = TitlebarBandLayout(bandWidth: bounds.width, navigatorWidth: navigatorWidth, runWidth: run)
+        let trailing = subviews[2].sizeThatFits(ProposedViewSize(width: nil, height: bounds.height)).width
+        let layout = TitlebarBandLayout(
+            bandWidth: bounds.width, navigatorWidth: navigatorWidth, runWidth: run, trailingWidth: trailing)
         subviews[0].place(
             at: CGPoint(x: bounds.minX, y: bounds.midY), anchor: .leading,
             proposal: ProposedViewSize(width: layout.identityWidth, height: bounds.height))
         subviews[1].place(
             at: CGPoint(x: bounds.minX + layout.runX, y: bounds.minY), anchor: .topLeading,
             proposal: ProposedViewSize(width: layout.runShownWidth, height: bounds.height))
+        subviews[2].place(
+            at: CGPoint(x: bounds.minX + layout.trailingX, y: bounds.minY), anchor: .topLeading,
+            proposal: ProposedViewSize(width: layout.trailingShownWidth, height: bounds.height))
     }
 }
 
@@ -307,7 +320,7 @@ struct AgentModelHeading: View {
     }
 }
 
-/// The PR section head's secondary action, before Merge: Open in GitHub,
+/// The PR section head's one action: Open in GitHub,
 /// once the right pull request is read (`expectedNumber`, as
 /// `PRConversationPane` checks it).
 struct PROpenInGitHubButton: View {
