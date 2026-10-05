@@ -270,15 +270,17 @@ enum AppStories {
     /// then the tabs at the trailing edge.
     private static func band(
         tabs: [MainPaneTab], selected: MainPaneMode?, crumbs: TitlebarCrumbs, state: SliceDisplayState = .working,
-        identity: TitlebarIdentity? = nil, hoveredTab: MainPaneTab? = nil, runs: Bool = false
+        identity: TitlebarIdentity? = nil, hoveredTab: MainPaneTab? = nil, runs: Bool = false,
+        runBusy: Bool = false, runHovered: Bool = false
     ) -> some View {
         TitlebarBand(
             navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs.map(\.titlebarTab),
             selected: tabs.first { $0.mode == selected }?.titlebarTab.id,
             hoveredTab: hoveredTab?.titlebarTab.id,
             trailing: runs
-                ? AnyView(RunSplitButton(runs: Fixtures.runs.sliceRuns, menuOpen: .constant(false)) { _ in }
-                    .frame(maxHeight: .infinity))
+                ? AnyView(RunSplitButton(runs: Fixtures.runs.sliceRuns, isBusy: runBusy, menuOpen: .constant(false)) { _ in }
+                    .frame(maxHeight: .infinity)
+                    .transformEnvironment(\.hoverForced) { if runHovered { $0 = true } })
                 : nil
         ) {
             TitlebarBreadcrumb(
@@ -1822,6 +1824,39 @@ enum AppStories {
             band(
                 tabs: [.terminal, .changes, .visuals, .pr], selected: .diff, crumbs: sliceCrumbs("Draw the box"),
                 state: .review, runs: true)
+        },
+
+        Story(
+            name: "titlebar-band-run-terminal",
+            summary: "The run button beside a picked rightmost tab: Terminal stands open on the window\u{2019}s "
+                + "ground, its trailing edge closed by the same line as every tab\u{2019}s leading one.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes, .visuals, .pr], selected: .terminal, crumbs: sliceCrumbs("Draw the box"),
+                state: .review, runs: true)
+        },
+
+        Story(
+            name: "titlebar-band-run-busy",
+            summary: "The run button while its run starts: the spinner in the play glyph\u{2019}s slot before "
+                + "the label, which keeps its place.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes, .visuals, .pr], selected: .diff, crumbs: sliceCrumbs("Draw the box"),
+                state: .review, runs: true, runBusy: true)
+        },
+
+        Story(
+            name: "titlebar-band-run-hover",
+            summary: "The run button under the pointer: the row wash behind its main part and its chevron, "
+                + "each the band\u{2019}s full height.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes, .visuals, .pr], selected: .diff, crumbs: sliceCrumbs("Draw the box"),
+                state: .review, runs: true, runHovered: true)
         },
 
         Story(

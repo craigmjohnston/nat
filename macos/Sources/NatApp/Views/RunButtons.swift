@@ -3,11 +3,13 @@ import NatKit
 
 /// A handed-back slice's runs, the titlebar band's trailing item: a split
 /// button. The main part,
-/// `<label> ▶`, runs the default — `nat run` with no `--label`, so nat picks
+/// `▶ <label>`, runs the default — `nat run` with no `--label`, so nat picks
 /// it — and the split part, past a thin divider, is a chevron opening the
 /// menu of every run the slice is offered (`RunMenuList`), the default
 /// marked. Full bleed to the header's height, in `GnatHeaderButtonStyle`'s
-/// shape — `HeaderActionLabel`'s words and glyph.
+/// shape, its words at the titlebar's text size as the tabs' are; the glyph
+/// leads, unlike `HeaderActionLabel`'s, in a fixed slot the busy spinner
+/// takes over, so the words never shift.
 struct RunSplitButton: View {
     /// The runs offered, the default first; never empty where drawn.
     let runs: [RunCommand]
@@ -30,7 +32,20 @@ struct RunSplitButton: View {
     var body: some View {
         HStack(spacing: 0) {
             Button { onRun(nil) } label: {
-                HeaderActionLabel(title: defaultLabel, systemImage: isBusy ? nil : "play.fill", isBusy: isBusy)
+                HStack(spacing: 7) {
+                    Group {
+                        if isBusy {
+                            ProgressView().controlSize(.mini)
+                        } else {
+                            Image(systemName: "play.fill").font(.system(size: 12, weight: .semibold))
+                        }
+                    }
+                    // The play glyph's own width, so it sits as close to the
+                    // words as `HeaderActionLabel`'s does.
+                    .frame(width: 10, height: 13)
+                    Text(defaultLabel).fixedSize()
+                }
+                .font(.system(size: GnatMetrics.titlebarText))
             }
             .buttonStyle(GnatHeaderButtonStyle())
             .disabled(defaultRunning)

@@ -9,9 +9,11 @@ import NatKit
 /// on past its width, and the main pane's tabs (`TitlebarTab` — a slice's
 /// or session's `MainPaneTab`, or the workshop's `WorkshopTab`) filling from
 /// the band's trailing edge leftwards, the first rightmost — with only the
-/// `trailing` item, a handed-back slice's run button, to their right. Both
-/// live in the main pane's part of the band alone (`TitlebarBandLayout`): a
-/// breadcrumb with no room left ellipsizes, and a main pane narrower than the
+/// `trailing` item, a handed-back slice's run button, to their right, a line
+/// between it and the rightmost tab. Both live in the main pane's part of
+/// the band alone (`TitlebarBandLayout`): a breadcrumb with no room left
+/// ellipsizes, never closer than `GnatMetrics.breadcrumbGap` to what follows
+/// it, and a main pane narrower than the
 /// two cuts them at their leading edge rather than letting them cross the
 /// split. The agent's readout is the status bar's; a slice's actions are its
 /// navigator's action bar.
@@ -33,10 +35,16 @@ struct TitlebarBand<Identity: View>: View {
         GnatTitlebar(leading: 0, trailing: 0, rule: false) {
             TitlebarBandStack(navigatorWidth: navigatorWidth) {
                 identity()
-                    .padding(.horizontal, 10)
+                    .padding(.leading, GnatMetrics.breadcrumbInset)
+                    .padding(.trailing, GnatMetrics.breadcrumbGap)
                 HStack(spacing: 0) {
+                    // The first tab is the rightmost; it closes its trailing
+                    // edge only where the run button stands beside it.
                     ForEach(TitlebarBandLayout.leftToRight(tabs), id: \.self) { tab in
-                        MainPaneTabButton(title: tab.label, selected: tab.id == selected) { onTab(tab) }
+                        MainPaneTabButton(
+                            title: tab.label, selected: tab.id == selected,
+                            closed: trailing != nil && tab == tabs.first
+                        ) { onTab(tab) }
                             .transformEnvironment(\.hoverForced) { if tab.id == hoveredTab { $0 = true } }
                     }
                 }

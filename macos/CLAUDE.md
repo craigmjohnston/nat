@@ -357,7 +357,11 @@ put its view up (`NavigatorModel.tabs`, `MainPaneTab.forSession`,
 `WorkshopTab.available`, which say which exist) — **filling from the right**
 (`TitlebarBandLayout.leftToRight`): the first rightmost, so a full slice
 reads PR, Visual changes, Changes, Terminal and Terminal never moves; then,
-rightmost of all, a handed-back slice's run button (`TitlebarBand.trailing`).
+rightmost of all, a handed-back slice's run button (`TitlebarBand.trailing`),
+the rightmost tab closing its trailing edge with the tabs' 1pt line only
+where it is there (`MainPaneTabButton.closed`). The breadcrumb ends at least
+`GnatMetrics.breadcrumbGap` (20pt) short of the tabs or run button at every
+fitting stage, its room measured inside that gap.
 Run button and tabs live only in the main pane's part of the band
 (`TitlebarBandLayout`, the run button taking its width first), cut at their
 leading edge rather than crossing the split; a tab is
@@ -459,14 +463,17 @@ The titlebar's play button (`TitlebarRunButton`, beside Settings) opens
 `RunTreePicker`, `CrumbTreePicker`'s shape — every project with runs
 (`AppModel.runProjects`), then the open one's runs; a handed-back slice's
 `RunSplitButton` is the titlebar band's trailing item (`WindowShellView.sliceRunButton`),
-greyed once the stage is done.
+greyed once the stage is done — `▶ <label>`, glyph first (unlike the shared
+`HeaderActionLabel`, which it composes its own label instead of), the
+spinner in the glyph's fixed slot, the words at `GnatMetrics.titlebarText`.
 Both call `AppModel.startRun` → `nat run`; nothing in Swift picks a directory
 or default. No tab or pane opens on a run: its session is held in
 `AppModel.runs` until tmux says it is gone (`watchRun`,
 `TmuxSession.exists`), and the button spins meanwhile
 (`AppModel.isRunBusy`; the titlebar's `anyRunBusy`). Stories: `titlebar-run`,
 `titlebar-run-menu`, `window-run-heading`, `window-run-heading-merged`,
-`titlebar-band-run`, `titlebar-band-run-narrow`.
+`titlebar-band-run`, `titlebar-band-run-narrow`, `titlebar-band-run-terminal`,
+`titlebar-band-run-busy`, `titlebar-band-run-hover`.
 
 **Task sources.** There is no new-project entry for one: **connecting a
 plugin makes its section.** `AppModel.ensureSourceProjects` makes exactly one
