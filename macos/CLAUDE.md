@@ -185,7 +185,8 @@ a proposal's first arrival Plan, a revision neither; Keep workshopping goes
 back to Terminal. The Plan tab boxes each proposed slice's brief
 (`PlanProposal.ProposedSlice`) under its milestone; the Plan header puts it
 up, a slice row scrolls it (`showProposedSlice`) and unfolds it — each box
-folds to its header, drawn as a diff file header is, on a click
+folds to its header, drawn as a diff file header is (its title in the
+Changes file rows' sans), on a click
 (`foldedProposedSlices`) — and ⌘1/⌘2 switch the two
 while the workshop is on screen (`WorkshopMenuActions`). Opening a
 workshop pins its row in Active (`workshopPinnedProjects`) until a launch or

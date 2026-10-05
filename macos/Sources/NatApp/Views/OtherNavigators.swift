@@ -593,7 +593,7 @@ private struct ProposedMilestoneHeading: View {
 
 /// One proposed slice in the Plan tab, in the diff file box's chrome: a
 /// header strip drawn as `DiffViewportView.drawHeader` draws a file's — its
-/// band and rules, the chevron at 11, the title at 30 in the header's mono —
+/// band and rules, the chevron at 11, the title at 30 —
 /// then, unless folded to it, one quiet line naming what it waits on, where it
 /// waits on anything, and its brief. The rules follow the diff's: a bottom
 /// rule always, a top one only where no folded box's bottom rule is already
@@ -615,8 +615,10 @@ private struct ProposedSliceBox: View {
     private var header: some View {
         HStack(spacing: 8) {
             DisclosureChevron(open: !folded)
+            // In the sans of the Changes section's file rows, not the
+            // diff header's mono: a task's title is prose, not a path.
             Text(slice.name)
-                .font(Typo.mono(size: Typo.codeView))
+                .font(.system(size: Typo.scaled(13)))
                 .ink(.primary)
                 .lineLimit(1)
                 .truncationMode(.head)
