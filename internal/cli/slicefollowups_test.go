@@ -164,9 +164,9 @@ Waiting for the user's decision — it arrives as a message; do not hand back be
 
 	shown := fp.shown(t)
 	wantShown := []followUpJSON{
-		{1, "Persist the split width", "The width lives under one key.\nStore it per project.\nDone when: two projects keep two widths."},
-		{2, "Render the picker in a story", "No story shows it open.\nDone when: a story shows it open."},
-		{3, "Remove dead code", "Nothing calls it.\nDone when: it is gone."},
+		{1, 1, "Persist the split width", "The width lives under one key.\nStore it per project.\nDone when: two projects keep two widths."},
+		{1, 2, "Render the picker in a story", "No story shows it open.\nDone when: a story shows it open."},
+		{1, 3, "Remove dead code", "Nothing calls it.\nDone when: it is gone."},
 	}
 	if !equalFollowUps(shown.FollowUps, wantShown) {
 		t.Errorf("slice-show followUps = %+v, want %+v", shown.FollowUps, wantShown)

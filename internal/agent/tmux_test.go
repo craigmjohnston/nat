@@ -25,15 +25,11 @@ type call struct {
 // launch is two tmux calls, so out and err can be given per tmux subcommand;
 // anything not named there gets the bare out and err.
 type fakeRunner struct {
-	out  string
-	err  error
-	outs map[string]string
-	errs map[string]error
-	// captures is the screen each pane comes back with, keyed by pane ID: the
-	// activity watcher reads one pane at a time, so a canned answer per
-	// subcommand is not enough to give two agents different states.
-	captures map[string]string
-	calls    []call
+	out   string
+	err   error
+	outs  map[string]string
+	errs  map[string]error
+	calls []call
 }
 
 func (f *fakeRunner) Run(name string, args ...string) (string, error) {
@@ -49,11 +45,6 @@ func (f *fakeRunner) Run(name string, args ...string) (string, error) {
 	out, err := f.out, f.err
 	if o, ok := f.outs[sub]; ok {
 		out = o
-	}
-	if sub == "capture-pane" {
-		if o, ok := f.captures[args[len(args)-1]]; ok {
-			out = o
-		}
 	}
 	if e, ok := f.errs[sub]; ok {
 		err = e
@@ -170,10 +161,10 @@ func TestLivePlan(t *testing.T) {
 
 func TestLiveSlices(t *testing.T) {
 	r := &fakeRunner{out: strings.Join([]string{
-		"\t%0\tuser-shell\t@0\t0", // a pane of the user's own, untagged
-		"3b738308…8f\t%1\tnat-b4463d8f\t@1\t0",
-		"3b738308…09\t%2\tnat-0dfecb09\t@2\t0",
-		"3b738308…8f\t%3\tnat-moved\t@3\t0", // a second pane claiming a slice already found
+		"\t%0\tuser-shell\t@0\t0\t", // a pane of the user's own, untagged
+		"3b738308…8f\t%1\tnat-b4463d8f\t@1\t0\t",
+		"3b738308…09\t%2\tnat-0dfecb09\t@2\t0\t",
+		"3b738308…8f\t%3\tnat-moved\t@3\t0\t", // a second pane claiming a slice already found
 		"a line tmux did not write",
 		"",
 	}, "\n")}
@@ -190,7 +181,7 @@ func TestLiveSlices(t *testing.T) {
 
 	wantCall := call{name: "tmux", args: []string{
 		"-u", "list-panes", "-a", "-F",
-		"#{@nat_slice}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_dead}",
+		"#{@nat_slice}\t#{pane_id}\t#{session_name}\t#{window_id}\t#{pane_dead}\t#{@nat_waiting}",
 	}}
 	if len(r.calls) != 1 || !reflect.DeepEqual(r.calls[0], wantCall) {
 		t.Errorf("calls = %+v, want exactly %+v", r.calls, wantCall)
@@ -258,7 +249,7 @@ func TestLiveSlicesDropsSanitisedLines(t *testing.T) {
 // A pane moved into another session is still the agent for its slice, and is
 // reported under the session it has ended up in.
 func TestLiveSlicesFollowsAPaneToAnotherSession(t *testing.T) {
-	r := &fakeRunner{out: "3b738308…8f\t%1\tsomewhere-else\t@0\t0\n"}
+	r := &fakeRunner{out: "3b738308…8f\t%1\tsomewhere-else\t@0\t0\t\n"}
 	live, err := NewTmuxWithRunner(r).LiveSlices()
 	if err != nil {
 		t.Fatalf("LiveSlices: %v", err)
@@ -509,7 +500,11 @@ func panesOutput(panes ...pane) string {
 		if p.dead {
 			dead = "1"
 		}
-		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%s\n", p.slice, p.id, p.session, p.window, dead)
+		waiting := ""
+		if p.waiting {
+			waiting = "1"
+		}
+		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%s\t%s\n", p.slice, p.id, p.session, p.window, dead, waiting)
 	}
 	return b.String()
 }
@@ -1086,7 +1081,7 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 		t.Fatalf("format %q does not read back %q", format, option)
 	}
 
-	read := &fakeRunner{out: fmt.Sprintf("%s\t%%1\t%s\t@0\t0\n", value, session)}
+	read := &fakeRunner{out: fmt.Sprintf("%s\t%%1\t%s\t@0\t0\t\n", value, session)}
 	live, err := NewTmuxWithRunner(read).LiveSlices()
 	if err != nil {
 		t.Fatalf("LiveSlices: %v", err)

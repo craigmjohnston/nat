@@ -67,6 +67,14 @@ running agent's state.
   `kill-server` under a `TMUX_TMPDIR` the agent thought isolated it took down
   every running agent twice — `$TMUX` wins while set. A test walks each
   template for it; `/next-slice` carries the rule in its own words.
+- `waitingPassage` (run `nat agent-waiting` before ending a turn on
+  something only the user can supply, `nat agent-working` first thing once
+  answered; not for hand-back, follow-ups or a blocked note) is in every
+  slice, fix, plan and new-project prompt; tests walk each for it. Pinned
+  prompts (`waitingPassage(true)`) also say the two take no `--project` —
+  the only commands `TestEveryCommandInAPromptNamesTheProject` exempts; the
+  new-project prompt, which never names the flag, gets `false`. The skills
+  don't carry it: an agent run by hand isn't in a pane nat launched.
 - The `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
   worktree path are derived — `actions.SliceBranch`, `worktree.pathSlug`,
   `git.CLI.Base`) is spelled out in prose in `repoPassage` and in
@@ -149,15 +157,19 @@ running agent's state.
   from nat either way — whatever speaks the protocol there is the real
   terminal's own doing. See `macos/CLAUDE.md` for gnat's half: it pushes the
   `CSI ?997` report itself, on every appearance change.
-- `Activity()` scans every tagged pane once (`capture-pane -p -J`) and
-  classifies each as working / waiting / gone / unknown, matched by **shape**
-  against Claude Code's own status line — a verb that trails off, then
-  elapsed time in brackets, e.g. `✻ Quantumizing… (1m 6s · …)` — never by
-  wording (the words change; the shape is on every busy screen and no idle
-  one). A dead pane is gone without a capture; **a capture that fails leaves
-  the state unread, never "gone"** — an agent still running must not read as
-  vanished because of one bad poll. It's a poll with no timer of its own; the
-  caller decides cadence.
+- `Activity()` is one `list-panes` scan, no screen read: a dead pane is
+  gone, a pane carrying `@nat_waiting` (`WaitingPaneOption`, a field of
+  `listPanesFormat`) is waiting, every other live tagged pane is working —
+  slices, planning agents and ad hoc sessions alike, keyed by their tag. The
+  agent sets the flag itself (`nat agent-waiting` → `SetWaiting`, cleared by
+  `nat agent-working`); nat never infers it from the screen (the old
+  `capture-pane` match on Claude Code's status line read every finished turn
+  as waiting and broke whenever the line's shape changed). `SetWaiting`
+  refuses (`ErrNotAgentPane`) a pane with no `@nat_slice` tag, read back with
+  `display-message` by pane ID *and* tag — tmux answers one aimed at a
+  missing pane with an empty line, not an error. The flag lives on the pane
+  alone, so a relaunch starts clear. It's a poll with no timer of its own;
+  the caller decides cadence.
 - `SendPrompt` delivers text to a running agent through a **paste buffer**
   (`set-buffer` then `paste-buffer -d -p`), never `send-keys`'s literal mode
   — a multi-line prompt sent key-by-key would submit at the first newline.

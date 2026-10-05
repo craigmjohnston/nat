@@ -87,6 +87,67 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(log.first { $0.kind == .approved }?.facts, [ThreadFact("pr", "#101"), ThreadFact("into", "main")])
     }
 
+    // MARK: - Batches
+
+    /// Two proposals pending at once are two triage items, each carrying its
+    /// own batch — which pending items its card draws — in its place in the log.
+    func testTwoPendingBatchesAreTwoTriageItems() {
+        let detail = Fixtures.twoBatchesSliceDetail
+        let log = buildThreadEvents(
+            slice: slice(status: "In progress"), agent: nil, brief: nil, events: detail.events,
+            pending: detail.followUps)
+        let proposals = log.filter { $0.kind == .followUps }
+        XCTAssertEqual(proposals.map(\.awaitsTriage), [true, true])
+        XCTAssertEqual(proposals.map(\.batch), [1, 2])
+        XCTAssertEqual(
+            proposals.map { pendingFollowUps(batch: $0.batch, in: detail.followUps).map(\.title) },
+            [Fixtures.proposedFollowUps.map(\.title), Fixtures.secondBatchFollowUps(from: 4).map(\.title)])
+        XCTAssertEqual(log.map(\.kind), [.launched, .followUps, .note, .followUps])
+    }
+
+    /// A decided batch is its record, the pending one after it its triage
+    /// item; and a third batch arriving adds a third item, changing neither.
+    func testADecidedBatchIsItsRecordBesideAPendingOne() {
+        let detail = Fixtures.decidedAndPendingSliceDetail
+        let log = buildThreadEvents(
+            slice: slice(status: "In progress"), agent: nil, brief: nil, events: detail.events,
+            pending: detail.followUps)
+        XCTAssertEqual(log.filter { $0.kind == .followUps }.map(\.awaitsTriage), [false, true])
+        XCTAssertEqual(log.filter { $0.kind == .followUp }.count, 3)
+
+        let third = FollowUp(batch: 3, index: 3, title: "A third", brief: "B.")
+        let more = buildThreadEvents(
+            slice: slice(status: "In progress"), agent: nil, brief: nil,
+            events: (detail.events ?? []) + [TaskLogEvent(.followUps, batch: 3, followUps: [TaskFollowUp(index: 1, title: "A third")])],
+            pending: detail.followUps + [third])
+        let proposals = more.filter { $0.kind == .followUps }
+        XCTAssertEqual(proposals.map(\.awaitsTriage), [false, true, true])
+        XCTAssertEqual(pendingFollowUps(batch: proposals[1].batch, in: detail.followUps + [third]).map(\.index), [1, 2])
+        XCTAssertEqual(pendingFollowUps(batch: proposals[2].batch, in: detail.followUps + [third]), [third])
+    }
+
+    /// A Done slice's undecided batch — one an older nat let a later one
+    /// supersede — is history: nat lists nothing pending on it, so the
+    /// proposal draws as a plain record, never a triage item.
+    func testADoneSlicesUndecidedBatchIsNoTriageItem() throws {
+        let events = [
+            TaskLogEvent(.followUps, batch: 1, followUps: [TaskFollowUp(index: 1, title: "Old")]),
+            TaskLogEvent(.followUps, batch: 2, followUps: [TaskFollowUp(index: 1, title: "New", decision: .dropped)]),
+        ]
+        let log = buildThreadEvents(
+            slice: slice(status: "Done", branch: "b", pr: prURL), agent: nil, brief: nil, events: events, pending: [])
+        let proposals = log.filter { $0.kind == .followUps }
+        XCTAssertEqual(proposals.map(\.awaitsTriage), [false, false])
+        XCTAssertFalse(log.contains(where: \.isLive))
+        XCTAssertTrue(try XCTUnwrap(proposals.first).isCollapsible)
+    }
+
+    func testAProposalDecodesItsBatch() throws {
+        let json = #"[{"kind":"follow_ups","batch":2,"followUps":[{"index":1,"title":"T"}]},{"kind":"note","note":"n"}]"#
+        let events = try JSONDecoder().decode([TaskLogEvent].self, from: Data(json.utf8))
+        XCTAssertEqual(events.map(\.batch), [2, 0])
+    }
+
     /// Each decided follow-up is its own card after its proposal, headed by
     /// the decision as one sentence, its title then its brief as the body,
     /// the queued one's slice as a task row, and the time it was decided —
@@ -494,6 +555,8 @@ final class TaskLogTests: XCTestCase {
     func testTheGroupsTitleCountsItsItems() {
         XCTAssertEqual(threadGroupTitle(count: 13), "13 other items")
         XCTAssertEqual(threadGroupTitle(count: 1), "1 other item")
+        XCTAssertEqual(threadGroupFoldTitle(count: 5), "Hide 5 items")
+        XCTAssertEqual(threadGroupFoldTitle(count: 1), "Hide 1 item")
     }
 
     func testTheGroupsTimesAreItsFirstAndLast() throws {

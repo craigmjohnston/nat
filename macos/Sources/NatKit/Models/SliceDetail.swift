@@ -170,12 +170,16 @@ public struct TaskLogEvent: Codable, Equatable, Sendable {
     public let at: Date?
     /// The pull request an approve opened.
     public let pr: String?
+    /// A proposal's batch — its Follow-ups section's ordinal on the page,
+    /// 1-based — the number its pending items in `SliceDetail.followUps`
+    /// carry; 0 for every other kind, and from a nat too old to say.
+    public let batch: Int
     /// A proposal's follow-ups, each with what was decided about it.
     public let followUps: [TaskFollowUp]
 
     public init(
         _ kind: Kind, note: String? = nil, by: String? = nil, fromSlice: NoteSource? = nil, at: Date? = nil,
-        pr: String? = nil, followUps: [TaskFollowUp] = []
+        pr: String? = nil, batch: Int = 0, followUps: [TaskFollowUp] = []
     ) {
         self.kind = kind
         self.note = note
@@ -183,10 +187,11 @@ public struct TaskLogEvent: Codable, Equatable, Sendable {
         self.fromSlice = fromSlice
         self.at = at
         self.pr = pr
+        self.batch = batch
         self.followUps = followUps
     }
 
-    enum CodingKeys: String, CodingKey { case kind, note, by, fromSlice, at, pr, followUps }
+    enum CodingKeys: String, CodingKey { case kind, note, by, fromSlice, at, pr, batch, followUps }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -197,6 +202,7 @@ public struct TaskLogEvent: Codable, Equatable, Sendable {
         // A time that will not parse is no time, not a failed read.
         at = (try c.decodeIfPresent(String.self, forKey: .at)).flatMap(PRDetail.parseGoTime)
         pr = try c.decodeIfPresent(String.self, forKey: .pr)
+        batch = try c.decodeIfPresent(Int.self, forKey: .batch) ?? 0
         followUps = try c.decodeIfPresent([TaskFollowUp].self, forKey: .followUps) ?? []
     }
 }
@@ -276,21 +282,44 @@ private struct LossyTaskLogEvent: Decodable {
     }
 }
 
-/// One follow-up an agent proposed before handing back, as `slice-show`
-/// reads it: its 1-based index in the proposal — what `slice-triage` names
-/// it by — its title and its brief.
+/// One follow-up an agent proposed and the user has yet to decide, as
+/// `slice-show` reads it: the batch it was handed in under (its proposal's
+/// `TaskLogEvent.batch`; 0 from a nat too old to say), its 1-based index among
+/// every pending follow-up of the slice — what `slice-triage` names it by —
+/// its title and its brief.
 public struct FollowUp: Codable, Equatable, Hashable, Sendable, Identifiable {
+    public let batch: Int
     public let index: Int
     public let title: String
     public let brief: String
 
     public var id: Int { index }
 
-    public init(index: Int, title: String, brief: String) {
+    public init(batch: Int = 0, index: Int, title: String, brief: String) {
+        self.batch = batch
         self.index = index
         self.title = title
         self.brief = brief
     }
+
+    enum CodingKeys: String, CodingKey { case batch, index, title, brief }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        batch = try c.decodeIfPresent(Int.self, forKey: .batch) ?? 0
+        index = try c.decode(Int.self, forKey: .index)
+        title = try c.decode(String.self, forKey: .title)
+        brief = try c.decode(String.self, forKey: .brief)
+    }
+}
+
+/// The pending follow-ups a proposal's triage card draws: those of its own
+/// batch alone, so two pending proposals never draw each other's items. A
+/// proposal with no batch (`batch` nil: a reading with no proposal in its
+/// log) draws every one.
+public func pendingFollowUps(batch: Int?, in pending: [FollowUp]) -> [FollowUp] {
+    guard let batch else { return pending }
+    return pending.filter { $0.batch == batch }
 }
 
 /// One item an agent handed in of what its slice changed, as `slice-show`

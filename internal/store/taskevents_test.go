@@ -139,8 +139,7 @@ func TestTaskEventsOrderedTopToBottom(t *testing.T) {
 	}
 }
 
-// A Follow-ups section's items are read exactly as PendingFollowUps parses
-// them, unfiltered — every item, pending or not.
+// A Follow-ups section's items are every item, pending or not.
 func TestTaskEventsFollowUps(t *testing.T) {
 	body := "### Follow-ups\n\n" + followUpsMarkdown(proposals)
 	got := TaskEvents(body)
@@ -157,8 +156,8 @@ func TestTaskEventsFollowUps(t *testing.T) {
 	}
 }
 
-// A later Follow-ups triaged section decorates the most recent follow_ups
-// event's matching items by title, decision and link.
+// A later Follow-ups triaged section decorates the follow_ups event's
+// matching items by title, decision and link.
 func TestTaskEventsFollowUpsTriaged(t *testing.T) {
 	section := "### Follow-ups\n\n" + followUpsMarkdown(proposals)
 	body := section + "\n\n### Follow-ups triaged\n\n" +
@@ -180,9 +179,7 @@ func TestTaskEventsFollowUpsTriaged(t *testing.T) {
 }
 
 // Two separate Follow-ups sections, each triaged by the section that follows
-// it, are two separate follow_ups events, each correctly decorated —
-// matching only against the most recent one, never an earlier superseded
-// one.
+// it, are two separate follow_ups events, each correctly decorated.
 func TestTaskEventsTwoFollowUpsSectionsEachTriagedSeparately(t *testing.T) {
 	body := "### Follow-ups\n\n1. A\n   Brief A.\n\n" +
 		"### Follow-ups triaged\n\n- Dropped: A\n\n" +
@@ -200,7 +197,35 @@ func TestTaskEventsTwoFollowUpsSectionsEachTriagedSeparately(t *testing.T) {
 	}
 }
 
-// A nested, deeper Follow-ups heading still supersedes the open one — the
+// Records and batches interleaved: each record line decides the earliest
+// still-undecided item of its title written before it, whichever batch that
+// is — so a title two batches share is two items, decided by two lines — and
+// each follow_ups event carries its batch, the section's ordinal.
+func TestTaskEventsRecordsAndBatchesInterleaved(t *testing.T) {
+	body := "### Follow-ups\n\n1. A\n   Brief A.\n2. X\n   First X.\n\n" +
+		"### Follow-ups\n\n1. X\n   Second X.\n2. C\n   Brief C.\n\n" +
+		"### Follow-ups triaged\n\n- Dropped: X\n- Queued: A → a\n\n" +
+		"### Handed back\n\nDone.\n\n" +
+		"### Follow-ups\n\n1. D\n   Brief D.\n\n" +
+		"### Follow-ups triaged\n\n- Folded in: X\n- Dropped: C"
+	want := []TaskEvent{
+		{Kind: "follow_ups", Batch: 1, FollowUps: []TaskFollowUp{
+			{Index: 1, Title: "A", Brief: "Brief A.", Decision: "queued", Link: "a"},
+			{Index: 2, Title: "X", Brief: "First X.", Decision: "dropped"},
+		}},
+		{Kind: "follow_ups", Batch: 2, FollowUps: []TaskFollowUp{
+			{Index: 1, Title: "X", Brief: "Second X.", Decision: "folded"},
+			{Index: 2, Title: "C", Brief: "Brief C.", Decision: "dropped"},
+		}},
+		{Kind: "handed_back", Note: "Done."},
+		{Kind: "follow_ups", Batch: 3, FollowUps: []TaskFollowUp{{Index: 1, Title: "D", Brief: "Brief D."}}},
+	}
+	if got := TaskEvents(body); !reflect.DeepEqual(got, want) {
+		t.Errorf("TaskEvents() =\n%#v\nwant\n%#v", got, want)
+	}
+}
+
+// A nested, deeper Follow-ups heading still opens a batch of its own — the
 // same "a new section while an item is open" case PendingFollowUps itself is
 // tested against — and both are read as events, in order.
 func TestTaskEventsFollowUpsSupersededByANestedHeading(t *testing.T) {
@@ -291,7 +316,7 @@ func TestTaskEventsStampedSections(t *testing.T) {
 		{Kind: "relaunched", At: readNow},
 		{Kind: "blocked", Note: "Waiting on infra.", At: readNow},
 		{Kind: "summary", At: readNow},
-		{Kind: "follow_ups", At: readNow, FollowUps: []TaskFollowUp{{Index: 1, Title: "A", Brief: "Brief A.", Decision: "dropped", DecidedAt: readNow}}},
+		{Kind: "follow_ups", At: readNow, Batch: 1, FollowUps: []TaskFollowUp{{Index: 1, Title: "A", Brief: "Brief A.", Decision: "dropped", DecidedAt: readNow}}},
 		{Kind: "released", By: "Craig Johnston", At: readNow},
 	}
 	if got := TaskEvents(body); !reflect.DeepEqual(got, want) {
@@ -311,12 +336,12 @@ func TestTaskEventsFollowUpsDecidedAt(t *testing.T) {
 		"### Follow-ups\n\n1. D\n   Brief D.\n\n" +
 		"### Follow-ups triaged\n\n- Folded in: D"
 	want := []TaskEvent{
-		{Kind: "follow_ups", At: readNow, FollowUps: []TaskFollowUp{
+		{Kind: "follow_ups", At: readNow, Batch: 1, FollowUps: []TaskFollowUp{
 			{Index: 1, Title: "A", Brief: "Brief A.", Decision: "queued", Link: "https://notion.so/a", DecidedAt: decided},
 			{Index: 2, Title: "B", Brief: "Brief B.", Decision: "dropped", DecidedAt: decided},
 			{Index: 3, Title: "C", Brief: "Brief C."},
 		}},
-		{Kind: "follow_ups", FollowUps: []TaskFollowUp{{Index: 1, Title: "D", Brief: "Brief D.", Decision: "folded"}}},
+		{Kind: "follow_ups", Batch: 2, FollowUps: []TaskFollowUp{{Index: 1, Title: "D", Brief: "Brief D.", Decision: "folded"}}},
 	}
 	if got := TaskEvents(body); !reflect.DeepEqual(got, want) {
 		t.Errorf("TaskEvents() =\n%#v\nwant\n%#v", got, want)

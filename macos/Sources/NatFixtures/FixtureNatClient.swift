@@ -419,12 +419,6 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         )
     }
 
-    public func sliceDiscardFollowUps(projectID: String, sliceRef: String) async throws -> TriageResult {
-        try await record("slice-triage \(sliceRef) --drop-all")
-        let followUps = details[sliceRef]?.followUps ?? []
-        return TriageResult(queued: [], folded: [], dropped: followUps.map(\.title))
-    }
-
     public func prMerge(projectID: String, sliceRef: String) async throws {
         try await record("pr-merge \(sliceRef)")
     }

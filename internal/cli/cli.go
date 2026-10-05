@@ -253,7 +253,8 @@ the config file's projects by its page ID; run one without it to be told the
 projects this machine tracks. There is no fallback to the project the board is
 on: that is the board's own, and the user moves it while an agent works. setup,
 paths, project-create, source-list, source-setup and the plugin-* commands take
-no such flag: none acts on a project already tracked.
+no such flag: none acts on a project already tracked. Nor do status,
+agent-waiting and agent-working, which read or mark tmux panes alone.
 
 usage:
   nat                 open the board
@@ -358,6 +359,13 @@ usage:
   nat agent-kill --workshop --project ID
                       end the project's live planning agent instead of a
                       slice's; mutually exclusive with the positional slice
+  nat agent-waiting   said by an agent from its own tmux pane, before ending a
+                      turn on something only the user can supply: marks the
+                      pane waiting, the slice needing attention. No --project:
+                      it acts on $TMUX_PANE alone, refused outside a pane nat
+                      launched an agent in
+  nat agent-working   said by that agent once the user has answered: clears
+                      the mark agent-waiting set. No --project, as above
   nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
                       create a project and its Slices database, register it in
                       local config and write the description as its page body;
@@ -698,6 +706,10 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return agentInterrupt(ctx, args[1:], env)
 	case "agent-kill":
 		return agentKill(ctx, args[1:], env)
+	case "agent-waiting":
+		return agentWaiting(args[1:], env)
+	case "agent-working":
+		return agentWorking(args[1:], env)
 	case "project-create":
 		return projectCreate(ctx, args[1:], env)
 	case "project-open-folder":

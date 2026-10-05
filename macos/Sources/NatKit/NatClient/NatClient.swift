@@ -457,12 +457,6 @@ public final class NatClient: Sendable {
         return try decodeJSON(TriageResult.self, from: output)
     }
 
-    /// Drop every pending follow-up — `nat slice-triage --drop-all`.
-    public func sliceDiscardFollowUps(projectID: String, sliceRef: String) async throws -> TriageResult {
-        let output = try await runNat(arguments: ["slice-triage", "--project", projectID, "--json", "--drop-all", sliceRef])
-        return try decodeJSON(TriageResult.self, from: output)
-    }
-
     /// `slice-triage`'s command line for a mix of decisions, each index
     /// under its own repeated flag.
     static func triageArguments(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) -> [String] {

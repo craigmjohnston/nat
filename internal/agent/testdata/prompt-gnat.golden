@@ -148,6 +148,18 @@ it a private socket — `tmux -L <name>` on every one of its commands — and
 kill only that socket's server when you are done. Setting `TMUX_TMPDIR`
 does not isolate you: `$TMUX` wins while it is set.
 
+## Waiting on the user
+
+Before you end a turn on a question, a decision or anything else only the
+user can supply, run `nat agent-waiting`: without it the user sees an
+agent still at work and will not look. On the next turn, once the user has
+answered, run `nat agent-working` before doing anything else. They are not
+for hand-back, follow-ups or a blocked note: those have their own commands
+and their own place in the app.
+
+Both act on this session's own tmux pane and take no `--project`: they
+are the one exception to pinning it.
+
 ## Finish
 
 Work you noticed but did not do — a bug beside your change, a test gap
@@ -173,10 +185,12 @@ at". If saying what to change needs a look at the code, take that look
 now — it is usually one read; if it genuinely needs investigation, the
 investigation is the deliverable and `Done when:` says what it produces.
 
-`--follow-up` repeats, one per follow-up. The user decides in the app —
-queue it as a slice, fold it into this one, or drop it — and the decision
-arrives here as a message naming what to fold in. Do that, then hand back
-as below. `complete-slice` refuses while the decision is outstanding.
+`--follow-up` repeats, one per follow-up. A later hand-in carries only
+what is new — never a repeat of a follow-up already handed in. The user
+decides in the app — queue it as a slice, fold it into this one, or drop
+it — and the decision arrives here as a message naming what to fold in.
+Do that, then hand back as below. `complete-slice` refuses while the
+decision is outstanding.
 Never widen your branch to include a follow-up on your own, and never
 write them into the summary or the brief instead. No follow-ups: hand
 back straight away.

@@ -109,9 +109,17 @@ enum LogMetrics {
     static let tailOverrun: CGFloat = 16
     /// The rule's x in the margin column: under the icon's centre.
     static let ruleX: CGFloat = 6
-    /// The x of an open group's own rule, beside its items: in the margin
-    /// column's gutter, between the log's rule and the items' text.
-    static let groupRuleX: CGFloat = 18
+    /// How far an open group's well starts in from the item's own left edge:
+    /// clear of the log's rule, so the rule runs on past it unbroken.
+    static let wellInset: CGFloat = 16
+    /// The well's padding round its items: across, so their icons sit a step
+    /// in from the group's header, under its title; and down.
+    static let wellPadding = EdgeInsets(top: 10, leading: margin - wellInset, bottom: 10, trailing: 10)
+    /// Between one item in the well and the next — closer than the log's own
+    /// spacing, since they are one group's.
+    static let wellSpacing: CGFloat = 12
+    /// The well's corner radius.
+    static let wellRadius: CGFloat = 8
 }
 
 extension View {
@@ -188,8 +196,17 @@ struct LogItem<Action: View, Content: View>: View {
         .frame(minHeight: LogMetrics.headHeight)
     }
 
-    @ViewBuilder
-    private var rule: some View {
+    private var rule: some View { LogConnectorRule(connector: connector) }
+}
+
+/// An item's rule down the margin column, as `connector` says: from under its
+/// icon, past the item's foot, towards the next item's icon. Laid over an item
+/// as an overlay, so it spans whatever the item's height is — an open group's
+/// well included.
+struct LogConnectorRule: View {
+    let connector: LogConnector
+
+    var body: some View {
         if connector != .none {
             LogRule()
                 .stroke(

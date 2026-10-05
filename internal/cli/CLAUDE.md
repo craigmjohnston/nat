@@ -189,15 +189,29 @@ success, not failure), `agent-send` (paste-buffer delivery, `--text` or
 stdin — same mechanism `internal/agent.SendPrompt` uses for review
 comments).
 
+`agent-waiting` / `agent-working` (`agentwaiting.go`): the calling agent
+marks its **own** pane — `$TMUX_PANE`, never an argument — waiting on the
+user or back at work (`Tmux.SetWaiting`), which is all `status` reads
+`waiting` from. Not project-scoped (no `--project`, refused as an unknown
+flag) and writes nothing to the plan. Idempotent; refused before any tmux
+write with `$TMUX_PANE` unset or a pane with no nat tag. Nudges on success,
+which gnat (`ActivityStore.reread`) and the board (`nudged`'s activity read)
+answer with an immediate activity reading.
+
 `slice-followups` (held slices only; `--follow-up` repeatable, first line
 title, rest brief; refuses none, an empty title/brief, a brief with no line
 beginning `Done when:` — a queued one is the new slice's brief verbatim — or a
 duplicate title)
-and `slice-triage` (`--queue/--fold/--drop N`, every pending index exactly
-once, or `--drop-all` alone; refuses a Todo slice, nothing pending, and any
-`--fold` with no live session; queues, records via `Store.RecordTriage`,
-nudges, then sends one message — a failed send exits non-zero with the
-record standing). See root CLAUDE.md's Follow-ups rule.
+and `slice-triage` (`--queue/--fold/--drop N`, whole batches: every pending
+index of each batch it names exactly once, other batches untouched, or
+`--drop-all` alone; refuses a Todo slice, nothing pending
+(`store.PendingFollowUpsOf` — none on a Done slice), part of a batch, an item
+whose title an earlier still-pending batch shares unless decided with it, and
+any `--fold` with no live session; queues, records via `Store.RecordTriage`
+only what it decided, in pending order, nudges, then sends one message naming
+only that — a failed send exits non-zero with the record standing).
+`slice-show --json`'s `followUps` carry `batch`, as do its `follow_ups`
+events. See root CLAUDE.md's Follow-ups rule.
 
 `slice-note <slice> --note TEXT|- [--from <slice>] [--milestone NAME]`
 (Todo/In progress slices, anyone's): the target by ID/URL (`pageID`) or by

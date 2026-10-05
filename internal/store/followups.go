@@ -14,11 +14,14 @@ import (
 )
 
 // FollowUp is one piece of work an agent noticed beside its slice and handed
-// in rather than doing: what it is called and what it is. Index is its place in
-// the Follow-ups section it was read from, 1-based — the number the user
-// triages it by — and is ignored on a write, where the order given is the
-// order filed.
+// in rather than doing: what it is called and what it is. Batch is the
+// Follow-ups section it was handed in under — the section's ordinal among the
+// body's Follow-ups sections, 1-based — and Index its place among every
+// follow-up still pending on the slice, whichever batch, 1-based: the number
+// the user triages it by. Both are ignored on a write, where the order given is
+// the order filed.
 type FollowUp struct {
+	Batch int
 	Index int
 	Title string
 	Brief string
@@ -72,114 +75,37 @@ const (
 var numberedItem = regexp.MustCompile(`^(\d+)\. (.*)$`)
 
 // PendingFollowUps is the follow-ups still awaiting the user's decision on a
-// slice: the items of the last Follow-ups section of its body, less any a
-// Follow-ups triaged section written after that one names. An item opens at a
-// numbered line at the margin — its title — and its brief is the lines indented
-// under it, de-indented, up to the next item or the end of the section.
-// Matching against the record is by title, exactly. A fenced block is passed
-// over whole, as [lastMarkdownSection] does, so a brief quoting a shell session
-// is not cut short by a line of its own that happens to start with a hash. The
-// stamp a section opens with is a line at the margin that is not a numbered
-// item, and so is passed over like any other.
-//
-// The last section wins because a second proposal can only be pending if the
-// agent proposed again before the user acted — and then the newer set is the
-// one that matters.
+// slice: every undecided item of every Follow-ups section of its body, in body
+// order. Each section is a batch, pending until its own items are decided; no
+// section supersedes another. What is decided, and by which record, is
+// [TaskEvents]' reading — this is that reading's undecided items and nothing
+// else, so the two can never disagree about what a record decided.
 func PendingFollowUps(body string) []FollowUp {
-	const (
-		outside = iota
-		proposals
-		record
-	)
-	var items []FollowUp
-	var brief []string
-	decided := map[string]bool{}
-	in, level, fence, indent := outside, 0, "", ""
-	// briefFence says the fence open is one indented under an item, and so
-	// part of its brief; a fence at the margin ends the item instead.
-	briefFence := false
-	closeItem := func() {
-		if len(items) > 0 && brief != nil {
-			items[len(items)-1].Brief = strings.TrimSpace(strings.Join(brief, "\n"))
-		}
-		brief = nil
-	}
-	for _, line := range strings.Split(body, "\n") {
-		f := fenceOf(line)
-		opens := f != "" && fence == ""
-		closes := f != "" && fence != "" && strings.HasPrefix(f, fence)
-		if opens {
-			fence = f
-			briefFence = in == proposals && brief != nil && strings.HasPrefix(line, indent)
-			if !briefFence {
-				closeItem()
-			}
-		}
-		if fence != "" {
-			if briefFence {
-				brief = append(brief, strings.TrimPrefix(line, indent))
-			}
-			if closes {
-				fence = ""
-			}
-			continue
-		}
-		// A line indented under an item is that item's brief whatever it looks
-		// like, which is what keeps a brief's own "# ..." line from reading as
-		// the heading that ends the section.
-		if in == proposals && brief != nil && (line == "" || strings.HasPrefix(line, indent)) {
-			brief = append(brief, strings.TrimPrefix(line, indent))
-			continue
-		}
-		h, text := headingOf(line)
-		if h > 0 && h <= level {
-			closeItem()
-			in, level = outside, 0
-		}
-		switch {
-		case h > 0 && strings.EqualFold(text, notion.FollowUpsHeading):
-			closeItem()
-			in, level, items, decided = proposals, h, nil, map[string]bool{}
-			continue
-		case h > 0 && strings.EqualFold(text, notion.FollowUpsTriagedHeading):
-			closeItem()
-			in, level = record, h
-			continue
-		}
-		switch in {
-		case proposals:
-			if m := numberedItem.FindStringSubmatch(line); m != nil {
-				closeItem()
-				items = append(items, FollowUp{Index: len(items) + 1, Title: strings.TrimSpace(m[2])})
-				indent, brief = strings.Repeat(" ", len(m[1])+2), []string{}
-			}
-		case record:
-			if title, ok := triagedTitle(line); ok {
-				decided[title] = true
-			}
-		}
-	}
-	closeItem()
 	var pending []FollowUp
-	for _, it := range items {
-		if !decided[it.Title] {
-			pending = append(pending, it)
+	for _, e := range TaskEvents(body) {
+		for _, f := range e.FollowUps {
+			if f.Decision == "" {
+				pending = append(pending, FollowUp{Batch: e.Batch, Index: len(pending) + 1, Title: f.Title, Brief: f.Brief})
+			}
 		}
 	}
 	return pending
 }
 
-// triagedTitle is the title a triage record's line names, and false for a line
-// that is not one of its bullets.
-func triagedTitle(line string) (string, bool) {
-	title, _, _, ok := triagedEntry(line)
-	return title, ok
+// PendingFollowUpsOf is what is pending on s, its body read: [PendingFollowUps],
+// except on a Done slice, where nothing is. A Done slice's undecided items are
+// history — a batch an earlier nat let a later one supersede, never triaged —
+// and nothing waits on them or refuses over them.
+func PendingFollowUpsOf(s domain.Slice, body string) []FollowUp {
+	if s.Status == domain.SliceDone {
+		return nil
+	}
+	return PendingFollowUps(body)
 }
 
 // triagedEntry is everything one of a triage record's lines names: the title
 // it keys to the proposal, the decision, and — for a queued item — the slice
-// it became. [TaskEvents] is what reads the decision and link; [triagedTitle]
-// is the title alone, which is all [PendingFollowUps] has ever needed.
+// it became, read by [TaskEvents].
 func triagedEntry(line string) (title string, decision Decision, link string, ok bool) {
 	rest, ok := strings.CutPrefix(line, "- ")
 	if !ok {
@@ -372,3 +298,4 @@ func (m *Mirrored) RecordTriage(ctx context.Context, id string, items []Triaged)
 	m.push(ctx, id, func() error { return m.remote.RecordTriage(ctx, id, items) })
 	return nil
 }
+

@@ -16,13 +16,8 @@ import (
 type statusFakeRunner struct {
 	liveOut       string
 	liveErr       error
-	activityMap   map[string]agent.Activity
-	activityErr   error
 	callCount     int
 	failAfterCall int // fail after this many list-panes calls (0 means fail immediately)
-	// Track panes and their order
-	sliceOrder   []string
-	captureIndex int
 }
 
 func (f *statusFakeRunner) Run(name string, args ...string) (string, error) {
@@ -38,51 +33,18 @@ func (f *statusFakeRunner) Run(name string, args ...string) (string, error) {
 		if f.failAfterCall == 0 && f.callCount > 1 {
 			return "", f.liveErr
 		}
-		// Extract slice order from liveOut
-		if f.sliceOrder == nil {
-			f.sliceOrder = []string{}
-			lines := strings.Split(strings.TrimSuffix(f.liveOut, "\n"), "\n")
-			for _, line := range lines {
-				if line != "" {
-					parts := strings.Split(line, "\t")
-					if len(parts) >= 1 {
-						f.sliceOrder = append(f.sliceOrder, parts[0])
-					}
-				}
-			}
-			f.captureIndex = 0
-		}
 		return f.liveOut, f.liveErr
-	}
-	// For capture-pane commands, return activity based on sliceOrder index
-	if len(args) > 0 && args[0] == "capture-pane" {
-		if f.captureIndex < len(f.sliceOrder) {
-			sliceID := f.sliceOrder[f.captureIndex]
-			f.captureIndex++
-			if activity, exists := f.activityMap[sliceID]; exists {
-				if activity == agent.ActivityGone && f.activityErr != nil {
-					return "", f.activityErr
-				}
-				if activity == agent.ActivityWorking {
-					return "✻ Working… (1m 6s · …)\n", nil
-				}
-				// ActivityWaiting returns empty
-				return "", nil
-			}
-		}
-		// Default: return empty for waiting or unmapped
-		return "", nil
 	}
 	return "", nil
 }
 
 // buildStatusFakeRunner creates a fake runner that returns the canned panes
-// output in list-panes format and uses captures for activity.
+// output in list-panes format, every agent working.
 func buildStatusFakeRunner(liveSlices map[string]string, captures map[string]string) *statusFakeRunner {
 	var panes []string
 	for sliceID, session := range liveSlices {
-		// Simulate tmux list-panes output format: slice_id, pane_id, session, window, dead
-		panes = append(panes, sliceID+"\t%0\t"+session+"\t@0\t0")
+		// Simulate tmux list-panes output format: slice_id, pane_id, session, window, dead, waiting
+		panes = append(panes, sliceID+"\t%0\t"+session+"\t@0\t0\t")
 	}
 	liveOut := strings.Join(panes, "\n")
 	if len(panes) > 0 {
@@ -90,8 +52,7 @@ func buildStatusFakeRunner(liveSlices map[string]string, captures map[string]str
 	}
 
 	return &statusFakeRunner{
-		liveOut:     liveOut,
-		activityMap: map[string]agent.Activity{}, // Unused for now
+		liveOut: liveOut,
 	}
 }
 
@@ -146,10 +107,7 @@ func TestStatusPrintsJSON(t *testing.T) {
 	env := Env{
 		NewTmux: func() *agent.Tmux {
 			runner := &statusFakeRunner{
-				liveOut: "slice-1\t%0\tnat-11111111\t@0\t0\nslice-2\t%1\tnat-22222222\t@1\t0\n",
-				// Activity() for any pane returns no output (will classify as unknown or waiting)
-				// capture-pane returns empty which triggers ActivityWaiting
-				// We'll return empty string to trigger waiting, which is fine for this test
+				liveOut: "slice-1\t%0\tnat-11111111\t@0\t0\t\nslice-2\t%1\tnat-22222222\t@1\t0\t\n",
 			}
 			return agent.NewTmuxWithRunner(runner)
 		},
@@ -232,7 +190,7 @@ func TestStatusActivityReturnsError(t *testing.T) {
 	env := Env{
 		NewTmux: func() *agent.Tmux {
 			return agent.NewTmuxWithRunner(&testActivityFailRunner{
-				liveOut: "slice-1\t%0\tnat-11111111\t@0\t0\n",
+				liveOut: "slice-1\t%0\tnat-11111111\t@0\t0\t\n",
 				boom:    boom,
 			})
 		},
@@ -276,7 +234,8 @@ func TestStatusJSONHasAllRequiredFields(t *testing.T) {
 		NewTmux: func() *agent.Tmux {
 			// Single agent for simple testing
 			runner := &statusFakeRunner{
-				liveOut: "slice-1\t%0\tnat-11111111\t@0\t0\n",
+				liveOut:       "slice-1\t%0\tnat-11111111\t@0\t0\t\n",
+				failAfterCall: 2, // LiveSlices and Activity each list the panes
 			}
 			return agent.NewTmuxWithRunner(runner)
 		},
@@ -302,9 +261,10 @@ func TestStatusJSONHasAllRequiredFields(t *testing.T) {
 	if got.Agents[0].Session != "nat-11111111" {
 		t.Errorf("session = %q, want %q", got.Agents[0].Session, "nat-11111111")
 	}
-	// Activity should be set to something (exact value depends on fake runner behavior)
-	if got.Agents[0].Activity == "" {
-		t.Errorf("activity should not be empty")
+	// A live agent that has not said it is waiting is working, whatever is on
+	// its screen — no screen is read at all.
+	if got.Agents[0].Activity != "working" {
+		t.Errorf("activity = %q, want working", got.Agents[0].Activity)
 	}
 }
 
@@ -312,12 +272,10 @@ func TestStatusJSONHasAllRequiredFields(t *testing.T) {
 func TestStatusActivityFoundAssignment(t *testing.T) {
 	env := Env{
 		NewTmux: func() *agent.Tmux {
-			// Single agent with explicit activity in the map
+			// Single agent whose pane carries the waiting flag.
 			runner := &statusFakeRunner{
-				liveOut: "slice-1\t%0\tnat-11111111\t@0\t0\n",
-				activityMap: map[string]agent.Activity{
-					"slice-1": agent.ActivityWaiting,
-				},
+				liveOut:       "slice-1\t%0\tnat-11111111\t@0\t0\t1\n",
+				failAfterCall: 2,
 			}
 			return agent.NewTmuxWithRunner(runner)
 		},
@@ -335,8 +293,8 @@ func TestStatusActivityFoundAssignment(t *testing.T) {
 	}
 
 	// The agent should be present with waiting activity
-	if len(got.Agents) != 1 {
-		t.Errorf("agents count = %d, want 1", len(got.Agents))
+	if len(got.Agents) != 1 || got.Agents[0].Activity != "waiting" {
+		t.Errorf("agents = %+v, want slice-1 waiting", got.Agents)
 	}
 }
 
@@ -405,7 +363,7 @@ func TestStatusJSONWriteError(t *testing.T) {
 	env := Env{
 		NewTmux: func() *agent.Tmux {
 			runner := &statusFakeRunner{
-				liveOut: "slice-1\t%0\tnat-11111111\t@0\t0\n",
+				liveOut: "slice-1\t%0\tnat-11111111\t@0\t0\t\n",
 			}
 			return agent.NewTmuxWithRunner(runner)
 		},
@@ -423,7 +381,7 @@ func TestStatusMarkdownWriteError(t *testing.T) {
 	env := Env{
 		NewTmux: func() *agent.Tmux {
 			runner := &statusFakeRunner{
-				liveOut: "slice-1\t%0\tnat-11111111\t@0\t0\n",
+				liveOut: "slice-1\t%0\tnat-11111111\t@0\t0\t\n",
 			}
 			return agent.NewTmuxWithRunner(runner)
 		},

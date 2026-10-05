@@ -132,6 +132,19 @@ func TestNextSliceHandsInVisualChanges(t *testing.T) {
 	}
 }
 
+// A second hand-in of follow-ups is a batch of its own, pending beside the
+// first, so it carries only what is new; the gnat slice prompt says the same.
+func TestNextSliceHandsInOnlyNewFollowUps(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the next-slice skill: %v", err)
+	}
+	want := "A later hand-in carries only what is new — never a repeat of a follow-up already handed in."
+	if !strings.Contains(unwrapped(string(body)), want) {
+		t.Errorf("the next-slice skill does not say %q", want)
+	}
+}
+
 // prEnding matches the --pr flag alone, so the --pr-description one it prefixes
 // does not read as it.
 var prEnding = regexp.MustCompile(`--pr($|[^-\w])`)

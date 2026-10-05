@@ -100,7 +100,9 @@ type sliceShowJSON struct {
 	State     string `json:"state,omitempty"`
 	Brief     string `json:"brief"`
 	// FollowUps are the follow-ups the slice's agent handed in that still
-	// await the user's decision, each by the index slice-triage takes.
+	// await the user's decision, every batch's, each by the index
+	// slice-triage takes and the batch it was handed in under. None on a Done
+	// slice ([store.PendingFollowUpsOf]).
 	FollowUps []followUpJSON `json:"followUps,omitempty"`
 	// Visuals are the images the slice's agent last handed in of what it
 	// changed, for the app's Visual changes section.
@@ -159,8 +161,11 @@ type taskEventJSON struct {
 	// At is when the event was written, RFC 3339 — omitted for one written
 	// before sections were stamped, and for "approved" and "merged", which
 	// are read off properties that record no time.
-	At        string             `json:"at,omitempty"`
-	PR        string             `json:"pr,omitempty"`
+	At string `json:"at,omitempty"`
+	PR string `json:"pr,omitempty"`
+	// Batch is a "follow_ups" event's batch, the number its pending items in
+	// followUps carry, so the app pairs the event with its own items alone.
+	Batch     int                `json:"batch,omitempty"`
 	FollowUps []taskFollowUpJSON `json:"followUps,omitempty"`
 }
 
@@ -192,7 +197,7 @@ func taskEventsJSON(s domain.Slice, brief string) []taskEventJSON {
 	events := store.TaskEvents(brief)
 	out := make([]taskEventJSON, 0, len(events)+2)
 	for _, e := range events {
-		tj := taskEventJSON{Kind: e.Kind, Note: e.Note, By: e.By}
+		tj := taskEventJSON{Kind: e.Kind, Note: e.Note, By: e.By, Batch: e.Batch}
 		if e.FromSlice != nil {
 			tj.FromSlice = &noteSourceJSON{Name: e.FromSlice.Name, Milestone: e.FromSlice.Milestone}
 		}
@@ -239,6 +244,7 @@ type visualBeforeJSON struct {
 
 // followUpJSON is one pending follow-up.
 type followUpJSON struct {
+	Batch int    `json:"batch"`
 	Index int    `json:"index"`
 	Title string `json:"title"`
 	Brief string `json:"brief"`
@@ -279,8 +285,8 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 	if state != domain.SliceStateNone {
 		sj.State = state.String()
 	}
-	for _, f := range store.PendingFollowUps(brief) {
-		sj.FollowUps = append(sj.FollowUps, followUpJSON{Index: f.Index, Title: f.Title, Brief: f.Brief})
+	for _, f := range store.PendingFollowUpsOf(s, brief) {
+		sj.FollowUps = append(sj.FollowUps, followUpJSON{Batch: f.Batch, Index: f.Index, Title: f.Title, Brief: f.Brief})
 	}
 	for _, v := range store.VisualChanges(brief) {
 		vj := visualJSON{Index: v.Index, Name: v.Name, URI: v.URI, Hash: v.Hash, Changed: v.Changed}

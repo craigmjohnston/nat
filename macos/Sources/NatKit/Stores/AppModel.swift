@@ -2136,15 +2136,15 @@ public final class AppModel {
         }
     }
 
-    /// Applies the user's choices for a slice's follow-ups (`slice-triage`),
-    /// then refreshes, so the queued slices land in the plan and the slice's
-    /// detail reads with nothing pending.
-    public func applyFollowUps(sliceID: String, followUps: [FollowUp]) async {
+    /// Applies the user's choices for one batch of a slice's follow-ups
+    /// (`slice-triage`), then refreshes inside the apply, so the queued slices
+    /// land in the plan, the batch's card goes, and every other batch's card
+    /// is read with fresh indexes before it can apply.
+    public func applyFollowUps(sliceID: String, batch: Int, followUps: [FollowUp]) async {
         guard let projectID = projectStore?.projectID else { return }
-        let result = await followUpStore.apply(
-            projectID: projectID, sliceID: sliceID, followUps: followUps, client: clientFactory()
-        )
-        if result != nil { await refresh() }
+        await followUpStore.apply(
+            projectID: projectID, sliceID: sliceID, batch: batch, followUps: followUps, client: clientFactory(),
+            then: { await self.refresh() })
     }
 
     /// Send back to agent: a handed-back slice — in review, or at its open
@@ -2186,12 +2186,13 @@ public final class AppModel {
         return sent
     }
 
-    /// Drops every pending follow-up of a slice (`slice-triage --drop-all`),
-    /// then refreshes.
-    public func discardFollowUps(sliceID: String) async {
+    /// Drops every follow-up of one batch of a slice, then refreshes, as an
+    /// apply does.
+    public func discardFollowUps(sliceID: String, batch: Int, followUps: [FollowUp]) async {
         guard let projectID = projectStore?.projectID else { return }
-        let result = await followUpStore.discardAll(projectID: projectID, sliceID: sliceID, client: clientFactory())
-        if result != nil { await refresh() }
+        await followUpStore.discard(
+            projectID: projectID, sliceID: sliceID, batch: batch, followUps: followUps, client: clientFactory(),
+            then: { await self.refresh() })
     }
 
     /// Runs the approve a slice is owed when the plan just read shows it
@@ -2533,6 +2534,9 @@ public final class AppModel {
         let watcher = NudgeWatcher()
         watcher.start(path: nudgePath) { [weak self] in
             Task { @MainActor in
+                // An agent marking itself waiting or working nudges too, and
+                // its state should not wait on the plan read below.
+                self?.activityStore?.reread()
                 // A nudge is a write made on this machine, which nat made
                 // through the replica: it is already there to read.
                 await self?.refresh(.replica)
