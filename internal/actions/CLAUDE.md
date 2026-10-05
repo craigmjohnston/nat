@@ -79,6 +79,16 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   sections joined, the noun from `store.Describer` else `container`. A failed
   read is logged and leaves it nil — the launch goes on.
 
+## Emptied milestones (`prune.go`)
+
+- `PruneEmptied(st, sp, left...)` is every slice write's tail that takes a
+  slice out of a milestone (`slice-move`/`-delete`/refiling `-reorder`,
+  `plan-apply` once at the end, the board's move and delete): one fresh
+  `Plan` read, then `RemoveMilestone` for each named milestone no slice of
+  any status is filed under, `Shape` re-read between removals. Skips a
+  source project (`sp.Source`) and empty IDs without reading; a failed read
+  or removal is logged and that milestone stays. Answers the names removed.
+
 ## CI failures (`checks.go`)
 
 - `NoticeFailingChecks` acts on a reading's red PRs (`nat pr-status`, the

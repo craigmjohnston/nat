@@ -67,7 +67,7 @@ func TestMoveTargetsOfNoPlanAtAll(t *testing.T) {
 func TestMoveSliceWritesOnlyTheMilestone(t *testing.T) {
 	client := &fakeNotion{}
 
-	msg := runMsg(t, moveSlice(store.Over(client), "s5", "Info view",
+	msg := runMsg(t, moveSlice(store.Over(client), store.Project{}, "s5", "Info view", "",
 		domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", SelectType: notion.TypeSelect}))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Moved "Info view" to M3: Mutations.` {
@@ -90,7 +90,7 @@ func TestMoveSliceReportsAFailure(t *testing.T) {
 		},
 	}
 
-	msg := runMsg(t, moveSlice(store.Over(client), "s5", "Info view",
+	msg := runMsg(t, moveSlice(store.Over(client), store.Project{}, "s5", "Info view", "",
 		domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", SelectType: notion.TypeSelect}))
 
 	if got := msg.(sliceSavedMsg); got.err == nil || got.err.Error() != "move slice: boom" {
@@ -235,7 +235,7 @@ func TestMoveSliceWritesTheMilestoneColumnsOwnType(t *testing.T) {
 	client := &fakeNotion{}
 	m := domain.Milestone{ID: "M3: Mutations", Name: "M3: Mutations", SelectType: notion.TypeStatus}
 
-	msg := runMsg(t, moveSlice(store.Over(client), "s5", "Info view", m))
+	msg := runMsg(t, moveSlice(store.Over(client), store.Project{}, "s5", "Info view", "", m))
 
 	if got := msg.(sliceSavedMsg); got.err != nil || got.note != `Moved "Info view" to M3: Mutations.` {
 		t.Errorf("msg = %+v, want the moved note", got)

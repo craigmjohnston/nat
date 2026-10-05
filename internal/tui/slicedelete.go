@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/store"
 )
@@ -19,6 +20,9 @@ type DeleteSliceForm struct {
 
 	sliceID   string
 	sliceName string
+	// from is the ID of the milestone the slice is filed under, which the
+	// delete may leave empty.
+	from string
 
 	confirmed bool
 }
@@ -40,6 +44,7 @@ func newDeleteSliceForm(theme huh.Theme, s domain.Slice) *DeleteSliceForm {
 		heading:   "Delete a slice",
 		sliceID:   s.ID,
 		sliceName: s.Name,
+		from:      s.MilestoneID,
 	}
 	f.form = newForm(theme, huh.NewGroup(
 		huh.NewConfirm().
@@ -79,21 +84,26 @@ func (f *DeleteSliceForm) save(a *App) tea.Cmd {
 	if !f.confirmed {
 		return nil
 	}
-	st, _, ok := a.activeStore()
+	st, cfg, ok := a.activeStore()
 	if !ok {
 		return nil
 	}
-	return deleteSlice(st, f.sliceID, f.sliceName)
+	sp := store.ProjectOf(a.cfg.ActiveProjectID, cfg)
+	return deleteSlice(st, sp, f.sliceID, f.sliceName, f.from)
 }
 
 // deleteSlice moves a slice's page to the trash. Notion has no hard delete, so
-// a slice deleted by mistake is still recoverable in the Notion UI.
-func deleteSlice(st store.Store, sliceID, sliceName string) tea.Cmd {
+// a slice deleted by mistake is still recoverable in the Notion UI. The
+// milestone it was filed under is removed where the delete left it with no
+// slice at all.
+func deleteSlice(st store.Store, sp store.Project, sliceID, sliceName, from string) tea.Cmd {
 	return func() tea.Msg {
-		if err := st.DeleteSlice(context.Background(), sliceID); err != nil {
+		ctx := context.Background()
+		if err := st.DeleteSlice(ctx, sliceID); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("delete slice: %w", err)}
 		}
-		return sliceSavedMsg{note: fmt.Sprintf("Deleted %q.", sliceName), sliceID: sliceID, deleted: true}
+		msg := sliceSavedMsg{note: fmt.Sprintf("Deleted %q.", sliceName), sliceID: sliceID, deleted: true}
+		return msg.pruned(actions.PruneEmptied(ctx, st, sp, from))
 	}
 }
 

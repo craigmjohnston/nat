@@ -241,10 +241,11 @@ func TestPlanApplyPrintsJSON(t *testing.T) {
 				Repo: "/tmp/other", URL: "https://notion.so/new-3",
 			},
 		},
-		Dependencies: []addedDependencyJSON{},
-		Edited:       []sliceEditedJSON{},
-		Moved:        []sliceMovedJSON{},
-		Removed:      []removedSliceJSON{},
+		Dependencies:      []addedDependencyJSON{},
+		Edited:            []sliceEditedJSON{},
+		Moved:             []sliceMovedJSON{},
+		Removed:           []removedSliceJSON{},
+		MilestonesRemoved: []string{},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("json =\n%+v\nwant:\n%+v", got, want)
@@ -261,7 +262,7 @@ func TestPlanApplyPrintsEmptyJSONLists(t *testing.T) {
 		t.Fatalf("plan-apply: %v", err)
 	}
 
-	for _, want := range []string{`"slices": []`, `"dependencies": []`, `"edited": []`, `"moved": []`, `"removed": []`} {
+	for _, want := range []string{`"slices": []`, `"dependencies": []`, `"edited": []`, `"moved": []`, `"removed": []`, `"milestones_removed": []`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("json =\n%s\nwant %s", out, want)
 		}

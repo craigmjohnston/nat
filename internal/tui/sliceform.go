@@ -26,14 +26,27 @@ type (
 	// touched, which the board refetches and patches into the plan rather than
 	// reloading the whole of it; deleted says the page went to the trash
 	// instead, so its row is removed outright and there is nothing to refetch.
-	// A message naming no page falls back to the full reload.
+	// A message naming no page falls back to the full reload. removed names
+	// the milestones the write left with no slice and so removed, which come
+	// off the board's own list with it.
 	sliceSavedMsg struct {
 		note    string
 		err     error
 		sliceID string
 		deleted bool
+		removed []string
 	}
 )
+
+// pruned records the milestones a write's prune removed, and says so on the
+// status bar after what the write itself did.
+func (m sliceSavedMsg) pruned(removed []string) sliceSavedMsg {
+	m.removed = removed
+	for _, name := range removed {
+		m.note += fmt.Sprintf(" Removed %s, which no slice is filed under any more.", name)
+	}
+	return m
+}
 
 // sliceFormMode says whether a form creates a slice or rewrites one.
 type sliceFormMode int

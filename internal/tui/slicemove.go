@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/store"
 )
@@ -45,6 +46,9 @@ type MoveSliceForm struct {
 
 	sliceID   string
 	sliceName string
+	// from is the ID of the milestone the slice is filed under now, which the
+	// move may leave empty.
+	from string
 	// targets is each milestone the picker offers, by ID, so the write knows
 	// what shape to file the slice in and can name where it went.
 	targets map[string]domain.Milestone
@@ -60,6 +64,7 @@ func newMoveSliceForm(theme huh.Theme, s domain.Slice, targets []domain.Mileston
 		heading:   "Move " + s.Name,
 		sliceID:   s.ID,
 		sliceName: s.Name,
+		from:      s.MilestoneID,
 		targets:   make(map[string]domain.Milestone, len(targets)),
 		chosen:    targets[0].ID,
 	}
@@ -105,23 +110,27 @@ func (f *MoveSliceForm) SetSize(width, height int) {
 // save writes the milestone that was picked. A select always holds one of its
 // options, so there is nothing here for a form to decline to write.
 func (f *MoveSliceForm) save(a *App) tea.Cmd {
-	st, _, ok := a.activeStore()
+	st, cfg, ok := a.activeStore()
 	if !ok {
 		return nil
 	}
-	return moveSlice(st, f.sliceID, f.sliceName, f.targets[f.chosen])
+	sp := store.ProjectOf(a.cfg.ActiveProjectID, cfg)
+	return moveSlice(st, sp, f.sliceID, f.sliceName, f.from, f.targets[f.chosen])
 }
 
 // moveSlice refiles a slice under another milestone. Only the Milestone column
 // is written — the slice's own brief, status and repo say nothing about where in
 // the plan it sits — and it is written in the shape the plan is kept: a relation
-// to a milestone page, or the option naming a derived one.
-func moveSlice(st store.Store, sliceID, sliceName string, m domain.Milestone) tea.Cmd {
+// to a milestone page, or the option naming a derived one. The milestone it
+// came from is removed where the move left it with no slice at all.
+func moveSlice(st store.Store, sp store.Project, sliceID, sliceName, from string, m domain.Milestone) tea.Cmd {
 	return func() tea.Msg {
-		if err := st.MoveSlice(context.Background(), sliceID, m); err != nil {
+		ctx := context.Background()
+		if err := st.MoveSlice(ctx, sliceID, m); err != nil {
 			return sliceSavedMsg{err: fmt.Errorf("move slice: %w", err)}
 		}
-		return sliceSavedMsg{note: fmt.Sprintf("Moved %q to %s.", sliceName, m.Name), sliceID: sliceID}
+		msg := sliceSavedMsg{note: fmt.Sprintf("Moved %q to %s.", sliceName, m.Name), sliceID: sliceID}
+		return msg.pruned(actions.PruneEmptied(ctx, st, sp, from))
 	}
 }
 

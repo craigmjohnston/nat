@@ -158,6 +158,13 @@ succeeds), `plan-apply`, `project-create`, `config-set`.
   (`editable`). Replaces the whole body; does not append.
 - `slice-move` — refuses only **In progress** (not Done — moving milestones
   is plan bookkeeping, not touching the work).
+- `slice-move`, `slice-delete`, a refiling `slice-reorder` and `plan-apply`
+  (its moves and removals, pruned once after the whole document — a slice it
+  creates under such a milestone keeps it) each end in
+  `actions.PruneEmptied` over the milestone(s) the slice left: text output
+  gains a `Removed <name>` line, `--json` `removed_milestone` (omitted where
+  none) or `plan-apply`'s `milestones_removed` (always an array).
+  `done-clear` keeps its own wider sweep.
 - `slice-reorder <slice> (--before|--after <slice>)` — places one slice beside
   another (`Store.ReorderSlice`); a target under another milestone refiles
   the slice to it in the same write, so the in-progress refusal applies to

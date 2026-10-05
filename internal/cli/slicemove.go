@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
@@ -73,16 +74,36 @@ func sliceMove(ctx context.Context, args []string, env Env) error {
 	if err := st.MoveSlice(ctx, s.ID, milestone); err != nil {
 		return fmt.Errorf("move the slice: %w", err)
 	}
+	removed := firstOf(actions.PruneEmptied(ctx, st, storeProject(projectID, project), s.MilestoneID))
 
 	env.nudged()
 	if *asJSON {
 		return writeJSON(env.Out, sliceMovedJSON{
 			ID: s.ID, Name: s.Name, URL: s.URL,
 			MilestoneID: milestone.ID, MilestoneName: milestone.Name,
+			RemovedMilestone: removed,
 		})
 	}
-	_, err = fmt.Fprintf(env.Out, "# %s\n\nMoved to %s; the work itself is untouched.\n", s.Name, milestone.Name)
+	_, err = fmt.Fprintf(env.Out, "# %s\n\nMoved to %s; the work itself is untouched.\n%s", s.Name, milestone.Name, removedLine(removed))
 	return err
+}
+
+// firstOf is the one milestone a single slice's write can have emptied, or ""
+// where it emptied none.
+func firstOf(names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0]
+}
+
+// removedLine says which milestone a write emptied and so removed, as a
+// paragraph of its own, or nothing where it removed none.
+func removedLine(name string) string {
+	if name == "" {
+		return ""
+	}
+	return fmt.Sprintf("\nRemoved %s, which no slice is filed under any more.\n", name)
 }
 
 // sliceMovedJSON is the structured form of a successful move.
@@ -92,4 +113,7 @@ type sliceMovedJSON struct {
 	URL           string `json:"url,omitempty"`
 	MilestoneID   string `json:"milestone_id"`
 	MilestoneName string `json:"milestone_name"`
+	// RemovedMilestone names the milestone the move left with no slice at all,
+	// and so removed; omitted where it left none empty.
+	RemovedMilestone string `json:"removed_milestone,omitempty"`
 }
