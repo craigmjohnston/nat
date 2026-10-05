@@ -57,6 +57,18 @@ request.
   `+++`/`---` lines, not the `diff --git` header — the header pairs two
   paths with one space and can't be split where a filename holds spaces.
 
+## Conflicts with the base
+
+- `ConflictsWithBase(dir, branch)` is `Fetch`, `Base`, then `git merge-tree
+  --write-tree --no-messages --name-only <base> <branch>` — a merge in the
+  object store alone, no working tree or index touched. Answers
+  `MergeClean` (exit 0 + a tree id), `MergeConflicted` (exit 1 + a tree id)
+  or `MergeUnknown` (anything else, logged). **Exit 1 alone is not a
+  conflict**: git exits 1 with empty stdout for a revision it cannot
+  resolve too, so the tree id on stdout's first line is what tells them
+  apart. `MergeUnknown` is the zero value and never reads as conflicted;
+  nothing is returned as an error.
+
 ## Conventions
 
 - `Runner` is `internal/git`'s own type, not `gh.Runner` — a package about
