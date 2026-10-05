@@ -11,7 +11,7 @@ thin — bubbletea messages, toasts, board redraws — over the functions here.
 
 For *why* any of these writes happen in the order they do, see root
 CLAUDE.md's Domain rules (claim-before-tmux, fix sessions claim nothing,
-release note-before-status, Done-means-merged, worktree-removed-only-on-merge,
+release note-before-status, Done-means-merged, worktree-removed-only-once-work-ends,
 etc.) — this file is the mechanics, not a restatement of the rules.
 
 ## Seams
@@ -112,6 +112,16 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   sweep after the first), and a `git` refusal (dirty worktree, unreadable
   repo) as a logged no-op, never an error — the slice is Done regardless of
   what happens to the checkout.
+- `RemoveSliceWorktree(w, s, p)` is that for one slice: `WorkdirFor` (`~`
+  expanded) and `AgentBranch`; an empty repository (`RepoUnknown`) asks git
+  nothing. `pr-merge`, `pr-status`'s settle, a Done-closing `complete-slice`
+  and `slice-delete` call it.
+- `SweepLanded(w, live, p, landed)` takes the slices the caller judged
+  landed (`pr-status`'s `landed`), lists each repository once
+  (`Worktrees.Branches`, a failure logged and that repository skipped),
+  and removes only a slice whose `AgentBranch` the listing names. `live`
+  (tmux `LiveSlices`) is asked only once something matched; a live slice
+  is skipped, and an unreadable tmux removes nothing.
 - **Deliberate duplication, kept level by hand**: `mergeOutcome`/
   `mergeVerdicts`/`MergeRefusal` in `mergerefusal.go` are a hand-ported copy
   of `internal/tui/prmerge.go`'s `checkOutcome`/`mergeRefusal` — not a shared

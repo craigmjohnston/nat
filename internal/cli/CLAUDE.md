@@ -173,7 +173,9 @@ succeeds), `plan-apply`, `project-create`, `config-set`.
   the refile, and a same-milestone reorder sets no dirty flag.
 - `slice-delete` — refuses only **In progress**; Done is allowed through
   (Notion's trash is the recovery, not a CLI refusal) — the same asymmetry
-  the board's `d` confirm draws with its warning-vs-refusal split.
+  the board's `d` confirm draws with its warning-vs-refusal split. After the
+  trash, `actions.RemoveSliceWorktree`; `complete-slice` does the same where
+  it closes a slice Done (no `--branch`/`--pr`/`--blocked`).
 
 Agent control (tmux only, no Notion read beyond the claim check):
 `slice-launch` (`actions.Launch`, same flow the board's `l` key and
@@ -320,9 +322,13 @@ and a failed collaborator listing is `candidates_error`, never "nobody"),
 `pr-merge` (re-reads the PR, applies
 `actions.MergeRefusal` before ever calling `gh pr merge`, marks Done on
 success — the merge landed regardless of whether this last write does, so
-its own failure says so rather than pretending the merge never happened),
+its own failure says so rather than pretending the merge never happened —
+then `actions.RemoveSliceWorktree`),
 `pr-status` (`prReadings` — the headless mirror of the board's
-`refreshPRStates`; writes `actions.ReopenUnmerged` for any Done-at-approve
+`refreshPRStates`; a `SettleMerged` Done removes that slice's worktree, and
+`landed` — Done, no PR or one a read listing didn't find open — goes to
+`actions.SweepLanded` with tmux's live slices; neither changes the output;
+writes `actions.ReopenUnmerged` for any Done-at-approve
 legacy row whose PR still reads open — see root CLAUDE.md's Domain rules on
 `StateOf`; `--json` carries `checks` `{verdict, failing: [{name, url}]}` per
 PR the listing read, and the red ones go to `actions.NoticeFailingChecks`;

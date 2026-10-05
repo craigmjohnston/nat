@@ -61,6 +61,13 @@ type fakeSessionWorktrees struct {
 	// resets are the hard resets asked for, and resetErr what they fail with.
 	resets   []struct{ path, ref string }
 	resetErr error
+	// branches is what Branches lists for a repository, by directory, and
+	// branchesErr what it fails with; listed records what was listed.
+	branches    map[string][]string
+	branchesErr error
+	listed      []string
+	// removeErr is what a removal is refused with — a dirty worktree.
+	removeErr error
 }
 
 func (f *fakeSessionWorktrees) Path(dir, branch string) (string, error) {
@@ -80,7 +87,15 @@ func (f *fakeSessionWorktrees) Create(dir, branch, base string) (string, error) 
 
 func (f *fakeSessionWorktrees) Remove(dir, branch string) error {
 	f.removed = append(f.removed, struct{ dir, branch string }{dir, branch})
-	return nil
+	return f.removeErr
+}
+
+func (f *fakeSessionWorktrees) Branches(dir string) ([]string, error) {
+	f.listed = append(f.listed, dir)
+	if f.branchesErr != nil {
+		return nil, f.branchesErr
+	}
+	return f.branches[dir], nil
 }
 
 func (f *fakeSessionWorktrees) Reset(path, ref string) error {

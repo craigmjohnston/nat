@@ -236,14 +236,23 @@ branch, and `AppModel.settlePendingApprovals` (in-memory mark, armed only once
 a refresh has *seen* the slice un-handed-back) then runs `slice-approve`. A
 lost mark degrades to a normal review.
 
-**Worktree lifecycle.** A slice's worktree is removed **only** on merge,
-witnessed once at the transition and swept again (idempotently) on every
-plan load as a retry. Both the launch's placement and the merge's removal
-name the checkout by `actions.AgentBranch` (the branch recorded at
-hand-back, else the derived `slice/<slug>`) — the two must never disagree.
-An existing branch's worktree is reused, never re-cut; a removal git refuses
-is logged and left, since the PR is merged either way. `R` deliberately
-*keeps* the worktree — the work so far is what the next session wants.
+**Worktree lifecycle.** A slice's worktree is removed **only** once its
+work has ended — merged, closed Done with no PR, or trashed — by the board
+and the headless commands alike: the board at the merge it witnesses, swept
+again on every plan load; `pr-merge` after its Done, `pr-status` where
+`SettleMerged` writes Done, a Done-closing `complete-slice`, `slice-delete`
+after the trash; and `pr-status`'s sweep (`actions.SweepLanded`, one `git
+worktree list` per repository) for what nothing witnessed — every Done
+slice whose PR, if any, the listing read and did not find open, with no
+live agent. A Done slice whose PR reads open, or could not be read, keeps
+it. Every removal goes through `actions.RemoveWorktree`, in
+`actions.WorkdirFor`'s repository by `actions.AgentBranch` (the branch
+recorded at hand-back, else the derived `slice/<slug>`) — the pair the
+launch placed the agent by, which must never disagree; a task with no
+repository has nothing to remove. An existing branch's worktree is reused,
+never re-cut; a removal git refuses is logged and left, never forced, and
+never fails the command. `R` deliberately *keeps* the worktree — the work
+so far is what the next session wants.
 
 **Dependencies.** `Depends on` is a dual-property relation (`Blocks` is its
 unread reciprocal, there only so Notion has somewhere to mirror the far end

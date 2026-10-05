@@ -21,6 +21,10 @@ type Worktrees interface {
 	Path(dir, branch string) (string, error)
 	Create(dir, branch, base string) (string, error)
 	Remove(dir, branch string) error
+	// Branches is every branch a linked worktree of the repository at dir
+	// has checked out, in one read — what [SweepLanded] matches slices
+	// against.
+	Branches(dir string) ([]string, error)
 	// Reset hard-resets the worktree at path to ref — for nat's own run
 	// checkout alone (see [GlobalRunDir]).
 	Reset(path, ref string) error

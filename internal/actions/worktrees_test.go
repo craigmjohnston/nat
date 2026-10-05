@@ -31,6 +31,11 @@ type fakeWorktrees struct {
 	createErr error
 	removeErr error
 	resetErr  error
+	// branchesErr is what a listing of the repository's worktrees fails
+	// with; nil lists the branches in existing.
+	branchesErr error
+
+	listed []string
 
 	resets  []worktreeCall
 	looks   []worktreeCall
@@ -62,6 +67,21 @@ func (f *fakeWorktrees) Create(dir, branch, base string) (string, error) {
 func (f *fakeWorktrees) Remove(dir, branch string) error {
 	f.removes = append(f.removes, worktreeCall{dir: dir, branch: branch})
 	return f.removeErr
+}
+
+// Branches lists existing's branches, sorted so a sweep runs the same way
+// twice.
+func (f *fakeWorktrees) Branches(dir string) ([]string, error) {
+	f.listed = append(f.listed, dir)
+	if f.branchesErr != nil {
+		return nil, f.branchesErr
+	}
+	var out []string
+	for b := range f.existing {
+		out = append(out, b)
+	}
+	slices.Sort(out)
+	return out, nil
 }
 
 // Reset records the path and ref as dir and base.

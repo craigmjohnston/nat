@@ -56,6 +56,10 @@ func sliceDelete(ctx context.Context, args []string, env Env) error {
 	if err := st.DeleteSlice(ctx, s.ID); err != nil {
 		return fmt.Errorf("delete the slice: %w", err)
 	}
+	// A trashed slice's worktree belongs to nothing any more. In progress is
+	// refused above, so no agent is working in it; a removal git refuses is
+	// logged and left, and the delete has happened regardless.
+	actions.RemoveSliceWorktree(env.NewWorktrees(), s, project)
 	removed := firstOf(actions.PruneEmptied(ctx, st, storeProject(projectID, project), s.MilestoneID))
 
 	env.nudged()

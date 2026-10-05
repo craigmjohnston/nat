@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
@@ -141,6 +142,13 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	})
 	if err != nil {
 		return err
+	}
+	// A slice closed Done here has no pull request, so no merge is coming to
+	// take its worktree away: this is its end, and the removal rides it. What
+	// git refuses — the deliverable left uncommitted in it, say — is logged
+	// and kept.
+	if closed.Status == domain.SliceDone {
+		actions.RemoveSliceWorktree(env.NewWorktrees(), closed, project)
 	}
 
 	env.nudged()

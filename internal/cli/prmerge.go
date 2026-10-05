@@ -86,6 +86,9 @@ func prMerge(ctx context.Context, args []string, env Env) error {
 	if err := actions.MarkDone(ctx, st, s); err != nil {
 		return fmt.Errorf("merged #%d, but could not mark %q Done: %w", pr.Number, s.Name, err)
 	}
+	// The work is on main, so its checkout has nothing left to do; a removal
+	// git refuses is logged and left, and the merge has happened regardless.
+	actions.RemoveSliceWorktree(env.NewWorktrees(), s, project)
 	env.nudged()
 
 	if *asJSON {

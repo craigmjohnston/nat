@@ -38,6 +38,11 @@ type PRReader interface {
 // internal/tui/prstate.go's own un-done rule. Between the two, these are the
 // only writes this read can make, and only ever the writes the facts already
 // earned.
+//
+// And it is where a worktree nothing witnessed the end of goes: a merge
+// settled here takes its slice's worktree with it, and [landed] names every
+// other Done slice whose worktree there is nothing left to do in, for
+// [actions.SweepLanded] to remove.
 func prStatus(ctx context.Context, args []string, env Env) error {
 	asJSON, projectRef, err := parseJSONFlag("pr-status", args)
 	if err != nil {
@@ -59,10 +64,13 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 	}
 	slices := plan.Project.Slices
 
-	readings, marked := prReadings(ctx, st, env.NewGH(), slices, project)
-	if noticeFailing(ctx, st, env.NewTmux(), projectID, slices, readings) {
+	worktrees := env.NewWorktrees()
+	readings, listed, marked := prReadings(ctx, st, env.NewGH(), worktrees, slices, project)
+	tmux := env.NewTmux()
+	if noticeFailing(ctx, st, tmux, projectID, slices, readings) {
 		marked = true
 	}
+	actions.SweepLanded(worktrees, tmux.LiveSlices, project, landed(slices, project, readings, listed))
 	if marked {
 		env.nudged()
 	}
@@ -144,10 +152,38 @@ func readinessOf(status gh.PRStatus) domain.PRReadiness {
 	return domain.PRAwaitingReview
 }
 
+// landed is every slice whose work has ended by what this reading saw, and
+// whose worktree a sweep may take: Done, with no pull request or one the
+// listing read and did not find open. A Done slice whose pull request reads
+// open is one [actions.ReopenUnmerged] has just written back to In progress,
+// and one whose repository's listing could not be read concludes nothing, so
+// neither is named. A pull request closed unmerged never made its slice Done,
+// so it is no case of its own here.
+func landed(slices []domain.Slice, project config.ProjectConfig, readings []prReading, listed map[string]bool) []domain.Slice {
+	open := map[string]bool{}
+	for _, r := range readings {
+		if r.Checks != nil {
+			open[r.SliceID] = true
+		}
+	}
+	var out []domain.Slice
+	for _, s := range slices {
+		if s.Status != domain.SliceDone || open[s.ID] {
+			continue
+		}
+		if s.PRURL != "" && !listed[actions.WorkdirFor(s, project)] {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 // prReadings reads what GitHub says about the pull request of every slice
 // worth asking about, one listing per repository, and reports a reading per
-// slice in the plan's own order — plus whether any slice was marked Done on
-// the way, so the caller knows a nudge is owed.
+// slice in the plan's own order — plus the repositories whose listing was
+// read, and whether any slice was marked Done on the way, so the caller knows
+// a nudge is owed.
 //
 // A slice whose pull request is no longer open, or whose repository's
 // listing could not be read at all, comes back with the zero
@@ -159,14 +195,16 @@ func readinessOf(status gh.PRStatus) domain.PRReadiness {
 // The exception absence earns is an in-progress slice: its pull request being
 // gone is either the merge nat was not running to witness or a close that
 // sends the work round again, and the pull request's own reading tells them
-// apart — a merged one marks the slice Done, a failed reading is logged and
-// changes nothing, and the next run asks again.
+// apart — a merged one marks the slice Done and takes its worktree away
+// ([actions.RemoveSliceWorktree]), a failed reading is logged and changes
+// nothing, and the next run asks again.
 //
 // The other exception is a Done slice whose pull request is still open: the
 // un-done rule, [actions.ReopenUnmerged], written back to In progress so
 // Done goes on meaning what the merge made true everywhere else the app reads
 // a slice's status from.
-func prReadings(ctx context.Context, st store.Store, ghClient GH, slices []domain.Slice, project config.ProjectConfig) ([]prReading, bool) {
+func prReadings(ctx context.Context, st store.Store, ghClient GH, worktrees actions.Worktrees,
+	slices []domain.Slice, project config.ProjectConfig) ([]prReading, map[string]bool, bool) {
 	var dirs []string
 	reads := map[string][]domain.Slice{}
 	for _, s := range slices {
@@ -181,6 +219,7 @@ func prReadings(ctx context.Context, st store.Store, ghClient GH, slices []domai
 	}
 
 	marked := false
+	listed := map[string]bool{}
 	state := map[string]gh.PRStatus{}
 	for _, dir := range dirs {
 		open, err := ghClient.OpenPRs(dir)
@@ -188,6 +227,7 @@ func prReadings(ctx context.Context, st store.Store, ghClient GH, slices []domai
 			logging.Action("left a repository's pull requests unread", "dir", dir, "error", err)
 			continue
 		}
+		listed[dir] = true
 		for _, s := range reads[dir] {
 			if status, still := open[gh.NormaliseURL(s.PRURL)]; still {
 				state[s.ID] = status
@@ -208,7 +248,10 @@ func prReadings(ctx context.Context, st store.Store, ghClient GH, slices []domai
 				logging.Action("left an absent pull request unsettled", "slice", s.ID, "error", err)
 				continue
 			}
-			marked = marked || done
+			if done {
+				actions.RemoveSliceWorktree(worktrees, s, project)
+				marked = true
+			}
 		}
 	}
 
@@ -223,7 +266,7 @@ func prReadings(ctx context.Context, st store.Store, ghClient GH, slices []domai
 		}
 		out = append(out, r)
 	}
-	return out, marked
+	return out, listed, marked
 }
 
 // prStatusDoc is the structured form of the reading: one entry per slice worth

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -446,6 +447,9 @@ func testEnv(cfg config.Config, api *fakeAPI) (Env, *bytes.Buffer) {
 		Save:      func(config.Config) error { return nil },
 		NewClient: func(notion.TokenFunc) API { return api },
 		NewTmux:   DefaultNewTmux,
+		// No worktree anywhere: a removal finds nothing to take and a sweep
+		// lists nothing, so no test runs the real git.
+		NewWorktrees: func() actions.Worktrees { return &fakeSessionWorktrees{} },
 		// A repo with no origin/HEAD and no refs at all: Base answers its
 		// last fallback, so no test runs the real git.
 		NewGit: func() GitCLI { return git.NewWithRunner(&fakeGitRunner{}) },
