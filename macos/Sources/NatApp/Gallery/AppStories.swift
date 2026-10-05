@@ -620,7 +620,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-checks-controls",
-            summary: "An approved slice's PR section open over checks in every state — passed, failed, running, queued, and one Vercel reported: each Actions row ends in re-run and cancel icon buttons, the heading in the same pair badged with a group mark, in the same columns; the Vercel row has none.",
+            summary: "An approved slice's PR section open over checks in every state — passed, failed, running, queued, and one Vercel reported: each Actions row ends in re-run and cancel icon buttons, the heading in the same pair over a checklist, in the same columns; the Vercel row has none.",
             size: window
         ) {
             await slicePane(

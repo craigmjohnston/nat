@@ -1,19 +1,20 @@
 import SwiftUI
 import NatKit
 
-/// A row glyph badged for a group — the "every check" form of a check row's
-/// re-run or cancel, for the Checks heading: the row's own glyph, with a mini
-/// group mark on its lower right, the glyph knocked out a point round the mark
-/// as the Done folder is cut round its check. Drawn because SF Symbols
-/// (macOS 15) has no group variant of `arrow.clockwise` or `xmark`.
-struct GroupBadgedGlyph: View {
+/// The list form of a check row's re-run or cancel, for the Checks heading:
+/// a checklist, with the row's own glyph in its lower right where the second
+/// item's line would be, the list cut a point round it as the Done folder is
+/// cut round its check — what icon sets draw "do this to a list's items" as
+/// (Lucide's `list-restart`, `list-x`). Drawn because SF Symbols (macOS 15)
+/// has no such pair.
+struct ListActionGlyph: View {
     let systemName: String
     var size: CGFloat = 10
-    var weight: Font.Weight = .medium
 
-    /// The group mark: a 2×2 grid, which reads as "all of them" at this size
-    /// where a stack (a blob), lines (a menu) or dots (a spinner) did not.
-    static let badge = "square.grid.2x2.fill"
+    /// The list drawn under the action: `checklist`, whose ticked and open
+    /// circles echo the check rows under the heading — chosen over plain list
+    /// lines, which read as text alignment.
+    static let list = "checklist"
 
     /// The knock-out's copies, on a circle a point out (see `DoneFolderGlyph`).
     private static let halo: [CGSize] = (0..<16).map { step in
@@ -22,37 +23,37 @@ struct GroupBadgedGlyph: View {
     }
 
     var body: some View {
-        let side = size * 1.45
+        let side = size * 1.5
         ZStack {
-            glyph
+            listGlyph
                 .frame(width: side, height: side, alignment: .topLeading)
                 .mask {
                     ZStack {
                         Rectangle()
                         ForEach(Array(Self.halo.enumerated()), id: \.offset) { _, nudge in
-                            badge.offset(nudge)
+                            action.offset(nudge)
                                 .frame(width: side, height: side, alignment: .bottomTrailing)
                                 .blendMode(.destinationOut)
                         }
                     }
                     .compositingGroup()
                 }
-            badge.frame(width: side, height: side, alignment: .bottomTrailing)
+            action.frame(width: side, height: side, alignment: .bottomTrailing)
         }
         .frame(width: side, height: side)
     }
 
-    private var glyph: some View {
-        Image(systemName: systemName).font(.system(size: size, weight: weight))
+    private var listGlyph: some View {
+        Image(systemName: Self.list).font(.system(size: size * 1.05, weight: .medium))
     }
 
-    private var badge: some View {
-        Image(systemName: Self.badge).font(.system(size: size * 0.62, weight: .bold))
+    private var action: some View {
+        Image(systemName: systemName).font(.system(size: size * 0.75, weight: .bold))
     }
 }
 
 /// The glyphs the check controls draw: a refresh to re-run, a cross to
-/// cancel — one check's on its row, every check's badged for a group on the heading.
+/// cancel — one check's on its row, every check's over a checklist on the heading.
 enum ChecksGlyph {
     static let rerun = "arrow.clockwise"
     static let cancel = "xmark"
@@ -99,7 +100,7 @@ struct ChecksHeading: View {
                         .disabled(!controls.rerunFailed)
                 } label: {
                     CheckControlSlot(busy: store.checksActionSource == .rerunAll) {
-                        GroupBadgedGlyph(systemName: ChecksGlyph.rerun)
+                        ListActionGlyph(systemName: ChecksGlyph.rerun)
                     }
                 }
                 .menuStyle(.button)
@@ -111,7 +112,7 @@ struct ChecksHeading: View {
 
                 Button { run(store) { await $0.cancelChecks([], from: .cancelAll) } } label: {
                     CheckControlSlot(busy: store.checksActionSource == .cancelAll) {
-                        GroupBadgedGlyph(systemName: ChecksGlyph.cancel)
+                        ListActionGlyph(systemName: ChecksGlyph.cancel)
                     }
                 }
                 .buttonStyle(GnatIconButtonStyle())
