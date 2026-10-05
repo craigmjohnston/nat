@@ -1842,8 +1842,9 @@ enum AppStories {
 
         Story(
             name: "settings",
-            summary: "The settings window on General over the fixture config: the sidebar of tinted "
-                + "section tiles, General selected in the accent, and its two groups under bold headings.",
+            summary: "The settings window on General over the fixture config: the sidebar's Settings "
+                + "heading clear of the (here undrawn) traffic lights, its shaded section tiles, General "
+                + "selected in the accent, and its two groups under bold headings.",
             size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {

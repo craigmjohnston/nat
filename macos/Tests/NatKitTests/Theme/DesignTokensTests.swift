@@ -365,6 +365,46 @@ final class DesignTokensTests: XCTestCase {
         }
     }
 
+    // MARK: - Settings tiles
+
+    private let tiles = [
+        DesignTokens.tileSlate, DesignTokens.tileCoral, DesignTokens.tileInkBlue,
+        DesignTokens.tileJade, DesignTokens.tileViolet,
+    ]
+
+    /// Each tile is shaded lighter at the top and deeper at the bottom by the
+    /// same small step either side of its base, its hue and saturation kept.
+    func testTileShadesItsBaseUpAndDownAlone() {
+        for tile in tiles {
+            let base = hsl(tile.base)
+            let top = hsl(tile.top)
+            let bottom = hsl(tile.bottom)
+            XCTAssertEqual(top.lightness - base.lightness, TileTint.shading, accuracy: 0.01, tile.base)
+            XCTAssertEqual(base.lightness - bottom.lightness, TileTint.shading, accuracy: 0.01, tile.base)
+            XCTAssertEqual(top.hue, base.hue, accuracy: 0.01, tile.base)
+            XCTAssertEqual(bottom.hue, base.hue, accuracy: 0.01, tile.base)
+        }
+    }
+
+    /// The white glyph stays readable over the whole tile, its lightest end
+    /// included — the large-glyph bar of 3:1.
+    func testTileGlyphReadsOnEveryTileTop() {
+        for tile in tiles {
+            XCTAssertGreaterThanOrEqual(contrast("ffffff", tile.top), 3, tile.base)
+        }
+    }
+
+    /// The gradient is built from the two ends, top to bottom; that it
+    /// builds at all is what there is to check of a `LinearGradient`.
+    func testTileGradientBuilds() {
+        _ = DesignTokens.tileInkBlue.gradient
+    }
+
+    private func hsl(_ hex: String) -> (hue: Double, lightness: Double) {
+        let (hue, lightness, _) = hslComponents(rgbComponents(hex: hex)!)
+        return (hue, lightness)
+    }
+
     /// WCAG's contrast ratio between two opaque colours.
     private func contrast(_ one: String, _ other: String) -> Double {
         let first = relativeLuminance(one)

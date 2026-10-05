@@ -112,6 +112,23 @@ public enum DesignTokens {
     /// tiles of System Settings' and 1Password's sidebars draw theirs.
     public static let tileGlyph = Color.white
 
+    /// The Settings sidebar's tile grounds, one per section. Fixed, like the
+    /// glyph on them, rather than the palette's `system*` hues: a dark
+    /// palette's hues are pale (Iceberg's blue is 84a0c6) and a white glyph
+    /// washes out on them, where these are solid and saturated under every
+    /// palette and either appearance, and of one lightness so the column
+    /// reads as a family.
+    public static let tileSlate = TileTint("5a6378")
+    public static let tileCoral = TileTint("d8552f")
+    /// The app icon's own blue.
+    public static let tileInkBlue = TileTint("2c5ed7")
+    public static let tileJade = TileTint("188a6a")
+    public static let tileViolet = TileTint("7b5bd6")
+    /// The hairline just inside every tile's edge: what keeps the ink-blue
+    /// tile apart from a selected row's accent fill, which in One Light is
+    /// nearly the same blue.
+    public static let tileStroke = Color.white.opacity(0.35)
+
     /// The gnat mark drawn on its own, in the ink the app icon draws it in
     /// for the same appearance: the paper icon's blue (the accent) in light,
     /// the dark-navy icon's cream (`gnat-paper-dark-navy.svg`) in dark.
@@ -733,6 +750,25 @@ func rgbComponents(hex: String) -> (red: Double, green: Double, blue: Double)? {
 let hexFallback: (red: Double, green: Double, blue: Double) = (
     Double(0x1f) / 255.0, Double(0x44) / 255.0, Double(0xa3) / 255.0
 )
+
+/// One Settings sidebar tile's ground: its base hue, drawn top to bottom
+/// from a touch lighter to a touch deeper — the shading an app-icon tile
+/// has, there for whoever looks and never a blend of two colours. Both ends
+/// are `shade`s of the base, so the hue and saturation hold.
+public struct TileTint: Sendable {
+    public let base: String
+    public init(_ base: String) { self.base = base }
+
+    /// How far each end's lightness moves from the base's.
+    static let shading = 0.05
+
+    public var top: String { shade(base, Self.shading) }
+    public var bottom: String { shade(base, -Self.shading) }
+
+    public var gradient: LinearGradient {
+        LinearGradient(colors: [Color(hex: top), Color(hex: bottom)], startPoint: .top, endPoint: .bottom)
+    }
+}
 
 extension Color {
     /// Initialize a Color from a hex string (6 characters, e.g., "1e1e23").
