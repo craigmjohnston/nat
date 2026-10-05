@@ -54,6 +54,9 @@ func (f *fakeWorktrees) Remove(dir, branch string) error {
 	return f.removeErr
 }
 
+// Branches is never asked of the board: only `nat pr-status` sweeps.
+func (f *fakeWorktrees) Branches(dir string) ([]string, error) { return nil, nil }
+
 // Reset is never asked of the board: only `nat run` resets a worktree.
 func (f *fakeWorktrees) Reset(path, ref string) error { return nil }
 

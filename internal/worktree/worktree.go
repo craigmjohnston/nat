@@ -230,6 +230,33 @@ func (c CLI) Path(dir, branch string) (string, error) {
 	return "", fmt.Errorf("%s names no worktree for %s", Binary, branch)
 }
 
+// Branches is every branch the repository at dir has checked out in a worktree
+// of its own, read off one `git worktree list --porcelain` — the whole
+// repository in a single call, for a sweep that would otherwise ask [CLI.Path]
+// once per slice. The main worktree is left out, since it is the checkout the
+// user works in and never one nat cut, and so is a detached worktree, which
+// names no branch. Each comes back as the branch's short name, as a slice
+// records it.
+func (c CLI) Branches(dir string) ([]string, error) {
+	out, err := c.runner.Run(dir, Binary, "worktree", "list", "--porcelain")
+	if err != nil {
+		logging.Error("could not list worktrees", "dir", dir, "error", err)
+		return nil, err
+	}
+	var branches []string
+	records := 0
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			records++
+		// The first record git prints is always the main worktree.
+		case strings.HasPrefix(line, "branch ") && records > 1:
+			branches = append(branches, strings.TrimPrefix(strings.TrimSpace(strings.TrimPrefix(line, "branch ")), "refs/heads/"))
+		}
+	}
+	return branches, nil
+}
+
 // worktreeOf finds branch's path in a porcelain listing: one record per
 // worktree, opened by its path and naming the branch it has checked out as a
 // full ref — a detached or bare one names none at all, and so matches nothing.

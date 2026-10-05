@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/agent"
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
@@ -37,7 +38,9 @@ func noNotionEnv(t *testing.T, cfg config.Config, found bool) (Env, *bytes.Buffe
 		Save:      func(c config.Config) error { *state = c; found = true; return nil },
 		NewClient: func(notion.TokenFunc) API { t.Fatal("a Notion client was built"); return nil },
 		NewTmux:   DefaultNewTmux,
-		Out:       &out,
+		// No worktree anywhere, as in testEnv.
+		NewWorktrees: func() actions.Worktrees { return &fakeSessionWorktrees{} },
+		Out:          &out,
 	}, &out, state
 }
 

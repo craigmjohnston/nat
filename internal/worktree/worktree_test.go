@@ -293,6 +293,32 @@ func TestPathFailure(t *testing.T) {
 	}
 }
 
+// TestBranchesReadsTheListing pins the one call and what is read off it: the
+// linked worktrees' branches by short name, past the main worktree (whatever
+// branch it is on) and a detached worktree, which names none.
+func TestBranchesReadsTheListing(t *testing.T) {
+	runner := &fakeRunner{replies: []reply{{out: listPorcelain}}}
+	got, err := NewWithRunner(runner).Branches("/repos/nat")
+	if err != nil {
+		t.Fatalf("Branches() = %v", err)
+	}
+	if want := []string{"slice/worktrees"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Branches() = %v, want %v", got, want)
+	}
+	want := []call{{dir: "/repos/nat", name: Binary, args: []string{"worktree", "list", "--porcelain"}}}
+	if !reflect.DeepEqual(runner.calls, want) {
+		t.Errorf("calls = %+v, want %+v", runner.calls, want)
+	}
+}
+
+// TestBranchesFailure covers a git that refused to list at all.
+func TestBranchesFailure(t *testing.T) {
+	refused := &ExitError{Code: 128, Stderr: "fatal: not a git repository\n"}
+	runner := &fakeRunner{replies: []reply{{err: refused}}}
+	if _, err := NewWithRunner(runner).Branches("/repos/nat"); !errors.Is(err, error(refused)) {
+		t.Errorf("Branches() = %v, want git's own error", err)
+	}
+}
 
 // TestPathSlug covers the branch names that are not directory names: the
 // separators collapse, the ends come off, and a branch with nothing usable in it

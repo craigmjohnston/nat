@@ -37,6 +37,10 @@ project's one checkout with every other agent and the user.
   worktree, its branch as a full ref) and reports a branch with no worktree
   as such rather than an empty path — the ordinary answer for a slice nobody
   has worked yet.
+- `Branches(dir)` is the same one listing for the whole repository: every
+  linked worktree's branch by short name, the main worktree (the first
+  record) and detached ones left out — `pr-status`'s sweep, one git per
+  repository rather than a `Path` per slice.
 - `Remove(dir, branch)` finds that path and runs `git worktree remove
   <path>`, leaving to git whatever removal refuses — a worktree holding
   modified or untracked files is kept: a refusal is recoverable, thrown-away
