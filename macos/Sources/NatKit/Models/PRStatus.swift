@@ -67,6 +67,9 @@ public struct PRStatusSlice: Codable, Equatable, Sendable {
     public static let awaitingReview = "awaiting review"
     public static let readyToMerge = "ready to merge"
     public static let checksFailing = "checks failing"
+    /// `gh.ChecksVerdict`'s word for checks that all passed — a
+    /// `PRStatusChecks.verdict`, not a readiness.
+    public static let checksPassing = "passing"
 
     /// Whether the reading positively saw this pull request open — the one
     /// fact rail membership rides on.

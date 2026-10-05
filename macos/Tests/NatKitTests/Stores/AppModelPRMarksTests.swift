@@ -75,8 +75,9 @@ final class AppModelPRMarksTests: XCTestCase {
                 checks: PRStatusChecks(verdict: "passing"), base: "main"),
         ]), forProject: Fixtures.secondProjectID)
         await model.refresh()
-        XCTAssertEqual(activeMarks(model, red), PRMarks.none)
-        XCTAssertEqual(treeMarks(model, conflicting), PRMarks.none)
+        // The trouble cleared, and the green tick in its place.
+        XCTAssertEqual(activeMarks(model, red), PRMarks(checksPassing: true))
+        XCTAssertEqual(treeMarks(model, conflicting), PRMarks(checksPassing: true))
     }
 
     /// A background project's reading follows its plan's own refreshes.

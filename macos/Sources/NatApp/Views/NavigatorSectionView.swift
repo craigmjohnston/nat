@@ -27,6 +27,9 @@ struct NavSectionView<Actions: View, Content: View>: View {
     /// danger icon whose tooltip is its text — the PR section's failing
     /// checks. Nil draws nothing.
     var warning: String?
+    /// A success mark in the warning's slot, drawn only where there is no
+    /// warning — the PR section's passing checks. Its tooltip is its text.
+    var passing: String?
     let onHead: () -> Void
     var onFold: (() -> Void)?
     @ViewBuilder var actions: () -> Actions
@@ -75,6 +78,12 @@ struct NavSectionView<Actions: View, Content: View>: View {
                         .font(.system(size: 12, weight: .medium))
                         .ink(.danger)
                         .help(warning)
+                } else if let passing {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 12, weight: .medium))
+                        .ink(.success)
+                        .help(passing)
+                        .accessibilityLabel(passing)
                 }
             }
             .frame(minWidth: 58, alignment: .leading)
@@ -96,12 +105,12 @@ struct NavSectionView<Actions: View, Content: View>: View {
 extension NavSectionView where Actions == EmptyView {
     init(
         label: String, open: Bool, selected: Bool = false, meta: String? = nil, status: NavSectionStatus? = nil,
-        warning: String? = nil, onHead: @escaping () -> Void, onFold: (() -> Void)? = nil,
+        warning: String? = nil, passing: String? = nil, onHead: @escaping () -> Void, onFold: (() -> Void)? = nil,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.init(
             label: label, open: open, selected: selected, meta: meta, status: status, warning: warning,
-            onHead: onHead, onFold: onFold,
+            passing: passing, onHead: onHead, onFold: onFold,
             actions: { EmptyView() }, content: content)
     }
 }

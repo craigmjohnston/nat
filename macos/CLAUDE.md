@@ -132,7 +132,13 @@ first fresh read (`restore`). `PRStatusStore.marks` (by slice id) puts
 `PRMarksView`: the checks' `xmark.octagon.fill` and the conflict's own
 `ConflictMark` (`MergeIcon`, "Conflicts with <base>" / "Merge
 conflicts"), which takes a `BranchConflict` and nothing about a PR, for a
-conflicting branch with no PR to reuse. `attention(projectID:)` reads the
+conflicting branch with no PR to reuse — and, in the checks' slot, the
+success mark (`checkmark.circle.fill`, "Checks passing") where
+`prMarks(_:for:agent:)` keeps `checksPassing`: the `.pr` stage exactly (not
+fixing), no live agent working, verdict `passing`, not conflicting or
+failing. The PR section header draws the same gate as its outline
+`checkmark.circle` where it has no warning (`NavSectionView.passing`).
+`attention(projectID:)` reads the
 project's own reading. In the navigator, `checksNotice` and `conflictNotice`
 (the conflict the reading's, unless a loaded `PRDetail` of that PR decides —
 `conflict(reading:detail:prURL:)`) share the PR section header's danger icon
@@ -143,7 +149,8 @@ the action bar's); the conflict's is also a `NavNotice` atop the PR body, drawn
 before `pr-view` lands, offering the fix launch or naming the live agent.
 `projectAttention` counts a red pr/fixing slice once. Stories:
 `window-pr-fix-launch`, `window-fixing`, `sidebar-checks-failing`,
-`sidebar-pr-marks`, `window-pr-checks-failing`, `window-pr-checks-agent-told`,
+`sidebar-pr-marks`, `sidebar-pr-marks-passing`, `window-pr-checks-passing`,
+`window-pr-checks-failing`, `window-pr-checks-agent-told`,
 `window-pr-conflicting`, `window-pr-conflicting-checks-failing`,
 `window-task-log-checks-failed`.
 

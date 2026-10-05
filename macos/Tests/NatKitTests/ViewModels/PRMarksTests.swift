@@ -54,7 +54,54 @@ final class PRMarksTests: XCTestCase {
         ])
     }
 
+    func testTheReadingMarksPassingChecksByVerdict() {
+        func pr(_ id: String, _ verdict: String?, conflicting: Bool = false) -> PRStatusSlice {
+            PRStatusSlice(
+                sliceID: id, name: "", pr: "",
+                readiness: verdict == "failing" ? PRStatusSlice.checksFailing : PRStatusSlice.awaitingReview,
+                checks: verdict.map { PRStatusChecks(verdict: $0) }, conflicting: conflicting)
+        }
+        let reading = PRReading(PRStatusDoc(slices: [
+            pr("green", PRStatusSlice.checksPassing), pr("pending", "pending"), pr("none", "none"),
+            pr("red", "failing"), pr("unread", nil), pr("x", PRStatusSlice.checksPassing, conflicting: true),
+        ]))
+        XCTAssertEqual(reading.passingChecks, ["green", "x"])
+        XCTAssertEqual(reading.marks, [
+            "green": PRMarks(checksPassing: true),
+            "red": PRMarks(failingChecks: []),
+            "x": PRMarks(conflict: BranchConflict(base: nil), checksPassing: true),
+        ])
+    }
+
+    func testThePassingTickIsKeptOnlyWhereItCanBeTrusted() {
+        let green = PRMarks(checksPassing: true)
+        let tick = PRMarks(checksPassing: true)
+        XCTAssertEqual(prMarks(green, for: slice(), agent: nil), tick, "at the PR stage, no agent")
+        XCTAssertEqual(prMarks(green, for: slice(), agent: .waiting), tick, "an idle agent left from hand-back")
+        XCTAssertEqual(prMarks(green, for: slice(), agent: .working), .none, "a working agent may push")
+        XCTAssertEqual(prMarks(green, for: slice(fixing: true), agent: nil), .none, "under a fix")
+        XCTAssertEqual(prMarks(green, for: slice(status: "Done"), agent: nil), .none, "Done")
+        XCTAssertEqual(
+            prMarks(green, for: slice(pr: "", handedBack: true, branch: "b"), agent: nil), .none, "in review")
+        XCTAssertEqual(prMarks(green, for: slice(pr: ""), agent: nil), .none, "working, sent back")
+        XCTAssertEqual(prMarks(.none, for: slice(), agent: nil), .none, "no reading, or not passing")
+
+        let conflicted = PRMarks(conflict: BranchConflict(base: "main"), checksPassing: true)
+        XCTAssertEqual(
+            prMarks(conflicted, for: slice(), agent: nil), PRMarks(conflict: BranchConflict(base: "main")),
+            "a conflict draws alone")
+        let contradictory = PRMarks(failingChecks: ["test"], checksPassing: true)
+        XCTAssertEqual(prMarks(contradictory, for: slice(), agent: nil), PRMarks(failingChecks: ["test"]))
+
+        let both = PRMarks(failingChecks: ["test"], conflict: BranchConflict(base: "main"))
+        XCTAssertEqual(prMarks(both, for: slice(), agent: .working), both, "failing and conflict as before")
+        XCTAssertEqual(prMarks(both, for: slice(fixing: true), agent: .working), both)
+    }
+
     func testTheMarksSayWhatTheyMark() {
+        XCTAssertEqual(PRMarks(checksPassing: true).passingHelp, "Checks passing")
+        XCTAssertNil(PRMarks(failingChecks: []).passingHelp)
+        XCTAssertFalse(PRMarks(checksPassing: true).isEmpty)
         XCTAssertEqual(BranchConflict(base: "main").help, "Conflicts with main")
         XCTAssertEqual(BranchConflict(base: "  ").help, "Merge conflicts")
         XCTAssertEqual(BranchConflict(base: nil).help, "Merge conflicts")
@@ -73,7 +120,10 @@ final class PRMarksTests: XCTestCase {
         let plan = ProjectInfo(
             project: Project(id: "p", name: "P", conventions: ""),
             milestones: [Milestone(id: "M1", name: "M1", order: 0, status: "Active")],
-            slices: [slice("a"), slice("b", fixing: true), slice("c", pr: ""), slice("d", status: "Done")])
+            slices: [
+                slice("a"), slice("b", fixing: true), slice("c", pr: ""), slice("d", status: "Done"),
+                slice("g"), slice("h"), slice("i", fixing: true),
+            ])
         let other = ProjectInfo(
             project: Project(id: "q", name: "Q", conventions: ""),
             milestones: [Milestone(id: "M1", name: "M1", order: 0, status: "Active")],
@@ -83,8 +133,10 @@ final class PRMarksTests: XCTestCase {
             projects: [
                 SidebarProjectInput(id: "p", name: "P", plan: plan), SidebarProjectInput(id: "q", name: "Q", plan: other),
             ],
-            liveAgents: ["b": .waiting, "c": .working],
+            liveAgents: ["b": .waiting, "c": .working, "h": .working],
             prMarks: [
+                "g": PRMarks(checksPassing: true), "h": PRMarks(checksPassing: true),
+                "i": PRMarks(checksPassing: true),
                 "a": both, "b": PRMarks(failingChecks: ["lint"]), "c": both, "d": both,
                 "e": PRMarks(conflict: BranchConflict(base: nil)),
             ])
@@ -93,6 +145,9 @@ final class PRMarksTests: XCTestCase {
         XCTAssertEqual(active["b"], PRMarks(failingChecks: ["lint"]), "under a fix, its agent waiting")
         XCTAssertEqual(active["c"], PRMarks.none, "a working slice has no pull request to mark")
         XCTAssertEqual(active["e"], PRMarks(conflict: BranchConflict(base: nil)), "another project's")
+        XCTAssertEqual(active["g"], PRMarks(checksPassing: true), "green at the PR stage")
+        XCTAssertEqual(active["h"], PRMarks.none, "green, but its agent is working")
+        XCTAssertEqual(active["i"], PRMarks.none, "green, but under a fix")
 
         let tree = Dictionary(uniqueKeysWithValues: model.projects.flatMap { project in
             (project.milestones + project.doneMilestones).flatMap(\.slices).map { ($0.sliceID, $0.marks) }
@@ -102,6 +157,8 @@ final class PRMarksTests: XCTestCase {
         XCTAssertEqual(tree["c"], PRMarks.none)
         XCTAssertEqual(tree["d"], PRMarks.none, "a Done slice carries neither")
         XCTAssertEqual(tree["e"], PRMarks(conflict: BranchConflict(base: nil)))
+        XCTAssertEqual(tree["g"], PRMarks(checksPassing: true))
+        XCTAssertEqual(tree["h"], PRMarks.none)
     }
 
     // MARK: - The PR section

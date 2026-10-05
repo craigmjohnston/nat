@@ -56,6 +56,13 @@ struct SliceNavigatorView: View {
         let texts = [notice?.text, conflictNotice?.text].compactMap { $0 }
         return texts.isEmpty ? nil : texts.joined(separator: "\n")
     }
+    /// The PR header's success mark's tooltip, where the last reading has the
+    /// checks passing and the gate (`prMarks`) trusts it.
+    private var prPassing: String? {
+        prMarks(
+            prReadingOfProject.marks[slice.id] ?? .none, for: slice, agent: agent.map { AgentActivity($0.activity) }
+        ).passingHelp
+    }
     private var detail: SliceDetailLoadState { appModel.sliceDetailStore(projectID: projectID).state(for: slice.id) }
     private var visuals: [VisualChange] { detail.detail?.visuals ?? [] }
     private var diffStore: DiffStore { review.store(appModel) }
@@ -109,7 +116,7 @@ struct SliceNavigatorView: View {
             if nav.isLive(.pr) {
                 NavSectionView(
                     label: "PR", open: open.contains(.pr), selected: main == .pr, status: nav.prStatus,
-                    warning: prWarning, onHead: { click(.pr) }, onFold: { fold(.pr) }
+                    warning: prWarning, passing: prPassing, onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
                     PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
                 } content: {

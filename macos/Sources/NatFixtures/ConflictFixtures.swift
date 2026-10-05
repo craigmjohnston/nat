@@ -13,6 +13,14 @@ extension Fixtures {
             conflicting: true, base: "main"),
     ])
 
+    /// The same pull request mergeable, its checks all passed.
+    public static let prStatusChecksPassing = PRStatusDoc(slices: [
+        PRStatusSlice(
+            sliceID: approveSliceID, name: "Approve opens the pull request", pr: prURL,
+            readiness: PRStatusSlice.readyToMerge, checks: PRStatusChecks(verdict: PRStatusSlice.checksPassing),
+            base: "main"),
+    ])
+
     /// The same pull request red and conflicting at once.
     public static let prStatusChecksFailingAndConflicting = PRStatusDoc(slices: [
         PRStatusSlice(
