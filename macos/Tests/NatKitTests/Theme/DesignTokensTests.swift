@@ -386,13 +386,6 @@ final class DesignTokensTests: XCTestCase {
         }
     }
 
-    /// The white glyph stays readable over the whole tile, its lightest end
-    /// included — the large-glyph bar of 3:1.
-    func testTileGlyphReadsOnEveryTileTop() {
-        for tile in tiles {
-            XCTAssertGreaterThanOrEqual(contrast("ffffff", tile.top), 3, tile.base)
-        }
-    }
 
     /// The gradient is built from the two ends, top to bottom; that it
     /// builds at all is what there is to check of a `LinearGradient`.

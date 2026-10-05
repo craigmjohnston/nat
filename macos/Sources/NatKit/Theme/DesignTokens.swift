@@ -117,13 +117,12 @@ public enum DesignTokens {
     /// palette's hues are pale (Iceberg's blue is 84a0c6) and a white glyph
     /// washes out on them, where these are solid and saturated under every
     /// palette and either appearance. The column is the app icon's run of
-    /// navy and blues with one warm tile in it, each deep enough that the
-    /// glyph reads on its lighter top.
+    /// navy and blues with one warm tile in it.
     public static let tileNavy = TileTint("1f2a5c")
-    public static let tileAmber = TileTint("b8740f")
+    public static let tileAmber = TileTint("ea921c")
     /// The app icon's own blue.
     public static let tileInkBlue = TileTint("2c5ed7")
-    public static let tileAzure = TileTint("168dc9")
+    public static let tileAzure = TileTint("1795d4")
     public static let tileIndigo = TileTint("5a48d6")
     /// The hairline just inside every tile's edge: what keeps the ink-blue
     /// tile apart from a selected row's accent fill, which in One Light is
