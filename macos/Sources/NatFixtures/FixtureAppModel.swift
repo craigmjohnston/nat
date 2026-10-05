@@ -46,11 +46,12 @@ extension Fixtures {
         client: FixtureNatClient = FixtureNatClient(),
         config: NatProjectConfig = Fixtures.config,
         toolsReady: Bool = false,
-        workshopCache: WorkshopCaching = InMemoryWorkshopCache()
+        workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
+        planCache: PlanCaching = NullPlanCache()
     ) -> AppModel {
         AppModel(
             configReader: FixtureConfigReader(config: config),
-            planCache: NullPlanCache(),
+            planCache: planCache,
             // Far longer than any preview or test lives, so the poll never
             // fires under one; the fixtures do not change, so a poll would
             // only be work nobody reads.
@@ -112,9 +113,11 @@ extension Fixtures {
         client: FixtureNatClient = FixtureNatClient(),
         config: NatProjectConfig = Fixtures.config,
         toolsReady: Bool = false,
-        workshopCache: WorkshopCaching = InMemoryWorkshopCache()
+        workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
+        planCache: PlanCaching = NullPlanCache()
     ) async -> AppModel {
-        let model = appModel(client: client, config: config, toolsReady: toolsReady, workshopCache: workshopCache)
+        let model = appModel(
+            client: client, config: config, toolsReady: toolsReady, workshopCache: workshopCache, planCache: planCache)
         await start(model)
         return model
     }

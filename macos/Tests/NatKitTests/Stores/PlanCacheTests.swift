@@ -21,6 +21,13 @@ final class FakePlanCache: PlanCaching, @unchecked Sendable {
         writes.append((projectID: projectID, info: info))
         stored[projectID] = info
     }
+
+    /// The `pr-status` readings kept, by project.
+    var storedPRStatus: [String: PRStatusDoc] = [:]
+
+    func readPRStatus(projectID: String) async -> PRStatusDoc? { storedPRStatus[projectID] }
+
+    func writePRStatus(_ doc: PRStatusDoc, projectID: String) async { storedPRStatus[projectID] = doc }
 }
 
 final class PlanCacheTests: XCTestCase {
@@ -61,6 +68,38 @@ final class PlanCacheTests: XCTestCase {
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: directory)
         try super.tearDownWithError()
+    }
+
+    /// A project's `pr-status` reading is kept beside its plan, round-trips
+    /// whole — its conflicts included — and reads as nothing where none or a
+    /// corrupt one was written.
+    func testPRStatusRoundTrip() async throws {
+        let doc = PRStatusDoc(slices: [
+            PRStatusSlice(
+                sliceID: "s-1", name: "A", pr: "u", readiness: "checks failing",
+                checks: PRStatusChecks(verdict: "failing", failing: [PRStatusCheck(name: "test", url: "https://ci/1")]),
+                conflicting: true, base: "main"),
+        ])
+        let none = await cache.readPRStatus(projectID: "p-1")
+        XCTAssertNil(none)
+        await cache.writePRStatus(doc, projectID: "p-1")
+        let read = await cache.readPRStatus(projectID: "p-1")
+        XCTAssertEqual(read, doc)
+        XCTAssertEqual(cache.prStatusFileURL(projectID: "p-1").lastPathComponent, "p-1.pr-status.json")
+        let plan = await cache.read(projectID: "p-1")
+        XCTAssertNil(plan, "the reading is not the plan")
+
+        try Data("not json".utf8).write(to: cache.prStatusFileURL(projectID: "p-2"))
+        let corrupt = await cache.readPRStatus(projectID: "p-2")
+        XCTAssertNil(corrupt)
+    }
+
+    /// A cache that keeps plans alone keeps no reading.
+    func testAPlanOnlyCacheKeepsNoReading() async {
+        let cache = NullTestPlanCache()
+        await cache.writePRStatus(PRStatusDoc(slices: []), projectID: "p")
+        let read = await cache.readPRStatus(projectID: "p")
+        XCTAssertNil(read)
     }
 
     func testRoundTrip() async {

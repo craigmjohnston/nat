@@ -75,7 +75,8 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 }
 
 // prReading is one slice's pull request as pr-status reports it. Checks is
-// how its checks stand, set only for an open pull request the listing read.
+// how its checks stand and whether it conflicts, set only for an open pull
+// request the listing read.
 type prReading struct {
 	SliceID   string
 	SliceName string
@@ -231,12 +232,19 @@ type prStatusDoc struct {
 	Slices []prStatusSliceJSON `json:"slices"`
 }
 
+// prStatusSliceJSON is one slice's entry. Conflicting is GitHub positively
+// saying the branch conflicts with Base — false for a mergeable branch, one
+// whose mergeability is still unknown, and every slice the listing did not
+// read, since a read that never happened concludes nothing. Base is the
+// branch the pull request merges into, where the listing read it.
 type prStatusSliceJSON struct {
-	SliceID   string        `json:"slice_id"`
-	Name      string        `json:"name"`
-	PR        string        `json:"pr"`
-	Readiness string        `json:"readiness"`
-	Checks    *prChecksJSON `json:"checks,omitempty"`
+	SliceID     string        `json:"slice_id"`
+	Name        string        `json:"name"`
+	PR          string        `json:"pr"`
+	Readiness   string        `json:"readiness"`
+	Conflicting bool          `json:"conflicting"`
+	Base        string        `json:"base,omitempty"`
+	Checks      *prChecksJSON `json:"checks,omitempty"`
 }
 
 // prChecksJSON is how an open pull request's checks stand: the verdict in
@@ -264,6 +272,7 @@ func prStatusJSON(readings []prReading) prStatusDoc {
 				checks.Failing = append(checks.Failing, prCheckJSON{Name: c.Name, URL: c.URL})
 			}
 			entry.Checks = checks
+			entry.Conflicting, entry.Base = r.Checks.Conflicting, r.Checks.Base
 		}
 		doc.Slices = append(doc.Slices, entry)
 	}
@@ -282,7 +291,19 @@ func prStatusMarkdown(readings []prReading) string {
 			for _, c := range r.Checks.Failing {
 				out += fmt.Sprintf("  - failing: %s %s\n", c.Name, c.URL)
 			}
+			if r.Checks.Conflicting {
+				out += "  - " + conflictLine(r.Checks.Base) + "\n"
+			}
 		}
 	}
 	return out
+}
+
+// conflictLine says a pull request conflicts, naming its base where the
+// listing read one.
+func conflictLine(base string) string {
+	if base == "" {
+		return "conflicting"
+	}
+	return "conflicting with " + base
 }
