@@ -21,6 +21,21 @@ public protocol PlanCaching: Sendable {
     /// write that fails costs the next launch its head start and nothing
     /// else, so it is never reported to the caller.
     func write(_ info: ProjectInfo, projectID: String) async
+
+    /// The `pr-status` reading last written for this project, or nil where
+    /// there is none — read at launch so a pull request's marks are drawn
+    /// before the first fresh reading lands. Degrades as `read` does.
+    func readPRStatus(projectID: String) async -> PRStatusDoc?
+
+    /// Records a `pr-status` reading that has just landed, fire-and-forget
+    /// as `write` is.
+    func writePRStatus(_ doc: PRStatusDoc, projectID: String) async
+}
+
+extension PlanCaching {
+    /// A cache that keeps plans alone keeps no reading either.
+    public func readPRStatus(projectID: String) async -> PRStatusDoc? { nil }
+    public func writePRStatus(_ doc: PRStatusDoc, projectID: String) async {}
 }
 
 /// `PlanCaching` against the app's own Application Support directory: one
@@ -105,5 +120,21 @@ public struct DiskPlanCache: PlanCaching {
         // Atomic, so a launch reading this file while a refresh writes it
         // sees one whole plan or the other rather than half of each.
         try? data.write(to: fileURL(projectID: projectID), options: .atomic)
+    }
+
+    /// Where one project's `pr-status` reading is filed, beside its plan.
+    public func prStatusFileURL(projectID: String) -> URL {
+        directory.appendingPathComponent(Self.fileSlug(projectID) + ".pr-status.json", isDirectory: false)
+    }
+
+    public func readPRStatus(projectID: String) async -> PRStatusDoc? {
+        guard let data = try? Data(contentsOf: prStatusFileURL(projectID: projectID)) else { return nil }
+        return try? JSONDecoder().decode(PRStatusDoc.self, from: data)
+    }
+
+    public func writePRStatus(_ doc: PRStatusDoc, projectID: String) async {
+        guard let data = try? JSONEncoder().encode(doc) else { return }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? data.write(to: prStatusFileURL(projectID: projectID), options: .atomic)
     }
 }

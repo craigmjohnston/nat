@@ -269,6 +269,11 @@ public final class AppModel {
     /// mirrors how `activityStore` is one store rather than one per project).
     public private(set) var reviewStatsStore: ReviewStatsStore?
 
+    /// Every open project's `nat pr-status` reading, held per project — the
+    /// sidebar's marks in every project, the PR section's notices and each
+    /// tab's attention all read it.
+    public private(set) var prStatusStore: PRStatusStore?
+
     /// The active project's ad hoc sessions (app-wide store, active-project
     /// reading — mirrors `reviewStatsStore`'s own shape).
     public private(set) var sessionStore: SessionStore?
@@ -754,6 +759,7 @@ public final class AppModel {
     /// its store and every per-project reading keyed by it.
     private func forgetProjectState(_ id: String) {
         stores[id] = nil
+        prStatusStore?.forget(projectID: id)
         containerStores[id] = nil
         sourceExpanded[id] = nil
         selectedSliceIDs[id] = nil
@@ -825,6 +831,7 @@ public final class AppModel {
             let activityStore = activityStoreFactory()
             self.activityStore = activityStore
             self.reviewStatsStore = ReviewStatsStore(client: clientFactory())
+            self.prStatusStore = PRStatusStore(client: clientFactory(), cache: planCache)
             self.sessionStore = SessionStore(client: clientFactory())
             startUsageStore()
 
@@ -868,6 +875,7 @@ public final class AppModel {
         if activityStore == nil {
             activityStore = activityStoreFactory()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
+            prStatusStore = PRStatusStore(client: clientFactory(), cache: planCache)
             sessionStore = SessionStore(client: clientFactory())
         }
         if usageStore == nil {
@@ -906,6 +914,9 @@ public final class AppModel {
 
         guard let projectStore = stores[projectID] else { return }
 
+        // The last pull request reading first, so its marks are up before
+        // the plan's fresh read and the reading's own.
+        await prStatusStore?.restore(projectID: projectID)
         // Load the project store
         await projectStore.load()
         await updateReviewStats(projectID: projectID, projectStore: projectStore)
@@ -926,13 +937,19 @@ public final class AppModel {
     /// review-stats reading that only the active project gets: creates its
     /// store if it has none, then loads it — cache first, then a network
     /// refresh, `ProjectStore.load()`'s own shape — as an unawaited task, so
-    /// one slow project's read never holds up the rest of startup.
+    /// one slow project's read never holds up the rest of startup. Its pull
+    /// requests' last reading is put up first and a fresh one taken once the
+    /// plan has landed, as every background refresh takes one.
     private func loadBackgroundProject(_ projectID: String) {
         if stores[projectID] == nil {
             stores[projectID] = ProjectStore(projectID: projectID, client: clientFactory(), cache: planCache)
         }
         guard let store = stores[projectID] else { return }
-        Task { await store.load() }
+        Task {
+            await prStatusStore?.restore(projectID: projectID)
+            await store.load()
+            await updatePRStatus(of: store)
+        }
     }
 
     /// Activate a project by ID (public convenience).
@@ -1050,6 +1067,7 @@ public final class AppModel {
         if activityStore == nil {
             activityStore = activityStoreFactory()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
+            prStatusStore = PRStatusStore(client: clientFactory(), cache: planCache)
             sessionStore = SessionStore(client: clientFactory())
         }
         if usageStore == nil {
@@ -1156,7 +1174,7 @@ public final class AppModel {
             planningAgents: planningAgents,
             pinnedWorkshops: workshopPinnedProjects,
             launchingWorkshop: workshopLaunching ? activeProjectID : nil,
-            failingChecks: reviewStatsStore?.failingChecks ?? [:])
+            prMarks: prStatusStore?.marks ?? [:])
     }
 
     /// What the navigator's titlebar names `selection` in the active project
@@ -1311,12 +1329,24 @@ public final class AppModel {
 
     /// Re-read every open project but the active one, in the background —
     /// the sidebar draws all of their plans, and a nudge or a poll tick is as
-    /// much news for them as for the one on screen.
+    /// much news for them as for the one on screen. Each plan that lands
+    /// takes its pull requests' reading too, as the active one's does.
     private func refreshBackgroundProjects(_ read: PlanRead) {
         for tab in projectTabs where tab.id != activeProjectID && !isUntitledTab(tab.id) {
             guard let store = stores[tab.id] else { continue }
-            Task { await store.refresh(read) }
+            Task {
+                await store.refresh(read)
+                await updatePRStatus(of: store)
+            }
         }
+    }
+
+    /// Takes a project's `pr-status` reading on the plan its store holds —
+    /// the Go board's cadence, every plan that lands — and skips it the same
+    /// way where no slice has a pull request worth asking about.
+    private func updatePRStatus(of store: ProjectStore) async {
+        guard let info = store.state.projectInfo, info.slices.contains(where: { !$0.pr.isEmpty }) else { return }
+        await prStatusStore?.update(projectID: store.projectID)
     }
 
     /// The slice-detail cache for one project, created on first use — the
@@ -2050,10 +2080,9 @@ public final class AppModel {
     /// disagree. Nothing at all for a project whose plan has not landed:
     /// there are no slices to read anything off yet.
     ///
-    /// The PR-readiness map is the active project's alone — one store, as
-    /// `reviewStatsStore`'s comment says — so an inactive tab's dot has that
-    /// refinement absent rather than wrong, exactly as the rail does with no
-    /// reading taken. The planning agent is the one the activity map
+    /// The PR-readiness map is the project's own last `pr-status` reading
+    /// (`prStatusStore`) — absent, never wrong, for one not yet read, exactly
+    /// as the rail does with no reading taken. The planning agent is the one the activity map
     /// attributes to this project by its own scoped tag; the bare legacy
     /// sentinel belongs to no project in particular and is nobody's tab.
     public func attention(projectID: String) -> ProjectAttention {
@@ -2068,7 +2097,7 @@ public final class AppModel {
             slices: projectInfo.slices,
             liveAgents: liveAgents,
             planningAgent: planning,
-            prReadiness: projectID == activeProjectID ? (reviewStatsStore?.prReadiness ?? [:]) : [:],
+            prReadiness: prStatusStore?.reading(projectID: projectID).readiness ?? [:],
             sessions: projectID == activeProjectID ? (sessionStore?.sessions ?? []) : []
         )
     }
@@ -2454,12 +2483,7 @@ public final class AppModel {
             .filter { $0.handedBack }
             .map { ReviewStatsStore.HandedBackSlice(sliceID: $0.id, branch: $0.branch ?? "") }
         await reviewStatsStore?.update(projectID: projectID, handedBack: handedBack)
-        // The PR-readiness reading rides the same cadence the Go board's
-        // does — every plan that lands — and is skipped the same way when no
-        // slice has a pull request worth asking about.
-        if info.slices.contains(where: { !$0.pr.isEmpty }) {
-            await reviewStatsStore?.updatePRStatus(projectID: projectID)
-        }
+        await updatePRStatus(of: projectStore)
         // Ad hoc sessions ride the same cadence: every plan reload and the
         // poll's own tick, alongside the PR-readiness reading above.
         await sessionStore?.update(projectID: projectID)
@@ -2527,6 +2551,7 @@ public final class AppModel {
         usageStore?.stop()
         usageStore = nil
         reviewStatsStore = nil
+        prStatusStore = nil
         sessionStore = nil
         sliceDetailStores = [:]
         containerStores = [:]

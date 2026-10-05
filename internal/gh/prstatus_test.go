@@ -31,7 +31,8 @@ func TestOpenPRsRunsGh(t *testing.T) {
 	if runner.name != Binary {
 		t.Errorf("ran %q, want %q", runner.name, Binary)
 	}
-	want := []string{"pr", "list", "--state", "open", "--json", "url,reviewDecision,mergeable,statusCheckRollup",
+	want := []string{"pr", "list", "--state", "open", "--json",
+		"url,reviewDecision,mergeable,mergeStateStatus,baseRefName,statusCheckRollup",
 		"--limit", "100"}
 	if !reflect.DeepEqual(runner.args, want) {
 		t.Errorf("args = %v, want %v", runner.args, want)
@@ -78,6 +79,39 @@ func TestOpenPRsReadings(t *testing.T) {
 			if status.Approved != tt.wantApproved || status.Mergeable != tt.wantMergeable {
 				t.Errorf("OpenPRs() = %+v, want approved=%v mergeable=%v",
 					status, tt.wantApproved, tt.wantMergeable)
+			}
+		})
+	}
+}
+
+// TestOpenPRsConflicting walks GitHub's mergeability words, in the shape gh
+// pr list prints them, into the one fact: only CONFLICTING, or a DIRTY merge
+// state, is a conflict — a mergeability GitHub is still working out is not,
+// and neither is one it never said.
+func TestOpenPRsConflicting(t *testing.T) {
+	const url = "https://github.test/pr/7"
+	tests := []struct {
+		name   string
+		fields string
+		want   bool
+	}{
+		{name: "conflicting", fields: `,"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY"`, want: true},
+		{name: "dirty alone", fields: `,"mergeable":"UNKNOWN","mergeStateStatus":"dirty"`, want: true},
+		{name: "conflicting alone", fields: `,"mergeable":" conflicting ","mergeStateStatus":"UNKNOWN"`, want: true},
+		{name: "mergeable", fields: `,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"`},
+		{name: "behind", fields: `,"mergeable":"MERGEABLE","mergeStateStatus":"BEHIND"`},
+		{name: "unknown", fields: `,"mergeable":"UNKNOWN","mergeStateStatus":"UNKNOWN"`},
+		{name: "nothing said", fields: ``},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runner := &fakeRunner{out: `[{"url":"` + url + `","baseRefName":" main "` + tt.fields + `}]`}
+			open, err := NewWithRunner(runner).OpenPRs("/repos/nat")
+			if err != nil {
+				t.Fatalf("OpenPRs() = %v, want a listing", err)
+			}
+			if got := open[url]; got.Conflicting != tt.want || got.Base != "main" {
+				t.Errorf("OpenPRs() = %+v, want conflicting=%v base=main", got, tt.want)
 			}
 		})
 	}

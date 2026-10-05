@@ -58,6 +58,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// What `pr-status` answers — `Fixtures.prStatusDoc` unless a story
     /// reads another.
     private let prStatusDoc: PRStatusDoc
+    /// What `pr-status` answers for a project other than the fixture's own
+    /// reading — `.some(nil)` a reading that fails — set at init or later, as
+    /// a test moves a project's pull requests on.
+    private let prStatusByProject: Box<[String: PRStatusDoc?]>
     /// What `plugin-list` answers — the same listing after every install,
     /// since nothing here is installed.
     private let plugins: PluginListing
@@ -102,9 +106,11 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         details: [String: SliceDetail] = Fixtures.sliceDetails,
         plugins: PluginListing = Fixtures.pluginListing,
         sources: [SourcePlugin] = Fixtures.sourcePlugins,
-        prStatus: PRStatusDoc = Fixtures.prStatusDoc
+        prStatus: PRStatusDoc = Fixtures.prStatusDoc,
+        prStatusByProject: [String: PRStatusDoc] = [:]
     ) {
         self.prStatusDoc = prStatus
+        self.prStatusByProject = Box(prStatusByProject.mapValues { Optional($0) })
         self.plugins = plugins
         self.sources = sources
         self.behaviour = behaviour
@@ -330,7 +336,19 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func prStatus(projectID: String) async throws -> PRStatusDoc {
-        try await answer(prStatusDoc)
+        if let doc = prStatusByProject.get()[projectID] {
+            guard let doc else { throw NatError.commandFailed("gh could not be read") }
+            return try await answer(doc)
+        }
+        return try await answer(prStatusDoc)
+    }
+
+    /// Say what `pr-status` reads for one project from here on — nil, a
+    /// reading that fails.
+    public func setPRStatus(_ doc: PRStatusDoc?, forProject projectID: String) {
+        var all = prStatusByProject.get()
+        all[projectID] = .some(doc)
+        prStatusByProject.set(all)
     }
 
     public func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {

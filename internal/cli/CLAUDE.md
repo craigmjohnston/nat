@@ -326,7 +326,12 @@ its own failure says so rather than pretending the merge never happened),
 legacy row whose PR still reads open — see root CLAUDE.md's Domain rules on
 `StateOf`; `--json` carries `checks` `{verdict, failing: [{name, url}]}` per
 PR the listing read, and the red ones go to `actions.NoticeFailingChecks`;
-a tmux that can't list live sessions concludes nothing), `slice-status` (reads one page by ID directly, `--project` only
+a tmux that can't list live sessions concludes nothing; every entry carries
+`conflicting` — true only where gh positively said so, `mergeable`
+CONFLICTING or merge state DIRTY (`gh.PRStatus.Conflicting`, the merge
+refusal's words), false for UNKNOWN and for a PR the listing never read —
+and `base` where it read one; not a readiness word, and nothing nudges on
+it. gnat holds this reading per project, every open one), `slice-status` (reads one page by ID directly, `--project` only
 for credentials — no plan is read at all, so it is the one read that can
 never show a phantom state from a stale cached plan; built for the macOS
 app's session reaper, see `SessionReaping.swift`).

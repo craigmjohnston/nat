@@ -15,15 +15,21 @@ import (
 // UNKNOWN, the last being GitHub still working the merge out. Only the two
 // affirmative ones mean anything here — everything else is a pull request that
 // is not ready, which is what an unread one is taken as too.
+//
+// A conflict is the one negative said positively: mergeable CONFLICTING, or a
+// merge state of DIRTY — the words the merge refusal reads. UNKNOWN is not
+// one, nor is a mergeability never read.
 const (
-	reviewApproved = "APPROVED"
-	stateMergeable = "MERGEABLE"
-	prListFields   = "url,reviewDecision,mergeable,statusCheckRollup"
+	reviewApproved   = "APPROVED"
+	stateMergeable   = "MERGEABLE"
+	stateConflicting = "CONFLICTING"
+	mergeStateDirty  = "DIRTY"
+	prListFields     = "url,reviewDecision,mergeable,mergeStateStatus,baseRefName,statusCheckRollup"
 )
 
 // prListLimit is how many open pull requests one listing will carry. gh's own
 // default is thirty, which a busy repository passes without saying so, and the
-// three fields asked for are small enough that a hundred costs nothing worth
+// fields asked for are small enough that a hundred costs nothing worth
 // counting — the check rollup included, which is a handful of short entries per
 // pull request. A repository with more open than that has its oldest left out of
 // the answer, which reads here as a pull request that is no longer open — the
@@ -36,14 +42,20 @@ const prListLimit = "100"
 // pull request with a review still to come — and equally the zero value, which
 // is what a read that never happened comes back as.
 //
+// Conflicting is GitHub positively saying the branch conflicts with Base —
+// which Mergeable false cannot say, since a mergeability still being worked
+// out is false too.
+//
 // Failing is every check the rollup has failed, in the order gh listed them —
 // empty unless Checks is [ChecksFailing]. Its run URLs are what tells one red
 // reading from the next: a re-push that fails again fails in a new run.
 type PRStatus struct {
-	Approved  bool
-	Mergeable bool
-	Checks    ChecksVerdict
-	Failing   []Check
+	Approved    bool
+	Mergeable   bool
+	Conflicting bool
+	Base        string
+	Checks      ChecksVerdict
+	Failing     []Check
 }
 
 // ChecksVerdict is a pull request's whole status check rollup said as one word.
@@ -182,10 +194,12 @@ func (c CLI) OpenPRs(dir string) (map[string]PRStatus, error) {
 		return nil, err
 	}
 	var list []struct {
-		URL            string   `json:"url"`
-		ReviewDecision string   `json:"reviewDecision"`
-		Mergeable      string   `json:"mergeable"`
-		Rollup         []ghRoll `json:"statusCheckRollup"`
+		URL              string   `json:"url"`
+		ReviewDecision   string   `json:"reviewDecision"`
+		Mergeable        string   `json:"mergeable"`
+		MergeStateStatus string   `json:"mergeStateStatus"`
+		BaseRefName      string   `json:"baseRefName"`
+		Rollup           []ghRoll `json:"statusCheckRollup"`
 	}
 	if err := json.Unmarshal([]byte(out), &list); err != nil {
 		logging.Error("could not read what gh said about a repository's pull requests", "dir", dir, "error", err)
@@ -195,13 +209,22 @@ func (c CLI) OpenPRs(dir string) (map[string]PRStatus, error) {
 	for _, pr := range list {
 		checks, failing := checksVerdictOf(pr.Rollup)
 		open[NormaliseURL(pr.URL)] = PRStatus{
-			Approved:  pr.ReviewDecision == reviewApproved,
-			Mergeable: pr.Mergeable == stateMergeable,
-			Checks:    checks,
-			Failing:   failing,
+			Approved:    pr.ReviewDecision == reviewApproved,
+			Mergeable:   pr.Mergeable == stateMergeable,
+			Conflicting: conflicting(pr.Mergeable, pr.MergeStateStatus),
+			Base:        strings.TrimSpace(pr.BaseRefName),
+			Checks:      checks,
+			Failing:     failing,
 		}
 	}
 	return open, nil
+}
+
+// conflicting reports whether GitHub positively said a pull request's branch
+// conflicts with its base, whatever the case or spacing of its words.
+func conflicting(mergeable, mergeState string) bool {
+	return strings.ToUpper(strings.TrimSpace(mergeable)) == stateConflicting ||
+		strings.ToUpper(strings.TrimSpace(mergeState)) == mergeStateDirty
 }
 
 // NormaliseURL is a pull request URL as the listing is keyed by it, so a URL

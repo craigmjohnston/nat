@@ -170,7 +170,7 @@ final class FixtureClientTests: XCTestCase {
         XCTAssertEqual(model.config, Fixtures.config)
         XCTAssertEqual(model.reviewStatsStore?.stats, Fixtures.reviewStats)
         XCTAssertEqual(model.reviewStatsStore?.fileCounts, Fixtures.reviewFileCounts)
-        XCTAssertEqual(model.reviewStatsStore?.prReadiness, Fixtures.prReadiness)
+        XCTAssertEqual(model.prStatusStore?.reading(projectID: Fixtures.projectID).readiness, Fixtures.prReadiness)
 
         // The per-slice stores it makes read the canned client too.
         let diffStore = model.diffStore(projectID: Fixtures.projectID)

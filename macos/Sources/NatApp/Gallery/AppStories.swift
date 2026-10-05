@@ -118,6 +118,23 @@ enum AppStories {
         return shell(appModel, focus: focus)
     }
 
+    /// Two projects with pull request trouble: the first's approved slice red
+    /// and conflicting, the second ("gnat", never activated) with one red and
+    /// one conflicting — waited for until its background reading has landed.
+    @MainActor
+    private static func prMarksAppModel() async -> AppModel {
+        let appModel = await Fixtures.startedAppModel(
+            client: FixtureNatClient(
+                otherPlans: [Fixtures.secondProjectID: Fixtures.secondProjectInfoWithPRs],
+                prStatus: Fixtures.prStatusChecksFailingAndConflicting,
+                prStatusByProject: [Fixtures.secondProjectID: Fixtures.secondProjectPRStatus]),
+            config: Fixtures.twoProjectConfig)
+        for _ in 0..<100 where appModel.prStatusStore?.readings[Fixtures.secondProjectID] == nil {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return appModel
+    }
+
     /// The size the PR section's Checks stories are drawn at: the
     /// navigator's width.
     private static let checksSize = CGSize(width: 330, height: 330)
@@ -765,6 +782,53 @@ enum AppStories {
                 client: FixtureNatClient(prStatus: Fixtures.prStatusChecksFailing), config: Fixtures.twoProjectConfig)
             appModel.selectedSliceID = Fixtures.approveSliceID
             return SidebarView(appModel: appModel).environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "sidebar-pr-marks",
+            summary: "Pull request marks across two projects, the second never opened: the approved slice's row in Active and in the tree carries both the checks' danger mark and the conflict mark; in gnat, one slice's rows carry the checks mark alone and another's the conflict mark alone.",
+            size: sidebar
+        ) {
+            let appModel = await prMarksAppModel()
+            let open: [String: Bool] = [
+                "p:\(Fixtures.projectID)": false, "p:\(Fixtures.secondProjectID)": false,
+                "m:\(Fixtures.projectID)/M2: Review flow": false, "m:\(Fixtures.secondProjectID)/Detail overhaul": false,
+                "m:\(Fixtures.projectID)/~sessions": true,
+            ]
+            return SidebarView(appModel: appModel, folded: open).environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "sidebar-milestone-hovered",
+            summary: "A milestone row under the pointer: washed as a project or slice row is, its folder given way to the fold chevron, as a project row's does.",
+            size: sidebar
+        ) {
+            let appModel = await prMarksAppModel()
+            let key = "m:\(Fixtures.secondProjectID)/Detail overhaul"
+            return SidebarView(
+                appModel: appModel, folded: ["p:\(Fixtures.secondProjectID)": false, key: false], hoveredMilestone: key
+            ).environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "window-pr-conflicting",
+            summary: "An approved slice whose pull request conflicts with main, no agent on it, its PR section open: a danger icon on the PR header, and a notice atop the PR body saying the branch conflicts with main and to launch a fix agent.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusConflicting, pr: Fixtures.prConflicting,
+                focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
+            name: "window-pr-conflicting-checks-failing",
+            summary: "The same pull request conflicting and red at once: one danger icon on the PR header whose tooltip carries both notices, the conflict notice atop the PR body over its failed checks.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusChecksFailingAndConflicting,
+                pr: Fixtures.prFailingChecksConflicting, details: Fixtures.checksFailedSliceDetails,
+                focus: NavigatorFocus(open: [.pr], main: .pr))
         },
 
         Story(
