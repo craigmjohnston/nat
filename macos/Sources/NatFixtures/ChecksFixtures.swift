@@ -19,21 +19,52 @@ extension Fixtures {
         ),
     ])
 
-    /// The plan with the approved slice under a fix — a Relaunched or a Sent
-    /// back after its approval, as nat reads `fixing` off the record.
-    public static var fixingProjectInfo: ProjectInfo {
+    /// The plan with the approved slice resumed — sent back to its agent
+    /// after its approval (`nat slice-resume`), its Branch cleared, as nat
+    /// reads `resumed`.
+    public static var resumedProjectInfo: ProjectInfo {
         ProjectInfo(
             project: projectInfo.project,
             milestones: projectInfo.milestones,
-            slices: projectInfo.slices.map { $0.id == approveSliceID ? fixing($0) : $0 })
+            slices: projectInfo.slices.map { $0.id == approveSliceID ? resumed($0) : $0 })
     }
 
-    /// A slice as nat reports it once a fix is under way on it.
-    public static func fixing(_ s: Slice) -> Slice {
+    /// A slice as nat reports it once resumed: its PR kept, its Branch
+    /// cleared, not handed back.
+    public static func resumed(_ s: Slice) -> Slice {
         Slice(
             id: s.id, name: s.name, status: s.status, milestoneID: s.milestoneID, assignee: s.assignee, pr: s.pr,
-            url: s.url, branch: s.branch, repo: s.repo, dependsOn: s.dependsOn, blocked: s.blocked,
-            handedBack: s.handedBack, fixing: true, state: s.state)
+            url: s.url, branch: nil, repo: s.repo, dependsOn: s.dependsOn, blocked: s.blocked,
+            handedBack: false, resumed: true, state: s.state)
+    }
+
+    /// Why the approved slice was sent back, as the user put it.
+    public static let resumedNote = "Checks are failing on the pull request: CI / test."
+
+    /// The approved slice's task log once resumed: the hand-back, the Work
+    /// resumed — then the approve `slice-show` adds from its properties.
+    public static var resumedSliceDetails: [String: SliceDetail] {
+        sliceDetails.merging([approveSliceID: approvedSliceDetail(last: TaskLogEvent(
+            .resumed, note: resumedNote, at: now.addingTimeInterval(-25 * 60)))]) { _, new in new }
+    }
+
+    /// The approved slice's task log after the resumed work came back: the
+    /// Work resumed, then the hand-back that ended it — the slice at its pull
+    /// request again.
+    public static var resumedHandedBackSliceDetails: [String: SliceDetail] {
+        let detail = approvedSliceDetail(last: TaskLogEvent(
+            .resumed, note: resumedNote, at: now.addingTimeInterval(-25 * 60)))
+        var events = detail.events ?? []
+        events.insert(
+            TaskLogEvent(
+                .handedBack, note: "Fixed the flaky assertion in the approve test; CI is green on the branch.",
+                at: now.addingTimeInterval(-6 * 60)),
+            at: events.count - 1)
+        return sliceDetails.merging([approveSliceID: SliceDetail(
+            id: detail.id, name: detail.name, url: detail.url, status: detail.status, milestone: detail.milestone,
+            assignee: detail.assignee, branch: detail.branch, repo: detail.repo, base: detail.base, pr: detail.pr,
+            blocked: detail.blocked, handedBack: detail.handedBack, state: detail.state, brief: detail.brief,
+            events: events)]) { _, new in new }
     }
 
     /// The failure as the record names it, one bullet per check.
@@ -41,7 +72,7 @@ extension Fixtures {
 
     /// The approved slice's task log, its last recorded event `last` — then
     /// the approve `slice-show` adds from the slice's own properties.
-    public static func approvedSliceDetail(last: TaskLogEvent) -> SliceDetail {
+    public static func approvedSliceDetail(last: TaskLogEvent, visuals: [VisualChange] = []) -> SliceDetail {
         SliceDetail(
             id: approveSliceID,
             name: "Approve opens the pull request",
@@ -57,6 +88,7 @@ extension Fixtures {
             handedBack: false,
             state: "awaiting review",
             brief: "Approving a hand-back opens its pull request and records it on the slice.",
+            visuals: visuals,
             events: [
                 TaskLogEvent(.handedBack, note: "Approve opens the pull request through `nat slice-approve`."),
                 last,
@@ -77,8 +109,9 @@ extension Fixtures {
             by: "CI"))]) { _, new in new }
     }
 
-    /// A live fix agent on the approved slice.
-    public static var fixAgentStatuses: [AgentStatus] {
+    /// A live agent on the approved slice — one left from its hand-back, or
+    /// one back at work on it.
+    public static var approvedAgentStatuses: [AgentStatus] {
         agentStatuses + [
             AgentStatus(sliceID: approveSliceID, session: TmuxSession.name(forSlicePageID: approveSliceID), activity: .working),
         ]

@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/craigmjohnston/nat/internal/domain"
-	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -66,7 +65,7 @@ func info(ctx context.Context, args []string, env Env) error {
 		if ss, ok := st.(sourceStore); ok {
 			src = sourceInfo(ctx, ss, project, p, expand)
 		}
-		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject, src, fixingSlices(ctx, st, p.Slices))
+		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject, src, plan.Shape.HasBranch)
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
@@ -152,17 +151,19 @@ type sliceJSON struct {
 	DependsOn   []string `json:"depends_on,omitempty"`
 	Blocked     bool     `json:"blocked"`
 	HandedBack  bool     `json:"handed_back"`
-	// Fixing says a fix is under way, read off the record — see
-	// [store.Fixing]. Only info sets it; container-show leaves it false.
-	Fixing bool   `json:"fixing"`
-	State  string `json:"state,omitempty"`
+	// Resumed says the slice is work resumed on a published slice — see
+	// [domain.Slice.Resumed]: in progress, a pull request recorded, its
+	// branch cleared, on a project with a Branch column.
+	Resumed bool   `json:"resumed"`
+	State   string `json:"state,omitempty"`
 }
 
 // writeInfoJSON encodes the project as JSON, indented: it is read by people as
 // often as by programs, and a stream nobody can skim is a poor default.
 // scratch says p is the scratch project, whose unfiledMilestone is marked.
-// fixing names the slices a fix is under way on — see [fixingSlices].
-func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool, src *sourceInfoJSON, fixing map[string]bool) error {
+// hasBranch is whether the project has a Branch column, which is what tells
+// resumed work from a pull request recorded on a project that has none.
+func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool, src *sourceInfoJSON, hasBranch bool) error {
 	doc := infoJSON{
 		Project:    projectJSON{ID: p.ID, Name: p.Name, Conventions: conventions},
 		Milestones: make([]milestoneJSON, 0, len(p.Milestones)),
@@ -178,9 +179,7 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch 
 
 	slicesByID := domain.SlicesByID(p.Slices)
 	for _, s := range p.Slices {
-		sj := sliceJSONOf(s, slicesByID)
-		sj.Fixing = fixing[s.ID]
-		doc.Slices = append(doc.Slices, sj)
+		doc.Slices = append(doc.Slices, sliceJSONOf(s, slicesByID, hasBranch))
 	}
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
@@ -188,42 +187,24 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch 
 }
 
 // sliceJSONOf is one slice as info prints it, its blocked and state read
-// against slicesByID — the plan it sits in. container-show prints a
-// container's tasks through it too, so a task reads the same from either.
-func sliceJSONOf(s domain.Slice, slicesByID map[string]domain.Slice) sliceJSON {
+// against slicesByID — the plan it sits in — and hasBranch, whether the
+// project has a Branch column. container-show prints a container's tasks
+// through it too, so a task reads the same from either.
+func sliceJSONOf(s domain.Slice, slicesByID map[string]domain.Slice, hasBranch bool) sliceJSON {
 	sj := sliceJSON{
 		ID: s.ID, Name: s.Name, Status: s.StatusName, MilestoneID: s.MilestoneID,
 		Assignee: s.AssigneeName, PR: s.PRURL, URL: s.URL,
 		Branch: s.Branch, Repo: s.Repo, DependsOn: s.DependsOn,
 		Blocked: domain.Blocked(s, slicesByID), HandedBack: s.HandedBack(),
+		Resumed: s.Resumed(hasBranch),
 	}
 	// The CLI takes no tmux or gh reading, so the state is the page's own:
 	// a Done slice reads as none, and a live agent's working/waiting are
 	// the app's to overlay from `nat status`.
-	if state := domain.StateOf(s, domain.AgentNone, domain.PRUnread, slicesByID); state != domain.SliceStateNone {
+	if state := domain.StateOf(s, domain.AgentNone, domain.PRUnread, slicesByID, hasBranch); state != domain.SliceStateNone {
 		sj.State = state.String()
 	}
 	return sj
-}
-
-// fixingSlices reads which slices a fix is under way on ([store.Fixing]).
-// Only an approved slice — in progress, a pull request recorded — can be, so
-// only those few have their task log read; a body that cannot be read is
-// logged and concludes nothing, the slice read as not fixing.
-func fixingSlices(ctx context.Context, st store.Store, slices []domain.Slice) map[string]bool {
-	fixing := map[string]bool{}
-	for _, s := range slices {
-		if s.Status != domain.SliceClaimed || s.PRURL == "" {
-			continue
-		}
-		body, err := st.Body(ctx, s.ID)
-		if err != nil {
-			logging.Action("could not read a slice's task log for whether it is being fixed", "slice", s.ID, "err", err)
-			continue
-		}
-		fixing[s.ID] = store.Fixing(s, body)
-	}
-	return fixing
 }
 
 // infoMarkdown renders the project as markdown — see [domain.PlanMarkdown],

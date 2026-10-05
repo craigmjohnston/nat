@@ -323,39 +323,61 @@ final class VisualStoreTests: XCTestCase {
         XCTAssertTrue(store.masks.isEmpty, "and the old one is dropped with its image")
     }
 
-    func testNewUntilSeenOnScreenOrMarkedViewed() {
-        let seen = VisualSeenMemory.inMemory()
-        let store = VisualStore(client: FixtureNatClient(), projectID: "p", seen: seen)
-        let changed = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "a", changed: true)
-        let other = VisualChange(index: 2, name: "Tall", uri: "/tmp/tall.png", hash: "b", changed: true)
-        XCTAssertTrue(store.isNew(sliceID: slice, changed))
-        XCTAssertFalse(store.isNew(sliceID: slice, wide), "an unchanged image is never new")
-        XCTAssertTrue(store.anyNew(sliceID: slice, [wide, changed]))
-
-        store.markSeen(sliceID: slice, changed)
-        XCTAssertFalse(store.isNew(sliceID: slice, changed))
-        XCTAssertFalse(store.anyNew(sliceID: slice, [wide, changed]))
-        XCTAssertTrue(seen.isSeen(projectID: "p", sliceID: slice, changed), "remembered beyond the store")
-
-        store.toggleViewed(sliceID: slice, other)
-        XCTAssertFalse(store.isNew(sliceID: slice, other), "marking viewed sees it")
-
-        let rerendered = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "c", changed: true)
-        XCTAssertTrue(store.isNew(sliceID: slice, rerendered), "a re-render is new again")
-        XCTAssertTrue(VisualStore(client: FixtureNatClient(), projectID: "q", seen: seen).isNew(sliceID: slice, changed),
-                      "seen in one project is not seen in another")
-    }
-
-    func testALoadPrunesSeenMarksButNotOnAnEmptyHandIn() async {
-        let seen = VisualSeenMemory.inMemory()
+    /// The first hand-in a slice's section ever loads is its first look:
+    /// nothing badged. A later one is badged against it — New for a name the
+    /// first did not have, Updated for one re-rendered — until each is seen
+    /// on screen or marked viewed; and a re-render after that is Updated
+    /// again.
+    func testNewAndUpdatedAgainstWhatWasLastSeen() async {
+        let seen = SeenMemory.inMemory()
         let store = VisualStore(client: FixtureNatClient(), projectID: "p", seen: seen)
         store.loader = { _ in .unavailable }
-        let changed = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "a", changed: true)
-        store.markSeen(sliceID: slice, changed)
+        let first = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "a", changed: true)
+        XCTAssertNil(store.badge(sliceID: slice, first), "never looked at: nothing badged")
+        await store.load(sliceID: slice, visuals: [first, tall])
+        XCTAssertNil(store.badge(sliceID: slice, first), "the first look badges nothing, nat's changed or not")
+        XCTAssertNil(store.sectionStatus(sliceID: slice, [first, tall]))
+
+        let rerendered = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "b", changed: true)
+        let added = VisualChange(index: 3, name: "Narrow", uri: "/tmp/narrow.png", hash: "c", changed: true)
+        await store.load(sliceID: slice, visuals: [rerendered, tall, added])
+        XCTAssertEqual(store.badge(sliceID: slice, rerendered), .updated)
+        XCTAssertNil(store.badge(sliceID: slice, tall), "as it was")
+        XCTAssertEqual(store.badge(sliceID: slice, added), .new)
+        XCTAssertEqual(store.sectionStatus(sliceID: slice, [rerendered, tall, added]), .new)
+
+        store.markSeen(sliceID: slice, added)
+        XCTAssertNil(store.badge(sliceID: slice, added), "seen on screen")
+        XCTAssertEqual(store.sectionStatus(sliceID: slice, [rerendered, tall, added]), .updated)
+        store.markSeen(sliceID: slice, tall)
+        XCTAssertNil(store.badge(sliceID: slice, tall), "seeing what has no badge changes nothing")
+        store.toggleViewed(sliceID: slice, rerendered)
+        XCTAssertNil(store.badge(sliceID: slice, rerendered), "marking viewed sees it")
+        XCTAssertNil(store.sectionStatus(sliceID: slice, [rerendered, tall, added]))
+
+        let again = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "d", changed: true)
+        XCTAssertEqual(store.badge(sliceID: slice, again), .updated, "a re-render after that is Updated again")
+        XCTAssertNil(
+            VisualStore(client: FixtureNatClient(), projectID: "q", seen: seen).badge(sliceID: slice, again),
+            "another project's slice of the same id was never looked at")
+        XCTAssertEqual(
+            VisualStore(client: FixtureNatClient(), projectID: "p", seen: seen).badge(sliceID: slice, again), .updated,
+            "remembered beyond the store")
+    }
+
+    func testALoadPrunesWhatWasSeenButNotOnAnEmptyHandIn() async {
+        let seen = SeenMemory.inMemory()
+        let store = VisualStore(client: FixtureNatClient(), projectID: "p", seen: seen)
+        store.loader = { _ in .unavailable }
+        await store.load(sliceID: slice, visuals: [wide, tall])
         await store.load(sliceID: slice, visuals: [])
-        XCTAssertTrue(seen.isSeen(projectID: "p", sliceID: slice, changed), "a detail not yet read forgets nothing")
+        XCTAssertEqual(
+            seen.snapshot(projectID: "p", sliceID: slice, .visuals).map { Set($0.keys) }, ["Wide", "Tall"],
+            "a detail not yet read forgets nothing")
         await store.load(sliceID: slice, visuals: [tall])
-        XCTAssertFalse(seen.isSeen(projectID: "p", sliceID: slice, changed))
+        XCTAssertEqual(seen.snapshot(projectID: "p", sliceID: slice, .visuals).map { Set($0.keys) }, ["Tall"])
+        await store.load(sliceID: slice, visuals: [tall, wide])
+        XCTAssertEqual(store.badge(sliceID: slice, wide), .new, "one that comes back is New again")
     }
 
     private func solid(_ color: NSColor, width: Int, height: Int) throws -> NSImage {

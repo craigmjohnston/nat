@@ -122,12 +122,13 @@ public func conflict(reading: BranchConflict?, detail: PRDetail?, prURL: String)
 }
 
 /// What the PR section says about a pull request that conflicts with its base:
-/// which base, and what is to be done — launch a fix agent, or ask the live
-/// one.
+/// which base, and what is to be done — send it back to the agent, or ask
+/// the live one.
 public struct ConflictNotice: Equatable, Sendable {
     public enum Action: Equatable, Sendable {
-        /// No agent is live, and one can be launched.
-        case launchFix
+        /// No agent is live, and one can be launched: the action bar's Send
+        /// back to agent resumes the slice and launches one.
+        case sendBack
         /// An agent is live on the slice: it is the one to resolve them.
         case liveAgent
         /// Neither: no agent, and no launch open.
@@ -147,7 +148,7 @@ public struct ConflictNotice: Equatable, Sendable {
         let base = conflict.base ?? "its base"
         let named = "This branch conflicts with \(base)"
         switch action {
-        case .launchFix: return "\(named) — launch a fix agent to merge \(base) in and resolve them."
+        case .sendBack: return "\(named) — send it back to the agent to merge \(base) in and resolve them."
         case .liveAgent: return "\(named) — the live agent has it: ask it to merge \(base) in and resolve them."
         case .none: return "\(named)."
         }
@@ -155,20 +156,21 @@ public struct ConflictNotice: Equatable, Sendable {
 }
 
 /// The conflict notice for a slice, or nil where there is none to draw: only
-/// a slice at the PR stage or under a fix whose pull request reads
-/// conflicting — the same stage gate the checks notice keeps.
+/// a slice at the PR stage whose pull request reads conflicting — the same
+/// stage gate the checks notice keeps.
 public func conflictNotice(slice: Slice, conflict: BranchConflict?, hasLiveAgent: Bool) -> ConflictNotice? {
     guard let conflict, atPullRequest(slice) else { return nil }
     if hasLiveAgent { return ConflictNotice(conflict: conflict, action: .liveAgent) }
-    let action: ConflictNotice.Action = LaunchPlan(for: slice, hasLiveAgent: false).canLaunch ? .launchFix : .none
+    let action: ConflictNotice.Action = LaunchPlan(for: slice, hasLiveAgent: false).canLaunch ? .sendBack : .none
     return ConflictNotice(conflict: conflict, action: action)
 }
 
-/// Whether a slice stands at its pull request — the PR stage, or under a fix
-/// — the one stage a pull request's marks are drawn at.
+/// Whether a slice stands at its pull request — the PR stage — the one stage
+/// a pull request's marks are drawn at. A resumed slice is working again, its
+/// PR's reading about a commit the agent is about to replace.
 public func atPullRequest(_ slice: Slice) -> Bool {
     switch stage(for: slice, agent: nil) {
-    case .pr, .fixing: return true
+    case .pr: return true
     case .todo, .working, .review, .done: return false
     }
 }
@@ -176,12 +178,11 @@ public func atPullRequest(_ slice: Slice) -> Bool {
 /// The marks a slice's rows and PR heading draw, from its reading's `marks`:
 /// none off its pull request (`atPullRequest`); failing and conflict as read;
 /// and the passing tick only where it can be trusted — at the PR stage
-/// exactly (a fix is about to push, so the green is of the commit before),
-/// with no live agent working (an idle one left from hand-back is fine), and
+/// exactly, with no live agent working (an idle one left from hand-back is fine), and
 /// the pull request neither conflicting nor read failing.
 public func prMarks(_ marks: PRMarks, for slice: Slice, agent: AgentActivity?) -> PRMarks {
     guard atPullRequest(slice) else { return .none }
     let passing = marks.checksPassing && marks.failingChecks == nil && marks.conflict == nil
-        && stage(for: slice, agent: nil) == .pr && agent != .working
+        && agent != .working
     return PRMarks(failingChecks: marks.failingChecks, conflict: marks.conflict, checksPassing: passing)
 }

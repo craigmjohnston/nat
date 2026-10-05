@@ -3,7 +3,8 @@ import NatKit
 
 /// The Changes section's body: the commit switcher (`DiffCommitsMenu`) over
 /// the file list it filters, then one row per file — on a review, a viewed
-/// box and the file's pending-comment count beside it — with its tally.
+/// box and the file's pending-comment count beside it — with its New or
+/// Updated badge (`DiffStore.badge`) and its tally.
 /// Picking a row scrolls the main pane's diff to that file and puts the diff
 /// up.
 struct ChangesSectionBody: View {
@@ -65,6 +66,9 @@ struct ChangesSectionBody: View {
                 .lineLimit(1)
                 .truncationMode(.head)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if let badge = store.badge(file.path) {
+                SeenBadgeChip(badge: badge)
+            }
             if reviewing && comments > 0 {
                 Image(systemName: "text.bubble.fill")
                     .font(.system(size: 10))

@@ -712,7 +712,7 @@ func TestPromptFlagsAWorktreesOverrideByItsCheckout(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // merely says "the `nat` commands" is not read as one.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|slice-checks-rerun|slice-checks-cancel|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|plan-propose|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-resume|slice-followups|slice-visuals|slice-checks-rerun|slice-checks-cancel|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|plan-propose|project-create)\b`)
 
 // natCommands are the invocations a prompt names: each from the command word to
 // the end of its line, and on through the lines a trailing backslash continues
@@ -786,11 +786,10 @@ func TestOnlyAGnatPromptProposesFollowUps(t *testing.T) {
 	}
 }
 
-// Every slice agent, whatever launched it, and a fix session too, is told to
-// hand in images of a visible change — and never to build a way to render one.
+// Every slice agent, whatever launched it, is told to hand in images of a visible change — and never to build a way to render one.
 // Nothing waits on a hand-in, so unlike follow-ups it is not the app's alone.
 func TestEverySlicePromptHandsInVisualChanges(t *testing.T) {
-	prompts := map[string]string{"fix": Prompt(fixContext())}
+	prompts := map[string]string{"published": Prompt(publishedContext())}
 	for _, f := range []Frontend{FrontendTUI, FrontendGnat, ""} {
 		c := testContext()
 		c.Frontend = f
@@ -810,7 +809,7 @@ func TestEverySlicePromptHandsInVisualChanges(t *testing.T) {
 			}
 		}
 	}
-	for name, c := range map[string]PromptContext{"slice": testContext(), "fix": fixContext()} {
+	for name, c := range map[string]PromptContext{"slice": testContext(), "published": publishedContext()} {
 		if !strings.Contains(Prompt(c), "images in before `complete-slice`") {
 			t.Errorf("the %s prompt does not hand the images in before complete-slice", name)
 		}
@@ -828,7 +827,7 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 		"slice worktree": Prompt(worktreeContext()),
 		"slice gnat":     Prompt(gnatContext()),
 		"slice no repo":  Prompt(repoUnknownContext()),
-		"fix":            Prompt(fixContext()),
+		"published":      Prompt(publishedContext()),
 		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
 		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
 		"plan gnat":      PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
@@ -855,7 +854,7 @@ func TestEveryPromptCarriesTheNamingRule(t *testing.T) {
 		"slice gnat":     Prompt(gnatContext()),
 		"slice resume":   Prompt(resumeContext()),
 		"slice no repo":  Prompt(repoUnknownContext()),
-		"fix":            Prompt(fixContext()),
+		"published":      Prompt(publishedContext()),
 		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
 		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
 		"plan gnat":      PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
@@ -878,7 +877,7 @@ func TestEveryPromptCarriesTheTmuxRule(t *testing.T) {
 		"slice gnat":     Prompt(gnatContext()),
 		"slice resume":   Prompt(resumeContext()),
 		"slice no repo":  Prompt(repoUnknownContext()),
-		"fix":            Prompt(fixContext()),
+		"published":      Prompt(publishedContext()),
 		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
 		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
 		"plan gnat":      PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
@@ -895,16 +894,16 @@ func TestEveryPromptCarriesTheTmuxRule(t *testing.T) {
 	}
 }
 
-// Every slice and fix prompt tells the agent how to leave a note on a later
-// slice, from its own slice and pinned to the project like every command.
-func TestSliceAndFixPromptsCarryTheNoteCommand(t *testing.T) {
+// Every slice prompt tells the agent how to leave a note on a later slice,
+// from its own slice and pinned to the project like every command.
+func TestSlicePromptsCarryTheNoteCommand(t *testing.T) {
 	for prompt, c := range map[string]PromptContext{
 		"slice":          testContext(),
 		"slice worktree": worktreeContext(),
 		"slice gnat":     gnatContext(),
 		"slice resume":   resumeContext(),
 		"slice no repo":  repoUnknownContext(),
-		"fix":            fixContext(),
+		"published":      publishedContext(),
 	} {
 		want := "nat slice-note '<slice name>' --from " + c.Slice.ID + " --project " + testProjectID
 		if text := Prompt(c); !strings.Contains(text, want) {
@@ -913,28 +912,24 @@ func TestSliceAndFixPromptsCarryTheNoteCommand(t *testing.T) {
 	}
 }
 
-// Every slice and fix prompt holds the agent to targeted tests mid-loop and
-// one full gate at its end, and every slice prompt says a second hand-back
-// leaves an unchanged PR description off rather than sending it again.
-func TestSliceAndFixPromptsCarryTheTestingRule(t *testing.T) {
+// Every slice prompt holds the agent to targeted tests mid-loop and one full
+// gate at its end, and says a second hand-back leaves an unchanged PR
+// description off rather than sending it again.
+func TestSlicePromptsCarryTheTestingRule(t *testing.T) {
 	for prompt, c := range map[string]PromptContext{
 		"slice":          testContext(),
 		"slice worktree": worktreeContext(),
 		"slice gnat":     gnatContext(),
 		"slice resume":   resumeContext(),
 		"slice no repo":  repoUnknownContext(),
-		"fix":            fixContext(),
+		"published":      publishedContext(),
 	} {
-		end := "immediately before you hand back"
-		if c.Fix {
-			end = "immediately before you push"
-		}
 		text := Prompt(c)
-		if !strings.Contains(text, testingPassage(end)) {
+		if end := "immediately before you hand back"; !strings.Contains(text, testingPassage(end)) {
 			t.Errorf("the %s prompt does not carry the testing rule ending %q", prompt, end)
 		}
-		if again := "Handing the same slice back a second time"; c.Fix == strings.Contains(text, again) {
-			t.Errorf("the %s prompt: carries %q = %v, want %v", prompt, again, c.Fix, !c.Fix)
+		if again := "Handing the same slice back a second time"; !strings.Contains(text, again) {
+			t.Errorf("the %s prompt does not say %q", prompt, again)
 		}
 	}
 	for _, want := range []string{"`go test -run <Name>`", "`swift test --filter <Name>`", "never the\nfull suite or the coverage gate mid-loop", "build once per\nbatch"} {
@@ -950,9 +945,9 @@ func TestSliceAndFixPromptsCarryTheTestingRule(t *testing.T) {
 func TestPromptsSayWhyTheProjectIsPinned(t *testing.T) {
 	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
 	for prompt, text := range map[string]string{
-		"slice": Prompt(testContext()),
-		"fix":   Prompt(fixContext()),
-		"plan":  PlanPrompt(testProjectID, name, dir, "", "", ""),
+		"slice":     Prompt(testContext()),
+		"published": Prompt(publishedContext()),
+		"plan":      PlanPrompt(testProjectID, name, dir, "", "", ""),
 	} {
 		for _, want := range []string{
 			"A command given no project is refused",

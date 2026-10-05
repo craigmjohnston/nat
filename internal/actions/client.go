@@ -25,11 +25,11 @@ type Store interface {
 	MarkDone(ctx context.Context, id string, sh store.Shape) error
 	ReopenSlice(ctx context.Context, id string, sh store.Shape) error
 	// RecordRelaunch files a relaunch's one fixed line in the task log, which
-	// [Launch] writes for a non-fix launch picking a session back up — never
+	// [Launch] writes for a launch picking a session back up — never
 	// a fresh one. Its own failure is logged and never fails the launch.
 	RecordRelaunch(ctx context.Context, id string) error
 	// RecordLaunch files a fresh launch's one fixed line in the task log, which
-	// [Launch] writes for every non-fix launch that is not a relaunch. Its own
+	// [Launch] writes for every launch that is not a relaunch. Its own
 	// failure is logged and never fails the launch either.
 	RecordLaunch(ctx context.Context, id string) error
 }

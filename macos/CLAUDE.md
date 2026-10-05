@@ -105,20 +105,61 @@ phase (`NavigatorModel`), the sidebar's dots (`displayState(for:)`) and
 Go's `domain.StateOf` (Notion's status is the one source of lifecycle truth,
 so a Done slice is never in-flight even with `nat pr-status` still reporting
 its PR open) — change `internal/domain/state.go` and the stage together. A
-live session never moves the stage. `fixing` is read off the record
-(`Slice.fixing`, nat's `store.Fixing` on `info --json`): entered by a
-Relaunched or Sent back after approval (a fix launch, a checks nudge), left
-by the hand-back that follows — so a restart mid-fix still shows it, and no
-in-memory mark exists. A `fixing` slice with no live agent draws like a
-working one with none: relaunchable, not pulsing.
+live session never moves the stage. In progress reads resumed → `working`
+(nat's `resumed` on `info --json`, `Slice.resumed`, **never re-derived**: a
+project with no Branch column holds a PR and no branch legitimately and stays
+`pr`), else a PR → `pr`, else handed back → `review`, else `working`.
 
-**Fix launch and failing checks.** `LaunchPlan` admits an approved slice (In
-progress, PR recorded) with no live agent whatever its dependencies
-(`isFix`); `NavigatorModel.launchIsFix` (the `pr` state) makes the action bar's
-Launch say "Launch fix agent" (`LaunchCard.Mode.actionTitle`, "Relaunch agent"
-for a relaunch, else "Launch agent") and its launch item "Fix", through the ordinary
-`nat slice-launch` and its one-shot optimistic advance to the terminal.
-`PRStatusStore` holds `pr-status`'s reading **per project, for every open
+**Resuming: Send back to agent.** A handed-back slice — in review, or at its
+open pull request — can go back to its agent for more: the action bar's
+secondary **Send back to agent** (`NavigatorModel.showsSendBack`, enabled
+with a live agent or where `LaunchPlan` can launch one), which opens
+`SendBackEditor` over the bar (drawn in the column, not a popover, so the
+gallery renders it): what to change, prefilled with the PR's own trouble
+where it has any (`sendBackReason`: failing checks, a conflict). Sending is
+`AppModel.sendBack`, the one-shot `.sendBack` (no stage advance; the view puts
+the terminal up once it has gone): **the record first** — `nat slice-resume
+--note -` (stamped `Resumed`, then the Branch cleared) — then a live agent is
+told by `agent-send` (`sendBackPrompt`, ending in the `complete-slice
+--branch` hand-back on the branch the slice had), else the ordinary `nat
+slice-launch` (a relaunch). There is no fix launch and no `fixing` stage:
+`LaunchPlan` treats an In progress slice with a PR as an ordinary relaunch
+(dependencies and all, as nat's own does) and refuses Done. A resumed slice is
+`working` (Active's working half, its dot the accent, pulsing while live),
+its phase `.thread` — selecting it opens the Task log and the terminal — and
+neither Approve nor Merge is offered until the next hand-back (the bar's
+greyed stand-in is Launch). Its Changes, Visual changes and PR stay
+(`NavigatorModel.hasBranch` counts `resumed`: `slice-diff`/`slice-file` read
+its agent branch), each carrying `NavigatorModel.resumedNotice` as a warning
+`NavNotice` atop its foldout and a `MainPaneNotice` across the top of its
+main pane. Changes' Send goes to a resumed slice's live agent too
+(`showsChangesSend`), and `DiffStore.sendComments` — like `VisualStore`'s —
+asks for the hand-back and runs `slice-rework` only where the slice is
+handed back. Stories: `window-resumed`, `window-resumed-notices`,
+`window-task-log-resumed`, `window-pr-send-back`,
+`window-pr-send-back-prefilled`, `action-bar-send-back-and-merge`.
+
+**New and Updated.** One rule, one store: `SeenMemory` (UserDefaults
+`seenSnapshots`, per project, slice and `SeenSection`; `.inMemory()` for tests
+and stories) remembers each section as item → fingerprint as last seen. No
+snapshot — never looked at — badges nothing, and the first reading records
+everything (`baseline`); then an item the snapshot lacks is **New**, one it
+holds at another fingerprint **Updated** (`seenBadge`); seeing an item
+(`markSeen`) records it, taking its badge off; a reading prunes items gone
+(`retain`), so one that comes back is New. Changes (`DiffStore.badge`): a
+file by path at `DiffFileModel.seenFingerprint` (sha256 of its rows, line
+numbers aside), seen once its rows are on screen in the diff
+(`DiffCanvasActions.filesShown`, `DiffLayout.shownFiles`) or marked viewed;
+badged on its navigator row and its diff header (`DiffCanvasState.badges`).
+Visual changes (`VisualStore.badge`): an image by name at its `identity`,
+seen on screen or marked viewed — nat's `changed` no longer badges. PR
+(`PRStore.badge`): the head (`pr-view`'s `head_ref_oid`) as last seen,
+Updated while it has moved, seen when the PR section is open or its view up.
+Each section header takes `NavSectionStatus.of` its items (New over
+Updated; `SeenBadgeChip`, New in Merged's green, Updated in the accent).
+Stories: `window-resumed-badges`, `window-pr-updated`, `window-visuals-new`.
+
+**Failing checks.** `PRStatusStore` holds `pr-status`'s reading **per project, for every open
 project** (`PRReading`: readiness, failing checks, conflicts) — the active
 one's taken with its plan (`updateReviewStats`), each background one's after
 its plan lands (`loadBackgroundProject`, `refreshBackgroundProjects`), all
@@ -128,14 +169,14 @@ touches nothing), written beside its plan in the read cache
 (`PlanCaching.writePRStatus`, `<id>.pr-status.json`) and restored before the
 first fresh read (`restore`). `PRStatusStore.marks` (by slice id) puts
 `PRMarks` on **both** sidebar row kinds — `SidebarActiveRow.marks` and
-`SidebarSliceRow.marks`, pr/fixing stage only (`atPullRequest`) — drawn by
+`SidebarSliceRow.marks`, pr stage only (`atPullRequest`) — drawn by
 `PRMarksView`: the checks' `xmark.octagon.fill` and the conflict's own
 `ConflictMark` (`MergeIcon`, "Conflicts with <base>" / "Merge
 conflicts"), which takes a `BranchConflict` and nothing about a PR, for a
 conflicting branch with no PR to reuse — and, in the checks' slot, the
 success mark (`checkmark.circle.fill`, "Checks passing") where
-`prMarks(_:for:agent:)` keeps `checksPassing`: the `.pr` stage exactly (not
-fixing), no live agent working, verdict `passing`, not conflicting or
+`prMarks(_:for:agent:)` keeps `checksPassing`: the `.pr` stage (not
+resumed), no live agent working, verdict `passing`, not conflicting or
 failing. The PR section header draws the same gate as its outline
 `checkmark.circle` where it has no warning (`NavSectionView.passing`).
 `attention(projectID:)` reads the
@@ -144,11 +185,10 @@ project's own reading. In the navigator, `checksNotice` and `conflictNotice`
 `conflict(reading:detail:prURL:)`) share the PR section header's danger icon
 (`NavSectionView`'s `warning`, both texts in its tooltip); the checks text
 says "sent to the agent to fix" when the latest recorded event is the
-nudge's Sent back (the fix launch itself is the Task log's launch item and
-the action bar's); the conflict's is also a `NavNotice` atop the PR body, drawn
-before `pr-view` lands, offering the fix launch or naming the live agent.
-`projectAttention` counts a red pr/fixing slice once. Stories:
-`window-pr-fix-launch`, `window-fixing`, `sidebar-checks-failing`,
+nudge's Sent back; the conflict's is also a `NavNotice` atop the PR body, drawn
+before `pr-view` lands, pointing at Send back to agent or naming the live
+agent (both prefill Send back's note). `projectAttention` counts a red pr
+slice once. Stories: `sidebar-checks-failing`,
 `sidebar-pr-marks`, `sidebar-pr-marks-passing`, `window-pr-checks-passing`,
 `window-pr-checks-failing`, `window-pr-checks-agent-told`,
 `window-pr-conflicting`, `window-pr-conflicting-checks-failing`,
@@ -306,12 +346,12 @@ navigator (`TitlebarBand`) carries the breadcrumb, its tabs and a
 handed-back slice's run button, and nothing else. The live agent's model, effort and context — a slice's, a session's,
 the planning agent's; none for a container — are the status bar's trailing
 item (`AgentModelHeading`, in the bar's own sans, a divider before the context clause, the long form as a tooltip). A
-slice's major actions — Launch agent / Relaunch agent / Launch fix agent,
+slice's major actions — Send back to agent, Launch agent / Relaunch agent,
 Approve changes (Approve with comments while comments are pending on the
 diff, opening the same confirmation), Merge PR — live only in the **action
 bar** pinned to the slice navigator's foot (`NavigatorActionBar`, a
 `NavigatorColumn` footer: header-band height, chrome, a top rule, no title,
-fold or body). `NavigatorModel.bar` decides it: each action only while
+fold or body; Send back's editor opens over it). `NavigatorModel.bar` decides it: each action only while
 relevant (absent, not greyed, otherwise; disabled where relevant but not
 pressable), the primary trailing; with none relevant, the latest live
 section's primary (Merge PR, else Approve changes, else Launch agent)
@@ -368,7 +408,9 @@ selected there is no breadcrumb. Stories: `titlebar-band-*`,
 `status-bar-agent-readout*`, `changes-section-commits`, `action-bar-*`. The Thread is labelled "Task" whatever the
 slice's state, and draws `slice-show`'s `events`
 in order — hand-backs, send-backs (`slice-rework --comments`), releases,
-relaunches, notes (`nat slice-note`, headed "Another agent left a note";
+relaunches, work resumed (`slice-resume`: "Work resumed", why as its body,
+its stamp as its time; the hand-back that ends it the ordinary card after
+it), notes (`nat slice-note`, headed "Another agent left a note";
 `fromSlice` matched once against the loaded plan by name and milestone
 name — `noteSourceSlice` — is a `task` fact drawn as the brief's
 `DependencyRow`, through `ThreadEventCard.taskRow`, else `source` with the
@@ -426,14 +468,11 @@ point in the image's own pixels or on the whole image (dropped when the image
 they sit on is re-rendered), and viewed/folded marks keyed by
 `VisualChange.identity` (name + image + before), following
 `DiffStore.toggleViewed`'s rule (viewed folds; a re-render starts afresh).
-**New**: an item `changed` (nat's derivation) and not yet seen at its current
-identity — seen once its image section is on screen in `VisualsPane`
-(`onScrollVisibilityChange`) or it is marked viewed. Seen marks live in
-`VisualSeenMemory` (UserDefaults, keyed by project, slice and identity;
-pruned per slice on a load naming anything; `.inMemory()` for tests and
-stories — they never write the real defaults). The badge is the PR header's
-Merged chip (`NavSectionStatus.new`) on the navigator row, the image header
-and the section header while any item is. **Pairs** (`before`) are one row
+**New / Updated** (see **New and Updated** above): New for an image by a
+name not seen before, Updated for one handed in again with other content —
+seen once its image section is on screen in `VisualsPane`
+(`onScrollVisibilityChange`) or it is marked viewed; drawn on the navigator
+row, the image header and the section header. **Pairs** (`before`) are one row
 (the after's thumbnail) and one section: `VisualCompare` (NatKit, tested)
 owns the divider fraction (0 after whole, 1 before whole, middle to open),
 the Before / After toggle selected only at an end, the frame (larger of each

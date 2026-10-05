@@ -68,7 +68,7 @@ func sliceShow(ctx context.Context, args []string, env Env) error {
 		if cr, ok := st.(store.ContainerReader); ok {
 			container = sliceContainer(ctx, cr, s, milestone)
 		}
-		return writeSliceShowJSON(env.Out, s, milestone, project, depByID, brief, sliceBase(env, s, project), container)
+		return writeSliceShowJSON(env.Out, s, milestone, project, depByID, brief, sliceBase(env, s, project), container, shape.HasBranch)
 	}
 	return writeSliceShowMarkdown(env.Out, s, milestone, project, brief)
 }
@@ -91,11 +91,11 @@ type sliceShowJSON struct {
 	DependsOn  []string `json:"depends_on,omitempty"`
 	Blocked    bool     `json:"blocked"`
 	HandedBack bool     `json:"handed_back"`
-	// Fixing says a fix is under way, read off the record — see
-	// [store.Fixing].
-	Fixing bool   `json:"fixing"`
-	State  string `json:"state,omitempty"`
-	Brief  string `json:"brief"`
+	// Resumed says the slice is work resumed on a published slice — see
+	// [domain.Slice.Resumed].
+	Resumed bool   `json:"resumed"`
+	State   string `json:"state,omitempty"`
+	Brief   string `json:"brief"`
 	// FollowUps are the follow-ups the slice's agent handed in that still
 	// await the user's decision, each by the index slice-triage takes.
 	FollowUps []followUpJSON `json:"followUps,omitempty"`
@@ -242,7 +242,8 @@ type followUpJSON struct {
 }
 
 // writeSliceShowJSON encodes the slice as JSON.
-func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, project config.ProjectConfig, depByID map[string]domain.Slice, brief, base string, container *sliceContainerJSON) error {
+// hasBranch is whether the project has a Branch column — see [sliceJSONOf].
+func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, project config.ProjectConfig, depByID map[string]domain.Slice, brief, base string, container *sliceContainerJSON, hasBranch bool) error {
 	// Compute state the same way info.go does.
 	slicesByID := domain.SlicesByID([]domain.Slice{s})
 	// Add dependencies to the index so blocking can be computed.
@@ -250,7 +251,7 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 		slicesByID[dep.ID] = dep
 	}
 
-	state := domain.StateOf(s, domain.AgentNone, domain.PRUnread, slicesByID)
+	state := domain.StateOf(s, domain.AgentNone, domain.PRUnread, slicesByID, hasBranch)
 
 	sj := sliceShowJSON{
 		ID:         s.ID,
@@ -266,7 +267,7 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 		DependsOn:  s.DependsOn,
 		Blocked:    domain.Blocked(s, slicesByID),
 		HandedBack: s.HandedBack(),
-		Fixing:     store.Fixing(s, brief),
+		Resumed:    s.Resumed(hasBranch),
 		Brief:      brief,
 		Events:     taskEventsJSON(s, brief),
 		Container:  container,

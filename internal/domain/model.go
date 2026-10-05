@@ -101,6 +101,16 @@ func (s Slice) HandedBack() bool {
 	return s.Status == SliceClaimed && s.Branch != ""
 }
 
+// Resumed reports whether the slice is resumed work on a published slice: in
+// progress, a pull request recorded, and no branch — handed back and approved,
+// then taken back up (`nat slice-resume`), which clears the branch until the
+// agent's next hand-back records it again. hasBranch is whether the project
+// has a Branch column: a project with none records a pull request and never a
+// branch, which is no resumption at all.
+func (s Slice) Resumed(hasBranch bool) bool {
+	return hasBranch && s.Status == SliceClaimed && s.PRURL != "" && s.Branch == ""
+}
+
 // Project is a tracked project's whole plan, as loaded from Notion.
 type Project struct {
 	ID         string

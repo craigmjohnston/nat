@@ -272,7 +272,7 @@ func (c CLI) fallbackBase(dir string) string {
 // LogOneline is a one-line-per-commit summary of what branch has done since
 // base: `git log --oneline base..branch`. Raw text rather than [CLI.Commits]'s
 // parsed form, because it is meant to be handed straight to an agent's
-// prompt at launch — a resume or fix session's own read of what an earlier
+// prompt at launch — a resume's own read of what an earlier
 // session already pushed, separated from whatever base has moved on by
 // since.
 func (c CLI) LogOneline(dir, base, branch string) (string, error) {

@@ -60,7 +60,7 @@ func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
 // for pr-merge, [PRReader] for pr-status, [PRCommenter] for pr-comment and
 // [PRReviewerEditor] for pr-reviewers, [RunLogReader] and [JobReader] for
 // slice-checks --log, [RunController] for slice-checks-rerun and
-// slice-checks-cancel, and [actions.PRReviewReader] for a fix launch's review snapshot. One gh.CLI
+// slice-checks-cancel, and [actions.PRReviewReader] for a launch's review snapshot. One gh.CLI
 // answers all of them, and a headless command names whichever of them it
 // actually calls, the way [GitCLI] combines git's two seams for the same
 // reason.
@@ -562,6 +562,12 @@ usage:
                       its agent hands back again; --comments files what the
                       review said under a Sent back heading first ('-' reads
                       stdin)
+  nat slice-resume <slice> --note TEXT|- --project ID
+                      take the work on a handed-back slice back up: --note
+                      (what was asked for) is filed under a Resumed heading,
+                      then its branch is cleared so it reads as in progress
+                      until its agent hands back again; a slice already in
+                      progress writes nothing, and a Done one is refused
   nat release-slice <slice> --project ID
                       hand a slice you claimed back to the plan: Todo and
                       unassigned, its brief and any branch left as they are, for
@@ -672,6 +678,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return sliceApprove(ctx, args[1:], env)
 	case "slice-rework":
 		return sliceRework(ctx, args[1:], env)
+	case "slice-resume":
+		return sliceResume(ctx, args[1:], env)
 	case "slice-diff":
 		return sliceDiff(ctx, args[1:], env)
 	case "slice-file":

@@ -47,7 +47,8 @@ extension Fixtures {
         config: NatProjectConfig = Fixtures.config,
         toolsReady: Bool = false,
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
-        planCache: PlanCaching = NullPlanCache()
+        planCache: PlanCaching = NullPlanCache(),
+        seenMemory: SeenMemory = .inMemory()
     ) -> AppModel {
         AppModel(
             configReader: FixtureConfigReader(config: config),
@@ -82,6 +83,9 @@ extension Fixtures {
             toolsReady: { toolsReady },
             // Its own memory, never the real file — and written without the
             // pause typing gets, so a test reads what was kept at once.
+            // What a story seeds as already seen, else nothing — in memory
+            // either way, never the real defaults.
+            seenMemory: seenMemory,
             workshopCache: workshopCache,
             workshopSaveWait: { await Task.yield() }
         )
@@ -114,10 +118,12 @@ extension Fixtures {
         config: NatProjectConfig = Fixtures.config,
         toolsReady: Bool = false,
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
-        planCache: PlanCaching = NullPlanCache()
+        planCache: PlanCaching = NullPlanCache(),
+        seenMemory: SeenMemory = .inMemory()
     ) async -> AppModel {
         let model = appModel(
-            client: client, config: config, toolsReady: toolsReady, workshopCache: workshopCache, planCache: planCache)
+            client: client, config: config, toolsReady: toolsReady, workshopCache: workshopCache, planCache: planCache,
+            seenMemory: seenMemory)
         await start(model)
         return model
     }

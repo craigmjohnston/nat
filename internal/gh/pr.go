@@ -21,7 +21,7 @@ import (
 // has been asked to review it. gh's own
 // "commits" field is a full object per commit; only its length is kept, since
 // the commits themselves are read through internal/git instead.
-const prViewFields = "number,title,body,state,isDraft,author,baseRefName,headRefName,url," +
+const prViewFields = "number,title,body,state,isDraft,author,baseRefName,headRefName,headRefOid,url," +
 	"reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviews,comments," +
 	"additions,deletions,changedFiles,commits,reviewRequests"
 
@@ -32,14 +32,17 @@ const prViewFields = "number,title,body,state,isDraft,author,baseRefName,headRef
 // UNSTABLE and the rest — because deciding what any of them means is the
 // caller's, and a word this package invented would only have to be turned back.
 type PR struct {
-	Number           int
-	Title            string
-	Body             string
-	State            string
-	IsDraft          bool
-	Author           string
-	BaseRefName      string
-	HeadRefName      string
+	Number      int
+	Title       string
+	Body        string
+	State       string
+	IsDraft     bool
+	Author      string
+	BaseRefName string
+	HeadRefName string
+	// HeadRefOid is the commit the pull request's head is at: what tells a
+	// reader the branch has moved since it last looked.
+	HeadRefOid       string
 	URL              string
 	ReviewDecision   string
 	Mergeable        string
@@ -147,8 +150,8 @@ func (c CLI) ViewPR(dir, ref string) (PR, error) {
 }
 
 // ReviewComments is the raw text gh prints for `gh pr view <ref> --comments`
-// — the conversation on the pull request, exactly as a fix session's own
-// prompt tells the agent it may read it. Read once at launch and inlined
+// — the conversation on the pull request, exactly as the prompt of a slice
+// with a pull request recorded tells the agent it may read it. Read once at launch and inlined
 // rather than decoded through [CLI.ViewPR]'s JSON, so what the agent is
 // handed is the same text the command itself would have printed.
 func (c CLI) ReviewComments(dir, ref string) (string, error) {
@@ -163,8 +166,8 @@ func (c CLI) ReviewComments(dir, ref string) (string, error) {
 	return strings.TrimRight(out, "\n"), nil
 }
 
-// Checks is the raw text gh prints for `gh pr checks <ref>` — the same second
-// read a fix session's prompt names.
+// Checks is the raw text gh prints for `gh pr checks <ref>` — the snapshot of
+// the checks such a prompt carries.
 //
 // gh exits non-zero whenever any check is failing or still running, with the
 // check table printed regardless — and a check failing is exactly why a fix
@@ -250,6 +253,7 @@ type prView struct {
 	Author           ghUser   `json:"author"`
 	BaseRefName      string   `json:"baseRefName"`
 	HeadRefName      string   `json:"headRefName"`
+	HeadRefOid       string   `json:"headRefOid"`
 	URL              string   `json:"url"`
 	ReviewDecision   string   `json:"reviewDecision"`
 	Mergeable        string   `json:"mergeable"`
@@ -413,6 +417,7 @@ func (v prView) pr() PR {
 		Author:           v.Author.Login,
 		BaseRefName:      v.BaseRefName,
 		HeadRefName:      v.HeadRefName,
+		HeadRefOid:       v.HeadRefOid,
 		URL:              v.URL,
 		ReviewDecision:   v.ReviewDecision,
 		Mergeable:        v.Mergeable,

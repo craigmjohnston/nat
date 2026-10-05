@@ -23,18 +23,10 @@ import (
 // Project, since a ProjectConfig is a value of the config file's Projects map
 // and the ID is the key it is filed under.
 //
-// Fix says the session is not working the slice but the review of the pull
-// request it already produced: the slice has a pull request recorded, that
-// pull request is still open, and the agent is being sent at the comments and
-// the failing checks on it. It is the launch's own word rather than something read back off the
-// slice, since it is the launch that established the pull request is open —
-// see [fixPrompt].
-//
 // Brief and Conventions are the slice's own page body and the project's
 // conventions, read by the launch after the claim succeeds and written
 // straight into the prompt — the same document `nat start-slice` prints, so
-// the agent needs no command of its own to see it. Both are empty for a fix
-// launch, which reads neither.
+// the agent needs no command of its own to see it.
 //
 // Milestone and MilestoneSlices are the raw material a launch renders
 // MilestoneDigest from: the slice's own milestone and every sibling slice
@@ -46,15 +38,15 @@ import (
 // MilestoneDigest is [MilestoneDigest] already rendered from them, plus a
 // page fetch per Done sibling for its hand-back summary — the settled state
 // of the slice's own milestone, handed over so the agent does not have to go
-// and read it with `nat info` itself. Empty for a fix launch, and for a slice
-// filed under no milestone.
+// and read it with `nat info` itself. Empty for a slice filed under no
+// milestone.
 //
 // Frontend says which surface launched the session — see [Frontend] — so the
 // prompt's user-facing guidance about picking up changes and approving or
 // merging work names the right one. The zero value is unspecified, which
 // reads exactly as every template did before this field existed.
 //
-// GitBase, GitLog and GitDiffStat are a resume or fix launch's read of the
+// GitBase, GitLog and GitDiffStat are a resume launch's read of the
 // worktree, taken by [actions.Launch] right after PlaceAgent resolves it:
 // the base the branch is measured against, `git log --oneline <base>..HEAD`
 // and `git diff --stat <base>...HEAD` — separating an earlier session's
@@ -63,20 +55,19 @@ import (
 // snapshot carries. A first-time launch never gathers them — there is
 // nothing yet on the branch worth reading — and a gather that fails leaves
 // whichever of GitLog/GitDiffStat failed empty, which is what tells [Prompt]
-// and [fixPrompt] to leave the section out rather than print half of it.
+// to leave the section out rather than print half of it.
 //
-// ReviewComments and ReviewChecks are a fix launch's read of the pull
-// request's review, taken the same way: `gh pr view <url> --comments` and
-// `gh pr checks <url>` — the first the one `gh` read [fixPrompt] lets the
-// agent run again itself, the second re-read with `nat slice-checks`, the way
-// every agent reads CI. Each is independently left empty on a failed read,
-// the project's usual reads-conclude-nothing posture — a launch never fails
-// over missing context.
+// ReviewComments and ReviewChecks are a launch's read of the review on a
+// slice with a pull request recorded, taken the same way: `gh pr view <url>
+// --comments` and `gh pr checks <url>` — the first the one `gh` read the
+// prompt lets the agent run again itself ([pullRequestPassage]), the second
+// re-read with `nat slice-checks`, the way every agent reads CI. Each is
+// independently left empty on a failed read, the project's usual
+// reads-conclude-nothing posture — a launch never fails over missing context.
 //
 // Container is the container a source project's slice hangs off, read off the
-// plugin at launch by [actions.Launch]; nil for every other project, for a fix
-// launch, and where the read failed — the prompt then simply has no section
-// for it.
+// plugin at launch by [actions.Launch]; nil for every other project, and where
+// the read failed — the prompt then simply has no section for it.
 //
 // RepoUnknown says the slice has no repository to work in yet: a source
 // project, which has no working directory of its own, on a task none has been
@@ -92,7 +83,6 @@ type PromptContext struct {
 	Branch          string
 	Repo            string
 	AssigneeName    string
-	Fix             bool
 	Brief           string
 	Conventions     string
 	Milestone       domain.Milestone
@@ -202,8 +192,8 @@ func repoPassage(c PromptContext) string {
 	return b.String()
 }
 
-// gitSnapshotSection is the "captured at launch" rendering [Prompt] (for a
-// resume) and [fixPrompt] share: the branch's commits since base and its diff
+// gitSnapshotSection is the "captured at launch" rendering [Prompt] gives a
+// resume: the branch's commits since base and its diff
 // stat, framed so the agent knows both were already read and need not be
 // re-run. Left out entirely when neither read came back — a gather that
 // failed, or a first-time launch that never attempted one.
@@ -262,14 +252,10 @@ func gitSnapshotSection(c PromptContext) string {
 // slice is in and cannot change under a session, and says why, since the
 // commands an agent runs of its own accord are the ones no template can spell
 // out.
-// A session sent at an open pull request rather than at the slice is told
-// something else — see [fixPrompt] — so it is dispatched here rather than
-// woven through the sections below: its brief is the review rather than the
-// slice, and nothing about claiming one applies to work already published.
+//
+// A slice with a pull request recorded is relaunched like any other, and told
+// besides that its work is out — see [pullRequestPassage].
 func Prompt(c PromptContext) string {
-	if c.Fix {
-		return fixPrompt(c)
-	}
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "You are a Claude Code agent working exactly one slice of the %q project.\n\n", c.Project.Name)
@@ -310,6 +296,7 @@ func Prompt(c PromptContext) string {
 		b.WriteString("`git status` yourself.\n\n")
 	}
 	b.WriteString(BriefSections(c.Brief, c.MilestoneDigest, c.Conventions))
+	b.WriteString(pullRequestPassage(c))
 	b.WriteString(gitSnapshotSection(c))
 
 	b.WriteString("\nEvery `nat` command below names the project this slice is in:\n\n")
@@ -366,9 +353,14 @@ func Prompt(c PromptContext) string {
 		fmt.Fprintf(&b, "of what that session did. Commit your own work there and push %s\n", c.Branch)
 		b.WriteString("again: the same branch, which is the one the review is against. Do not\n")
 		b.WriteString("create a branch of your own and do not switch to another; this one is\n")
-		b.WriteString("yours and is what you hand back. Do not run `gh`, and do not open a\n")
-		b.WriteString("pull request: you hand the branch back and the user opens the pull\n")
-		b.WriteString("request from the board once they have reviewed it.\n\n")
+		if c.Slice.PRURL != "" {
+			b.WriteString("yours and is what you hand back. Its pull request is open already, and\n")
+			b.WriteString("pushing the branch updates it: there is no other to open.\n\n")
+		} else {
+			b.WriteString("yours and is what you hand back. Do not run `gh`, and do not open a\n")
+			b.WriteString("pull request: you hand the branch back and the user opens the pull\n")
+			b.WriteString("request from the board once they have reviewed it.\n\n")
+		}
 	case c.RepoUnknown:
 		b.WriteString("Once the worktree above is cut, it is yours alone. If the work is code:\n")
 		b.WriteString("commit there — exactly ONE change, this slice's — and push its branch.\n")
@@ -433,6 +425,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString("about a value you interpolated rather than read is exactly the kind of\n")
 	b.WriteString("line that costs somebody else an hour redoing the work to find out it\n")
 	b.WriteString("was wrong.\n\n")
+	b.WriteString(resumePassage(c))
 	b.WriteString("Leave `--branch` off when the slice produced no branch — a docs or\n")
 	b.WriteString("research slice — and it is marked Done there and then, with no pull\n")
 	b.WriteString("request to describe. A summary too long for one argument can be piped in\n")
@@ -607,8 +600,9 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 
 // Resuming reports whether the session is picking work up rather than
 // starting it: the worktree it is placed in is on the very branch the slice
-// records, so there are commits there already and an earlier session put
-// them there.
+// records, or the slice has a pull request recorded — work handed back,
+// approved, then resumed, its branch cleared until the next hand-back — so
+// there are commits there already and an earlier session put them there.
 //
 // It is the branch matching that says so rather than the slice's status alone,
 // because a released slice is back at Todo with its branch still recorded and
@@ -618,7 +612,64 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 // Exported for [actions.Launch]'s own use: whether a resume launch's git
 // snapshot is worth gathering is the same question this prompt already asks.
 func Resuming(c PromptContext) bool {
-	return c.Branch != "" && c.Branch == strings.TrimSpace(c.Slice.Branch)
+	return c.Branch != "" && (c.Branch == strings.TrimSpace(c.Slice.Branch) || c.Slice.PRURL != "")
+}
+
+// pullRequestPassage tells an agent launched on a slice with a pull request
+// recorded that its work is out: the pull request is open, pushing the branch
+// updates it, and the review as it stood at launch is carried inline. It
+// relaxes the standing ban on `gh` for the one read the review needs and no
+// other — the checks are read with `nat slice-checks`, as every agent reads
+// CI — and keeps every pull request write the user's. Empty for a slice with
+// none recorded.
+func pullRequestPassage(c PromptContext) string {
+	pr := c.Slice.PRURL
+	if pr == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n## The pull request\n\n")
+	b.WriteString("This slice's work was handed back and approved, and its pull request is\n")
+	fmt.Fprintf(&b, "open: %s. Pushing the branch updates it. The\n", pr)
+	b.WriteString("user has taken the work back up — the slice's task log ends in why — so\n")
+	b.WriteString("finish what they asked for and hand it back, as below; it returns to its\n")
+	b.WriteString("pull request.\n\n")
+	if c.ReviewComments != "" || c.ReviewChecks != "" {
+		b.WriteString("Captured at launch — no need to re-run this to see where it stood then:\n\n")
+		if c.ReviewComments != "" {
+			fmt.Fprintf(&b, "`gh pr view %s --comments`:\n\n```\n%s\n```\n\n", pr, c.ReviewComments)
+		}
+		if c.ReviewChecks != "" {
+			fmt.Fprintf(&b, "The pull request's checks:\n\n```\n%s\n```\n\n", c.ReviewChecks)
+		}
+	}
+	b.WriteString("Re-read the review before you push, since it can have moved since launch:\n\n")
+	fmt.Fprintf(&b, "    gh pr view %s --comments\n\n", pr)
+	b.WriteString("That is the only `gh` you may run — read CI with the `slice-checks` command\nbelow.\n")
+	b.WriteString("Never open, merge, close or reopen a pull request: merging this one is\n")
+	if c.Frontend == FrontendGnat {
+		b.WriteString("a button in the app's PR tab, pressed once the user is satisfied.\n")
+	} else {
+		b.WriteString("the user's, once they are satisfied.\n")
+	}
+	return b.String()
+}
+
+// resumePassage tells a slice agent what to do when the user asks for more
+// after it has handed back: say so on the record with `nat slice-resume`
+// before changing anything — which takes the slice back out of review, so the
+// user's board reads it as work in progress again — then do the work and hand
+// back exactly as before. skills/next-slice/SKILL.md says the same in its own
+// words.
+func resumePassage(c PromptContext) string {
+	var b strings.Builder
+	b.WriteString("If the user asks for more or different work after you have handed back,\n")
+	b.WriteString("say so on the record before changing anything:\n\n")
+	fmt.Fprintf(&b, "    nat slice-resume %s --project %s --note '<what they asked for>'\n\n", c.Slice.ID, c.ProjectID)
+	b.WriteString("then do the work, push, and hand back again with the same\n")
+	b.WriteString("`complete-slice --branch` command. If it refuses because the slice is\n")
+	b.WriteString("Done, the work is merged: say so to the user and stop.\n\n")
+	return b.String()
 }
 
 // visualsPassage tells a slice agent to hand in images of a visible change
@@ -650,11 +701,11 @@ func visualsPassage(c PromptContext, when string) string {
 	return b.String()
 }
 
-// testingPassage holds a slice agent — a fresh one or a fix session — to
+// testingPassage holds a slice agent to
 // targeted tests while it iterates and one full gate at the end, where end is
 // when that is: most of the test time across audited sessions went on full-suite
 // runs mid-loop. CLAUDE.md's conventions and skills/next-slice/SKILL.md say the
-// same in their own words. A test walks each slice and fix prompt for it.
+// same in their own words. A test walks each slice prompt for it.
 func testingPassage(end string) string {
 	return "While you iterate, run only the tests for what you are touching — one\n" +
 		"package, `go test -run <Name>`, `swift test --filter <Name>` — never the\n" +
@@ -664,7 +715,7 @@ func testingPassage(end string) string {
 		"batch, not once per edit.\n"
 }
 
-// notesPassage tells a slice agent — a fresh one or a fix session — how to
+// notesPassage tells a slice agent how to
 // leave a note on a later slice's brief, with the agent's own slice as where it
 // came from. skills/next-slice/SKILL.md says the same in its own words.
 func notesPassage(c PromptContext) string {
@@ -684,7 +735,7 @@ func notesPassage(c PromptContext) string {
 	return b.String()
 }
 
-// followUpsPassage tells an agent — a fresh one or a fix session — to hand in
+// followUpsPassage tells a slice agent to hand in
 // the work it noticed but did not do, and stop, before `complete-slice`. Only
 // the app has anywhere to triage follow-ups, so only an agent it launched is
 // told to hand them in and wait; one launched from the board would wait on a
@@ -728,15 +779,14 @@ func checksPassage(c PromptContext) string {
 	return b.String()
 }
 
-// runningChecksSentence is what the slice prompt, the fix prompt and the
-// checks nudge each say after the slice-checks command: it also reads a check
+// runningChecksSentence is what the slice prompt and the checks nudge each
+// say after the slice-checks command: it also reads a check
 // still running, which is where a stalled one is looked into.
 const runningChecksSentence = "The same command shows what a check still running is doing — the step\n" +
 	"it is on and for how long — so a check that has sat pending far longer\n" +
 	"than its siblings or its usual run is read there, never with `gh`.\n\n"
 
-// rerunPassage is how the slice prompt, the fix prompt and the checks nudge
-// tell an agent to re-run CI: `nat slice-checks-rerun`, for a failure that is
+// rerunPassage is how the slice prompt and the checks nudge tell an agent to re-run CI: `nat slice-checks-rerun`, for a failure that is
 // not the change's, never as a retry of a real one — and never `gh`.
 // skills/next-slice/SKILL.md says the same in its own words.
 func rerunPassage(sliceID, projectID string) string {
@@ -753,7 +803,7 @@ func rerunPassage(sliceID, projectID string) string {
 }
 
 // namingPassage is the rule every text handed to an agent that writes about
-// slices carries — slice, fix, plan and new-project prompts, and every
+// slices carries — slice, plan and new-project prompts, and every
 // embedded skill in its own copy of the same words. A test walks each for it.
 const namingPassage = "\n## Naming slices\n\n" +
 	"Refer to another slice only by its name, adding its milestone's name\n" +

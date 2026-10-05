@@ -181,10 +181,9 @@ Agent control (tmux only, no Notion read beyond the claim check):
 `slice-launch` (`actions.Launch`, same flow the board's `l` key and
 `start-slice`'s self-claim both use — a **third** way to get an agent
 running, the one the macOS app's launch button drives; accepts Todo,
-in-progress-with-no-live-session, and — as the board's `l` does — a fix
-launch on a slice with a PR recorded (`actions.FixLaunch`): no dependency
-check, `actions.PRStillOpen` before any worktree, review gathered, nothing
-claimed, `--json`'s `fix` true; Done with no PR is refused), `agent-interrupt` (Claude Code's
+in-progress-with-no-live-session — one with a PR recorded is an ordinary
+relaunch, its dependencies not asked and gh built only to gather its review
+snapshot; Done is refused, PR or not), `agent-interrupt` (Claude Code's
 interrupt key), `agent-kill` (`kill-session`; a session already gone is
 success, not failure), `agent-send` (paste-buffer delivery, `--text` or
 stdin — same mechanism `internal/agent.SendPrompt` uses for review
@@ -218,7 +217,7 @@ standing, and the output adds `Its live agent was told.` only where one was.
 See root CLAUDE.md's Notes rule.
 
 `slice-show --json`'s `events` is the slice's whole task log: every
-`store.TaskEvent` its body carries (`handed_back`/`sent_back`/`launched`/`relaunched`/
+`store.TaskEvent` its body carries (`handed_back`/`sent_back`/`resumed`/`launched`/`relaunched`/
 `released`/`blocked`/`summary`/`follow_ups`/`note`/`checks_failed`), in body order, plus — read off
 the slice's properties rather than its body — an `approved` event where a
 pull request is recorded and a `merged` event where the slice is Done with a
@@ -230,8 +229,8 @@ on `approved`/`merged`, which have no time source), and a note from a slice
 slice-show reads no plan; the app matches it against the plan it holds.
 
 `slice-visuals` (held slices, or — `canHandInVisuals` — a Done slice with a
-PR recorded, assigned to you where the project has an Assignee column: a fix
-session's, its PR not re-checked with gh). Incremental, each flag repeatable:
+PR recorded, assigned to you where the project has an Assignee column: a
+session that outlived its merge, its PR not re-checked with gh). Incremental, each flag repeatable:
 `--visual` (first line the name, the next the image's path or URI) adds or
 replaces by name in place, keeping the before it has; `--before` (the
 visual's name, then the before's path) sets the before of a visual in the
@@ -260,9 +259,19 @@ progress until the agent's next `complete-slice --branch` re-records it — the
 deterministic signal gnat's approve-over-comments flow waits on. The recorded
 PR description stays on the page for the eventual `slice-approve`.
 
-`slice-show --json` and `info --json` carry `fixing` per slice
-(`store.Fixing`; `info` reads a body only for In progress slices with a PR,
-an unreadable one concluding false).
+`slice-resume <slice> --note TEXT|-` (`sliceresume.go`): `actions.Resume`
+— a stamped `Resumed` (the note, required) then `ClearBranch`, through
+`actions.TakeBack`, the same order `slice-rework` now takes through it too.
+Refuses an empty note before any read, a slice not In progress (Done by
+name); one In progress with no `Branch` writes nothing, says so and exits 0
+(no nudge). No ownership check, as for `slice-rework`. See root CLAUDE.md's
+Resuming rule.
+
+`slice-show --json` and `info --json` carry `resumed` per slice
+(`domain.Slice.Resumed` against the plan's `Shape.HasBranch` — no body
+read), and their `state` is `domain.StateOf` with that same `HasBranch`.
+`container-show` passes the plan's shape too. `pr-view --json` carries
+`head_ref_oid` (gh's `headRefOid`), how gnat tells a PR whose head moved.
 
 `slice-checks <slice> [--log] [--json]` (any status, a read only): the
 recorded PR's `gh.ViewPR` checks through `gh.Verdict`, one line per check;
@@ -470,6 +479,12 @@ a recorded PR, `gh.ViewPR`'s `BaseRefName` is used instead (a PR opened
 against anything but the default branch is measured against what it would
 actually merge into) — a `gh` that cannot answer is logged and the command
 falls back to the default rather than failing the diff over it.
+
+A slice with no `Branch` that is In progress and whose task log holds a
+`Handed back` — resumed, or sent back — is read on `actions.AgentBranch`
+(`handedBackSlice`, `handedBackBefore`; an unreadable body concludes
+nothing), so `slice-diff` and `slice-file` keep a reading while the work is
+redone. One never handed back is still refused.
 
 ## `slice-file`
 

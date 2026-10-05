@@ -26,13 +26,11 @@ import (
 // the plan untouched — and only once none of them applies does the claim
 // happen, which is the first write this command can make.
 //
-// A slice with a pull request recorded is a fix launch instead
-// ([actions.FixLaunch], the board's own discriminator): its dependencies are
-// not asked about, gh is asked whether that pull request is still open before
-// any worktree is cut ([actions.PRStillOpen] — merged, closed and unreadable
-// each refuse with nothing written), the review is gathered into the fix
-// prompt, and nothing is claimed; the one write is the Relaunched
-// [actions.Launch] files to say a fix is under way.
+// A slice with a pull request recorded — work resumed after its approval —
+// is an ordinary relaunch, its review gathered into the prompt by
+// [actions.Launch]; only its dependencies go unasked, since work already out
+// waits on its review and nothing else. A Done slice is never launched: its
+// work is merged, and new work on it is a new slice.
 func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("slice-launch", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -73,12 +71,11 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("load the slice: %w", err)
 	}
-	fix := actions.FixLaunch(s)
-	if !fix && s.Status != domain.SliceTodo && s.Status != domain.SliceClaimed {
-		return fmt.Errorf("%q is %s: only a Todo slice, one in progress with no live session, or one whose pull request is still open can be launched",
+	if s.Status != domain.SliceTodo && s.Status != domain.SliceClaimed {
+		return fmt.Errorf("%q is %s: only a Todo slice, or one in progress with no live session, can be launched",
 			s.Name, s.StatusName)
 	}
-	if !fix {
+	if s.PRURL == "" {
 		if blockers, _ := domain.Blockers(s, dependencyIndex(ctx, st, s)); len(blockers) > 0 {
 			return blockedError(s, blockers)
 		}
@@ -87,15 +84,6 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 		if session, ok := live[id]; ok {
 			return fmt.Errorf("%q already has a live session: %s", s.Name, session)
 		}
-	}
-
-	var reviewer actions.PRReviewReader
-	if fix {
-		ghClient := env.NewGH()
-		if toast, _, ok := actions.PRStillOpen(ghClient, actions.WorkdirFor(s, project), s); !ok {
-			return errors.New(toast)
-		}
-		reviewer = ghClient
 	}
 
 	agentModel := config.AgentModel{Model: *model, Effort: *effort}
@@ -127,9 +115,13 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 		Milestone:       milestone,
 		MilestoneSlices: siblings,
 		Frontend:        frontend,
-		Fix:             fix,
 	}
 
+	// gh is asked only for a slice with a pull request to read the review of.
+	var reviewer actions.PRReviewReader
+	if s.PRURL != "" {
+		reviewer = env.NewGH()
+	}
 	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), st, reviewer,
 		cfg.AssigneeUserID, promptContext, agentModel)
 	if err != nil {
@@ -151,14 +143,11 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// launchJSON is the structured form of the launch output. Fix says the
-// session was sent at the slice's pull request's review — see
-// [actions.FixLaunch].
+// launchJSON is the structured form of the launch output.
 type launchJSON struct {
 	Session string `json:"session"`
 	Workdir string `json:"workdir"`
 	Branch  string `json:"branch"`
-	Fix     bool   `json:"fix"`
 	Warning string `json:"warning,omitempty"`
 }
 
@@ -168,7 +157,6 @@ func writeLaunchJSON(out io.Writer, result actions.LaunchResult) error {
 		Session: result.Session,
 		Workdir: result.Context.WorkingDir,
 		Branch:  result.Context.Branch,
-		Fix:     result.Context.Fix,
 		Warning: result.Toast,
 	}
 	enc := json.NewEncoder(out)
@@ -179,11 +167,7 @@ func writeLaunchJSON(out io.Writer, result actions.LaunchResult) error {
 // launchMarkdown renders the launch result.
 func launchMarkdown(result actions.LaunchResult) string {
 	var b strings.Builder
-	if result.Context.Fix {
-		fmt.Fprintf(&b, "# Launched a fix session\n\n")
-	} else {
-		fmt.Fprintf(&b, "# Launched\n\n")
-	}
+	fmt.Fprintf(&b, "# Launched\n\n")
 	fmt.Fprintf(&b, "- Session: %s\n", result.Session)
 	fmt.Fprintf(&b, "- Working directory: %s\n", result.Context.WorkingDir)
 	fmt.Fprintf(&b, "- Branch: %s\n", result.Context.Branch)

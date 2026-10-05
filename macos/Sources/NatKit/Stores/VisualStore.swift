@@ -32,7 +32,7 @@ public enum VisualImage: @unchecked Sendable, Equatable {
 /// folded and seen, and the comments pending on each slice's images until
 /// they are sent.
 ///
-/// Only the seen marks are written anywhere (`VisualSeenMemory`): the images
+/// Only what has been seen is written anywhere (`SeenMemory`): the images
 /// are read from where the agent left them, and the comments live only in the
 /// session — cleared once a send has reached the agent, kept when it fails.
 @MainActor
@@ -84,17 +84,17 @@ public final class VisualStore {
 
     private let client: NatClientProtocol
     private let projectID: String
-    private let seen: VisualSeenMemory
+    private let seen: SeenMemory
 
     /// The image keys each slice's last hand-in names — what decides which
     /// loaded images are still wanted.
     private var handIns: [String: Set<String>] = [:]
 
-    /// Bumped on every seen mark written, so a view reading `isNew` redraws:
+    /// Bumped on every seen mark written, so a view reading `badge` redraws:
     /// the memory itself is not observable.
     private var seenTick = 0
 
-    public init(client: NatClientProtocol = NatClient(), projectID: String = "", seen: VisualSeenMemory = .inMemory()) {
+    public init(client: NatClientProtocol = NatClient(), projectID: String = "", seen: SeenMemory = .inMemory()) {
         self.client = client
         self.projectID = projectID
         self.seen = seen
@@ -140,10 +140,13 @@ public final class VisualStore {
         viewed[sliceID] = viewed[sliceID].map { $0.intersection(identities) }.flatMap { $0.isEmpty ? nil : $0 }
         collapsed[sliceID] = collapsed[sliceID].map { $0.intersection(identities) }.flatMap { $0.isEmpty ? nil : $0 }
         // An empty hand-in is also what a slice reads as before its detail
-        // has loaded, so the seen marks — which outlive the session — are
-        // pruned only against a hand-in that names something.
+        // has loaded, so what was seen — which outlives the session — is
+        // pruned, and a first look taken, only against a hand-in that names
+        // something.
         if !visuals.isEmpty {
-            seen.retain(projectID: projectID, sliceID: sliceID, visuals)
+            seen.retain(projectID: projectID, sliceID: sliceID, .visuals, items: Set(visuals.map(\.name)))
+            seen.baseline(projectID: projectID, sliceID: sliceID, .visuals, Self.snapshot(visuals))
+            seenTick += 1
         }
 
         handIns[sliceID] = Set(visuals.flatMap { $0.imageKeys.map(\.key) })
@@ -298,26 +301,35 @@ public final class VisualStore {
         visual.beforeKey.map { "\($0)\u{3}\(visual.imageKey)" }
     }
 
-    // MARK: - New
+    // MARK: - New and Updated
 
-    /// Whether an item wears New: nat reports it changed since the hand-in
-    /// before, and it has not been seen as it now is.
-    public func isNew(sliceID: String, _ visual: VisualChange) -> Bool {
+    /// An item's badge (`SeenMemory`'s one rule): New for an image by a name
+    /// the user had not seen on this slice, Updated for one handed in again
+    /// under a name they had seen with different content — its image or its
+    /// before — and none the first time the section is ever loaded, or for
+    /// what they have seen as it is.
+    public func badge(sliceID: String, _ visual: VisualChange) -> SeenBadge? {
         _ = seenTick
-        return visual.changed && !seen.isSeen(projectID: projectID, sliceID: sliceID, visual)
+        return seen.badge(projectID: projectID, sliceID: sliceID, .visuals, item: visual.name, fingerprint: visual.identity)
     }
 
-    /// Whether any item of a hand-in wears New — the section header's badge.
-    public func anyNew(sliceID: String, _ visuals: [VisualChange]) -> Bool {
-        visuals.contains { isNew(sliceID: sliceID, $0) }
+    /// The section header's badge: New while any item is, else Updated while
+    /// any item is.
+    public func sectionStatus(sliceID: String, _ visuals: [VisualChange]) -> NavSectionStatus? {
+        .of(visuals.map { badge(sliceID: sliceID, $0) })
     }
 
     /// The user has seen an item as it now is: its section has been on screen
     /// in the image list, or it has been marked viewed.
     public func markSeen(sliceID: String, _ visual: VisualChange) {
-        guard visual.changed, !seen.isSeen(projectID: projectID, sliceID: sliceID, visual) else { return }
-        seen.markSeen(projectID: projectID, sliceID: sliceID, visual)
+        guard badge(sliceID: sliceID, visual) != nil else { return }
+        seen.markSeen(projectID: projectID, sliceID: sliceID, .visuals, item: visual.name, fingerprint: visual.identity)
         seenTick += 1
+    }
+
+    /// A hand-in as a seen snapshot: each image's name at its identity.
+    private static func snapshot(_ visuals: [VisualChange]) -> [String: String] {
+        Dictionary(visuals.map { ($0.name, $0.identity) }, uniquingKeysWith: { _, last in last })
     }
 
     // MARK: - Viewed and folded

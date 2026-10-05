@@ -41,7 +41,7 @@ const checksLogLines = 200
 // the board reads ([gh.Verdict], over the checks gh's own view of the pull
 // request decodes), then every check by name, state and run URL. It is how an
 // agent reads CI — the prompts name it, never `gh` — and a read alone: no
-// write, no nudge, and any status, since a fix session's slice is in progress
+// write, no nudge, and any status, since resumed work's slice is in progress
 // and a landed one's checks are still worth reading.
 //
 // --log appends, for each failed check run by GitHub Actions, the failed

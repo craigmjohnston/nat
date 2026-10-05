@@ -12,6 +12,8 @@ final class DiffFonts {
     /// line.
     let small = Typo.monoNSFont(size: Typo.codeView(12))
     let check = NSFont.systemFont(ofSize: 9)
+    /// A header's New or Updated badge, in the navigator chip's own face.
+    let badge = NSFont.systemFont(ofSize: Typo.caption)
 
     var charWidth: CGFloat {
         ("0" as NSString).size(withAttributes: [.font: code]).width
@@ -54,6 +56,12 @@ enum DiffInk {
     static let tertiary = NSColor(DesignTokens.ink(.tertiary, on: .window))
     static let quaternary = NSColor(DesignTokens.ink(.quaternary, on: .window))
     static let success = NSColor(DesignTokens.ink(.success, on: .window))
+    /// A header's badge, as the navigator's small chip draws it: New in
+    /// Merged's green, Updated in the accent.
+    static let newBadgeInk = NSColor(DesignTokens.chipInk(Tone.success.chipTint, on: .window))
+    static let newBadgeWash = NSColor(DesignTokens.chipWash(Tone.success.chipTint, on: .window))
+    static let updatedBadgeInk = NSColor(DesignTokens.chipInk(Tone.accent.chipTint, on: .window))
+    static let updatedBadgeWash = NSColor(DesignTokens.chipWash(Tone.accent.chipTint, on: .window))
     static let danger = NSColor(DesignTokens.ink(.danger, on: .window))
     static let checked = NSColor(DesignTokens.rowWash(selected: true, on: .window))
     static let control = NSColor(DesignTokens.fill(.control))
@@ -258,6 +266,15 @@ final class DiffViewportView: NSView {
         if layout.hasComments {
             drawSymbol("text.bubble.fill", size: 10, weight: .regular, color: DiffInk.secondary,
                        in: NSRect(x: x, y: y, width: 12, height: height))
+            x += 12 + 8
+        }
+        if let badge = layout.badge {
+            let new = badge.badge == .new
+            let pill = NSRect(x: x, y: y + (height - 17) / 2, width: badge.width, height: 17)
+            (new ? DiffInk.newBadgeWash : DiffInk.updatedBadgeWash).setFill()
+            NSBezierPath(roundedRect: pill, xRadius: 1.5, yRadius: 1.5).fill()
+            drawString(badge.label, font: canvas.fonts.badge, color: new ? DiffInk.newBadgeInk : DiffInk.updatedBadgeInk,
+                       in: pill, alignment: .center)
         }
         drawString(layout.tallyText, font: canvas.fonts.small, color: DiffInk.secondary, in: layout.tally,
                    alignment: .right)
@@ -297,6 +314,9 @@ final class DiffViewportView: NSView {
         var tallyText: String
         /// The viewed toggle — box and word — where the header has one.
         var viewed: NSRect?
+        /// The file's New or Updated badge, after the path and its marks,
+        /// and the pill's width.
+        var badge: (badge: SeenBadge, label: String, width: CGFloat)?
     }
 
     /// Where a header's pieces go across the band: from the trailing edge the
@@ -322,12 +342,16 @@ final class DiffViewportView: NSView {
         let tallyWidth = width(tallyText, small)
         let tally = NSRect(x: trailing - tallyWidth, y: y, width: tallyWidth, height: height)
         trailing -= tallyWidth + 8
-        let extrasWidth = extras.reduce(0) { $0 + $1.1 + 8 } + (hasComments ? 12 + 8 : 0)
+        let badge = canvas.state.badges[model.path].map { badge in
+            let label = badge == .new ? "New" : "Updated"
+            return (badge: badge, label: label, width: width(label, canvas.fonts.badge) + 10)
+        }
+        let extrasWidth = extras.reduce(0) { $0 + $1.1 + 8 } + (hasComments ? 12 + 8 : 0) + (badge.map { $0.width + 8 } ?? 0)
         let pathX: CGFloat = 30
         let pathWidth = min(width(model.path, canvas.fonts.header), max(trailing - pathX - extrasWidth, 0))
         return HeaderLayout(
             path: NSRect(x: pathX, y: y, width: pathWidth, height: height),
-            extras: extras, hasComments: hasComments, tally: tally, tallyText: tallyText, viewed: viewed)
+            extras: extras, hasComments: hasComments, tally: tally, tallyText: tallyText, viewed: viewed, badge: badge)
     }
 
     private func drawChevron(open: Bool, at origin: NSPoint) {

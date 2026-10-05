@@ -27,20 +27,22 @@ running agent's state.
   for removal next release. Don't extend this code path — it exists only for
   the upgrade case.
 
-## Prompts (`prompt.go`, `fixprompt.go`)
+## Prompts (`prompt.go`)
 
-- `Prompt(c PromptContext)` writes a fresh session's brief; `PromptContext.Fix`
-  routes to `fixPrompt` instead — the one launch that is not a fresh
-  session's work (a slice with an open PR recorded; see root CLAUDE.md's
-  Fix sessions rule). It ends in a hand-back (`complete-slice --branch`)
-  like the slice prompt, and shares its `followUpsPassage` (gnat only).
-  `resuming(c)` says whether the prompt should tell the agent it's
-  continuing rather than starting.
+- `Prompt(c PromptContext)` writes every slice session's brief. `Resuming(c)`
+  — placed on the branch the slice records, or a slice with a PR recorded
+  (resumed work has its branch cleared) — says whether it tells the agent
+  it's continuing rather than starting. A slice with a PR adds
+  `pullRequestPassage` (the PR is open, a push updates it, the launch's
+  review snapshot, `gh pr view <PR> --comments` the one `gh` allowed, never
+  a PR write). Every slice prompt carries `resumePassage` (`nat
+  slice-resume` before changing anything when asked for more after a
+  hand-back; a Done refusal means merged). See root CLAUDE.md's Resuming
+  rule.
 - `nat slice-checks` is how every agent reads CI: `checksPassage` in the
-  slice prompt, the fix prompt's re-check, and `ChecksPrompt` (the nudge
-  `actions.NoticeFailingChecks` sends). The fix prompt's one `gh` is
-  `gh pr view --comments`; no template names `gh pr checks`.
-- **Every** `nat` command in every template — slice, fix, planning
+  slice prompt and `ChecksPrompt` (the nudge `actions.NoticeFailingChecks`
+  sends). No template names `gh pr checks`.
+- **Every** `nat` command in every template — slice, planning
   (`PlanPrompt`) — pins `--project <ID>`
   (`PromptContext.ProjectID`). A `ProjectConfig` cannot supply this itself —
   it's the *value* of the config's `Projects` map, not the key. There is no
@@ -49,8 +51,8 @@ running agent's state.
   template for an unpinned `nat` invocation** — do not add a new templated
   command without pinning `--project`.
 - `namingPassage` (refer to another slice only by name) is in every slice,
-  fix, plan and new-project prompt, and `notesPassage` (`nat slice-note
-  --from <own slice ID>`) in every slice and fix prompt; tests walk each
+  plan and new-project prompt, and `notesPassage` (`nat slice-note
+  --from <own slice ID>`) in every slice prompt; tests walk each
   template for them. The skills carry the same words in their own copies.
 - `PromptContext.RepoUnknown` (a source project's task with no repository)
   swaps "Already in your context" for `repoPassage`: work the repository out

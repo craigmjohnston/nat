@@ -144,7 +144,10 @@ final class DiffReview {
         isSending = true
         sendError = nil
         do {
-            _ = try await store(appModel).sendComments(projectID: projectID, sliceRef: slice.id)
+            // A resumed slice's agent is already at work and hands back of
+            // its own accord: no hand-back line, no rework.
+            _ = try await store(appModel).sendComments(
+                projectID: projectID, sliceRef: slice.id, handedBack: slice.handedBack)
             await appModel.refresh()
         } catch {
             sendError = error.localizedDescription

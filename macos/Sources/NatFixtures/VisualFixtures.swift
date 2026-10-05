@@ -24,13 +24,14 @@ extension Fixtures {
     }
 
     /// A second hand-in on the same slice, as nat reads it: the first render
-    /// re-rendered at the same path (a new hash, changed — and not yet seen),
-    /// the second re-rendered too but already seen (`seedSeenVisual`), and
-    /// the URI unchanged since the hand-in before.
+    /// re-rendered at the same path (a new hash — Updated against the first
+    /// hand-in, `seedSeenVisuals`), the second and the URI as they were, and
+    /// a render by a name the first hand-in did not have (New).
     public static let visualChangesWithNews: [VisualChange] = [
         VisualChange(index: 1, name: visualChanges[0].name, uri: visualChanges[0].uri, hash: "9f2c41", changed: true),
-        VisualChange(index: 2, name: visualChanges[1].name, uri: visualChanges[1].uri, hash: "47be0a", changed: true),
+        VisualChange(index: 2, name: visualChanges[1].name, uri: visualChanges[1].uri),
         VisualChange(index: 3, name: visualChanges[2].name, uri: visualChanges[2].uri),
+        VisualChange(index: 4, name: "Merge box with the checks line", uri: visualPair.uri, hash: "c0ffee", changed: true),
     ]
 
     /// The handed-back slice's detail with that second hand-in on it.
@@ -38,11 +39,11 @@ extension Fixtures {
         sliceDetails.merging([mergeBoxSliceID: detail(visuals: visualChangesWithNews)]) { _, new in new }
     }
 
-    /// Mark the second of `visualChangesWithNews` seen, as having been on
-    /// screen once.
+    /// The first hand-in seen, as having been loaded once before the second
+    /// arrived — what `visualChangesWithNews` is badged against.
     @MainActor
-    public static func seedSeenVisual(into store: VisualStore) {
-        store.markSeen(sliceID: mergeBoxSliceID, visualChangesWithNews[1])
+    public static func seedSeenVisuals(into store: VisualStore) async {
+        await store.load(sliceID: mergeBoxSliceID, visuals: visualChanges)
     }
 
     /// A pair: the merge box re-rendered, judged against the render from

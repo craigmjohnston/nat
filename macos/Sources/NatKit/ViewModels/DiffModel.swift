@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftUI
 
@@ -210,6 +211,23 @@ public struct DiffFileModel: Identifiable, Equatable, Sendable {
         self.dels = dels
         self.described = described
         self.rows = rows
+    }
+
+    /// What the file's diff is, as one value the Changes badges remember
+    /// (`SeenMemory`): a sha256 over where it moved from and every row as git
+    /// wrote it — its kind, its prefix and its text, numbers aside (a hunk
+    /// break's text is its header, numbers and all, so it counts by its kind
+    /// alone) — so the same change shifted down by an edit above it still
+    /// reads the same.
+    /// Stable across launches, as Swift's own `Hasher` is not.
+    public var seenFingerprint: String {
+        var hash = SHA256()
+        hash.update(data: Data(oldPath.utf8))
+        for row in rows {
+            let text = row.kind == .hunkBreak ? "" : row.text
+            hash.update(data: Data("\u{1E}\(row.kind)\u{1F}\(row.prefix.map(String.init) ?? "")\u{1F}\(text)".utf8))
+        }
+        return hash.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     /// The file with `revealed` lines (by their number on the branch's

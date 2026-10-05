@@ -109,8 +109,12 @@ extension Fixtures {
         deletions: diffDels,
         changedFiles: sliceDiff.files.count,
         commits: commits.count,
-        reviewRequests: ["hubot"]
+        reviewRequests: ["hubot"],
+        headRefOid: prHeadSHA
     )
+
+    /// The commit the green pull request's head is at.
+    public static let prHeadSHA = "4f1c2a9e0b7d"
 
     /// Who the fixture repository could ask to review.
     public static let collaborators = ["craigmjohnston", "octocat", "hubot", "mona"]

@@ -8,11 +8,11 @@ import XCTest
 final class PRMarksTests: XCTestCase {
     private func slice(
         _ id: String = "s-1", status: String = "In progress", pr: String = "https://github.test/o/r/pull/7",
-        fixing: Bool = false, handedBack: Bool = false, branch: String? = nil
+        resumed: Bool = false, handedBack: Bool = false, branch: String? = nil
     ) -> Slice {
         Slice(
             id: id, name: "Slice \(id)", status: status, milestoneID: "M1", assignee: "", pr: pr, url: "",
-            branch: branch, blocked: false, handedBack: handedBack, fixing: fixing)
+            branch: branch, blocked: false, handedBack: handedBack, resumed: resumed)
     }
 
     // MARK: - Decoding
@@ -79,7 +79,7 @@ final class PRMarksTests: XCTestCase {
         XCTAssertEqual(prMarks(green, for: slice(), agent: nil), tick, "at the PR stage, no agent")
         XCTAssertEqual(prMarks(green, for: slice(), agent: .waiting), tick, "an idle agent left from hand-back")
         XCTAssertEqual(prMarks(green, for: slice(), agent: .working), .none, "a working agent may push")
-        XCTAssertEqual(prMarks(green, for: slice(fixing: true), agent: nil), .none, "under a fix")
+        XCTAssertEqual(prMarks(green, for: slice(resumed: true), agent: nil), .none, "resumed")
         XCTAssertEqual(prMarks(green, for: slice(status: "Done"), agent: nil), .none, "Done")
         XCTAssertEqual(
             prMarks(green, for: slice(pr: "", handedBack: true, branch: "b"), agent: nil), .none, "in review")
@@ -95,7 +95,9 @@ final class PRMarksTests: XCTestCase {
 
         let both = PRMarks(failingChecks: ["test"], conflict: BranchConflict(base: "main"))
         XCTAssertEqual(prMarks(both, for: slice(), agent: .working), both, "failing and conflict as before")
-        XCTAssertEqual(prMarks(both, for: slice(fixing: true), agent: .working), both)
+        XCTAssertEqual(
+            prMarks(both, for: slice(resumed: true), agent: .working), .none,
+            "resumed: the reading is of a commit its agent is replacing")
     }
 
     func testTheMarksSayWhatTheyMark() {
@@ -121,8 +123,8 @@ final class PRMarksTests: XCTestCase {
             project: Project(id: "p", name: "P", conventions: ""),
             milestones: [Milestone(id: "M1", name: "M1", order: 0, status: "Active")],
             slices: [
-                slice("a"), slice("b", fixing: true), slice("c", pr: ""), slice("d", status: "Done"),
-                slice("g"), slice("h"), slice("i", fixing: true),
+                slice("a"), slice("b"), slice("c", pr: ""), slice("d", status: "Done"),
+                slice("g"), slice("h"), slice("i", resumed: true),
             ])
         let other = ProjectInfo(
             project: Project(id: "q", name: "Q", conventions: ""),
@@ -142,12 +144,12 @@ final class PRMarksTests: XCTestCase {
             ])
         let active = Dictionary(uniqueKeysWithValues: model.active.map { ($0.targetID, $0.marks) })
         XCTAssertEqual(active["a"], both)
-        XCTAssertEqual(active["b"], PRMarks(failingChecks: ["lint"]), "under a fix, its agent waiting")
+        XCTAssertEqual(active["b"], PRMarks(failingChecks: ["lint"]), "at its pull request, its agent waiting")
         XCTAssertEqual(active["c"], PRMarks.none, "a working slice has no pull request to mark")
         XCTAssertEqual(active["e"], PRMarks(conflict: BranchConflict(base: nil)), "another project's")
         XCTAssertEqual(active["g"], PRMarks(checksPassing: true), "green at the PR stage")
         XCTAssertEqual(active["h"], PRMarks.none, "green, but its agent is working")
-        XCTAssertEqual(active["i"], PRMarks.none, "green, but under a fix")
+        XCTAssertEqual(active["i"], PRMarks.none, "green, but resumed")
 
         let tree = Dictionary(uniqueKeysWithValues: model.projects.flatMap { project in
             (project.milestones + project.doneMilestones).flatMap(\.slices).map { ($0.sliceID, $0.marks) }
@@ -179,11 +181,11 @@ final class PRMarksTests: XCTestCase {
     func testTheNoticeSaysWhatToDo() {
         let main = BranchConflict(base: "main")
         let noAgent = conflictNotice(slice: slice(), conflict: main, hasLiveAgent: false)
-        XCTAssertEqual(noAgent, ConflictNotice(conflict: main, action: .launchFix))
+        XCTAssertEqual(noAgent, ConflictNotice(conflict: main, action: .sendBack))
         XCTAssertEqual(
-            noAgent?.text, "This branch conflicts with main — launch a fix agent to merge main in and resolve them.")
+            noAgent?.text, "This branch conflicts with main — send it back to the agent to merge main in and resolve them.")
 
-        let live = conflictNotice(slice: slice(fixing: true), conflict: main, hasLiveAgent: true)
+        let live = conflictNotice(slice: slice(), conflict: main, hasLiveAgent: true)
         XCTAssertEqual(live?.action, .liveAgent)
         XCTAssertEqual(
             live?.text, "This branch conflicts with main — the live agent has it: ask it to merge main in and resolve them.")
@@ -193,13 +195,14 @@ final class PRMarksTests: XCTestCase {
             "This branch conflicts with its base.")
     }
 
-    func testTheNoticeIsDrawnOnlyAtThePRStageOrUnderAFix() {
+    func testTheNoticeIsDrawnOnlyAtThePRStage() {
         let main = BranchConflict(base: "main")
         XCTAssertNil(conflictNotice(slice: slice(), conflict: nil, hasLiveAgent: false), "mergeable or unread")
         XCTAssertNil(conflictNotice(slice: slice(status: "Done"), conflict: main, hasLiveAgent: false))
         XCTAssertNil(
             conflictNotice(slice: slice(pr: "", handedBack: true, branch: "b"), conflict: main, hasLiveAgent: false),
             "a handed-back branch with no pull request is not this notice's")
-        XCTAssertNotNil(conflictNotice(slice: slice(fixing: true), conflict: main, hasLiveAgent: false))
+        XCTAssertNil(conflictNotice(slice: slice(resumed: true), conflict: main, hasLiveAgent: false), "resumed")
+        XCTAssertNotNil(conflictNotice(slice: slice(), conflict: main, hasLiveAgent: false))
     }
 }

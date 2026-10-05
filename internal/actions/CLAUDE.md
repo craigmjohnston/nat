@@ -10,7 +10,7 @@ longer exists; `internal/tui/{launch,approve,landed,worktrees}.go` are now
 thin — bubbletea messages, toasts, board redraws — over the functions here.
 
 For *why* any of these writes happen in the order they do, see root
-CLAUDE.md's Domain rules (claim-before-tmux, fix sessions claim nothing,
+CLAUDE.md's Domain rules (claim-before-tmux, resume-before-branch-clear,
 release note-before-status, Done-means-merged, worktree-removed-only-once-work-ends,
 etc.) — this file is the mechanics, not a restatement of the rules.
 
@@ -33,12 +33,11 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   a project converted in the Notion UI since the last read may have changed
   it — then writes Status + Assignee. It does **not** verify the claim stuck;
   that's `start-slice`'s job when the agent's own session reaches it.
-- `Launch` is the whole flow in order: `PlaceAgent` (worktree), write the
-  prompt file, claim (skipped when `PromptContext.Fix` is set — a fix session
-  claims nothing, gathers the review instead and files a `Relaunched`), start
-  tmux. `FixLaunch` is the one test for a fix launch (a PR recorded, In
-  progress or Done) and `PRStillOpen` its gh gate, run by the caller before
-  `Launch` — the board's `l` and `slice-launch` alike. The claim runs **last** of what can fail before
+- `Launch` is the whole flow in order: `PlaceAgent` (worktree), claim, read
+  the brief, write the prompt file, start tmux. A slice with a PR recorded
+  is an ordinary relaunch that also gathers `reviewSnapshot` (comments and
+  checks, through `PRReviewReader`; nil reads nothing) for the prompt's
+  pull-request passage. The claim runs **last** of what can fail before
   tmux is asked for anything, so a worktree or prompt-file failure leaves the
   slice exactly where it was.
 - `PlaceAgent` resolves `AgentBranch` (the branch recorded at hand-back, or
@@ -51,7 +50,7 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   nothing (a worktree failure, a lost claim race) — reported as `Toast`, not
   a Go `error`: nothing is wrong with nat, the slice is simply still there to
   launch again.
-- A non-fix launch that is a **relaunch** — its just-read brief already
+- A launch that is a **relaunch** — its just-read brief already
   carries history (`store.HasHistory` over `store.TaskEvents`) from an
   earlier pass — writes one more task-log line (`Store.RecordRelaunch`) after
   the brief is read and before the prompt is written. Status alone is not
@@ -73,11 +72,19 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   approve (`slice-approve`), merge (`pr-merge`) and the TUI's worktree
   removal all go through `WorkdirFor`, which never needs the project's own
   directory then.
-- A non-fix launch of a slice with a `MilestoneID`, on a store answering
+- A launch of a slice with a `MilestoneID`, on a store answering
   `store.ContainerReader` (only `store.Sourced`), fills
   `PromptContext.Container` (`promptContainer`): title, URL, the prose
   sections joined, the noun from `store.Describer` else `container`. A failed
   read is logged and leaves it nil — the launch goes on.
+
+## Resume (`resume.go`)
+
+- `Resume(st, s, note)` — refuses not In progress (Done by name); no
+  `Branch` writes nothing and answers false; otherwise `TakeBack` with
+  `RecordResumed`. `TakeBack(st, id, record)` is the one statement of
+  record-then-`ClearBranch`, shared with `slice-rework`'s `Sent back`.
+  `ResumeStore` (`RecordResumed` + `ClearBranch`) is what it needs.
 
 ## Emptied milestones (`prune.go`)
 
@@ -94,9 +101,11 @@ etc.) — this file is the mechanics, not a restatement of the rules.
 - `NoticeFailingChecks` acts on a reading's red PRs (`nat pr-status`, the
   TUI's `refreshPRStates`): identity is the set of failing run URLs (name
   where none), compared with the latest `Checks failed`/`Sent back` event's
-  bullets (`sameFailure`). Live session → `agent.ChecksPrompt`, then
-  `RecordSentBack`; none (or no sender) → `RecordChecksFailed`. Send first;
-  an unreadable task log passes the slice over.
+  bullets (`sameFailure`). Live session → `Resume` (note
+  `ChecksResumeNote`; a refusal or failed write skips the slice), then
+  `agent.ChecksPrompt`, then `RecordSentBack`; none (or no sender) →
+  `RecordChecksFailed`. The Sent back follows the send, so a failed send is
+  retried; an unreadable task log passes the slice over.
 
 ## Approve / merge (`approve.go`, `merged.go`, `mergerefusal.go`, `landed.go`)
 

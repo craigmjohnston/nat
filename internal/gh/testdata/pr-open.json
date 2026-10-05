@@ -36,6 +36,7 @@
     }
   ],
   "headRefName": "slice/read-a-pull-request-through-gh",
+  "headRefOid": "0123abc",
   "isDraft": false,
   "mergeStateStatus": "BLOCKED",
   "mergeable": "MERGEABLE",

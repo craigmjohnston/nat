@@ -4,25 +4,19 @@ import Foundation
 public struct LaunchPlan: Equatable, Sendable {
     public let canLaunch: Bool
     public let blockedBy: [String]?
-    /// Whether the launch is a fix session: the slice is approved — in
-    /// progress, its pull request recorded — so `nat slice-launch` sends the
-    /// agent at the review rather than the brief (`actions.FixLaunch`).
-    public let isFix: Bool
 
     /// Initialize from a slice, determining launchability and blockers if any.
     ///
     /// A slice is launchable with no live agent on it when it is Todo, or in
-    /// progress — a relaunch, or a fix launch on an approved one. A live agent
-    /// refuses either. Dependencies hold back work not yet out; a fix launch
-    /// waits on the review alone, as nat's own does. Whether the pull request
-    /// is still open is nat's to ask gh at launch.
+    /// progress — a relaunch, a PR recorded or not (one resumed with no
+    /// session to tell is launched again on the work so far). A live agent
+    /// refuses either; so does a Done slice, as `nat slice-launch` does.
+    /// Dependencies hold either back, as nat's own launch does.
     public init(for slice: Slice, hasLiveAgent: Bool) {
-        let isFix = slice.status == "In progress" && !slice.pr.isEmpty
         let isLaunchableStatus = (slice.status == "Todo") || (slice.status == "In progress" && !hasLiveAgent)
 
-        self.isFix = isFix
-        self.canLaunch = isLaunchableStatus && (isFix || !slice.blocked)
-        self.blockedBy = slice.blocked && !isFix ? slice.dependsOn : nil
+        self.canLaunch = isLaunchableStatus && !slice.blocked
+        self.blockedBy = slice.blocked ? slice.dependsOn : nil
     }
 
     /// Build command-line flags for model and effort.

@@ -29,12 +29,15 @@ const VisualChangesHeading = "Visual changes"
 // back up that was not Todo, or whose brief already carries a task event)
 // files its one fixed line under, and LaunchedHeading the one a fresh launch
 // (the same flow, on a Todo slice with nothing logged yet) files its own under.
-// All three are matched as PRDescriptionHeading is, and all three are events
+// ResumedHeading is the heading `slice-resume` (actions.Resume) files its
+// reason under, when work on a handed-back slice is taken back up.
+// All four are matched as PRDescriptionHeading is, and all four are events
 // store.TaskEvents reads back off a slice's body.
 const (
 	SentBackHeading   = "Sent back"
 	RelaunchedHeading = "Relaunched"
 	LaunchedHeading   = "Launched"
+	ResumedHeading    = "Resumed"
 )
 
 // ChecksFailedHeading is the heading a failing reading of a slice's pull

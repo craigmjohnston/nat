@@ -313,9 +313,9 @@ func notOursError(s domain.Slice, assignee, action string) error {
 // page: what was written is known here, and a page Notion echoes is a read of
 // the same thing at best.
 //
-// A branch handed back on a slice whose pull request is already recorded is a
-// fix session's ending: the slice goes back to that pull request rather than
-// to a review that opens one.
+// A branch handed back on a slice whose pull request is already recorded is
+// resumed work's ending: the slice goes back to that open pull request, which
+// now carries the push, rather than to a review that opens one.
 func outcomeMarkdown(s domain.Slice, blocked bool, branch, assignee string) string {
 	fixed := branch != "" && !blocked && s.PRURL != ""
 	if branch == "" {

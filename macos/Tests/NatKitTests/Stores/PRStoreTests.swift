@@ -808,3 +808,62 @@ final class PRStoreTests: XCTestCase {
         XCTAssertNil(store.checksNotice)
     }
 }
+
+/// The PR section's Updated badge: the pull request's head as the user last
+/// opened the section, against the head read now.
+@MainActor
+final class PRStoreUpdatedTests: XCTestCase {
+    private func pr(head: String) -> PRDetail {
+        PRDetail(
+            number: 7, title: "T", body: "", state: "OPEN", isDraft: false, author: "a", baseRefName: "main",
+            headRefName: "b", url: "https://github.test/o/r/pull/7", reviewDecision: "", mergeable: "MERGEABLE",
+            mergeStateStatus: "CLEAN", headRefOid: head)
+    }
+
+    func testUpdatedOnceTheHeadHasMovedSinceTheSectionWasLastOpen() async {
+        let seen = SeenMemory.inMemory()
+        let client = MockPRClient(response: .success(pr(head: "aaa")))
+        let store = PRStore(client: client, seen: seen)
+        XCTAssertNil(store.badge(sliceID: "s"), "nothing read")
+        await store.fetch(projectID: "p", sliceRef: "s")
+        XCTAssertNil(store.badge(sliceID: "s"), "the first reading is the first look")
+
+        client.setResponse(.success(pr(head: "bbb")))
+        await store.refresh()
+        XCTAssertEqual(store.badge(sliceID: "s"), .updated)
+        XCTAssertNil(store.badge(sliceID: "other"), "another slice's section reads nothing off this pull request")
+        XCTAssertEqual(
+            PRStore(client: client, seen: seen).badge(sliceID: "s"), nil, "a store holding no reading says nothing")
+
+        store.markSeen(sliceID: "other")
+        XCTAssertEqual(store.badge(sliceID: "s"), .updated, "only its own section sees it")
+        store.markSeen(sliceID: "s")
+        XCTAssertNil(store.badge(sliceID: "s"))
+        XCTAssertEqual(seen.snapshot(projectID: "p", sliceID: "s", .pr), [PRStore.seenHead: "bbb"])
+        store.stopPolling()
+    }
+
+    func testAHeadNatDidNotSayTakesNoPart() async {
+        let seen = SeenMemory.inMemory()
+        let store = PRStore(client: MockPRClient(response: .success(pr(head: ""))), seen: seen)
+        await store.fetch(projectID: "p", sliceRef: "s")
+        XCTAssertNil(seen.snapshot(projectID: "p", sliceID: "s", .pr))
+        XCTAssertNil(store.badge(sliceID: "s"))
+        store.stopPolling()
+    }
+
+    func testASessionsPullRequestTakesNoPart() async {
+        let seen = SeenMemory.inMemory()
+        let store = PRStore(client: MockPRClient(response: .success(pr(head: "aaa"))), seen: seen)
+        await store.fetch(projectID: "p", sliceRef: "https://github.test/o/r/pull/7", sessionID: "sess")
+        XCTAssertNil(seen.snapshot(projectID: "p", sliceID: "https://github.test/o/r/pull/7", .pr))
+        XCTAssertNil(store.badge(sliceID: "https://github.test/o/r/pull/7"))
+        store.stopPolling()
+    }
+
+    func testPRHeadDecodesAndDefaultsEmpty() throws {
+        let base = #""number":1,"title":"t","body":"","state":"OPEN","is_draft":false,"author":"a","base_ref_name":"main","head_ref_name":"b","url":"u","checks":[],"reviews":[],"comments":[],"review_decision":"","mergeable":"","merge_state_status":"""#
+        XCTAssertEqual(try JSONDecoder().decode(PRDetail.self, from: Data("{\(base),\"head_ref_oid\":\"abc\"}".utf8)).headRefOid, "abc")
+        XCTAssertEqual(try JSONDecoder().decode(PRDetail.self, from: Data("{\(base)}".utf8)).headRefOid, "")
+    }
+}

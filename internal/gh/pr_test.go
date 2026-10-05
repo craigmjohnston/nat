@@ -44,7 +44,7 @@ func TestViewPRRunsGh(t *testing.T) {
 		t.Errorf("ran %q, want %q", runner.name, Binary)
 	}
 	want := []string{"pr", "view", "slice/read-a-pull-request-through-gh", "--json",
-		"number,title,body,state,isDraft,author,baseRefName,headRefName,url," +
+		"number,title,body,state,isDraft,author,baseRefName,headRefName,headRefOid,url," +
 			"reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,reviews,comments," +
 			"additions,deletions,changedFiles,commits,reviewRequests"}
 	if !reflect.DeepEqual(runner.args, want) {
@@ -82,6 +82,7 @@ func TestViewPROpen(t *testing.T) {
 		Author:           "craigmjohnston",
 		BaseRefName:      "main",
 		HeadRefName:      "slice/read-a-pull-request-through-gh",
+		HeadRefOid:       "0123abc",
 		URL:              "https://github.com/craigmjohnston/nat/pull/7",
 		ReviewDecision:   "REVIEW_REQUIRED",
 		Mergeable:        "MERGEABLE",

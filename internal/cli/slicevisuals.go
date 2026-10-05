@@ -95,11 +95,9 @@ func sliceVisuals(ctx context.Context, args []string, env Env) error {
 // canHandInVisuals says whether the caller's agent may hand images in on s: a
 // slice they hold, as complete-slice asks — the agent working it is the one
 // with something to hand in — or one of theirs that is Done with a pull
-// request recorded. The second is a fix session's slice (root CLAUDE.md's Fix
-// sessions rule): it runs on a Done slice whose pull request is still open, and
-// renders of its fixes are review material as much as a first hand-in's are.
-// Whether that pull request is still open is not asked of gh here: a read that
-// fails concludes nothing, and the fix launch has already asked.
+// request recorded: a session that outlived its slice's merge, whose renders
+// are still review material. Whether that pull request is still open is not
+// asked of gh here: a read that fails concludes nothing.
 func canHandInVisuals(s domain.Slice, sh store.Shape, userID string) bool {
 	if store.Holds(s, sh, userID) {
 		return true

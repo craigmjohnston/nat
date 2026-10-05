@@ -94,36 +94,46 @@ untouched. Refused on a slice with a live agent.
 
 **Launching** (`l`) covers two states: Todo, and In progress with no live
 session (a relaunch — placed back on `agentBranch`, told it's continuing).
-A slice with a live agent is refused outright, whatever its status.
+A slice with a live agent is refused outright, whatever its status, and a
+Done one always is — its work is merged. An In progress slice with a PR
+recorded is an ordinary relaunch (`agent.Resuming`), its dependencies not
+asked; the board's `l` resumes it first (below).
 
-**Fix sessions** — a slice with a PR recorded (approved and In progress, or
-Done under the old rule) whose PR is still open is launchable too
-(`actions.FixLaunch`, the one discriminator the board's `l` and `nat
-slice-launch` both ask): the review is unfinished work. It **claims
-nothing** — the slice is already everything a claim would make it — and
-writes one thing: a `Relaunched` (a failure logged, never fatal), which is
-what puts the return to work on the record. Before any worktree is cut,
-`actions.PRStillOpen` asks gh directly whether that PR is still open (a
-merged/closed/unreadable PR each refuse the launch, and — unlike everywhere
-else the app reads gh — an unread PR here refuses too, since the cost of
-being wrong is an agent sent at a review that's already over). Dependencies
-are not checked. `agent.fixPrompt` is what such a session is told; it ends
-in a hand-back (`complete-slice --branch`, the same branch, status left
-alone), and it's the one place the standing ban on agents running `gh` is
-relaxed — for exactly `gh pr view --comments`. **`fixing`** is read off the
-record (`store.Fixing`): In progress, PR recorded, and the latest task-log
-event a `Relaunched` or `Sent back`; the hand-back that follows ends it.
-`info --json` and `slice-show --json` carry it per slice.
+**Resuming** — work taken back up after a hand-back. `actions.Resume`
+(`nat slice-resume <slice> --note TEXT|-`, no ownership check beyond
+status) files a stamped `Resumed` section (the note) **then** clears
+`Branch` — the same order `slice-rework`'s `Sent back` keeps, both through
+`actions.TakeBack`. In progress with no `Branch` is already work in
+progress and writes nothing (run twice, one card); not In progress is
+refused, Done by name (merged — new work is a new slice). The agent's next
+`complete-slice --branch` re-records the branch, a second `Handed back`.
+An agent asked for more after its hand-back runs it itself (every slice
+prompt and `/next-slice` say so); a UI action runs it on the user's behalf
+**before** reaching the agent — `agent-send` with the hand-back line where
+a session is live, else the ordinary launch (gnat's "Send back to agent";
+the board's `l` on an In progress slice with a PR, note
+`boardResumeNote`). **`resumed`** (`domain.Slice.Resumed`, `info --json`
+and `slice-show --json` per slice) is In progress, PR recorded, `Branch`
+empty, on a project whose shape has a `Branch` column — a project with
+none holds a PR and no branch legitimately. `StateOf` reads it as work in
+progress, gnat's stage as `.working`. `slice-diff`/`slice-file` read a
+resumed (or sent-back) slice on `actions.AgentBranch` where its log holds a
+hand-back. A launch of a slice with a PR carries `agent.pullRequestPassage`:
+the PR is open, a push updates it, the review snapshot, and exactly one
+`gh` read (`gh pr view <PR> --comments`) — CI still through `nat
+slice-checks`. No hand-back is ever blocked by any of this.
 
 **CI failures.** Every agent reads CI with `nat slice-checks <slice> [--log]`
-(slice prompt, fix prompt, `/next-slice`), never `gh`. After every PR
+(slice prompt, `/next-slice`), never `gh`. After every PR
 listing, `nat pr-status` and the TUI's `refreshPRStates` hand each slice
 reading `PRChecksFailing` to `actions.NoticeFailingChecks`: a failure is the
 set of its failing checks' run URLs, news only where the latest `Checks
-failed`/`Sent back` names a different set. A live session is sent
-`agent.ChecksPrompt` then a `Sent back` is filed (Branch left alone); with
-none, a `Checks failed` is filed. Send before record: a failed send writes
-nothing, so the next reading retries.
+failed`/`Sent back` names a different set. A live session is a resumption:
+`actions.Resume` first (`Resumed`, Branch cleared — nothing where already
+resumed), then `agent.ChecksPrompt` is sent, then a `Sent back` is filed;
+with none, a `Checks failed` is filed. The `Sent back` follows the send: a
+failed send files none, so the next reading retries (its resume writing
+nothing).
 
 **tmux is the user's.** Every agent nat launches runs on the user's own tmux
 server, beside every other agent, so every prompt and `/next-slice` carry a
@@ -169,7 +179,7 @@ record) — except a note whose `--from` is the target itself, never sent back
 to the agent that wrote it.
 
 **Naming slices.** Every text handed to an agent that writes about slices
-(slice, fix, plan and new-project prompts; every embedded skill) carries one
+(slice, plan and new-project prompts; every embedded skill) carries one
 rule: refer to another slice only by name (+ milestone where ambiguous),
 never by number, index, page ID, URL or another tracker's id. Tests walk
 every template and every skill for it.
@@ -177,14 +187,14 @@ every template and every skill for it.
 **Task log.** A slice's history is read off its body, in order, by
 `store.TaskEvents`: each `Handed back`, `Sent back` (`slice-rework
 --comments`, filed before the branch is cleared, as hand-back files before
-its property; or a checks nudge, which clears nothing and opens with a
-`From CI` line read back as its `by`), `Checks failed`
+its property; or a checks nudge, after its resume, opening with a `From CI`
+line read back as its `by`), `Resumed` (`resumed`, its note, filed before
+the branch is cleared), `Checks failed`
 (`checks_failed`, a red reading with no live agent), `Launched` (written by
-every other non-fix `actions.Launch`, the log's first word and its time —
+every other `actions.Launch`, the log's first word and its time —
 status alone never makes a launch a relaunch), `Relaunched` (written
-by a fix launch, and by a non-fix `actions.Launch` of a slice with
-history — `store.HasHistory`: notes alone are not history; either line's
-failure is logged, never fatal),
+by an `actions.Launch` of a slice with history — `store.HasHistory`: notes
+alone are not history; either line's failure is logged, never fatal),
 `Blocked`, `Summary`, `Note` (a `note` event, `by` its provenance), released
 line and `Follow-ups` section, each proposal
 decided by a later `Follow-ups triaged`. Every one of those sections opens
@@ -197,7 +207,7 @@ have no time. Both stores write the same markdown, through a `Clock` seam.
 
 **Visual changes.** Where a project already has a cheap or usual way to
 render what a slice changed (a gallery story, a screenshot script), every
-slice agent — slice prompt, fix prompt, `/next-slice` — hands the images in
+slice agent — slice prompt, `/next-slice` — hands the images in
 with `nat slice-visuals`, and is told never to build a way to render where
 there is none. The command is incremental — `--visual` adds or replaces by
 name in place (keeping its before), `--before` gives a visual its before,
@@ -214,7 +224,7 @@ included) from the section before's item of that name, or with none.
 changes section shows them, and its comments go back by `agent-send`, then
 `slice-rework` only where the slice is handed back. Nothing blocks hand-back
 on them. A slice you hold may hand them in, and so may a Done one with a PR
-recorded, assigned to you — a fix session's.
+recorded, assigned to you — a session that outlived its merge.
 
 **Approving** (`a` on the diff screen, or `nat slice-approve`) opens the PR
 and records only its URL — status stays In progress. **Done means the work
@@ -272,7 +282,8 @@ never re-derived into some other state even with a stale open PR — that's
 by reading around it. For a slice still in progress, state is read in the
 order the facts are true in: a live agent (freshest reading) beats
 everything else on the page; then handed-back-but-not-agent work (a
-`Branch`/`PR`); then a dependency wait; then plain "in progress, nothing
+`Branch`/`PR` — a resumed slice's PR alone is not: `StateOf` takes the
+project's `HasBranch` to tell it from a no-Branch project's PR); then a dependency wait; then plain "in progress, nothing
 happening." `domain.AgentPresence` and `domain.PRReadiness` fold the board's
 tmux and gh readings into this rule — their zero values mean "no PR / never
 read / no longer open" indistinguishably, on purpose: nowhere here needs
@@ -282,7 +293,7 @@ of the Active panel rather than flooding it with a project's entire history.
 
 **`--project` pinning.** Every project-scoped `nat` command requires
 `--project <page ID>`, no active-project fallback — every template (slice,
-fix, planning prompts) and every skill spells this out explicitly, and one test walks every template for an unpinned invocation. The
+planning prompts) and every skill spells this out explicitly, and one test walks every template for an unpinned invocation. The
 `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
 worktree path are derived — implemented once, in `internal/actions`,
 `internal/worktree` and `internal/git`) is **re-spelled in prose twice**:

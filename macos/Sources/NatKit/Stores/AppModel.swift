@@ -147,8 +147,9 @@ public final class AppModel {
     public var mirrorPickerPresented = false
 
     @ObservationIgnored private let mirrorNudgeMemory: MirrorNudgeMemory
-    /// Which handed-in images have been seen — see `VisualSeenMemory`.
-    @ObservationIgnored private let visualSeenMemory: VisualSeenMemory
+    /// What has been seen of each slice's Changes, Visual changes and PR —
+    /// their New and Updated badges; see `SeenMemory`.
+    @ObservationIgnored private let seenMemory: SeenMemory
     /// Which projects' tabs the user closed — see `ClosedTabMemory`.
     @ObservationIgnored private let closedTabMemory: ClosedTabMemory
 
@@ -563,7 +564,7 @@ public final class AppModel {
             ["nat", "tmux", "gh", "ntn"].allSatisfy { BinaryLocator.status(of: $0).isFound }
         },
         mirrorNudgeMemory: MirrorNudgeMemory = .inMemory(),
-        visualSeenMemory: VisualSeenMemory = .inMemory(),
+        seenMemory: SeenMemory = .inMemory(),
         closedTabMemory: ClosedTabMemory = .inMemory(),
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
         workshopSaveWait: @escaping @MainActor @Sendable () async -> Void = {
@@ -575,7 +576,7 @@ public final class AppModel {
         self.workshopSaveWait = workshopSaveWait
         self.makesSourceProjects = makesSourceProjects
         self.mirrorNudgeMemory = mirrorNudgeMemory
-        self.visualSeenMemory = visualSeenMemory
+        self.seenMemory = seenMemory
         self.closedTabMemory = closedTabMemory
         self.mirrorNudgePending = mirrorNudgeMemory.pending
         self.toolsReady = toolsReady
@@ -1363,7 +1364,7 @@ public final class AppModel {
     /// `sliceDetailStore(projectID:)`.
     public func diffStore(projectID: String) -> DiffStore {
         if let existing = diffStores[projectID] { return existing }
-        let store = DiffStore(client: clientFactory())
+        let store = DiffStore(client: clientFactory(), seen: seenMemory)
         diffStores[projectID] = store
         return store
     }
@@ -1372,7 +1373,7 @@ public final class AppModel {
     /// `sliceDetailStore(projectID:)`.
     public func visualStore(projectID: String) -> VisualStore {
         if let existing = visualStores[projectID] { return existing }
-        let store = VisualStore(client: clientFactory(), projectID: projectID, seen: visualSeenMemory)
+        let store = VisualStore(client: clientFactory(), projectID: projectID, seen: seenMemory)
         visualStores[projectID] = store
         return store
     }
@@ -1381,7 +1382,7 @@ public final class AppModel {
     /// `sliceDetailStore(projectID:)`.
     public func prStore(projectID: String) -> PRStore {
         if let existing = prStores[projectID] { return existing }
-        let store = PRStore(client: clientFactory())
+        let store = PRStore(client: clientFactory(), seen: seenMemory)
         prStores[projectID] = store
         return store
     }
@@ -2144,6 +2145,45 @@ public final class AppModel {
             projectID: projectID, sliceID: sliceID, followUps: followUps, client: clientFactory()
         )
         if result != nil { await refresh() }
+    }
+
+    /// Send back to agent: a handed-back slice — in review, or at its open
+    /// pull request — goes back to its agent for more. The record first, as
+    /// `slice-triage` writes before its send: `nat slice-resume` files the
+    /// note under a stamped `Resumed` and clears the Branch, so the slice reads
+    /// as being worked again (`Slice.resumed`). Then the agent hears of it: a
+    /// live one by `agent-send`, told why and ending in the `complete-slice
+    /// --branch` hand-back on the branch the slice had; with none, the
+    /// ordinary `slice-launch` — a relaunch, its prompt reading the Resumed
+    /// off the page. A refused resume sends nothing; a send or launch that
+    /// fails after it leaves the record standing, and its error is the one
+    /// shown, so trying again resumes nothing twice (nat writes nothing on a
+    /// slice already resumed) and only repeats the telling.
+    ///
+    /// Run as the one-shot `.sendBack`, its error kept for the action bar.
+    /// Returns whether it went through.
+    @discardableResult
+    public func sendBack(slice: Slice, note: String, model: String? = nil, effort: String? = nil) async -> Bool {
+        guard let projectID = projectStore?.projectID else { return false }
+        let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let client = clientFactory()
+        let live = activityStore?.agents[slice.id] != nil
+        var sent = false
+        await sliceActions.run(.sendBack, sliceID: slice.id, select: { _ in }) {
+            guard !note.isEmpty else { throw NatError.commandFailed("Say what the agent should change.") }
+            try await client.sliceResume(projectID: projectID, sliceRef: slice.id, note: note)
+            if live {
+                let prompt = sendBackPrompt(
+                    note: note, branch: slice.branch,
+                    handBack: HandBackInstruction(projectID: projectID, sliceRef: slice.id))
+                try await client.agentSend(projectID: projectID, sliceRef: slice.id, text: prompt)
+            } else {
+                _ = try await client.sliceLaunch(projectID: projectID, sliceRef: slice.id, model: model, effort: effort)
+            }
+            sent = true
+        }
+        await refresh()
+        return sent
     }
 
     /// Drops every pending follow-up of a slice (`slice-triage --drop-all`),

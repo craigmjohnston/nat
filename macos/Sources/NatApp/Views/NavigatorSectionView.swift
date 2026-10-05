@@ -118,9 +118,22 @@ extension NavSectionView where Actions == EmptyView {
 extension NavSectionStatus {
     var tone: Tone {
         switch self {
-        // New wears Merged's own badge.
+        // New wears Merged's own badge; Updated the accent, so the two read
+        // apart at a glance.
         case .merged, .new: return .success
+        case .updated: return .accent
         }
+    }
+}
+
+/// An item's New or Updated badge — a Changes file's row, a Visual changes
+/// image's row and header — in the section header's own chip.
+struct SeenBadgeChip: View {
+    let badge: SeenBadge
+
+    var body: some View {
+        let status = NavSectionStatus(badge) ?? .new
+        Chip(status.label, tone: status.tone, size: .small).fixedSize()
     }
 }
 

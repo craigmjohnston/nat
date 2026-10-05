@@ -182,7 +182,14 @@ func (s SliceState) String() string {
 // is too. A pull request whose checks have failed is neither: it is read as
 // failing whatever its review says, so an approved one is never called ready
 // to merge while CI is red.
-func StateOf(s Slice, presence AgentPresence, pr PRReadiness, byID map[string]Slice) SliceState {
+//
+// hasBranch says whether the slice's project has a Branch column at all. On
+// one that does, a pull request recorded with no branch beside it is work
+// resumed after a hand-back ([Slice.Resumed]) — work in progress, not work
+// out — so it falls through to the rules below the review. A project with no
+// Branch column records a pull request and never a branch, so there a pull
+// request alone is still work out.
+func StateOf(s Slice, presence AgentPresence, pr PRReadiness, byID map[string]Slice, hasBranch bool) SliceState {
 	switch {
 	case s.Status != SliceClaimed:
 		return SliceStateNone
@@ -190,7 +197,7 @@ func StateOf(s Slice, presence AgentPresence, pr PRReadiness, byID map[string]Sl
 		return SliceStateWaiting
 	case presence != AgentNone:
 		return SliceStateWorking
-	case s.Branch != "" || s.PRURL != "":
+	case s.Branch != "" || s.PRURL != "" && !s.Resumed(hasBranch):
 		switch pr {
 		case PRReadyToMerge:
 			return SliceStateReadyToMerge

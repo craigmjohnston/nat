@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/craigmjohnston/nat/internal/actions"
 )
 
 // sliceRework takes a handed-back slice back out of review: its Branch is
@@ -67,10 +69,7 @@ func sliceRework(ctx context.Context, args []string, env Env) error {
 		err = fmt.Errorf("%q is not handed back: only a slice with a branch waiting review can be sent back for rework", s.Name)
 	}
 	if err == nil {
-		err = st.RecordSentBack(ctx, s.ID, text)
-	}
-	if err == nil {
-		err = st.ClearBranch(ctx, s.ID)
+		err = actions.TakeBack(ctx, st, s.ID, func() error { return st.RecordSentBack(ctx, s.ID, text) })
 	}
 	if err != nil {
 		return err

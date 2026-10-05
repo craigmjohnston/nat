@@ -93,11 +93,14 @@ func TestStateOf(t *testing.T) {
 		{name: "in progress, alone", status: SliceClaimed, want: SliceStateReadyToPush},
 		// No agent, nothing out, a dependency unfinished.
 		{name: "in progress, blocked", status: SliceClaimed, blocked: true, want: SliceStateBlocked},
-		// No agent, work out: a branch or a PR, the two distinct OR operands
-		// that reach the same review-pending case. A combination of the two,
-		// or either one with blocked also set, is not read any differently.
+		// No agent, work out: a branch handed back, or a PR beside it. A PR
+		// with its branch cleared is work resumed, back in progress — see
+		// TestStateOfPRReadiness for the no-Branch-column project, where a PR
+		// alone is still work out.
 		{name: "handed back", status: SliceClaimed, branch: "slice/x", want: SliceStateAwaitingReview},
-		{name: "PR recorded", status: SliceClaimed, pr: "https://gh/pr/1", want: SliceStateAwaitingReview},
+		{name: "PR recorded", status: SliceClaimed, branch: "slice/x", pr: "https://gh/pr/1", want: SliceStateAwaitingReview},
+		{name: "resumed", status: SliceClaimed, pr: "https://gh/pr/1", want: SliceStateReadyToPush},
+		{name: "resumed, blocked", status: SliceClaimed, pr: "https://gh/pr/1", blocked: true, want: SliceStateBlocked},
 
 		// A live agent — unclassified or working, which StateOf treats alike
 		// via presence != AgentNone — wins over everything else on the page.
@@ -131,7 +134,7 @@ func TestStateOf(t *testing.T) {
 			if tt.blocked {
 				s.DependsOn = []string{"dep"}
 			}
-			if got := StateOf(s, tt.presence, PRUnread, byID); got != tt.want {
+			if got := StateOf(s, tt.presence, PRUnread, byID, true); got != tt.want {
 				t.Errorf("StateOf() = %v, want %v", got, tt.want)
 			}
 		})
@@ -156,18 +159,31 @@ func TestStateOfPRReadiness(t *testing.T) {
 		branch    string
 		prURL     string
 		readiness PRReadiness
-		want      SliceState
+		// noBranchColumn is a project with no Branch column, which records a
+		// pull request and never a branch.
+		noBranchColumn bool
+		want           SliceState
 	}{
-		{name: "approved and mergeable", status: SliceClaimed, prURL: "https://gh/pr/1",
+		{name: "approved and mergeable", status: SliceClaimed, branch: "slice/x", prURL: "https://gh/pr/1",
 			readiness: PRReadyToMerge, want: SliceStateReadyToMerge},
-		{name: "read and still waiting", status: SliceClaimed, prURL: "https://gh/pr/1",
+		{name: "read and still waiting", status: SliceClaimed, branch: "slice/x", prURL: "https://gh/pr/1",
 			readiness: PRAwaitingReview, want: SliceStateAwaitingReview},
-		{name: "nothing read", status: SliceClaimed, prURL: "https://gh/pr/1",
+		{name: "nothing read", status: SliceClaimed, branch: "slice/x", prURL: "https://gh/pr/1",
 			readiness: PRUnread, want: SliceStateAwaitingReview},
 		// Failing checks are their own state, never ready to merge or awaiting
 		// review, while the work is out.
-		{name: "checks failing", status: SliceClaimed, prURL: "https://gh/pr/1",
+		{name: "checks failing", status: SliceClaimed, branch: "slice/x", prURL: "https://gh/pr/1",
 			readiness: PRChecksFailing, want: SliceStateChecksFailing},
+		// A pull request with its branch cleared is work resumed after the
+		// hand-back: in progress, whatever GitHub says of the pull request.
+		{name: "resumed, nothing pushed", status: SliceClaimed, prURL: "https://gh/pr/1",
+			readiness: PRReadyToMerge, want: SliceStateReadyToPush},
+		{name: "resumed, checks failing", status: SliceClaimed, prURL: "https://gh/pr/1",
+			readiness: PRChecksFailing, want: SliceStateReadyToPush},
+		// ...except on a project with no Branch column, where a pull request
+		// alone is the work out.
+		{name: "no branch column, pull request", status: SliceClaimed, prURL: "https://gh/pr/1",
+			readiness: PRUnread, noBranchColumn: true, want: SliceStateAwaitingReview},
 		{name: "agent on it, checks failing", status: SliceClaimed, presence: AgentWaiting, prURL: "https://gh/pr/1",
 			readiness: PRChecksFailing, want: SliceStateWaiting},
 		{name: "done, checks failing", status: SliceDone, prURL: "https://gh/pr/1",
@@ -200,7 +216,7 @@ func TestStateOfPRReadiness(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := Slice{ID: "s1", Name: "Board", Status: tt.status, Branch: tt.branch, PRURL: tt.prURL}
-			if got := StateOf(s, tt.presence, tt.readiness, byID); got != tt.want {
+			if got := StateOf(s, tt.presence, tt.readiness, byID, !tt.noBranchColumn); got != tt.want {
 				t.Errorf("StateOf() = %v, want %v", got, tt.want)
 			}
 		})

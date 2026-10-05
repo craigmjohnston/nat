@@ -270,13 +270,12 @@ func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, at
 	// Who works the slice is the project's own answer: a workspace user for a plan
 	// in Notion, a bare name for one of nat's own.
 	assigneeID, assigneeName := a.cfg.AssigneeFor(project)
-	return launchAgent(a.launcher, newWorktrees(), newRepo(), st, a.prViewer, a.reviewReader, assigneeID, agent.PromptContext{
+	return launchAgent(a.launcher, newWorktrees(), newRepo(), st, a.reviewReader, assigneeID, agent.PromptContext{
 		Slice:           s,
 		Project:         project,
 		ProjectID:       a.cfg.ActiveProjectID,
 		WorkingDir:      expandHome(strings.TrimSpace(workdir)),
 		AssigneeName:    assigneeName,
-		Fix:             fixLaunch(s),
 		Milestone:       milestone,
 		MilestoneSlices: siblings,
 		Frontend:        agent.FrontendTUI,
@@ -317,18 +316,17 @@ func trimModel(m config.AgentModel) config.AgentModel { return actions.TrimModel
 // which is what a headless launch reuses. Only two things are left here: the
 // message this key reports — the toast about where the session was put, or
 // the error banner an outright failure gets, see [actions.Launch] for which
-// is which and why — and running the fix launch's gate. A fix launch — a
-// slice whose pull request is out, see [actions.FixLaunch] — asks gh whether
-// that pull request is still open, first of everything and before any
-// worktree is cut, because it is the one fact the board holds no fresh reading
-// of — see [actions.PRStillOpen], which headless slice-launch runs the same
-// way.
-func launchAgent(l AgentLauncher, w Worktrees, r Repo, st store.Store, viewer PRViewer, reviewer actions.PRReviewReader,
+// is which and why — and the resume a launch on published work opens with. A
+// slice in progress with a pull request recorded is work taken back up after
+// its approval, and the record says so first, as `nat slice-resume` would —
+// [actions.Resume], which writes nothing where the work is already resumed —
+// before the ordinary relaunch, the same two steps the app takes.
+func launchAgent(l AgentLauncher, w Worktrees, r Repo, st store.Store, reviewer actions.PRReviewReader,
 	assigneeID string, c agent.PromptContext, m config.AgentModel, attach bool) tea.Cmd {
 	return func() tea.Msg {
-		if c.Fix {
-			if toast, sev, ok := actions.PRStillOpen(viewer, c.WorkingDir, c.Slice); !ok {
-				return agentLaunchedMsg{toast: toast, sev: sev}
+		if c.Slice.Status == domain.SliceClaimed && c.Slice.PRURL != "" {
+			if _, err := actions.Resume(context.Background(), st, c.Slice, boardResumeNote); err != nil {
+				return agentLaunchedMsg{err: err}
 			}
 		}
 		res, err := actions.Launch(context.Background(), l, w, r, st, reviewer, assigneeID, c, m)
@@ -341,6 +339,10 @@ func launchAgent(l AgentLauncher, w Worktrees, r Repo, st store.Store, viewer PR
 		return agentLaunchedMsg{slice: res.Context.Slice, session: res.Session, attach: attach, toast: res.Toast, sev: res.Sev}
 	}
 }
+
+// boardResumeNote is why the record says the work was taken back up when the
+// board's l key relaunches a slice whose pull request is out.
+const boardResumeNote = "Relaunched from the board to pick the work back up."
 
 // attach hands the terminal to a session until the user detaches from it.
 func attach(l AgentLauncher, sliceID, session string) tea.Cmd {
@@ -385,14 +387,10 @@ const (
 // slice its holder already claimed, so the agent's own claim is what it always
 // was.
 //
-// A slice with a pull request recorded — approved, or Done under the old rule —
-// is launchable for as long as that pull request is open: until it merges, the
-// review on it is exactly the sort of thing an agent is for. Such a launch is a
-// fix session — see [actions.FixLaunch] — and only the pull request recorded on
-// the page can be checked here, since whether it is still open is a question
-// for gh and gh is not asked on a keystroke. A Done slice with none recorded is
-// refused on the spot, and in its own words: there is nothing to read a review
-// off, and nothing an agent could do with the slice instead.
+// A slice in progress with a pull request recorded is launchable the same way:
+// it is work taken back up after its approval, and the launch resumes it first
+// — see [launchAgent]. A Done slice is not: its work is merged, and new work on
+// it is a new slice.
 //
 // A status a project has invented is out: it is not a state this flow knows
 // what to do with.
@@ -417,16 +415,13 @@ func (a *App) launchAgentFlow() tea.Cmd {
 	if a.live[s.ID] != "" {
 		return a.showConfirm(fmt.Sprintf("An agent is already running for %q — press t to attach.", s.Name), sevWarning)
 	}
-	if s.Status == domain.SliceDone && s.PRURL == "" {
-		return a.showConfirm(fmt.Sprintf("%q is done with no pull request recorded — there is nothing left to launch an agent on.", s.Name), sevWarning)
+	if s.Status == domain.SliceDone {
+		return a.showConfirm(fmt.Sprintf("%q is done — its work is merged, and new work on it is a new slice.", s.Name), sevWarning)
 	}
 	if !launchable(s) {
-		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices, slices in progress and done slices with a pull request still open can be launched.", s.Name, statusWord(s)), sevWarning)
+		return a.showConfirm(fmt.Sprintf("%q is %s — only Todo slices and slices in progress can be launched.", s.Name, statusWord(s)), sevWarning)
 	}
-	if fixLaunch(s) && a.prViewer == nil {
-		return nil
-	}
-	if !fixLaunch(s) {
+	if s.PRURL == "" {
 		if blockers := a.board.Blockers(s); len(blockers) > 0 {
 			// A cycle is named as one: what it waits on is itself, and the
 			// refusal has to say which dependency to drop or there is nothing
@@ -464,16 +459,12 @@ func (a *App) launchChosen(s domain.Slice, workdir string, project config.Projec
 }
 
 // launchable reports whether a slice is one an agent can be started on: not
-// yet begun, begun and no longer being worked, or finished and out as a pull
-// request that has not landed. The live session is the caller's check rather
-// than this one's, since an agent already running is a different refusal with a
-// different thing to say.
+// yet begun, or begun and no longer being worked. The live session is the
+// caller's check rather than this one's, since an agent already running is a
+// different refusal with a different thing to say.
 func launchable(s domain.Slice) bool {
-	return s.Status == domain.SliceTodo || s.Status == domain.SliceClaimed || fixLaunch(s)
+	return s.Status == domain.SliceTodo || s.Status == domain.SliceClaimed
 }
-
-// fixLaunch is [actions.FixLaunch].
-func fixLaunch(s domain.Slice) bool { return actions.FixLaunch(s) }
 
 // blockerList names the slices a blocked one is waiting on, in the order it
 // names them and with the status each is at, so the toast says both what the

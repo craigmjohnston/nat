@@ -4,11 +4,11 @@ import XCTest
 final class NavigatorModelTests: XCTestCase {
     private func slice(
         status: String = "Todo", branch: String? = nil, handedBack: Bool = false, pr: String = "",
-        blocked: Bool = false, fixing: Bool = false
+        blocked: Bool = false, resumed: Bool = false
     ) -> Slice {
         Slice(
             id: "s", name: "Slice", status: status, milestoneID: "M1", assignee: "", pr: pr, url: "",
-            branch: branch, blocked: blocked, handedBack: handedBack, fixing: fixing)
+            branch: branch, blocked: blocked, handedBack: handedBack, resumed: resumed)
     }
 
     private let prURL = "https://github.com/o/r/pull/40"
@@ -23,7 +23,8 @@ final class NavigatorModelTests: XCTestCase {
             (slice(status: "In progress"), .waiting, false, .thread, .terminal),
             (slice(status: "In progress", branch: "b", handedBack: true), nil, false, .changes, .diff),
             (slice(status: "In progress", branch: "b", pr: prURL), nil, false, .pr, .pr),
-            (slice(status: "In progress", branch: "b", pr: prURL, fixing: true), .working, true, .thread, .terminal),
+            (slice(status: "In progress", pr: prURL, resumed: true), .working, true, .thread, .terminal),
+            (slice(status: "In progress", pr: prURL, resumed: true), nil, true, .thread, .terminal),
             (slice(status: "Done", branch: "b", pr: prURL), nil, false, .pr, .pr),
             (slice(status: "Done"), nil, false, .thread, .empty),
             (slice(status: "Done", branch: "b"), nil, false, .thread, .diff),
@@ -168,15 +169,15 @@ final class NavigatorModelTests: XCTestCase {
         XCTAssertTrue(stalled.showsLaunch)
         XCTAssertFalse(stalled.launchIsPrimary)
 
-        let fixing = NavigatorModel(slice: slice(status: "In progress", pr: prURL, fixing: true), agent: nil)
-        XCTAssertTrue(fixing.showsLaunch)
-        XCTAssertFalse(fixing.launchIsFix, "a fix already under way relaunches")
+        let resumed = NavigatorModel(slice: slice(status: "In progress", pr: prURL, resumed: true), agent: nil)
+        XCTAssertTrue(resumed.showsLaunch, "resumed with its agent gone: a relaunch")
+        XCTAssertTrue(resumed.canLaunch)
 
-        // Approved, at its pull request with nobody on it: a fix launch.
+        // Approved, at its pull request with nobody on it: no launch — going
+        // back to the agent is Send back's.
         let approved = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil)
-        XCTAssertTrue(approved.showsLaunch)
-        XCTAssertTrue(approved.canLaunch)
-        XCTAssertTrue(approved.launchIsFix)
+        XCTAssertFalse(approved.showsLaunch)
+        XCTAssertTrue(approved.canLaunch, "the slice menu still may")
         XCTAssertFalse(NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: .working).showsLaunch)
 
         let live = NavigatorModel(slice: slice(status: "In progress"), agent: .working)
@@ -203,6 +204,71 @@ final class NavigatorModelTests: XCTestCase {
 
         let done = NavigatorModel(slice: slice(status: "Done", pr: prURL), agent: nil)
         XCTAssertFalse(done.showsMerge)
+
+        // Resumed: neither Approve nor Merge until the next hand-back.
+        let resumed = NavigatorModel(slice: slice(status: "In progress", pr: prURL, resumed: true), agent: .working)
+        XCTAssertFalse(resumed.showsReviewActions)
+        XCTAssertFalse(resumed.showsMerge)
+    }
+
+    // MARK: - Resumed
+
+    /// Selecting a resumed slice — or coming back to it — lands where the
+    /// work now is: the Task log open, the terminal up, agent or none.
+    func testAResumedSliceOpensOnTheTaskLogAndTheTerminal() {
+        for agent in [nil, AgentActivity.working, .waiting] {
+            let model = NavigatorModel(slice: slice(status: "In progress", pr: prURL, resumed: true), agent: agent)
+            XCTAssertEqual(model.phase, .thread)
+            XCTAssertEqual(NavigatorFocus(open: model.defaultOpen, main: model.defaultMain),
+                           NavigatorFocus(open: [.thread], main: .terminal), "\(String(describing: agent))")
+        }
+    }
+
+    /// Its Branch cleared, a resumed slice keeps Changes (nat reads its
+    /// agent branch), Visual changes and PR, each with the resumed notice.
+    func testAResumedSliceKeepsItsSections() {
+        let model = NavigatorModel(
+            slice: slice(status: "In progress", pr: prURL, resumed: true), agent: .working, hasVisuals: true)
+        XCTAssertTrue(model.resumed)
+        XCTAssertTrue(model.hasBranch)
+        XCTAssertEqual(NavigatorSection.allCases.filter(model.isLive), NavigatorSection.allCases)
+        XCTAssertEqual(model.tabs, [.terminal, .changes, .visuals, .pr])
+        XCTAssertFalse(NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil).resumed)
+        XCTAssertEqual(
+            NavigatorModel.resumedNotice,
+            "The agent is working on this again — what is here may change or be out of date.")
+    }
+
+    /// Comments on the diff go to a resumed slice's live agent — no review to
+    /// approve, but someone to tell.
+    func testChangesSendsCommentsOnAReviewAndToAResumedSlicesLiveAgent() {
+        XCTAssertTrue(NavigatorModel(slice: slice(status: "In progress", branch: "b", handedBack: true), agent: nil).showsChangesSend)
+        XCTAssertTrue(NavigatorModel(slice: slice(status: "In progress", pr: prURL, resumed: true), agent: .working).showsChangesSend)
+        XCTAssertFalse(NavigatorModel(slice: slice(status: "In progress", pr: prURL, resumed: true), agent: nil).showsChangesSend)
+        XCTAssertFalse(NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL), agent: .working).showsChangesSend)
+    }
+
+    // MARK: - Send back to agent
+
+    func testSendBackIsOfferedOnAHandBackInReviewOrAtItsPR() {
+        let review = NavigatorModel(slice: slice(status: "In progress", branch: "b", handedBack: true), agent: nil)
+        XCTAssertTrue(review.showsSendBack)
+        XCTAssertTrue(review.canSendBack)
+        let approved = NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL), agent: .waiting)
+        XCTAssertTrue(approved.showsSendBack)
+        XCTAssertTrue(approved.canSendBack)
+        for other in [
+            slice(), slice(status: "In progress"), slice(status: "In progress", pr: prURL, resumed: true),
+            slice(status: "Done", pr: prURL),
+        ] {
+            XCTAssertFalse(NavigatorModel(slice: other, agent: nil).showsSendBack, "\(other)")
+        }
+        // No agent, and none can be launched — a dependency not done.
+        let blocked = NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL, blocked: true), agent: nil)
+        XCTAssertFalse(blocked.canSendBack)
+        XCTAssertTrue(
+            NavigatorModel(slice: slice(status: "In progress", branch: "b", pr: prURL, blocked: true), agent: .waiting)
+                .canSendBack)
     }
 
     // MARK: - The action bar
@@ -235,9 +301,9 @@ final class NavigatorModelTests: XCTestCase {
 
     func testApproveReadsApproveChangesWithNoCommentsAndWithCommentsOtherwise() {
         let handed = slice(status: "In progress", branch: "b", handedBack: true)
-        XCTAssertEqual(bar(handed), .buttons([
-            NavigatorBarButton(action: .approve, title: "Approve changes", enabled: true, primary: true),
-        ]))
+        XCTAssertEqual(
+            bar(handed).button(.approve),
+            NavigatorBarButton(action: .approve, title: "Approve changes", enabled: true, primary: true))
         XCTAssertEqual(bar(handed, pending: 2).button(.approve)?.title, "Approve with comments")
     }
 
@@ -249,20 +315,43 @@ final class NavigatorModelTests: XCTestCase {
                 action: .approve, title: "Approve changes", enabled: false, primary: true, help: "All commits only"))
     }
 
-    func testASliceAtItsPROffersFixLaunchBesideMergeThePrimaryTrailing() {
+    func testASliceAtItsPROffersSendBackBesideMergeThePrimaryTrailing() {
         let approved = slice(status: "In progress", branch: "b", pr: prURL)
+        let sendBack = NavigatorBarButton(action: .sendBack, title: "Send back to agent", enabled: true, primary: false)
         XCTAssertEqual(bar(approved), .buttons([
-            NavigatorBarButton(action: .launch, title: "Launch agent", enabled: true, primary: false),
+            sendBack,
             NavigatorBarButton(action: .merge, title: "Merge PR", enabled: true, primary: true),
         ]))
+        XCTAssertEqual(bar(approved, .working), bar(approved), "a live agent changes nothing but who is told")
         XCTAssertEqual(bar(approved, canMerge: false).button(.merge)?.enabled, false)
+        let blocked = slice(status: "In progress", branch: "b", pr: prURL, blocked: true)
+        XCTAssertEqual(
+            bar(blocked).button(.sendBack),
+            NavigatorBarButton(
+                action: .sendBack, title: "Send back to agent", enabled: false, primary: false,
+                help: "No agent is live, and none can be launched"))
     }
 
-    func testAFixAgentLiveLeavesMergeAlone() {
-        let fixing = slice(status: "In progress", branch: "b", pr: prURL, fixing: true)
-        XCTAssertEqual(bar(fixing, .working), .buttons([
-            NavigatorBarButton(action: .merge, title: "Merge PR", enabled: true, primary: true),
+    func testAReviewOffersSendBackBesideApprove() {
+        let handed = slice(status: "In progress", branch: "b", handedBack: true)
+        XCTAssertEqual(bar(handed, .waiting), .buttons([
+            NavigatorBarButton(action: .sendBack, title: "Send back to agent", enabled: true, primary: false),
+            NavigatorBarButton(action: .approve, title: "Approve changes", enabled: true, primary: true),
         ]))
+    }
+
+    /// Resumed, its agent at it again: nothing to press but the launch, greyed
+    /// — no Approve, no Merge, no Send back until the next hand-back.
+    func testAResumedSlicesBarIsTheLaunchAlone() {
+        let resumed = slice(status: "In progress", pr: prURL, resumed: true)
+        XCTAssertEqual(bar(resumed, .working), .buttons([
+            NavigatorBarButton(
+                action: .launch, title: "Launch agent", enabled: false, primary: true,
+                help: "The agent is still working"),
+        ]))
+        XCTAssertEqual(bar(resumed), .buttons([
+            NavigatorBarButton(action: .launch, title: "Launch agent", enabled: true, primary: false),
+        ]), "its agent gone: a relaunch")
     }
 
     func testWithNothingRelevantTheLatestSectionsPrimaryIsGreyedSayingWhy() {
@@ -286,10 +375,15 @@ final class NavigatorModelTests: XCTestCase {
         ]))
     }
 
-    func testAMergedPRIsNoMergeButAFixLaunchStillStands() {
+    func testAMergedPRIsNoMergeAndNoSendBack() {
         let approved = slice(status: "In progress", branch: "b", pr: prURL)
-        XCTAssertEqual(bar(approved, prOpen: false).button(.merge), nil)
-        XCTAssertNotNil(bar(approved, prOpen: false).button(.launch))
+        // Nothing to press: Merge drawn greyed as the bar's stand-in, and no
+        // Send back — there is nothing to send back once it is merged.
+        XCTAssertEqual(bar(approved, prOpen: false), .buttons([
+            NavigatorBarButton(
+                action: .merge, title: "Merge PR", enabled: false, primary: true,
+                help: "The pull request is no longer open"),
+        ]))
     }
 
     func testADoneSlicesBarIsTaskCompleted() {
@@ -304,10 +398,9 @@ final class NavigatorModelTests: XCTestCase {
         XCTAssertEqual(merged.prStatus, .merged)
         XCTAssertEqual(merged.prStatus?.label, "Merged")
 
-        // A fix session on an approved slice is fixing, not done, and so
-        // not merged.
-        let fixing = NavigatorModel(slice: slice(status: "In progress", pr: prURL, fixing: true), agent: .working)
-        XCTAssertNil(fixing.prStatus)
+        // A resumed approved slice is working, not done, and so not merged.
+        let resumed = NavigatorModel(slice: slice(status: "In progress", pr: prURL, resumed: true), agent: .working)
+        XCTAssertNil(resumed.prStatus)
 
         let approved = NavigatorModel(slice: slice(status: "In progress", pr: prURL), agent: nil)
         XCTAssertNil(approved.prStatus)

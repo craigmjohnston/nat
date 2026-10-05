@@ -314,6 +314,18 @@ never what you assume or expect to be true. A summary that says a value was
 is exactly the kind of line that costs somebody else an hour redoing the work
 to find out it was wrong.
 
+If the user asks for more or different work after you have handed back, put it
+on the record before changing anything:
+
+```
+nat slice-resume <slice> --project <project> --note '<what they asked for>'
+```
+
+That takes the slice back out of review, so the user's board reads it as work
+in progress again. Then do the work, push, and hand back again with the same
+`complete-slice --branch` command. If it refuses because the slice is Done, the
+work is merged: say so to the user and stop.
+
 Leave `--branch` off when there was no branch — a docs or research slice — and
 the slice is marked Done there and then, with no pull request to describe. Pipe
 the summary in on stdin when it is too long for an argument.

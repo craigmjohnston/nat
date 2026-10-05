@@ -161,6 +161,12 @@ func (s *Sourced) RecordSentBack(ctx context.Context, id, comments string) error
 	return s.local.RecordSentBack(ctx, id, comments)
 }
 
+// RecordResumed files the resumption in the file. It is body prose, so the
+// plugin hears nothing of it.
+func (s *Sourced) RecordResumed(ctx context.Context, id, note string) error {
+	return s.local.RecordResumed(ctx, id, note)
+}
+
 // RecordNote files a note in the file. A note is body prose, so the plugin
 // hears nothing of it.
 func (s *Sourced) RecordNote(ctx context.Context, id, from, text string) error {

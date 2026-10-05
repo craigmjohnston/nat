@@ -60,16 +60,20 @@ public enum SliceActionKind: Hashable, Sendable, CaseIterable {
     case launch
     case approve
     case merge
+    /// Send back to agent (`AppModel.sendBack`): resume, then tell or launch.
+    case sendBack
 
     /// The pipeline stage the action moves the slice into, where it moves it
     /// to another one at all: launching hands the slice to the Agent stage,
     /// approving opens the pull request the PR stage reads. A merge ends the
-    /// pipeline rather than advancing along it.
+    /// pipeline rather than advancing along it; a send-back starts from
+    /// review or the pull request alike, so it has no one stage to fall back
+    /// to — the view puts the terminal up once it has gone.
     public var advance: StageAdvance? {
         switch self {
         case .launch: return StageAdvance(from: .brief, to: .agent)
         case .approve: return StageAdvance(from: .diff, to: .pr)
-        case .merge: return nil
+        case .merge, .sendBack: return nil
         }
     }
 }

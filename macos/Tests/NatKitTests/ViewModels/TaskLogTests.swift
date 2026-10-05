@@ -325,6 +325,34 @@ final class TaskLogTests: XCTestCase {
         XCTAssertEqual(log[9].facts, [])
     }
 
+    /// Work resumed after a hand-back: its own card — titled so, why as its
+    /// body, its stamp as its time — and the hand-back that ended the new
+    /// work the ordinary hand-back card after it, in order.
+    func testWorkResumedIsItsOwnCardBeforeTheHandBackThatFollows() throws {
+        let json = """
+        {"id": "s", "name": "n", "url": "", "status": "In progress", "milestone": "M1", "assignee": "",
+         "blocked": false, "handed_back": true, "brief": "",
+         "events": [
+           {"kind": "handed_back", "note": "first"},
+           {"kind": "resumed", "note": "Checks are failing.", "at": "2026-01-15T09:35:00Z"},
+           {"kind": "handed_back", "note": "fixed", "at": "2026-01-15T09:54:00Z"},
+           {"kind": "approved", "pr": "\(prURL)"}
+         ]}
+        """
+        let events = try XCTUnwrap(try JSONDecoder().decode(SliceDetail.self, from: Data(json.utf8)).events)
+        XCTAssertEqual(events.map(\.kind), [.handedBack, .resumed, .handedBack, .approved])
+        let log = buildThreadEvents(slice: slice(status: "In progress", pr: prURL), agent: nil, brief: nil, events: events)
+        XCTAssertEqual(log.map(\.kind), [.launched, .handedBack, .resumed, .handedBack, .approved])
+        XCTAssertEqual(log[2].title, "Work resumed")
+        XCTAssertNil(log[2].meta)
+        XCTAssertEqual(log[2].body, "Checks are failing.")
+        XCTAssertEqual(log[2].tone, .accent)
+        XCTAssertEqual(log[2].when, events[1].at)
+        XCTAssertNotNil(log[2].when)
+        XCTAssertEqual(log[3].body, "fixed")
+        XCTAssertFalse(log[2].isCollapsible, "it is no quiet item")
+    }
+
     func testAReleasedSliceKeepsItsHistory() {
         let log = buildThreadEvents(
             slice: slice(status: "Todo"), agent: nil, brief: nil, events: [TaskLogEvent(.released, by: "Craig")])

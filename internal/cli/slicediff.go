@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/logging"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // sliceDiff prints the unified diff of a handed-back branch — the same read
@@ -71,8 +73,14 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 }
 
 // handedBackSlice is the slice a branch read is about and the checkout its
-// branch is read in — refused for a slice with no branch
-// recorded, which has nothing to read. Shared by slice-diff and slice-file.
+// branch is read in — refused for a slice with no branch to read. Shared by
+// slice-diff and slice-file.
+//
+// A slice in progress whose branch was cleared after a hand-back — resumed,
+// or sent back — is read on [actions.AgentBranch], the very branch a
+// relaunch places its agent on, so the review keeps a reading while the work
+// is redone; the slice comes back with that branch filled in. Only a slice
+// never handed back at all (no Handed back in its task log) is refused.
 func handedBackSlice(ctx context.Context, command, ref, projectRef string, env Env) (domain.Slice, string, error) {
 	id, err := pageID(command, ref)
 	if err != nil {
@@ -96,6 +104,9 @@ func handedBackSlice(ctx context.Context, command, ref, projectRef string, env E
 	// one is no longer refused: the board marks a slice Done as it opens the
 	// pull request, and the review goes on reading the branch until that
 	// lands — the same reason such a slice stays in the NEEDS REVIEW section.
+	if s.Branch == "" && s.Status == domain.SliceClaimed && handedBackBefore(ctx, st, s.ID) {
+		s.Branch = actions.AgentBranch(s)
+	}
 	if s.Branch == "" {
 		return domain.Slice{}, "", fmt.Errorf("%q is not handed back: only a slice with a branch has a diff to read", s.Name)
 	}
@@ -211,4 +222,22 @@ func writeDiffJSON(out io.Writer, base, branch, diff string) error {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	return enc.Encode(doc)
+}
+
+// handedBackBefore reports whether a slice's task log holds a hand-back: a
+// slice whose branch is empty now was handed back once and taken back to
+// work, rather than never handed back at all. A body that cannot be read is
+// logged and concludes nothing — the slice is read as never handed back.
+func handedBackBefore(ctx context.Context, st store.Store, id string) bool {
+	body, err := st.Body(ctx, id)
+	if err != nil {
+		logging.Action("could not read a slice's task log for an earlier hand-back", "slice", id, "err", err)
+		return false
+	}
+	for _, e := range store.TaskEvents(body) {
+		if e.Kind == store.HandedBackKind {
+			return true
+		}
+	}
+	return false
 }

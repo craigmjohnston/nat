@@ -131,8 +131,8 @@ struct VisualHeader: View {
                     .ink(.primary)
                     .lineLimit(1)
                     .layoutPriority(1)
-                if store.isNew(sliceID: slice.id, visual) {
-                    Chip(NavSectionStatus.new.label, tone: NavSectionStatus.new.tone, size: .small).fixedSize()
+                if let badge = store.badge(sliceID: slice.id, visual) {
+                    SeenBadgeChip(badge: badge)
                 }
                 Text(visual.uri)
                     .monoXS()

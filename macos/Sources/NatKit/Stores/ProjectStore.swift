@@ -19,6 +19,7 @@ public protocol NatClientProtocol: Sendable {
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String
     func sliceRework(projectID: String, sliceRef: String, comments: String) async throws -> Void
+    func sliceResume(projectID: String, sliceRef: String, note: String) async throws -> Void
     func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult
     func sliceDiscardFollowUps(projectID: String, sliceRef: String) async throws -> TriageResult
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail
@@ -171,6 +172,12 @@ extension NatClientProtocol {
     /// `NatClient` and the fixture client are the two that implement it.
     public func sliceRework(projectID: String, sliceRef: String, comments: String) async throws {
         throw NatError.commandFailed("slice-rework: not supported by this client")
+    }
+
+    /// Resuming a handed-back slice: only `NatClient` and the fixture client
+    /// implement it, and the tests of Send back to agent stub it themselves.
+    public func sliceResume(projectID: String, sliceRef: String, note: String) async throws {
+        throw NatError.commandFailed("slice-resume: not supported by this client")
     }
 
     /// The whole-branch diff, without naming a commit — `sliceDiff(projectID:sliceRef:commit:)`

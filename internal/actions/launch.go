@@ -25,10 +25,11 @@ type Launcher interface {
 	Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error
 }
 
-// PRReviewReader is what a fix launch needs of gh to gather the review's
-// state at launch time: its comments and its checks. Narrower than gh.CLI,
+// PRReviewReader is what a launch needs of gh to gather a pull request's
+// review at launch time: its comments and its checks. Narrower than gh.CLI,
 // the way every other seam here is. A caller with none passes nil, and the
-// prompt goes without the snapshot; [Launch] never calls it outside c.Fix.
+// prompt goes without the snapshot; [Launch] calls it only for a slice with a
+// pull request recorded.
 type PRReviewReader interface {
 	ReviewComments(dir, ref string) (string, error)
 	Checks(dir, ref string) (string, error)
@@ -90,63 +91,50 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 		return LaunchResult{Toast: p.Toast, Sev: p.Sev}, nil
 	}
 	c.WorkingDir, c.Branch, c.Repo = p.Dir, p.Branch, p.Repo
-	// A resume or a fix launch has commits already on the branch worth
-	// reading; a first-time launch has nothing yet to gather.
-	if c.Branch != "" && (c.Fix || agent.Resuming(c)) {
+	// A resume has commits already on the branch worth reading; a first-time
+	// launch has nothing yet to gather.
+	if c.Branch != "" && agent.Resuming(c) {
 		c.GitBase, c.GitLog, c.GitDiffStat = gitSnapshot(r, c.WorkingDir, c.Branch)
 	}
-	// A fix session claims nothing and reads no brief: the slice already
-	// carries its pull request, so it is everything a claim would make it, and
-	// the work in flight is that pull request's review rather than the slice.
-	// [agent.Prompt] sends such a session at the fix prompt instead, which is
-	// handed the review gathered below rather than told to read it live. What
-	// it does write is the one line that says a fix is under way — see the
-	// Relaunched below.
-	if !c.Fix {
-		if err := ClaimSlice(ctx, st, c.Slice, assigneeID); err != nil {
-			return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
-		}
-		brief, err := st.Body(ctx, c.Slice.ID)
-		if err != nil {
-			return LaunchResult{}, fmt.Errorf("claimed %q but could not read its brief: %w", c.Slice.Name, err)
-		}
-		conventions, err := st.Body(ctx, c.ProjectID)
-		if err != nil {
-			return LaunchResult{}, fmt.Errorf("claimed %q but could not read the project conventions: %w", c.Slice.Name, err)
-		}
-		c.Brief, c.Conventions = brief, conventions
-		c.MilestoneDigest = milestoneDigest(ctx, st, c.Milestone, c.MilestoneSlices)
-		// A relaunch — the slice's brief already carries history from an
-		// earlier pass ([store.HasHistory]: a note alone is not history, since
-		// one can be left on a slice nobody has launched yet) — gets one more
-		// line in the task log, so the log says a session picked this back up
-		// rather than reading as though one continuous session did it all.
-		// Status alone never makes one: a slice set In progress by hand, with
-		// nothing on the record, was never launched by nat to be relaunched.
-		// Every other launch is a fresh one and writes its own first line
-		// instead, a Launched, so the log's first word on this slice carries a
-		// time. Either write's own failure is logged and never fails the
-		// launch — the agent is started either way, and the gap is one line in
-		// a log, not lost work.
-		if store.HasHistory(store.TaskEvents(brief)) {
-			if err := st.RecordRelaunch(ctx, c.Slice.ID); err != nil {
-				logging.Action("could not record a relaunch", "slice", c.Slice.ID, "err", err)
-			}
-		} else if err := st.RecordLaunch(ctx, c.Slice.ID); err != nil {
-			logging.Action("could not record a launch", "slice", c.Slice.ID, "err", err)
-		}
-		c.Container = promptContainer(ctx, st, c.Slice)
-	} else {
-		c.ReviewComments, c.ReviewChecks = reviewSnapshot(viewer, c.WorkingDir, c.Slice.PRURL)
-		// A fix session is a return to work, and the record says so: a
-		// Relaunched after the approval is what store.Fixing reads the slice
-		// as being fixed off, until the session's own hand-back follows it.
-		// As for any relaunch, a failed write is logged and never fails the
-		// launch.
-		if err := st.RecordRelaunch(ctx, c.Slice.ID); err != nil {
-			logging.Action("could not record a fix launch", "slice", c.Slice.ID, "err", err)
-		}
+	if err := ClaimSlice(ctx, st, c.Slice, assigneeID); err != nil {
+		return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
 	}
+	brief, err := st.Body(ctx, c.Slice.ID)
+	if err != nil {
+		return LaunchResult{}, fmt.Errorf("claimed %q but could not read its brief: %w", c.Slice.Name, err)
+	}
+	conventions, err := st.Body(ctx, c.ProjectID)
+	if err != nil {
+		return LaunchResult{}, fmt.Errorf("claimed %q but could not read the project conventions: %w", c.Slice.Name, err)
+	}
+	c.Brief, c.Conventions = brief, conventions
+	c.MilestoneDigest = milestoneDigest(ctx, st, c.Milestone, c.MilestoneSlices)
+	// A slice with a pull request recorded is work already out: the prompt
+	// tells the agent so and carries the review as it stood at launch, read
+	// here once rather than left for the agent to read with gh.
+	if c.Slice.PRURL != "" {
+		c.ReviewComments, c.ReviewChecks = reviewSnapshot(viewer, c.WorkingDir, c.Slice.PRURL)
+	}
+	// A relaunch — the slice's brief already carries history from an
+	// earlier pass ([store.HasHistory]: a note alone is not history, since
+	// one can be left on a slice nobody has launched yet) — gets one more
+	// line in the task log, so the log says a session picked this back up
+	// rather than reading as though one continuous session did it all.
+	// Status alone never makes one: a slice set In progress by hand, with
+	// nothing on the record, was never launched by nat to be relaunched.
+	// Every other launch is a fresh one and writes its own first line
+	// instead, a Launched, so the log's first word on this slice carries a
+	// time. Either write's own failure is logged and never fails the
+	// launch — the agent is started either way, and the gap is one line in
+	// a log, not lost work.
+	if store.HasHistory(store.TaskEvents(brief)) {
+		if err := st.RecordRelaunch(ctx, c.Slice.ID); err != nil {
+			logging.Action("could not record a relaunch", "slice", c.Slice.ID, "err", err)
+		}
+	} else if err := st.RecordLaunch(ctx, c.Slice.ID); err != nil {
+		logging.Action("could not record a launch", "slice", c.Slice.ID, "err", err)
+	}
+	c.Container = promptContainer(ctx, st, c.Slice)
 	session := agent.SessionName(c.Slice.ID)
 	file, err := agent.WritePromptFile(session, agent.Prompt(c))
 	if err != nil {
@@ -214,9 +202,9 @@ func milestoneDigest(ctx context.Context, st Store, milestone domain.Milestone, 
 	return agent.MilestoneDigest(milestone, siblings, summaries)
 }
 
-// gitSnapshot is a resume or fix launch's read of the worktree, once
-// [PlaceAgent] has resolved it: the commit log and diff stat [agent.Prompt]
-// and [fixPrompt] render inline. Each read fails on its own — a diff stat
+// gitSnapshot is a resume launch's read of the worktree, once [PlaceAgent]
+// has resolved it: the commit log and diff stat [agent.Prompt] renders
+// inline. Each read fails on its own — a diff stat
 // read is not skipped because the log one failed — and a failed read is
 // logged and left empty, which is what tells the prompt to leave the whole
 // section out: the project's usual reads-conclude-nothing posture, so a
@@ -236,7 +224,7 @@ func gitSnapshot(r Repo, dir, branch string) (base, log, diffStat string) {
 	return base, log, diffStat
 }
 
-// reviewSnapshot is a fix launch's read of the pull request's review: its
+// reviewSnapshot is a launch's read of a recorded pull request's review: its
 // comments and its checks. A nil viewer, or a read that fails, is logged and
 // left empty, the same posture [gitSnapshot] keeps.
 func reviewSnapshot(viewer PRReviewReader, dir, prURL string) (comments, checks string) {

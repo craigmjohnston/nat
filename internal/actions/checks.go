@@ -17,13 +17,18 @@ type PromptSender interface {
 }
 
 // ChecksStore is what [NoticeFailingChecks] does to a plan: read a slice's
-// task log, and file one event on it — a Sent back where the failure went to a
-// live agent, a Checks failed where there was none to send it to.
+// task log, and file on it — a resumption and a Sent back where the failure
+// went to a live agent, a Checks failed where there was none to send it to.
 type ChecksStore interface {
+	ResumeStore
 	Body(ctx context.Context, id string) (string, error)
 	RecordSentBack(ctx context.Context, id, comments string) error
 	RecordChecksFailed(ctx context.Context, id, checks string) error
 }
+
+// ChecksResumeNote is the reason a checks nudge files when it takes a
+// handed-back slice back to work ([Resume]).
+const ChecksResumeNote = "Checks are failing on the pull request."
 
 // FailingChecks is one slice whose pull request a reading found red, with the
 // checks that failed.
@@ -44,12 +49,15 @@ type FailingChecks struct {
 // that cannot be read concludes nothing and the slice is passed over.
 //
 // A live session (live maps slice ID to session; a session that outlived its
-// hand-back counts, and so does a fix session) is sent [agent.ChecksPrompt],
-// then a Sent back naming the checks is filed — the existing send-back note,
-// with Branch left alone, since the pull request hangs off it. The send goes
-// first: a send that fails is logged and nothing is written, so the next
-// reading tries again; a record that fails after a send that worked is
-// logged, and costs at worst one repeated nudge.
+// hand-back counts) is a resumption, recorded like any other: [Resume] files a
+// Resumed and clears the Branch first — nothing, where the slice is already
+// back at work — so the slice reads as in progress while the agent fixes it,
+// and a resume refused is logged and nothing more is done. Then the agent is
+// sent [agent.ChecksPrompt], and then a Sent back naming the checks is filed,
+// which is what the failure's identity is read back off. A send that fails is
+// logged and no Sent back is written, so the next reading tries again (its
+// resume, the slice already resumed, writing nothing); a record that fails
+// after a send that worked is logged, and costs at worst one repeated nudge.
 //
 // It reports whether anything was written, so the caller knows a refresh is
 // owed.
@@ -74,6 +82,10 @@ func NoticeFailingChecks(ctx context.Context, st ChecksStore, sender PromptSende
 				continue
 			}
 			wrote = true
+			continue
+		}
+		if _, err := Resume(ctx, st, f.Slice, ChecksResumeNote); err != nil {
+			logging.Action("could not resume a slice for its failing checks", "slice", f.Slice.ID, "error", err)
 			continue
 		}
 		prompt := agent.ChecksPrompt(agent.ChecksContext{
