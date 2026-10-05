@@ -291,9 +291,10 @@ relaunch prompt already tells an agent it is continuing.
 ### `NatClient`
 
 - `sliceShow` decodes the new field into `SliceDetail.followUps`.
-- New `sliceTriage(projectID:sliceRef:queue:fold:drop:)` and
-  `sliceDiscardFollowUps(projectID:sliceRef:)` → the command above.
-- `FixtureNatClient` grows both, for the gallery.
+- New `sliceTriage(projectID:sliceRef:queue:fold:drop:)` → the command
+  above; a card's Discard all is the same call dropping its batch's indexes
+  (`--drop-all` would take every batch with it).
+- `FixtureNatClient` grows it, for the gallery.
 
 ### Rail and attention
 
