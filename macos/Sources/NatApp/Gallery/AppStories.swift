@@ -203,8 +203,26 @@ enum AppStories {
             await store.load(sliceID: sliceID, visuals: Fixtures.visualChanges)
             if seeded {
                 Fixtures.seedPendingVisualComments(into: store)
-                store.toggleViewed(sliceID: sliceID, index: 1)
+                store.toggleViewed(sliceID: sliceID, Fixtures.visualChanges[0])
             }
+        }
+    }
+
+    /// The handed-back slice after a second hand-in: the first render
+    /// re-rendered and unseen, folded so its section has not been on screen
+    /// — New on its row, its header and the section's — the second
+    /// re-rendered but seen, and the third unchanged.
+    private static func visualsNewPane() async -> some View {
+        let sliceID = Fixtures.mergeBoxSliceID
+        return await slicePane(
+            sliceID, details: Fixtures.visualsWithNewsSliceDetails,
+            focus: NavigatorFocus(open: [.visuals], main: .visuals)
+        ) { appModel in
+            let store = appModel.visualStore(projectID: Fixtures.projectID)
+            store.loader = Fixtures.visualImageLoader
+            await store.load(sliceID: sliceID, visuals: Fixtures.visualChangesWithNews)
+            Fixtures.seedSeenVisual(into: store)
+            store.toggleCollapsed(sliceID: sliceID, Fixtures.visualChangesWithNews[0])
         }
     }
 
@@ -467,6 +485,52 @@ enum AppStories {
             size: window
         ) {
             await visualsPane(live: true, seeded: true)
+        },
+
+        Story(
+            name: "window-visuals-new",
+            summary: "A second hand-in: the first render re-rendered at the same path and not yet seen wears New "
+                + "on its row, on its (folded) header and on the Visual changes header; the second, re-rendered "
+                + "but already seen, and the unchanged third wear none.",
+            size: window
+        ) {
+            await visualsNewPane()
+        },
+
+        Story(
+            name: "visuals-pair",
+            summary: "A pair as one image: before left of the divider, after right of it, the divider at the "
+                + "middle with its handle, neither Before nor After selected, a pin on the after's pixels.",
+            size: pane
+        ) {
+            await VisualsPaneStory.pair(Fixtures.visualPair)
+        },
+
+        Story(
+            name: "visuals-pair-highlight",
+            summary: "The same pair with Highlight differences on: the pixels that differ — the taller card, the "
+                + "dot gone green — tinted over both sides.",
+            size: pane
+        ) {
+            await VisualsPaneStory.pair(Fixtures.visualPair, highlight: true)
+        },
+
+        Story(
+            name: "visuals-pair-before",
+            summary: "The same pair toggled to Before: the divider at the far right, the before whole, Before "
+                + "selected.",
+            size: pane
+        ) {
+            await VisualsPaneStory.pair(Fixtures.visualPair, show: .before)
+        },
+
+        Story(
+            name: "visuals-pair-size-mismatch",
+            summary: "A pair whose before is smaller than its after: both from the top-leading corner in a frame "
+                + "the larger of each, and Highlight differences disabled, its tooltip saying why.",
+            size: pane
+        ) {
+            await VisualsPaneStory.pair(Fixtures.visualPairMismatched)
         },
 
         Story(
@@ -2125,6 +2189,30 @@ private enum VisualsPaneStory {
             appModel: appModel, review: review, slice: Fixtures.slice(Fixtures.mergeBoxSliceID),
             visuals: Fixtures.visualChanges, authorName: "Craig Johnston",
             horizontalAnchor: zoomFirst > 1 ? .center : .leading)
+        .surface(.window)
+    }
+
+    /// The image list alone over one pair, a comment pinned on its after,
+    /// shown as `show` asks (the divider at the middle where nil) and its
+    /// differences highlighted where `highlight` asks.
+    static func pair(_ visual: VisualChange, show: VisualCompareSide? = nil, highlight: Bool = false) async -> some View {
+        let sliceID = Fixtures.mergeBoxSliceID
+        let appModel = await Fixtures.startedAppModel(
+            client: FixtureNatClient(details: Fixtures.sliceDetails.merging(
+                [sliceID: Fixtures.detail(visuals: [visual])]) { _, new in new }),
+            config: Fixtures.twoProjectConfig)
+        let review = VisualReview()
+        let store = review.store(appModel)
+        store.loader = Fixtures.visualImageLoader
+        await store.load(sliceID: sliceID, visuals: [visual])
+        store.setComment(
+            sliceID: sliceID, visual: visual, point: CGPoint(x: 1000, y: 260),
+            imageSize: Fixtures.visualPixelSizes[visual.uri] ?? .zero, text: "The checks line now sits flush.")
+        if let show { store.show(show, sliceID: sliceID, index: visual.index) }
+        if highlight { await store.toggleHighlight(sliceID: sliceID, visual: visual) }
+        return VisualsPane(
+            appModel: appModel, review: review, slice: Fixtures.slice(sliceID),
+            visuals: [visual], authorName: "Craig Johnston")
         .surface(.window)
     }
 }

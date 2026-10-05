@@ -262,10 +262,18 @@ nat slice-visuals <slice> --project <project> \
 <absolute path to the image>'
 ```
 
-`--visual` repeats, one per image. Hand in the full set each time: a later
-hand-in replaces an earlier one. Do not build a way to render when the project
-has none — hand back without images instead. The user reviews them in the app;
-their comments, if any, arrive here as a message.
+`--visual` repeats, one per image. Each hand-in adds to what is already filed:
+hand in only the images that are new or re-rendered, and one under a name
+already filed replaces it — there is no need to remove an image to update it.
+Take out an image that no longer shows anything relevant to the change (a view
+the work stopped touching, a render a differently named one has superseded) with
+`--remove '<its name>'`. Where the change is best judged against what was there
+before, add `--before '<the visual's name>
+<absolute path to the before image>'` — rendered to its own file, never the one
+the after is rendered to, since a before the after overwrote shows nothing. Do
+not build a way to render when the project has none — hand back without images
+instead. The user reviews them in the app; their comments, if any, arrive here
+as a message.
 
 Record the outcome with the slice's page ID or URL, as printed in the brief:
 

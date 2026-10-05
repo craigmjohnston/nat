@@ -27,12 +27,14 @@ public enum VisualImage: @unchecked Sendable, Equatable {
 }
 
 /// The Visual changes section's state, one per project like `DiffStore`:
-/// the handed-in images loaded by URI, each image's own zoom, and the
-/// comments pending on each slice's images until they are sent.
+/// the handed-in images loaded by identity (URI and hash), each item's own
+/// zoom and — for a pair — its divider and highlight, what has been viewed,
+/// folded and seen, and the comments pending on each slice's images until
+/// they are sent.
 ///
-/// Nothing here is written anywhere: the images are read from where the agent
-/// left them, and the comments live only in the session — cleared once a send
-/// has reached the agent, kept when it fails.
+/// Only the seen marks are written anywhere (`VisualSeenMemory`): the images
+/// are read from where the agent left them, and the comments live only in the
+/// session — cleared once a send has reached the agent, kept when it fails.
 @MainActor
 @Observable
 public final class VisualStore {
@@ -43,22 +45,37 @@ public final class VisualStore {
     public static let maxZoom: CGFloat = 4.0
     public static let zoomStep: CGFloat = 1.25
 
-    /// Every image loaded so far, by URI.
+    /// Every image loaded so far, by `VisualChange.imageKey`/`beforeKey` — a
+    /// URI and the hash it was handed in with, so a re-render saved over the
+    /// same path is read again.
     public private(set) var loaded: [String: VisualImage] = [:]
 
     /// Each image's zoom, by slice ID then visual index; absent is `fitZoom`.
     public private(set) var zooms: [String: [Int: CGFloat]] = [:]
+
+    /// Each pair's divider, by slice ID then visual index; absent is
+    /// `VisualCompare.middle`. Session-only, as zoom is.
+    public private(set) var dividers: [String: [Int: CGFloat]] = [:]
+
+    /// The pairs whose differences are highlighted, by slice ID.
+    public private(set) var highlighted: [String: Set<Int>] = [:]
+
+    /// Each pair's difference mask, by its before's and after's keys — the
+    /// two hashes — computed once.
+    public private(set) var masks: [String: VisualMask] = [:]
 
     /// The comments pending on each slice's images, by slice ID, in the
     /// order they are sent and drawn: by image, then those on the whole image
     /// first, then top to bottom and left to right.
     public private(set) var comments: [String: [PendingVisualComment]] = [:]
 
-    /// Which images have been marked viewed, and which are folded to their
-    /// header, by slice ID then visual index — the screen's own state, never
-    /// written anywhere, as `DiffStore`'s viewed and collapsed files are.
-    public private(set) var viewed: [String: Set<Int>] = [:]
-    public private(set) var collapsed: [String: Set<Int>] = [:]
+    /// Which items have been marked viewed, and which are folded to their
+    /// header, by slice ID then `VisualChange.identity` — the screen's own
+    /// state, never written anywhere, as `DiffStore`'s viewed and collapsed
+    /// files are. An item handed in again with a new hash is a new identity,
+    /// and starts afresh.
+    public private(set) var viewed: [String: Set<String>] = [:]
+    public private(set) var collapsed: [String: Set<String>] = [:]
 
     /// How a URI becomes an image — a seam a story or test swaps after first
     /// access (nothing is read until `load`), so `AppModel` takes no new
@@ -66,13 +83,21 @@ public final class VisualStore {
     public var loader: @Sendable (String) -> VisualImage = VisualStore.fileLoader
 
     private let client: NatClientProtocol
+    private let projectID: String
+    private let seen: VisualSeenMemory
 
-    /// The URI each index carried at the last load, by slice — what tells a
-    /// newer hand-in's image apart from the one a viewed mark was left on.
-    private var seenURIs: [String: [Int: String]] = [:]
+    /// The image keys each slice's last hand-in names — what decides which
+    /// loaded images are still wanted.
+    private var handIns: [String: Set<String>] = [:]
 
-    public init(client: NatClientProtocol = NatClient()) {
+    /// Bumped on every seen mark written, so a view reading `isNew` redraws:
+    /// the memory itself is not observable.
+    private var seenTick = 0
+
+    public init(client: NatClientProtocol = NatClient(), projectID: String = "", seen: VisualSeenMemory = .inMemory()) {
         self.client = client
+        self.projectID = projectID
+        self.seen = seen
     }
 
     /// The default loader: a bare absolute path or a `file://` URI read from
@@ -98,45 +123,66 @@ public final class VisualStore {
 
     // MARK: - Images
 
-    /// Load every image of a slice's hand-in not already loaded, off the main
-    /// actor, and publish them together — so nothing draws until every size
-    /// is known and no list height ever shifts. Comments left on images the
-    /// hand-in no longer carries are dropped, and so are their viewed marks
-    /// and folds: a new hand-in starts afresh.
+    /// Load every image of a slice's hand-in — befores included — not already
+    /// loaded at its URI and hash, off the main actor, and publish them
+    /// together, so nothing draws until every size is known and no list
+    /// height ever shifts. Images no slice's hand-in still names are dropped,
+    /// and so are their masks. Comments left on images the hand-in no longer
+    /// carries are dropped, and so are viewed marks and folds on items it no
+    /// longer carries as they were: a re-render starts afresh.
     public func load(sliceID: String, visuals: [VisualChange]) async {
-        let current = Set(visuals.map { "\($0.index)\u{0}\($0.uri)" })
+        let current = Set(visuals.map { Self.commentKey($0.index, $0.imageKey) })
         if let pending = comments[sliceID] {
-            let kept = pending.filter { current.contains("\($0.index)\u{0}\($0.uri)") }
+            let kept = pending.filter { current.contains(Self.commentKey($0.index, VisualChange.key(uri: $0.uri, hash: $0.hash))) }
             comments[sliceID] = kept.isEmpty ? nil : kept
         }
-        // A viewed mark is keyed by index alone, so an index whose URI
-        // changed is a different image and loses it too.
-        let uris = Dictionary(visuals.map { ($0.index, $0.uri) }, uniquingKeysWith: { first, _ in first })
-        if seenURIs[sliceID] != uris {
-            let kept = Set(uris.keys.filter { seenURIs[sliceID]?[$0] == uris[$0] })
-            viewed[sliceID] = viewed[sliceID].map { $0.intersection(kept) }.flatMap { $0.isEmpty ? nil : $0 }
-            collapsed[sliceID] = collapsed[sliceID].map { $0.intersection(kept) }.flatMap { $0.isEmpty ? nil : $0 }
-            seenURIs[sliceID] = uris
+        let identities = Set(visuals.map(\.identity))
+        viewed[sliceID] = viewed[sliceID].map { $0.intersection(identities) }.flatMap { $0.isEmpty ? nil : $0 }
+        collapsed[sliceID] = collapsed[sliceID].map { $0.intersection(identities) }.flatMap { $0.isEmpty ? nil : $0 }
+        // An empty hand-in is also what a slice reads as before its detail
+        // has loaded, so the seen marks — which outlive the session — are
+        // pruned only against a hand-in that names something.
+        if !visuals.isEmpty {
+            seen.retain(projectID: projectID, sliceID: sliceID, visuals)
         }
-        var seen = Set(loaded.keys)
-        let missing = visuals.map(\.uri).filter { seen.insert($0).inserted }
+
+        handIns[sliceID] = Set(visuals.flatMap { $0.imageKeys.map(\.key) })
+        let wanted = handIns.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+        loaded = loaded.filter { wanted.contains($0.key) }
+        masks = masks.filter { key, _ in
+            let parts = key.split(separator: "\u{3}", omittingEmptySubsequences: false).map(String.init)
+            return parts.allSatisfy(wanted.contains)
+        }
+
+        var asked = Set(loaded.keys)
+        let missing = visuals.flatMap(\.imageKeys).filter { asked.insert($0.key).inserted }
         guard !missing.isEmpty else { return }
         let loader = self.loader
-        let results = await Task.detached { missing.map { ($0, loader($0)) } }.value
-        for (uri, image) in results {
-            loaded[uri] = image
+        let results = await Task.detached { missing.map { ($0.key, loader($0.uri)) } }.value
+        for (key, image) in results {
+            loaded[key] = image
         }
     }
 
-    /// Whether every image of a hand-in is loaded, which is when the pane
-    /// draws them.
+    /// Whether every image of a hand-in, befores included, is loaded, which
+    /// is when the pane draws them.
     public func isLoaded(_ visuals: [VisualChange]) -> Bool {
-        visuals.allSatisfy { loaded[$0.uri] != nil }
+        visuals.allSatisfy { $0.imageKeys.allSatisfy { loaded[$0.key] != nil } }
     }
 
-    /// One image as loaded, nil before its load lands.
-    public func image(for uri: String) -> VisualImage? {
-        loaded[uri]
+    /// An item's image as loaded, nil before its load lands.
+    public func image(for visual: VisualChange) -> VisualImage? {
+        loaded[visual.imageKey]
+    }
+
+    /// A pair's before as loaded, nil before its load lands or for an item
+    /// that is no pair.
+    public func beforeImage(for visual: VisualChange) -> VisualImage? {
+        visual.beforeKey.flatMap { loaded[$0] }
+    }
+
+    private static func commentKey(_ index: Int, _ imageKey: String) -> String {
+        "\(index)\u{0}\(imageKey)"
     }
 
     // MARK: - Zoom
@@ -164,34 +210,134 @@ public final class VisualStore {
         zooms[sliceID]?[index] = nil
     }
 
+    // MARK: - Pairs
+
+    /// Whether a pair can be compared at all: both its images open. An item
+    /// that is no pair, or one whose before could not be opened, draws its
+    /// image alone.
+    public func isComparable(_ visual: VisualChange) -> Bool {
+        image(for: visual)?.pixelSize != nil && beforeImage(for: visual)?.pixelSize != nil
+    }
+
+    /// A pair's divider, from 0 (the after whole) to 1 (the before whole).
+    public func divider(sliceID: String, index: Int) -> CGFloat {
+        dividers[sliceID]?[index] ?? VisualCompare.middle
+    }
+
+    /// Move a pair's divider, clamped to the frame.
+    public func setDivider(_ divider: CGFloat, sliceID: String, index: Int) {
+        dividers[sliceID, default: [:]][index] = VisualCompare.clamp(divider)
+    }
+
+    /// The Before / After toggle: the divider to the far end, showing `side`
+    /// whole.
+    public func show(_ side: VisualCompareSide, sliceID: String, index: Int) {
+        setDivider(VisualCompare.divider(showing: side), sliceID: sliceID, index: index)
+    }
+
+    /// The side the Before / After toggle shows selected — one only while
+    /// the divider is at its end.
+    public func shownSide(sliceID: String, index: Int) -> VisualCompareSide? {
+        VisualCompare.side(showing: divider(sliceID: sliceID, index: index))
+    }
+
+    /// Why a pair's differences cannot be highlighted, nil where they can.
+    public func highlightRefusal(for visual: VisualChange) -> String? {
+        VisualCompare.highlightRefusal(after: image(for: visual), before: beforeImage(for: visual))
+    }
+
+    public func isHighlighting(sliceID: String, index: Int) -> Bool {
+        highlighted[sliceID]?.contains(index) ?? false
+    }
+
+    /// Turn a pair's highlight on or off. Turning it on computes the pair's
+    /// mask, off the main actor, where it is not already cached; a pair that
+    /// cannot be compared is never highlighted.
+    public func toggleHighlight(sliceID: String, visual: VisualChange) async {
+        if isHighlighting(sliceID: sliceID, index: visual.index) {
+            highlighted[sliceID]?.remove(visual.index)
+            return
+        }
+        guard highlightRefusal(for: visual) == nil else { return }
+        highlighted[sliceID, default: []].insert(visual.index)
+        await loadMask(for: visual)
+    }
+
+    /// A pair's difference mask, nil until it is computed.
+    public func mask(for visual: VisualChange) -> VisualMask? {
+        Self.maskKey(visual).flatMap { masks[$0] }
+    }
+
+    /// Compute a pair's difference mask where it is not already cached.
+    public func loadMask(for visual: VisualChange) async {
+        guard let key = Self.maskKey(visual), masks[key] == nil, highlightRefusal(for: visual) == nil,
+              case .image(let after, let size)? = image(for: visual),
+              case .image(let before, _)? = beforeImage(for: visual)
+        else { return }
+        // The images cross to the computation as the one value, not
+        // separately captured: `NSImage` is not `Sendable`, and is only read.
+        let pair = VisualImagePair(before: before, after: after)
+        let mask = await Task.detached {
+            VisualCompare.differenceMask(before: pair.before, after: pair.after, pixelSize: size)
+        }.value
+        if let mask { masks[key] = mask }
+    }
+
+    private static func maskKey(_ visual: VisualChange) -> String? {
+        visual.beforeKey.map { "\($0)\u{3}\(visual.imageKey)" }
+    }
+
+    // MARK: - New
+
+    /// Whether an item wears New: nat reports it changed since the hand-in
+    /// before, and it has not been seen as it now is.
+    public func isNew(sliceID: String, _ visual: VisualChange) -> Bool {
+        _ = seenTick
+        return visual.changed && !seen.isSeen(projectID: projectID, sliceID: sliceID, visual)
+    }
+
+    /// Whether any item of a hand-in wears New — the section header's badge.
+    public func anyNew(sliceID: String, _ visuals: [VisualChange]) -> Bool {
+        visuals.contains { isNew(sliceID: sliceID, $0) }
+    }
+
+    /// The user has seen an item as it now is: its section has been on screen
+    /// in the image list, or it has been marked viewed.
+    public func markSeen(sliceID: String, _ visual: VisualChange) {
+        guard visual.changed, !seen.isSeen(projectID: projectID, sliceID: sliceID, visual) else { return }
+        seen.markSeen(projectID: projectID, sliceID: sliceID, visual)
+        seenTick += 1
+    }
+
     // MARK: - Viewed and folded
 
-    public func isViewed(sliceID: String, index: Int) -> Bool {
-        viewed[sliceID]?.contains(index) ?? false
+    public func isViewed(sliceID: String, _ visual: VisualChange) -> Bool {
+        viewed[sliceID]?.contains(visual.identity) ?? false
     }
 
-    public func isCollapsed(sliceID: String, index: Int) -> Bool {
-        collapsed[sliceID]?.contains(index) ?? false
+    public func isCollapsed(sliceID: String, _ visual: VisualChange) -> Bool {
+        collapsed[sliceID]?.contains(visual.identity) ?? false
     }
 
-    /// Toggle an image's viewed mark. Marking it viewed folds it too,
-    /// GitHub-fashion, as `DiffStore.toggleViewed` does; un-marking it leaves
-    /// its fold as it was.
-    public func toggleViewed(sliceID: String, index: Int) {
-        if isViewed(sliceID: sliceID, index: index) {
-            viewed[sliceID]?.remove(index)
+    /// Toggle an item's viewed mark. Marking it viewed folds it too,
+    /// GitHub-fashion, as `DiffStore.toggleViewed` does, and sees it;
+    /// un-marking it leaves its fold as it was.
+    public func toggleViewed(sliceID: String, _ visual: VisualChange) {
+        if isViewed(sliceID: sliceID, visual) {
+            viewed[sliceID]?.remove(visual.identity)
         } else {
-            viewed[sliceID, default: []].insert(index)
-            collapsed[sliceID, default: []].insert(index)
+            viewed[sliceID, default: []].insert(visual.identity)
+            collapsed[sliceID, default: []].insert(visual.identity)
+            markSeen(sliceID: sliceID, visual)
         }
     }
 
-    /// Toggle an image's own fold, whether or not it is viewed.
-    public func toggleCollapsed(sliceID: String, index: Int) {
-        if isCollapsed(sliceID: sliceID, index: index) {
-            collapsed[sliceID]?.remove(index)
+    /// Toggle an item's own fold, whether or not it is viewed.
+    public func toggleCollapsed(sliceID: String, _ visual: VisualChange) {
+        if isCollapsed(sliceID: sliceID, visual) {
+            collapsed[sliceID]?.remove(visual.identity)
         } else {
-            collapsed[sliceID, default: []].insert(index)
+            collapsed[sliceID, default: []].insert(visual.identity)
         }
     }
 
@@ -223,7 +369,7 @@ public final class VisualStore {
             return list[existing]
         }
         let comment = PendingVisualComment(
-            index: visual.index, name: visual.name, uri: visual.uri,
+            index: visual.index, name: visual.name, uri: visual.uri, hash: visual.hash,
             point: point, imageSize: imageSize, text: trimmed)
         list.append(comment)
         list.sort(by: Self.sendOrder)
@@ -271,4 +417,11 @@ public final class VisualStore {
             return pa.x < pb.x
         }
     }
+}
+
+/// A pair's two images, carried together to the mask's computation off the
+/// main actor — `@unchecked Sendable` for `VisualImage`'s reason.
+private struct VisualImagePair: @unchecked Sendable {
+    let before: NSImage
+    let after: NSImage
 }

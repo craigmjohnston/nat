@@ -41,7 +41,11 @@ final class SliceDetailTests: XCTestCase {
             "assignee": "a", "blocked": false, "handed_back": true, "brief": "b",
             "visuals": [
                 {"index": 1, "name": "Settings, dark", "uri": "/tmp/dark.png"},
-                {"index": 2, "name": "Docs", "uri": "https://example.com/docs.png"}
+                {"index": 2, "name": "Docs", "uri": "https://example.com/docs.png", "changed": false},
+                {"index": 3, "name": "Pair", "uri": "/tmp/after.png", "hash": "aa",
+                 "before": {"uri": "/tmp/before.png", "hash": "bb"}, "changed": true},
+                {"index": 4, "name": "Remote pair", "uri": "/tmp/x.png",
+                 "before": {"uri": "https://example.com/b.png"}, "changed": true}
             ]
         }
         """
@@ -49,8 +53,19 @@ final class SliceDetailTests: XCTestCase {
         XCTAssertEqual(detail.visuals, [
             VisualChange(index: 1, name: "Settings, dark", uri: "/tmp/dark.png"),
             VisualChange(index: 2, name: "Docs", uri: "https://example.com/docs.png"),
+            VisualChange(index: 3, name: "Pair", uri: "/tmp/after.png", hash: "aa",
+                         before: VisualBefore(uri: "/tmp/before.png", hash: "bb"), changed: true),
+            VisualChange(index: 4, name: "Remote pair", uri: "/tmp/x.png",
+                         before: VisualBefore(uri: "https://example.com/b.png"), changed: true),
         ])
-        XCTAssertEqual(detail.visuals.map(\.id), [1, 2])
+        XCTAssertEqual(detail.visuals.map(\.id), [1, 2, 3, 4])
+        XCTAssertFalse(detail.visuals[0].changed, "an older nat's reading, with no changed, is not new")
+        XCTAssertNil(detail.visuals[0].beforeKey)
+        XCTAssertEqual(detail.visuals[2].imageKeys.map(\.uri), ["/tmp/after.png", "/tmp/before.png"])
+        XCTAssertNotEqual(detail.visuals[2].identity,
+                          VisualChange(index: 3, name: "Pair", uri: "/tmp/after.png", hash: "aa",
+                                       before: VisualBefore(uri: "/tmp/before.png", hash: "cc")).identity,
+                          "a new before is a new item")
     }
 
     func testSliceDetailDecodingWithAllFields() throws {

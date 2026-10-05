@@ -121,6 +121,10 @@ func TestNextSliceHandsInVisualChanges(t *testing.T) {
 	for _, want := range []string{
 		"nat slice-visuals <slice> --project <project>",
 		"Do not build a way to render",
+		"hand in only the images that are new or re-rendered",
+		"`--remove '<its name>'`",
+		"--before '<the visual's name>",
+		"rendered to its own file",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the next-slice skill does not say %q", want)

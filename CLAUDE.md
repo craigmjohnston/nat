@@ -199,14 +199,22 @@ have no time. Both stores write the same markdown, through a `Clock` seam.
 render what a slice changed (a gallery story, a screenshot script), every
 slice agent — slice prompt, fix prompt, `/next-slice` — hands the images in
 with `nat slice-visuals`, and is told never to build a way to render where
-there is none. They are a `Visual changes` section of the slice body (numbered
-items: name, URI indented under it) — no column, both stores write the same
-markdown — and the **last section wins**, since an agent hands in the full set
-each time. `slice-show`'s `visuals` reads them (`store.VisualChanges`); gnat's
-Visual changes section shows them, and its comments go back by `agent-send`,
-then `slice-rework` only where the slice is handed back. Nothing blocks
-hand-back on them. A slice you hold may hand them in, and so may a Done one
-with a PR recorded, assigned to you — a fix session's.
+there is none. The command is incremental — `--visual` adds or replaces by
+name in place (keeping its before), `--before` gives a visual its before,
+`--remove` drops one — but storage is not: each hand-in appends a whole
+`Visual changes` section holding the resulting set, and the **last section
+wins**. Each item is a numbered name with, indented under it, its URI first
+(what an older reader still reads), then optional `sha256: <hex>` (local
+files only, hashed at hand-in), `Before: <uri>` and `Before sha256: <hex>`
+lines — paragraphs nested under the item in Notion; both stores write the
+same markdown, and an empty section reads as no visuals. `changed` is
+derived, never stored: an item differing (by hash, else URI, before
+included) from the section before's item of that name, or with none.
+`slice-show`'s `visuals` reads them (`store.VisualChanges`); gnat's Visual
+changes section shows them, and its comments go back by `agent-send`, then
+`slice-rework` only where the slice is handed back. Nothing blocks hand-back
+on them. A slice you hold may hand them in, and so may a Done one with a PR
+recorded, assigned to you — a fix session's.
 
 **Approving** (`a` on the diff screen, or `nat slice-approve`) opens the PR
 and records only its URL — status stays In progress. **Done means the work

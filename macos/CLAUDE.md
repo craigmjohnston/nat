@@ -321,18 +321,42 @@ handed in with `nat slice-visuals`), and so is its titlebar tab
 (`MainPaneTab.visuals`; no pane-wide actions, zoom being per image).
 `VisualStore` (one per project,
 `AppModel.visualStore`) and `VisualReview` (the shell's) mirror `DiffStore`/
-`DiffReview`: images loaded by URI through a swappable `loader` (local paths
-only — any other URI is a placeholder card, no network), zoom per image,
-comments per slice at a point in the image's own pixels or on the whole image,
-and per-image viewed/folded marks that follow `DiffStore.toggleViewed`'s rule
-(viewed folds; a newer image at that index starts afresh).
-Send is `agent-send`, then `slice-rework` only where the slice is handed back;
-a failed send keeps the comments. The comment box is drawn in the pane, not a
-`.popover`, so the gallery can render it. `VisualsPane` is the one scrolling
-pane SwiftUI lays out (pinned headers, `ScrollViewReader`) — safe only because
-nothing draws until every image's pixel size is known and every image has an
-explicit frame; keep it so. Stories: `window-visuals`,
-`window-visuals-comments`, `visuals-zoomed`, `visuals-comment-editor`.
+`DiffReview`: images loaded through a swappable `loader` (local paths
+only — any other URI is a placeholder card, no network) and **cached by URI +
+hash** (`VisualChange.imageKey`/`beforeKey`), so a re-render saved over the
+same path loads afresh — the views' load `.task` is keyed by
+`VisualChange.loadIdentity` for the same reason, and images no slice's
+hand-in still names are dropped. Zoom per image, comments per slice at a
+point in the image's own pixels or on the whole image (dropped when the image
+they sit on is re-rendered), and viewed/folded marks keyed by
+`VisualChange.identity` (name + image + before), following
+`DiffStore.toggleViewed`'s rule (viewed folds; a re-render starts afresh).
+**New**: an item `changed` (nat's derivation) and not yet seen at its current
+identity — seen once its image section is on screen in `VisualsPane`
+(`onScrollVisibilityChange`) or it is marked viewed. Seen marks live in
+`VisualSeenMemory` (UserDefaults, keyed by project, slice and identity;
+pruned per slice on a load naming anything; `.inMemory()` for tests and
+stories — they never write the real defaults). The badge is the PR header's
+Merged chip (`NavSectionStatus.new`) on the navigator row, the image header
+and the section header while any item is. **Pairs** (`before`) are one row
+(the after's thumbnail) and one section: `VisualCompare` (NatKit, tested)
+owns the divider fraction (0 after whole, 1 before whole, middle to open),
+the Before / After toggle selected only at an end, the frame (larger of each
+dimension, top-leading, one scale) and the difference mask (computed off the
+main actor, cached by the two keys; refused with a tooltip where sizes differ
+or an image is unavailable); `VisualStore` holds divider, highlight and mask
+beside zoom. Comment pins stay in the after's pixels; an unavailable before
+draws the after alone, pair controls disabled. `VisualDivider` wears
+`.columnResize`. Send is `agent-send`, then `slice-rework` only where the
+slice is handed back; a failed send keeps the comments. The comment box is
+drawn in the pane, not a `.popover`, so the gallery can render it.
+`VisualsPane` is the one scrolling pane SwiftUI lays out (pinned headers,
+`ScrollViewReader`) — safe only because nothing draws until every image's
+pixel size is known, befores included, and every image has an explicit frame;
+keep it so. Stories: `window-visuals`, `window-visuals-comments`,
+`window-visuals-new`, `visuals-zoomed`, `visuals-comment-editor`,
+`visuals-pair`, `visuals-pair-highlight`, `visuals-pair-before`,
+`visuals-pair-size-mismatch`.
 
 **Run commands** (`docs/run-commands.md`): a project's `runs` live in its
 config entry alone (`ProjectConfig.runs`, `RunCommand`) — no settings screen.

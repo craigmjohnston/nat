@@ -512,11 +512,14 @@ usage:
                       fold it into this slice, or drop it. Records the
                       decision on the slice, then tells its agent in one
                       message; --fold needs a live agent
-  nat slice-visuals <slice> --visual TEXT [--visual TEXT]... --project ID
-                      file images rendered of what a slice you claimed changed,
-                      for the user to review in the app: each value's first
-                      line what it shows, the next the image's path or URI. A
-                      later hand-in replaces an earlier one; nothing waits on it
+  nat slice-visuals <slice> [--visual TEXT]... [--before TEXT]...
+                        [--remove NAME]... --project ID
+                      hand in images rendered of what a slice you claimed
+                      changed, for the user to review in the app: --visual's
+                      first line what it shows, the next the image's path or
+                      URI, replacing the one already under that name; --before
+                      the same, naming the visual it is the before of;
+                      --remove drops one. Nothing waits on it
   nat slice-repo <slice> --repo PATH [--json] --project ID
                       record the repository a Todo slice, or one you claimed,
                       is worked in — what a source project's agent does once

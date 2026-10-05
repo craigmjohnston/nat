@@ -27,13 +27,13 @@ final class VisualStoreTests: XCTestCase {
             return uri.hasPrefix("/") ? .image(image, pixelSize: CGSize(width: 40, height: 20)) : .unavailable
         }
         XCTAssertFalse(store.isLoaded([wide]))
-        XCTAssertNil(store.image(for: wide.uri))
+        XCTAssertNil(store.image(for: wide))
 
         await store.load(sliceID: slice, visuals: [wide, remote, wide])
         XCTAssertTrue(store.isLoaded([wide, remote]))
-        XCTAssertEqual(store.image(for: wide.uri)?.pixelSize, CGSize(width: 40, height: 20))
-        XCTAssertEqual(store.image(for: remote.uri), .unavailable)
-        XCTAssertNil(store.image(for: remote.uri)?.pixelSize)
+        XCTAssertEqual(store.image(for: wide)?.pixelSize, CGSize(width: 40, height: 20))
+        XCTAssertEqual(store.image(for: remote), .unavailable)
+        XCTAssertNil(store.image(for: remote)?.pixelSize)
         XCTAssertEqual(counter.count, 2, "a URI given twice is read once")
 
         await store.load(sliceID: slice, visuals: [wide, remote])
@@ -98,42 +98,46 @@ final class VisualStoreTests: XCTestCase {
 
     func testMarkingViewedFoldsAndUnmarkingLeavesTheFold() {
         let store = VisualStore(client: FixtureNatClient())
-        XCTAssertFalse(store.isViewed(sliceID: slice, index: 1))
-        XCTAssertFalse(store.isCollapsed(sliceID: slice, index: 1))
+        XCTAssertFalse(store.isViewed(sliceID: slice, wide))
+        XCTAssertFalse(store.isCollapsed(sliceID: slice, wide))
 
-        store.toggleViewed(sliceID: slice, index: 1)
-        XCTAssertTrue(store.isViewed(sliceID: slice, index: 1))
-        XCTAssertTrue(store.isCollapsed(sliceID: slice, index: 1), "viewed folds, GitHub-fashion")
-        XCTAssertFalse(store.isViewed(sliceID: slice, index: 2), "one image never marks another")
-        XCTAssertFalse(store.isViewed(sliceID: "other", index: 1))
+        store.toggleViewed(sliceID: slice, wide)
+        XCTAssertTrue(store.isViewed(sliceID: slice, wide))
+        XCTAssertTrue(store.isCollapsed(sliceID: slice, wide), "viewed folds, GitHub-fashion")
+        XCTAssertFalse(store.isViewed(sliceID: slice, tall), "one image never marks another")
+        XCTAssertFalse(store.isViewed(sliceID: "other", wide))
 
-        store.toggleViewed(sliceID: slice, index: 1)
-        XCTAssertFalse(store.isViewed(sliceID: slice, index: 1))
-        XCTAssertTrue(store.isCollapsed(sliceID: slice, index: 1), "un-marking leaves the fold alone")
+        store.toggleViewed(sliceID: slice, wide)
+        XCTAssertFalse(store.isViewed(sliceID: slice, wide))
+        XCTAssertTrue(store.isCollapsed(sliceID: slice, wide), "un-marking leaves the fold alone")
 
-        store.toggleCollapsed(sliceID: slice, index: 1)
-        XCTAssertFalse(store.isCollapsed(sliceID: slice, index: 1))
-        store.toggleCollapsed(sliceID: slice, index: 2)
-        XCTAssertTrue(store.isCollapsed(sliceID: slice, index: 2))
-        XCTAssertFalse(store.isViewed(sliceID: slice, index: 2), "folding is not viewing")
+        store.toggleCollapsed(sliceID: slice, wide)
+        XCTAssertFalse(store.isCollapsed(sliceID: slice, wide))
+        store.toggleCollapsed(sliceID: slice, tall)
+        XCTAssertTrue(store.isCollapsed(sliceID: slice, tall))
+        XCTAssertFalse(store.isViewed(sliceID: slice, tall), "folding is not viewing")
     }
 
     func testANewHandInDropsMarksOnImagesItReplaced() async {
         let store = VisualStore(client: FixtureNatClient())
         store.loader = { _ in .unavailable }
         await store.load(sliceID: slice, visuals: [wide, tall])
-        store.toggleViewed(sliceID: slice, index: 1)
-        store.toggleViewed(sliceID: slice, index: 2)
+        store.toggleViewed(sliceID: slice, wide)
+        store.toggleViewed(sliceID: slice, tall)
 
         await store.load(sliceID: slice, visuals: [wide, tall])
-        XCTAssertTrue(store.isViewed(sliceID: slice, index: 2), "the same hand-in read again keeps its marks")
+        XCTAssertTrue(store.isViewed(sliceID: slice, tall), "the same hand-in read again keeps its marks")
 
         let retaken = VisualChange(index: 2, name: "Tall", uri: "/tmp/tall-2.png")
         await store.load(sliceID: slice, visuals: [wide, retaken])
-        XCTAssertTrue(store.isViewed(sliceID: slice, index: 1))
-        XCTAssertTrue(store.isCollapsed(sliceID: slice, index: 1))
-        XCTAssertFalse(store.isViewed(sliceID: slice, index: 2), "a new image at the same index starts unviewed")
-        XCTAssertFalse(store.isCollapsed(sliceID: slice, index: 2))
+        XCTAssertTrue(store.isViewed(sliceID: slice, wide))
+        XCTAssertTrue(store.isCollapsed(sliceID: slice, wide))
+        XCTAssertFalse(store.isViewed(sliceID: slice, retaken), "a new image at the same index starts unviewed")
+        XCTAssertFalse(store.isCollapsed(sliceID: slice, retaken))
+
+        let rehashed = VisualChange(index: 1, name: "Wide", uri: wide.uri, hash: "new bytes")
+        await store.load(sliceID: slice, visuals: [rehashed, retaken])
+        XCTAssertFalse(store.isViewed(sliceID: slice, rehashed), "a re-render at the same path starts afresh")
 
         await store.load(sliceID: slice, visuals: [])
         XCTAssertNil(store.viewed[slice])
@@ -197,8 +201,150 @@ final class VisualStoreTests: XCTestCase {
         set(store, tall, nil, "dropped")
         await store.load(sliceID: slice, visuals: [wide, VisualChange(index: 2, name: "Tall", uri: "/tmp/new.png")])
         XCTAssertEqual(store.comments(for: slice).map(\.text), ["kept"])
+        await store.load(sliceID: slice, visuals: [VisualChange(index: 1, name: "Wide", uri: wide.uri, hash: "b")])
+        XCTAssertEqual(store.comments(for: slice), [], "a re-render at the same path is another image")
+        set(store, wide, nil, "kept")
         await store.load(sliceID: slice, visuals: [])
         XCTAssertNil(store.comments[slice])
+    }
+
+    // MARK: - Re-renders, pairs and New
+
+    func testAReRenderAtTheSamePathIsReadAgainAndTheOldOneDropped() async {
+        let store = VisualStore(client: FixtureNatClient())
+        let counter = Counter()
+        store.loader = { _ in
+            counter.bump()
+            return .image(NSImage(size: CGSize(width: 1, height: 1)), pixelSize: CGSize(width: 10, height: 10))
+        }
+        let first = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "a")
+        await store.load(sliceID: slice, visuals: [first])
+        let shown = store.image(for: first)
+        XCTAssertNotNil(shown)
+
+        // What a nudge's re-read of the slice carries after a re-render: the
+        // same URI with a new hash, which the views' load is keyed by too.
+        let second = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "b")
+        XCTAssertNotEqual(VisualChange.loadIdentity([first]), VisualChange.loadIdentity([second]))
+        XCTAssertFalse(store.isLoaded([second]), "the re-render is not drawn from the old one's cache")
+        await store.load(sliceID: slice, visuals: [second])
+        XCTAssertEqual(counter.count, 2)
+        XCTAssertNotEqual(store.image(for: second), shown)
+        XCTAssertNil(store.loaded[first.imageKey], "an image no hand-in names any more is dropped")
+    }
+
+    func testAnImageAnotherSliceStillNamesIsKept() async {
+        let store = VisualStore(client: FixtureNatClient())
+        store.loader = { _ in .unavailable }
+        await store.load(sliceID: slice, visuals: [wide])
+        await store.load(sliceID: "other", visuals: [wide])
+        await store.load(sliceID: slice, visuals: [])
+        XCTAssertNotNil(store.image(for: wide))
+    }
+
+    func testAPairLoadsItsBeforeAndDrawsOnlyOnceBothAreIn() async {
+        let store = VisualStore(client: FixtureNatClient())
+        let pair = VisualChange(index: 1, name: "P", uri: "/tmp/after.png", hash: "a",
+                                before: VisualBefore(uri: "/tmp/before.png", hash: "b"))
+        XCTAssertFalse(store.isLoaded([pair]))
+        store.loader = { uri in
+            uri.hasSuffix("before.png") ? .unavailable : .image(NSImage(size: CGSize(width: 1, height: 1)), pixelSize: CGSize(width: 4, height: 4))
+        }
+        await store.load(sliceID: slice, visuals: [pair])
+        XCTAssertTrue(store.isLoaded([pair]))
+        XCTAssertEqual(store.beforeImage(for: pair), .unavailable)
+        XCTAssertNil(store.beforeImage(for: wide), "an item that is no pair has no before")
+        XCTAssertFalse(store.isComparable(pair), "an unavailable before draws the after alone")
+        XCTAssertEqual(store.highlightRefusal(for: pair), "The before couldn't be opened")
+        await store.toggleHighlight(sliceID: slice, visual: pair)
+        XCTAssertFalse(store.isHighlighting(sliceID: slice, index: 1), "nothing to compare is never highlighted")
+    }
+
+    func testTheDividerAndTheBeforeAfterToggle() {
+        let store = VisualStore(client: FixtureNatClient())
+        XCTAssertEqual(store.divider(sliceID: slice, index: 1), 0.5, "a pair opens with the divider at the middle")
+        XCTAssertNil(store.shownSide(sliceID: slice, index: 1))
+        store.show(.before, sliceID: slice, index: 1)
+        XCTAssertEqual(store.divider(sliceID: slice, index: 1), 1)
+        XCTAssertEqual(store.shownSide(sliceID: slice, index: 1), .before)
+        XCTAssertEqual(store.divider(sliceID: slice, index: 2), 0.5, "one pair's divider never moves another's")
+        store.show(.after, sliceID: slice, index: 1)
+        XCTAssertEqual(store.shownSide(sliceID: slice, index: 1), .after)
+        store.setDivider(0.99, sliceID: slice, index: 1)
+        XCTAssertNil(store.shownSide(sliceID: slice, index: 1), "a side is selected only at its end")
+        store.setDivider(7, sliceID: slice, index: 1)
+        XCTAssertEqual(store.divider(sliceID: slice, index: 1), 1, "clamped to the frame")
+    }
+
+    func testHighlightingComputesTheMaskOnceAndTogglesOff() async throws {
+        let store = VisualStore(client: FixtureNatClient())
+        let pair = VisualChange(index: 1, name: "P", uri: "/a", hash: "a", before: VisualBefore(uri: "/b", hash: "b"))
+        let after = try solid(.red, width: 4, height: 2), before = try solid(.blue, width: 4, height: 2)
+        store.loader = { uri in .image(uri == "/a" ? after : before, pixelSize: CGSize(width: 4, height: 2)) }
+        await store.load(sliceID: slice, visuals: [pair])
+        XCTAssertNil(store.mask(for: pair))
+        await store.toggleHighlight(sliceID: slice, visual: pair)
+        XCTAssertTrue(store.isHighlighting(sliceID: slice, index: 1))
+        let mask = try XCTUnwrap(store.mask(for: pair))
+        XCTAssertEqual(mask.count, 8, "every pixel differs")
+        await store.loadMask(for: pair)
+        XCTAssertEqual(store.mask(for: pair), mask, "computed once, cached by the two hashes")
+        await store.toggleHighlight(sliceID: slice, visual: pair)
+        XCTAssertFalse(store.isHighlighting(sliceID: slice, index: 1))
+
+        let rebefore = VisualChange(index: 1, name: "P", uri: "/a", hash: "a", before: VisualBefore(uri: "/b", hash: "c"))
+        await store.load(sliceID: slice, visuals: [rebefore])
+        XCTAssertNil(store.mask(for: rebefore), "a new before is a new mask")
+        XCTAssertTrue(store.masks.isEmpty, "and the old one is dropped with its image")
+    }
+
+    func testNewUntilSeenOnScreenOrMarkedViewed() {
+        let seen = VisualSeenMemory.inMemory()
+        let store = VisualStore(client: FixtureNatClient(), projectID: "p", seen: seen)
+        let changed = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "a", changed: true)
+        let other = VisualChange(index: 2, name: "Tall", uri: "/tmp/tall.png", hash: "b", changed: true)
+        XCTAssertTrue(store.isNew(sliceID: slice, changed))
+        XCTAssertFalse(store.isNew(sliceID: slice, wide), "an unchanged image is never new")
+        XCTAssertTrue(store.anyNew(sliceID: slice, [wide, changed]))
+
+        store.markSeen(sliceID: slice, changed)
+        XCTAssertFalse(store.isNew(sliceID: slice, changed))
+        XCTAssertFalse(store.anyNew(sliceID: slice, [wide, changed]))
+        XCTAssertTrue(seen.isSeen(projectID: "p", sliceID: slice, changed), "remembered beyond the store")
+
+        store.toggleViewed(sliceID: slice, other)
+        XCTAssertFalse(store.isNew(sliceID: slice, other), "marking viewed sees it")
+
+        let rerendered = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "c", changed: true)
+        XCTAssertTrue(store.isNew(sliceID: slice, rerendered), "a re-render is new again")
+        XCTAssertTrue(VisualStore(client: FixtureNatClient(), projectID: "q", seen: seen).isNew(sliceID: slice, changed),
+                      "seen in one project is not seen in another")
+    }
+
+    func testALoadPrunesSeenMarksButNotOnAnEmptyHandIn() async {
+        let seen = VisualSeenMemory.inMemory()
+        let store = VisualStore(client: FixtureNatClient(), projectID: "p", seen: seen)
+        store.loader = { _ in .unavailable }
+        let changed = VisualChange(index: 1, name: "Wide", uri: "/tmp/wide.png", hash: "a", changed: true)
+        store.markSeen(sliceID: slice, changed)
+        await store.load(sliceID: slice, visuals: [])
+        XCTAssertTrue(seen.isSeen(projectID: "p", sliceID: slice, changed), "a detail not yet read forgets nothing")
+        await store.load(sliceID: slice, visuals: [tall])
+        XCTAssertFalse(seen.isSeen(projectID: "p", sliceID: slice, changed))
+    }
+
+    private func solid(_ color: NSColor, width: Int, height: Int) throws -> NSImage {
+        let rep = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        color.setFill()
+        NSRect(x: 0, y: 0, width: width, height: height).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        let image = NSImage(size: NSSize(width: width, height: height))
+        image.addRepresentation(rep)
+        return image
     }
 
     // MARK: - Sending

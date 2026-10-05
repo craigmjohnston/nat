@@ -13,18 +13,22 @@ public struct PendingVisualComment: Identifiable, Equatable, Sendable {
     public let index: Int
     public let name: String
     public let uri: String
+    /// The hash of the image it was left on, which with `uri` names that
+    /// image: a re-render at the same path is another image.
+    public let hash: String?
     public let point: CGPoint?
     public let imageSize: CGSize
     public var text: String
 
     public init(
-        id: UUID = UUID(), index: Int, name: String, uri: String,
+        id: UUID = UUID(), index: Int, name: String, uri: String, hash: String? = nil,
         point: CGPoint?, imageSize: CGSize, text: String
     ) {
         self.id = id
         self.index = index
         self.name = name
         self.uri = uri
+        self.hash = hash
         self.point = point
         self.imageSize = imageSize
         self.text = text

@@ -1,9 +1,10 @@
 import SwiftUI
 import NatKit
 
-/// The Visual changes section's body: one row per handed-in image — its
-/// viewed box, its thumbnail in a socket every row shares, its name over its
-/// file's name, and a mark while comments are pending on it — the rows
+/// The Visual changes section's body: one row per handed-in item — its
+/// viewed box, its thumbnail in a socket every row shares (a pair's after
+/// alone), its name over its file's name, New while it is, and a mark while
+/// comments are pending on it — the rows
 /// separated by a hairline as the follow-up cards' are. Picking a row scrolls
 /// the main pane's image list to it and puts the list up.
 struct VisualsSectionBody: View {
@@ -35,15 +36,15 @@ struct VisualsSectionBody: View {
     }
 
     private func row(_ visual: VisualChange) -> some View {
-        let viewed = store.isViewed(sliceID: slice.id, index: visual.index)
+        let viewed = store.isViewed(sliceID: slice.id, visual)
         let commented = store.comments(for: slice.id).contains { $0.index == visual.index }
         return HStack(spacing: 8) {
-            Button(action: { store.toggleViewed(sliceID: slice.id, index: visual.index) }) {
+            Button(action: { store.toggleViewed(sliceID: slice.id, visual) }) {
                 ViewedCheckbox(checked: viewed)
             }
             .buttonStyle(.plain)
             .help(viewed ? "Mark not viewed" : "Mark viewed")
-            VisualThumbnail(image: store.image(for: visual.uri))
+            VisualThumbnail(image: store.image(for: visual))
             VStack(alignment: .leading, spacing: 1) {
                 Text(visual.name)
                     .font(.system(size: Typo.scaled(13)))
@@ -57,6 +58,9 @@ struct VisualsSectionBody: View {
                     .truncationMode(.head)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if store.isNew(sliceID: slice.id, visual) {
+                Chip(NavSectionStatus.new.label, tone: NavSectionStatus.new.tone, size: .small).fixedSize()
+            }
             if commented {
                 Image(systemName: "text.bubble.fill")
                     .font(.system(size: 10))

@@ -216,11 +216,22 @@ func taskEventsJSON(s domain.Slice, brief string) []taskEventJSON {
 	return out
 }
 
-// visualJSON is one handed-in image.
+// visualJSON is one handed-in item: an image, or a pair of one and its
+// before. Hash is the sha256 of the file's bytes at hand-in, and Changed whether
+// it differs from the hand-in before (store.VisualChanges).
 type visualJSON struct {
-	Index int    `json:"index"`
-	Name  string `json:"name"`
-	URI   string `json:"uri"`
+	Index   int              `json:"index"`
+	Name    string           `json:"name"`
+	URI     string           `json:"uri"`
+	Hash    string           `json:"hash,omitempty"`
+	Before  visualBeforeJSON `json:"before,omitzero"`
+	Changed bool             `json:"changed"`
+}
+
+// visualBeforeJSON is the image an item is best judged against.
+type visualBeforeJSON struct {
+	URI  string `json:"uri"`
+	Hash string `json:"hash,omitempty"`
 }
 
 // followUpJSON is one pending follow-up.
@@ -267,7 +278,11 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 		sj.FollowUps = append(sj.FollowUps, followUpJSON{Index: f.Index, Title: f.Title, Brief: f.Brief})
 	}
 	for _, v := range store.VisualChanges(brief) {
-		sj.Visuals = append(sj.Visuals, visualJSON{Index: v.Index, Name: v.Name, URI: v.URI})
+		vj := visualJSON{Index: v.Index, Name: v.Name, URI: v.URI, Hash: v.Hash, Changed: v.Changed}
+		if v.BeforeURI != "" {
+			vj.Before = visualBeforeJSON{URI: v.BeforeURI, Hash: v.BeforeHash}
+		}
+		sj.Visuals = append(sj.Visuals, vj)
 	}
 
 	enc := json.NewEncoder(out)
