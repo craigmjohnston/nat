@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
@@ -55,12 +56,13 @@ func sliceDelete(ctx context.Context, args []string, env Env) error {
 	if err := st.DeleteSlice(ctx, s.ID); err != nil {
 		return fmt.Errorf("delete the slice: %w", err)
 	}
+	removed := firstOf(actions.PruneEmptied(ctx, st, storeProject(projectID, project), s.MilestoneID))
 
 	env.nudged()
 	if *asJSON {
-		return writeJSON(env.Out, sliceDeletedJSON{ID: s.ID, Name: s.Name, Deleted: true})
+		return writeJSON(env.Out, sliceDeletedJSON{ID: s.ID, Name: s.Name, Deleted: true, RemovedMilestone: removed})
 	}
-	_, err = fmt.Fprintf(env.Out, "# %s\n\nMoved to Notion's trash — recoverable there.\n", s.Name)
+	_, err = fmt.Fprintf(env.Out, "# %s\n\nMoved to Notion's trash — recoverable there.\n%s", s.Name, removedLine(removed))
 	return err
 }
 
@@ -71,4 +73,7 @@ type sliceDeletedJSON struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Deleted bool   `json:"deleted"`
+	// RemovedMilestone names the milestone the delete left with no slice at
+	// all, and so removed; omitted where it left none empty.
+	RemovedMilestone string `json:"removed_milestone,omitempty"`
 }

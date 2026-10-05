@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -516,6 +517,9 @@ type appliedPlan struct {
 	Edited       []appliedEdit
 	Moved        []appliedMove
 	Removed      []appliedRemoval
+	// MilestonesRemoved names the milestones the moves and removals left with
+	// no slice at all once the whole document had applied, and so removed.
+	MilestonesRemoved []string
 }
 
 type appliedSlice struct {
@@ -618,6 +622,16 @@ func applyPlan(ctx context.Context, st store.Store, sp store.Project, shape stor
 	if err != nil {
 		return applied, appliedErr(applied, err)
 	}
+	// Pruned once the whole document has applied, never after each move: a
+	// slice the document creates under a milestone its moves emptied keeps it.
+	left := make([]string, 0, len(applied.Moved)+len(applied.Removed))
+	for _, m := range applied.Moved {
+		left = append(left, m.Slice.MilestoneID)
+	}
+	for _, r := range applied.Removed {
+		left = append(left, r.Slice.MilestoneID)
+	}
+	applied.MilestonesRemoved = actions.PruneEmptied(ctx, st, sp, left...)
 	return applied, nil
 }
 
@@ -721,6 +735,9 @@ type planAppliedJSON struct {
 	Edited       []sliceEditedJSON     `json:"edited"`
 	Moved        []sliceMovedJSON      `json:"moved"`
 	Removed      []removedSliceJSON    `json:"removed"`
+	// MilestonesRemoved names the milestones the run's moves and removals
+	// emptied, and so removed — empty where they emptied none.
+	MilestonesRemoved []string `json:"milestones_removed"`
 }
 
 // addedDependencyJSON is one slice already on the board the run made to wait on
@@ -762,6 +779,7 @@ func (a appliedPlan) jsonDoc(project config.ProjectConfig) planAppliedJSON {
 		})
 	}
 	a.changesJSON(&doc)
+	doc.MilestonesRemoved = append([]string{}, a.MilestonesRemoved...)
 	return doc
 }
 

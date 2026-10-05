@@ -310,14 +310,20 @@ usage:
                       reads it from stdin
   nat slice-move <slice> --milestone <name> [--json] --project ID
                       refile a slice under another milestone, by name; the
-                      work itself is untouched. Refused on a slice in progress
+                      work itself is untouched. Refused on a slice in progress.
+                      The milestone it leaves is removed where no slice is
+                      filed under it any more (--json: removed_milestone)
   nat slice-reorder <slice> (--before <slice> | --after <slice>) [--json] --project ID
                       place a slice directly before or after another; one
                       under another milestone is refiled to it in the same
-                      write (refused for a slice in progress)
+                      write (refused for a slice in progress), and the
+                      milestone a refile leaves is removed where no slice is
+                      filed under it any more (--json: removed_milestone)
   nat slice-delete <slice> [--json] --project ID
                       move a slice's page to Notion's trash, where it is still
-                      recoverable. Refused on a slice in progress
+                      recoverable. Refused on a slice in progress. The
+                      milestone it leaves is removed where no slice is filed
+                      under it any more (--json: removed_milestone)
   nat session-launch --project ID [--dir DIR] [--model M] [--effort E] [--json]
                       start a bare agent on a repo with no slice and no
                       prompt: a worktree on session/<id> off the remote's
@@ -459,7 +465,9 @@ usage:
                       under, for project-mirror --parent
   nat plan-apply [FILE] [--json] --project ID
                       create a whole plan of milestones and slices from a JSON
-                      document, read from FILE or stdin
+                      document, read from FILE or stdin. Once it has all
+                      applied, each milestone its move and remove lists left
+                      with no slice is removed (--json: milestones_removed)
   nat plan-propose [FILE] (--workspace ID | --project ID) [--name NAME] [--json]
                       validate a drafted plan and write it to a proposal file
                       instead of applying it — exactly one of --workspace (the
