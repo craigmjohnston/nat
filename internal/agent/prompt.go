@@ -65,6 +65,12 @@ import (
 // independently left empty on a failed read, the project's usual
 // reads-conclude-nothing posture — a launch never fails over missing context.
 //
+// ConflictBase is the base a handed-back branch with no pull request was found
+// conflicting with at launch ([git.CLI.ConflictsWithBase], run by
+// [actions.Launch]): set, the prompt tasks the agent with rebasing onto it
+// first ([conflictPassage]). Empty for a clean branch, one that could not be
+// tested, and every slice with a pull request or never handed back.
+//
 // Container is the container a source project's slice hangs off, read off the
 // plugin at launch by [actions.Launch]; nil for every other project, and where
 // the read failed — the prompt then simply has no section for it.
@@ -94,6 +100,7 @@ type PromptContext struct {
 	GitDiffStat     string
 	ReviewComments  string
 	ReviewChecks    string
+	ConflictBase    string
 	Container       *PromptContainer
 	RepoUnknown     bool
 }
@@ -297,6 +304,7 @@ func Prompt(c PromptContext) string {
 	}
 	b.WriteString(BriefSections(c.Brief, c.MilestoneDigest, c.Conventions))
 	b.WriteString(pullRequestPassage(c))
+	b.WriteString(conflictPassage(c))
 	b.WriteString(gitSnapshotSection(c))
 
 	b.WriteString("\nEvery `nat` command below names the project this slice is in:\n\n")
@@ -654,6 +662,37 @@ func pullRequestPassage(c PromptContext) string {
 	} else {
 		b.WriteString("the user's, once they are satisfied.\n")
 	}
+	return b.String()
+}
+
+// conflictPassage tells an agent relaunched on a handed-back branch that no
+// longer merges into its base — found by the launch's own test, there being no
+// pull request for GitHub to say so of — that bringing the branch up to date
+// comes first: rebase it onto the base, resolve the conflicts, run the gate,
+// push and hand back. The push has to be a forced one, since a rebase
+// rewrites the branch, and is the lease form so it can never overwrite
+// anything it has not seen; with no pull request open, nobody has reviewed
+// those commits anywhere but here. Empty where the launch found no conflict.
+func conflictPassage(c PromptContext) string {
+	base := c.ConflictBase
+	if base == "" {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n## The branch conflicts with %s\n\n", base)
+	fmt.Fprintf(&b, "This slice was handed back on %s, and %s has moved on\n", c.Branch, base)
+	b.WriteString("since: the launch tested the merge, and the branch no longer merges into\n")
+	b.WriteString("it cleanly. Bring it up to date before anything else — that is what this\n")
+	b.WriteString("session was launched for, along with anything the task log's last entry\n")
+	b.WriteString("asks:\n\n")
+	fmt.Fprintf(&b, "1. `git fetch origin`, then, on %s:\n   `git rebase %s`.\n", c.Branch, base)
+	fmt.Fprintf(&b, "2. Resolve every conflict, keeping what both sides meant: %s's side\n", base)
+	b.WriteString("   is merged work, never to be undone to make the branch fit.\n")
+	b.WriteString("3. Run the project's verification gate on the result.\n")
+	fmt.Fprintf(&b, "4. Push with `git push --force-with-lease origin %s`:\n", c.Branch)
+	b.WriteString("   the rebase rewrote the branch's commits, and no pull request has been\n")
+	b.WriteString("   opened from them.\n")
+	b.WriteString("5. Hand the slice back with `complete-slice --branch`, as below.\n")
 	return b.String()
 }
 

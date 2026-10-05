@@ -170,7 +170,7 @@ Stories: `window-resumed-badges`, `window-pr-updated`, `window-visuals-new`.
 project** (`PRReading`: readiness, failing checks, conflicts) — the active
 one's taken with its plan (`updateReviewStats`), each background one's after
 its plan lands (`loadBackgroundProject`, `refreshBackgroundProjects`), all
-skipped where no slice has a PR. A project's reading is replaced only by a
+skipped where no slice has a PR or stands in review (`inReview`). A project's reading is replaced only by a
 newer reading of it (a failed one leaves it standing; switching projects
 touches nothing), written beside its plan in the read cache
 (`PlanCaching.writePRStatus`, `<id>.pr-status.json`) and restored before the
@@ -195,7 +195,16 @@ says "sent to the agent to fix" when the latest recorded event is the
 nudge's Sent back; the conflict's is also a `NavNotice` atop the PR body, drawn
 before `pr-view` lands, pointing at Send back to agent or naming the live
 agent (both prefill Send back's note). `projectAttention` counts a red pr
-slice once. Stories: `sidebar-checks-failing`,
+slice once. **A hand-back with no PR**: `PRStatusDoc.branches` (nat's
+own merge test of the branch; absent where it could not test) gives
+`PRReading.branchConflicts`, merged into `marks`; `prMarks` draws a slice
+`inReview` with its conflict alone. The Changes header takes
+`branchConflictNotice`'s text as its `warning` and the notice atop its body
+— "rebase it on <base>" (`ConflictNotice.hasPullRequest` false), the PR's
+own notice keeps "merge <base> in" — and Send back's prefill says the same;
+a launch then carries nat's rebase passage. Stories:
+`window-review-conflicting`, `window-review-conflicting-send-back`,
+`sidebar-checks-failing`,
 `sidebar-pr-marks`, `sidebar-pr-marks-passing`, `window-pr-checks-passing`,
 `window-pr-checks-failing`, `window-pr-checks-agent-told`,
 `window-pr-conflicting`, `window-pr-conflicting-checks-failing`,

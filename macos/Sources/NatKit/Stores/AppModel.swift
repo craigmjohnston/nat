@@ -1343,10 +1343,13 @@ public final class AppModel {
     }
 
     /// Takes a project's `pr-status` reading on the plan its store holds —
-    /// the Go board's cadence, every plan that lands — and skips it the same
-    /// way where no slice has a pull request worth asking about.
+    /// the Go board's cadence, every plan that lands — and skips it where no
+    /// slice has a pull request worth asking about, nor a handed-back branch
+    /// under review for nat to test against its base.
     private func updatePRStatus(of store: ProjectStore) async {
-        guard let info = store.state.projectInfo, info.slices.contains(where: { !$0.pr.isEmpty }) else { return }
+        guard let info = store.state.projectInfo,
+            info.slices.contains(where: { !$0.pr.isEmpty || inReview($0) })
+        else { return }
         await prStatusStore?.update(projectID: store.projectID)
     }
 

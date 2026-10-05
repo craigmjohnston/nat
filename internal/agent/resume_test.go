@@ -142,3 +142,46 @@ func TestEverySlicePromptCarriesTheResumePassage(t *testing.T) {
 		}
 	}
 }
+
+// conflictedContext is a relaunch on a hand-back with no pull request whose
+// branch the launch found conflicting with origin/main.
+func conflictedContext() PromptContext {
+	c := worktreeContext()
+	c.Slice.Status = domain.SliceClaimed
+	c.Slice.Branch = c.Branch
+	c.ConflictBase = "origin/main"
+	return c
+}
+
+func TestPromptOnAConflictedHandBack(t *testing.T) {
+	golden(t, "prompt-conflicted", Prompt(conflictedContext()))
+}
+
+// A conflicted hand-back is told to rebase onto the base it conflicts with,
+// resolve, push the rewritten branch with a lease, and hand back — on top of
+// the ordinary relaunch, which still says it is continuing.
+func TestPromptTasksAConflictedHandBackWithARebase(t *testing.T) {
+	c := conflictedContext()
+	got := Prompt(c)
+	for _, want := range []string{
+		"There is work on that branch already",
+		"## The branch conflicts with origin/main",
+		"on " + c.Branch + ":\n   `git rebase origin/main`",
+		"Resolve every conflict",
+		"`git push --force-with-lease origin " + c.Branch + "`",
+		"--branch " + c.Branch + " --summary",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not say %q:\n%s", want, got)
+		}
+	}
+}
+
+// No conflict found, no passage: an ordinary relaunch says nothing of one.
+func TestPromptSaysNothingOfAConflictWithoutOne(t *testing.T) {
+	c := conflictedContext()
+	c.ConflictBase = ""
+	if got := Prompt(c); strings.Contains(got, "conflicts with") || strings.Contains(got, "git rebase") {
+		t.Errorf("prompt speaks of a conflict nobody found:\n%s", got)
+	}
+}

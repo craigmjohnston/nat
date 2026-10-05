@@ -107,6 +107,41 @@ final class AppModelPRMarksTests: XCTestCase {
         XCTAssertEqual(activeMarks(model, conflicting), conflictMarks)
     }
 
+    /// A project whose only slice under review is a handed-back branch with no
+    /// pull request is read all the same — nat tests that branch — and the
+    /// branch's conflict marks it; a plan with neither is never read.
+    func testAHandBackWithNoPullRequestIsReadAndMarked() async {
+        let id = "f1x75111-0000-4000-8000-0000000000b1"
+        func plan(_ slices: [Slice]) -> ProjectInfo {
+            ProjectInfo(
+                project: Fixtures.secondProjectInfo.project, milestones: Fixtures.secondProjectInfo.milestones,
+                slices: slices)
+        }
+        let review = Slice(
+            id: id, name: "Rebase me", status: "In progress", milestoneID: "Detail overhaul", assignee: "", pr: "",
+            url: "", branch: "slice/rebase-me", blocked: false, handedBack: true)
+        let doc = PRStatusDoc(slices: [], branches: [
+            PRStatusBranch(sliceID: id, name: "Rebase me", branch: "slice/rebase-me", base: "origin/main", conflicting: true),
+        ])
+        let model = await started(FixtureNatClient(
+            otherPlans: [Fixtures.secondProjectID: plan([review])],
+            prStatusByProject: [Fixtures.secondProjectID: doc]))
+        let marks = PRMarks(conflict: BranchConflict(base: "origin/main"))
+        XCTAssertEqual(activeMarks(model, id), marks)
+        XCTAssertEqual(treeMarks(model, id), marks)
+
+        let working = Slice(
+            id: id, name: "Rebase me", status: "In progress", milestoneID: "Detail overhaul", assignee: "", pr: "",
+            url: "", branch: nil, blocked: false, handedBack: false)
+        let quiet = await Fixtures.startedAppModel(
+            client: FixtureNatClient(
+                otherPlans: [Fixtures.secondProjectID: plan([working])],
+                prStatusByProject: [Fixtures.secondProjectID: doc]),
+            config: Fixtures.twoProjectConfig, planCache: NullPlanCache())
+        for _ in 0..<200 { await Task.yield() }
+        XCTAssertNil(quiet.prStatusStore?.readings[Fixtures.secondProjectID], "nothing to ask nat about")
+    }
+
     /// A project that is no longer this ID drops its reading with the rest.
     func testCleanupDropsTheStore() async {
         let model = await started(client())

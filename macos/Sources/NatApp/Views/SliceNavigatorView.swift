@@ -56,6 +56,12 @@ struct SliceNavigatorView: View {
                 reading: prReadingOfProject.conflicts[slice.id], detail: prStore.loadState.pr, prURL: slice.pr),
             hasLiveAgent: agent != nil)
     }
+    /// The Changes section's conflict notice: a handed-back branch with no
+    /// pull request that `pr-status` tested conflicting with its base.
+    private var branchConflictNotice: ConflictNotice? {
+        NatKit.branchConflictNotice(
+            slice: slice, conflict: prReadingOfProject.branchConflicts[slice.id], hasLiveAgent: agent != nil)
+    }
     /// The PR header's danger icon's tooltip: every notice that applies.
     private var prWarning: String? {
         let texts = [notice?.text, conflictNotice?.text].compactMap { $0 }
@@ -97,14 +103,20 @@ struct SliceNavigatorView: View {
                     // says so.
                     status: diffStore.sectionStatus,
                     reworking: reworking(nav, .changes),
+                    warning: branchConflictNotice?.text,
                     onHead: { click(.changes) }, onFold: { fold(.changes) }
                 ) {
                     if nav.showsChangesSend { sendCommentsAction }
                 } content: {
-                    ChangesSectionBody(
-                        appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions
-                    ) {
-                        main = .diff
+                    VStack(spacing: 0) {
+                        if let branchConflictNotice {
+                            NavNotice(text: branchConflictNotice.text, role: .danger)
+                        }
+                        ChangesSectionBody(
+                            appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions
+                        ) {
+                            main = .diff
+                        }
                     }
                 }
             }
@@ -145,7 +157,7 @@ struct SliceNavigatorView: View {
         }
         .task(id: slice.id) {
             resetLaunchForm()
-            sendBackDraft = sendBackOpen ? sendBackReason(checks: notice, conflict: conflictNotice) : nil
+            sendBackDraft = sendBackOpen ? sendBackReason(checks: notice, conflict: conflictNotice ?? branchConflictNotice) : nil
             agentOptions = await AgentOptionsCache.shared.resolve()
         }
         .task(id: "\(slice.id)|\(slice.pr)") {
@@ -369,7 +381,7 @@ struct SliceNavigatorView: View {
         // Opens the editor, prefilled with the pull request's own trouble
         // where it has any; a second press shuts it.
         case .sendBack:
-            sendBackDraft = sendBackDraft == nil ? sendBackReason(checks: notice, conflict: conflictNotice) : nil
+            sendBackDraft = sendBackDraft == nil ? sendBackReason(checks: notice, conflict: conflictNotice ?? branchConflictNotice) : nil
         }
     }
 

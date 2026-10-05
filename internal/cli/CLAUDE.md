@@ -363,7 +363,12 @@ a tmux that can't list live sessions concludes nothing; every entry carries
 CONFLICTING or merge state DIRTY (`gh.PRStatus.Conflicting`, the merge
 refusal's words), false for UNKNOWN and for a PR the listing never read —
 and `base` where it read one; not a readiness word, and nothing nudges on
-it. gnat holds this reading per project, every open one), `slice-status` (reads one page by ID directly, `--project` only
+it. `branches` (`branchReadings`) is every hand-back awaiting review —
+In progress, `Branch` set, no PR — tested by `git.CLI.ConflictsWithBase`
+(a fetch each), `{slice_id, name, branch, base, conflicting}`, `base` being
+`CLI.Base`'s ref (`origin/main`); an unknown reading is left out, never
+conflicting, and the markdown lists only conflicted ones under "Branches
+awaiting review". gnat holds this reading per project, every open one), `slice-status` (reads one page by ID directly, `--project` only
 for credentials — no plan is read at all, so it is the one read that can
 never show a phantom state from a stale cached plan; built for the macOS
 app's session reaper, see `SessionReaping.swift`).

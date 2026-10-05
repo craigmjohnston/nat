@@ -585,6 +585,23 @@ enum AppStories {
         },
 
         Story(
+            name: "window-review-conflicting",
+            summary: "A handed-back slice with no pull request whose branch nat tested conflicting with origin/main, no agent on it: the conflict mark on its Active and tree rows, a danger icon on the Changes header, and a notice atop the Changes body naming origin/main and saying to send it back to the agent to rebase.",
+            size: window
+        ) {
+            await slicePane(Fixtures.mergeBoxSliceID, agents: [], prStatus: Fixtures.prStatusBranchConflicting)
+        },
+
+        Story(
+            name: "window-review-conflicting-send-back",
+            summary: "The same conflicted hand-back with Send back to agent open: its note prefilled with the conflict and the rebase onto origin/main.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.mergeBoxSliceID, agents: [], prStatus: Fixtures.prStatusBranchConflicting, sendBackOpen: true)
+        },
+
+        Story(
             name: "window-review-comments",
             summary: "The same review with comments pending: the count on Send, secondary in the Changes header, Approve with comments in the bar, the dot on the file row, the inline cards in the diff.",
             size: window

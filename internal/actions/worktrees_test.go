@@ -10,6 +10,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
@@ -104,6 +105,9 @@ type fakeRepo struct {
 	log, stat         string
 	logErr, statErr   error
 	loggedFor, stated string // last (dir, base, branch) triple joined, for tests to assert against
+
+	merge  git.MergeState
+	tested []string // every (dir, branch) pair ConflictsWithBase was asked, joined
 }
 
 var _ Repo = (*fakeRepo)(nil)
@@ -120,6 +124,11 @@ func (f *fakeRepo) LogOneline(dir, base, branch string) (string, error) {
 func (f *fakeRepo) DiffStat(dir, base, branch string) (string, error) {
 	f.stated = dir + "|" + base + "|" + branch
 	return f.stat, f.statErr
+}
+
+func (f *fakeRepo) ConflictsWithBase(dir, branch string) git.MergeState {
+	f.tested = append(f.tested, dir+"|"+branch)
+	return f.merge
 }
 
 // repoDir is a directory that looks enough like a git checkout for the

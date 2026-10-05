@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+
+	"github.com/craigmjohnston/nat/internal/git"
 )
 
 // worktreeCall is one thing the fake was asked about: the repository, the
@@ -81,3 +83,5 @@ func (f *fakeRepo) LogOneline(dir, base, branch string) (string, error) { return
 func (f *fakeRepo) DiffStat(dir, base, branch string) (string, error) { return f.stat, nil }
 
 func (f *fakeRepo) Base(string) string { return f.base }
+
+func (f *fakeRepo) ConflictsWithBase(dir, branch string) git.MergeState { return git.MergeUnknown }

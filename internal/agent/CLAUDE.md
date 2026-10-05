@@ -35,7 +35,10 @@ running agent's state.
   it's continuing rather than starting. A slice with a PR adds
   `pullRequestPassage` (the PR is open, a push updates it, the launch's
   review snapshot, `gh pr view <PR> --comments` the one `gh` allowed, never
-  a PR write). Every slice prompt carries `resumePassage` (`nat
+  a PR write). `PromptContext.ConflictBase` (set by `actions.Launch` for a
+  conflicted hand-back with no PR) adds `conflictPassage`: rebase onto the
+  base, resolve, gate, `git push --force-with-lease`, hand back. Every
+  slice prompt carries `resumePassage` (`nat
   slice-resume` before changing anything when asked for more after a
   hand-back; a Done refusal means merged). See root CLAUDE.md's Resuming
   rule.

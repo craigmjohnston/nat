@@ -37,7 +37,11 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   the brief, write the prompt file, start tmux. A slice with a PR recorded
   is an ordinary relaunch that also gathers `reviewSnapshot` (comments and
   checks, through `PRReviewReader`; nil reads nothing) for the prompt's
-  pull-request passage. The claim runs **last** of what can fail before
+  pull-request passage. A slice with no PR, placed on a branch, whose
+  brief holds a `Handed back` (in review, or sent back) is tested with
+  `Repo.ConflictsWithBase`; only `MergeConflicted` sets
+  `PromptContext.ConflictBase` (`Repo.Base`), the prompt's rebase passage.
+  The claim runs **last** of what can fail before
   tmux is asked for anything, so a worktree or prompt-file failure leaves the
   slice exactly where it was.
 - `PlaceAgent` resolves `AgentBranch` (the branch recorded at hand-back, or

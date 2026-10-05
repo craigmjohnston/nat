@@ -9,6 +9,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
+	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/store"
 )
@@ -74,12 +75,107 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 	if marked {
 		env.nudged()
 	}
+	branches := branchReadings(env.NewGit(), slices, project)
 
 	if asJSON {
-		return writeJSON(env.Out, prStatusJSON(readings))
+		doc := prStatusJSON(readings)
+		doc.Branches = branchesJSON(branches)
+		return writeJSON(env.Out, doc)
 	}
-	_, err = io.WriteString(env.Out, prStatusMarkdown(readings))
+	_, err = io.WriteString(env.Out, prStatusMarkdown(readings)+branchesMarkdown(branches))
 	return err
+}
+
+// branchReading is one handed-back branch with no pull request yet, tested
+// against its repository's default branch: the one state of a review nothing
+// on GitHub can say anything about, since there is no pull request for
+// GitHub to read the mergeability of.
+type branchReading struct {
+	SliceID     string
+	SliceName   string
+	Branch      string
+	Base        string
+	Conflicting bool
+}
+
+// awaitingReview reports whether a slice is a hand-back still to be approved:
+// in progress, its branch recorded, no pull request opened from it. A resumed
+// or sent-back slice has its branch cleared and is work in progress again, so
+// it is not one; nor is a slice with a pull request, whose conflicts GitHub
+// reads.
+func awaitingReview(s domain.Slice) bool {
+	return s.Status == domain.SliceClaimed && s.Branch != "" && s.PRURL == ""
+}
+
+// branchReadings tests every hand-back awaiting review for a conflict with
+// its base, by [git.CLI.ConflictsWithBase], in the plan's own order. Each
+// test fetches, so this costs a fetch per such slice — few at any one time,
+// since a review either opens its pull request or goes back to the agent. A
+// reading that comes back unknown is left out entirely: a branch nobody could
+// test is not a broken one, and nothing downstream should draw it as either.
+// A slice with no repository to test in (a source project's task that has not
+// recorded one) is never asked about.
+func branchReadings(g GitCLI, slices []domain.Slice, project config.ProjectConfig) []branchReading {
+	var out []branchReading
+	bases := map[string]string{}
+	for _, s := range slices {
+		if !awaitingReview(s) {
+			continue
+		}
+		dir := actions.ExpandHome(actions.WorkdirFor(s, project))
+		if dir == "" {
+			continue
+		}
+		state := g.ConflictsWithBase(dir, s.Branch)
+		if state == git.MergeUnknown {
+			continue
+		}
+		base, seen := bases[dir]
+		if !seen {
+			base = g.Base(dir)
+			bases[dir] = base
+		}
+		out = append(out, branchReading{SliceID: s.ID, SliceName: s.Name, Branch: s.Branch, Base: base,
+			Conflicting: state == git.MergeConflicted})
+	}
+	return out
+}
+
+// branchJSON is one branch reading's entry: a handed-back branch with no pull
+// request, and whether it conflicts with Base, the default branch it was
+// tested against.
+type branchJSON struct {
+	SliceID     string `json:"slice_id"`
+	Name        string `json:"name"`
+	Branch      string `json:"branch"`
+	Base        string `json:"base"`
+	Conflicting bool   `json:"conflicting"`
+}
+
+// branchesJSON maps the branch readings onto their structured form — never
+// nil, so the key always reads as a list.
+func branchesJSON(readings []branchReading) []branchJSON {
+	out := make([]branchJSON, 0, len(readings))
+	for _, r := range readings {
+		out = append(out, branchJSON{SliceID: r.SliceID, Name: r.SliceName, Branch: r.Branch, Base: r.Base,
+			Conflicting: r.Conflicting})
+	}
+	return out
+}
+
+// branchesMarkdown names every handed-back branch read conflicting, under a
+// heading of its own; nothing at all where none is.
+func branchesMarkdown(readings []branchReading) string {
+	out := ""
+	for _, r := range readings {
+		if r.Conflicting {
+			out += fmt.Sprintf("- %s — %s — %s\n", r.SliceName, conflictLine(r.Base), r.Branch)
+		}
+	}
+	if out == "" {
+		return ""
+	}
+	return "\n# Branches awaiting review\n\n" + out
 }
 
 // prReading is one slice's pull request as pr-status reports it. Checks is
@@ -270,9 +366,12 @@ func prReadings(ctx context.Context, st store.Store, ghClient GH, worktrees acti
 }
 
 // prStatusDoc is the structured form of the reading: one entry per slice worth
-// watching, in the plan's own order.
+// watching, in the plan's own order — and, under Branches, every hand-back
+// awaiting review whose merge into its base could be tested
+// ([branchReadings]).
 type prStatusDoc struct {
-	Slices []prStatusSliceJSON `json:"slices"`
+	Slices   []prStatusSliceJSON `json:"slices"`
+	Branches []branchJSON        `json:"branches"`
 }
 
 // prStatusSliceJSON is one slice's entry. Conflicting is GitHub positively

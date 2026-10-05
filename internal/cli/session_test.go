@@ -144,6 +144,9 @@ func (f *fakeSessionRepo) CurrentBranch(dir string) (string, error) {
 	return f.currentBranch, f.currentErr
 }
 func (f *fakeSessionRepo) ReflogBranches(dir string) ([]string, error) { return f.reflog, f.reflogErr }
+func (f *fakeSessionRepo) ConflictsWithBase(dir, branch string) git.MergeState {
+	return git.MergeUnknown
+}
 
 var _ actions.Worktrees = (*fakeSessionWorktrees)(nil)
 var _ GitCLI = (*fakeSessionRepo)(nil)

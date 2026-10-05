@@ -26,6 +26,10 @@ final class SendBackTests: XCTestCase {
             sendBackReason(checks: checks, conflict: ConflictNotice(conflict: BranchConflict(base: nil), action: .none)),
             "Checks are failing on the pull request: CI / test, lint. "
                 + "The branch conflicts with its base: merge its base in and resolve the conflicts.")
+        let branch = ConflictNotice(conflict: BranchConflict(base: "origin/main"), action: .sendBack, hasPullRequest: false)
+        XCTAssertEqual(
+            sendBackReason(checks: nil, conflict: branch),
+            "The branch conflicts with origin/main: rebase it on origin/main and resolve the conflicts.")
     }
 
     func testThePromptSaysWhyThenEndsInTheHandBackOnTheSameBranch() {
