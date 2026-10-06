@@ -96,9 +96,12 @@ type sliceShowJSON struct {
 	Resumed bool `json:"resumed"`
 	// TakenBack says the slice was handed back and taken back to work — see
 	// [takenBack].
-	TakenBack bool   `json:"taken_back"`
-	State     string `json:"state,omitempty"`
-	Brief     string `json:"brief"`
+	TakenBack bool `json:"taken_back"`
+	// FixingChecks are the checks a taken-back slice's agent was last given
+	// failing and has not yet handed back a fix for — see [fixingChecks].
+	FixingChecks []string `json:"fixing_checks,omitempty"`
+	State        string   `json:"state,omitempty"`
+	Brief        string   `json:"brief"`
 	// FollowUps are the follow-ups the slice's agent handed in that still
 	// await the user's decision, every batch's, each by the index
 	// slice-triage takes and the batch it was handed in under. None on a Done
@@ -284,6 +287,9 @@ func writeSliceShowJSON(out io.Writer, s domain.Slice, m domain.Milestone, proje
 	}
 	if state != domain.SliceStateNone {
 		sj.State = state.String()
+	}
+	if sj.TakenBack {
+		sj.FixingChecks = fixingChecks(brief)
 	}
 	for _, f := range store.PendingFollowUpsOf(s, brief) {
 		sj.FollowUps = append(sj.FollowUps, followUpJSON{Batch: f.Batch, Index: f.Index, Title: f.Title, Brief: f.Brief})

@@ -143,11 +143,12 @@ enum AppStories {
     /// `prStatus` is the first project's reading.
     @MainActor
     private static func prMarksAppModel(
-        prStatus: PRStatusDoc = Fixtures.prStatusChecksFailingAndConflicting
+        prStatus: PRStatusDoc = Fixtures.prStatusChecksFailingAndConflicting,
+        agents: [AgentStatus] = Fixtures.agentStatuses
     ) async -> AppModel {
         let appModel = await Fixtures.startedAppModel(
             client: FixtureNatClient(
-                otherPlans: [Fixtures.secondProjectID: Fixtures.secondProjectInfoWithPRs],
+                otherPlans: [Fixtures.secondProjectID: Fixtures.secondProjectInfoWithPRs], agents: agents,
                 prStatus: prStatus,
                 prStatusByProject: [Fixtures.secondProjectID: Fixtures.secondProjectPRStatus]),
             config: Fixtures.twoProjectConfig)
@@ -1076,6 +1077,17 @@ enum AppStories {
         },
 
         Story(
+            name: "window-pr-checks-fixing",
+            summary: "The red pull request's slice resumed on the nudge, its agent's fix pushed and the checks running again, not yet handed back: the PR header keeps the danger icon (sent to the agent to fix) and its sidebar rows the checks' danger mark, not the running mark.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses, plan: Fixtures.fixingChecksProjectInfo,
+                prStatus: Fixtures.prStatusChecksRunning, pr: Fixtures.prChecksRunning,
+                details: Fixtures.checksNudgedSliceDetails, focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
             name: "window-pr-checks-controls",
             summary: "An approved slice's PR section open over checks in every state — passed, failed, running, queued, and one Vercel reported — each row a sidebar task row's height: the heading's re-run and cancel over a checklist at the trailing edge, the rows' own pair hidden until the pointer is on one.",
             size: window
@@ -1171,6 +1183,21 @@ enum AppStories {
             size: sidebar
         ) {
             let appModel = await prMarksAppModel(prStatus: Fixtures.prStatusChecksPassing)
+            let open: [String: Bool] = [
+                "p:\(Fixtures.projectID)": false, "p:\(Fixtures.secondProjectID)": false,
+                "m:\(Fixtures.projectID)/M2: Review flow": false, "m:\(Fixtures.secondProjectID)/Detail overhaul": false,
+                "m:\(Fixtures.projectID)/~sessions": true,
+            ]
+            return SidebarView(appModel: appModel, folded: open).environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "sidebar-pr-marks-passing-agent-left",
+            summary: "As sidebar-pr-marks-passing, with the agent left in the approved slice's pane after its hand-back — which reads as working: its rows still carry the green passing mark.",
+            size: sidebar
+        ) {
+            let appModel = await prMarksAppModel(
+                prStatus: Fixtures.prStatusChecksPassing, agents: Fixtures.approvedAgentStatuses)
             let open: [String: Bool] = [
                 "p:\(Fixtures.projectID)": false, "p:\(Fixtures.secondProjectID)": false,
                 "m:\(Fixtures.projectID)/M2: Review flow": false, "m:\(Fixtures.secondProjectID)/Detail overhaul": false,

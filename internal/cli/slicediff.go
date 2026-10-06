@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
@@ -230,12 +231,60 @@ func writeDiffJSON(out io.Writer, base, branch, diff string) error {
 // work, rather than never handed back at all. A body that cannot be read is
 // logged and concludes nothing — the slice is read as never handed back.
 func handedBackBefore(ctx context.Context, st store.Store, id string) bool {
+	return holdsHandBack(taskLogOf(ctx, st, id))
+}
+
+// taskLogOf is a slice's body, for its task log — "" where it cannot be
+// read, which is logged and reads as a log holding nothing.
+func taskLogOf(ctx context.Context, st store.Store, id string) string {
 	body, err := st.Body(ctx, id)
 	if err != nil {
 		logging.Action("could not read a slice's task log for an earlier hand-back", "slice", id, "err", err)
-		return false
+		return ""
 	}
-	return holdsHandBack(body)
+	return body
+}
+
+// ciProvenance is the By a nudge's Sent back reads back with:
+// [actions.ChecksProvenance] with its "From " taken off, as
+// [store.TaskEvents] takes it.
+var ciProvenance = strings.TrimPrefix(actions.ChecksProvenance, "From ")
+
+// fixingChecks is the checks, by name, that the latest CI failure on a task
+// log read off body names — a Checks failed, or a Sent back from CI — where
+// no hand-back follows it: the failure the slice's agent was given and has
+// not yet handed back a fix for. Nil where a hand-back follows the last one,
+// or there is none. gnat keeps a resumed slice's failing mark on these while
+// its fix's checks run.
+func fixingChecks(body string) []string {
+	var names []string
+	for _, e := range store.TaskEvents(body) {
+		switch {
+		case e.Kind == store.HandedBackKind:
+			names = nil
+		case e.Kind == store.ChecksFailedKind, e.Kind == store.SentBackKind && e.By == ciProvenance:
+			names = checkNames(e.Note)
+		}
+	}
+	return names
+}
+
+// checkNames reads the check names back off a failure record's bullets, as
+// actions' checkLines writes them: a name, then ": " and its run URL where it
+// has one.
+func checkNames(record string) []string {
+	var names []string
+	for _, line := range strings.Split(record, "\n") {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "- ")
+		if !ok {
+			continue
+		}
+		if i := strings.LastIndex(rest, ": "); i >= 0 && strings.HasPrefix(rest[i+2:], "http") {
+			rest = rest[:i]
+		}
+		names = append(names, strings.TrimSpace(rest))
+	}
+	return names
 }
 
 // holdsHandBack reports whether a task log, read off body, holds a Handed

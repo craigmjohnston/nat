@@ -28,8 +28,8 @@ public struct PRMarks: Equatable, Sendable {
     public let failingChecks: [String]?
     public let conflict: BranchConflict?
     /// Whether the checks were last read passing. `PRReading.marks` sets it
-    /// from the verdict alone; `prMarks(_:for:agent:)` keeps it only where
-    /// the green tick can be trusted.
+    /// from the verdict alone; `prMarks(_:for:)` keeps it only where the
+    /// green tick can be trusted.
     public let checksPassing: Bool
     /// Whether the checks were last read still running — set and kept by the
     /// same rule as `checksPassing`, drawn in the same slot.
@@ -266,18 +266,24 @@ public func atPullRequest(_ slice: Slice) -> Bool {
 }
 
 /// The marks a slice's rows and PR heading draw, from its reading's `marks`:
-/// a slice in review (`inReview`) its handed-back branch's conflict alone;
-/// none elsewhere off its pull request (`atPullRequest`); failing and conflict as read;
-/// and the passing tick and the running mark only where they can be trusted —
-/// at the PR stage exactly, with no live agent working (an idle one left from
-/// hand-back is fine), and the pull request neither conflicting nor read
-/// failing. The two share the checks' slot under the one rule.
-public func prMarks(_ marks: PRMarks, for slice: Slice, agent: AgentActivity?) -> PRMarks {
+/// a slice in review (`inReview`) its handed-back branch's conflict alone; a
+/// resumed one — its work kicked back to the agent — its failing checks
+/// alone: as read, or, while the checks run again, the failure its agent was
+/// given and has not handed back a fix for (`Slice.fixingChecks`, off its
+/// task log); none elsewhere off its pull request (`atPullRequest`).
+/// At the PR stage, failing and conflict as read, and the passing tick and
+/// the running mark where the pull request is neither conflicting nor read
+/// failing — whatever its agent's activity reads, since an agent left idle
+/// after its hand-back reads as working. The two share the checks' slot.
+public func prMarks(_ marks: PRMarks, for slice: Slice) -> PRMarks {
     // In review, before any pull request: its branch's conflict alone.
     if inReview(slice) { return PRMarks(conflict: marks.conflict) }
+    if slice.resumed {
+        return PRMarks(failingChecks: marks.failingChecks ?? (marks.checksRunning ? slice.fixingChecks : nil))
+    }
     guard atPullRequest(slice) else { return .none }
-    let trusted = marks.failingChecks == nil && marks.conflict == nil && agent != .working
+    let clear = marks.failingChecks == nil && marks.conflict == nil
     return PRMarks(
-        failingChecks: marks.failingChecks, conflict: marks.conflict, checksPassing: trusted && marks.checksPassing,
-        checksRunning: trusted && marks.checksRunning)
+        failingChecks: marks.failingChecks, conflict: marks.conflict, checksPassing: clear && marks.checksPassing,
+        checksRunning: clear && marks.checksRunning)
 }

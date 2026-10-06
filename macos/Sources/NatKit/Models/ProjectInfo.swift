@@ -116,6 +116,11 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
     /// what keeps its Changes and Visual changes on screen while the work is
     /// redone. Never a stage of its own. False where nat does not say.
     public let takenBack: Bool
+    /// The checks a taken-back slice's agent was last given failing — a
+    /// Checks failed, or CI's Sent back — and has not handed back a fix for:
+    /// nat's `fixing_checks`. What keeps a resumed slice marked failing while
+    /// its fix's checks run. Nil where there are none, or nat does not say.
+    public let fixingChecks: [String]?
     public let state: SliceState?
 
     enum CodingKeys: String, CodingKey {
@@ -133,6 +138,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         case handedBack = "handed_back"
         case resumed
         case takenBack = "taken_back"
+        case fixingChecks = "fixing_checks"
         case state
     }
 
@@ -151,6 +157,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         handedBack: Bool,
         resumed: Bool = false,
         takenBack: Bool = false,
+        fixingChecks: [String]? = nil,
         state: SliceState? = nil
     ) {
         self.id = id
@@ -167,6 +174,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         self.handedBack = handedBack
         self.resumed = resumed
         self.takenBack = takenBack
+        self.fixingChecks = fixingChecks
         self.state = state
     }
 
@@ -186,6 +194,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
         handedBack = try c.decode(Bool.self, forKey: .handedBack)
         resumed = try c.decodeIfPresent(Bool.self, forKey: .resumed) ?? false
         takenBack = try c.decodeIfPresent(Bool.self, forKey: .takenBack) ?? false
+        fixingChecks = try c.decodeIfPresent([String].self, forKey: .fixingChecks)
         state = try c.decodeIfPresent(SliceState.self, forKey: .state)
     }
 }

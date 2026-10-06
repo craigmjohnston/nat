@@ -8,11 +8,22 @@ import XCTest
 final class PRMarksTests: XCTestCase {
     private func slice(
         _ id: String = "s-1", status: String = "In progress", pr: String = "https://github.test/o/r/pull/7",
-        resumed: Bool = false, handedBack: Bool = false, branch: String? = nil
+        resumed: Bool = false, handedBack: Bool = false, branch: String? = nil, fixingChecks: [String]? = nil
     ) -> Slice {
         Slice(
             id: id, name: "Slice \(id)", status: status, milestoneID: "M1", assignee: "", pr: pr, url: "",
-            branch: branch, blocked: false, handedBack: handedBack, resumed: resumed)
+            branch: branch, blocked: false, handedBack: handedBack, resumed: resumed, takenBack: resumed,
+            fixingChecks: fixingChecks)
+    }
+
+    func testSliceDecodesFixingChecks() throws {
+        let json = """
+        {"id": "s", "name": "A", "status": "In progress", "milestone_id": "M1", "assignee": "", "pr": "u",
+         "url": "", "blocked": false, "handed_back": false, "resumed": true, "fixing_checks": ["CI / test"]}
+        """
+        XCTAssertEqual(try JSONDecoder().decode(Slice.self, from: Data(json.utf8)).fixingChecks, ["CI / test"])
+        let older = json.replacingOccurrences(of: #", "fixing_checks": ["CI / test"]"#, with: "")
+        XCTAssertNil(try JSONDecoder().decode(Slice.self, from: Data(older.utf8)).fixingChecks)
     }
 
     // MARK: - Decoding
@@ -78,47 +89,62 @@ final class PRMarksTests: XCTestCase {
     func testThePassingTickIsKeptOnlyWhereItCanBeTrusted() {
         let green = PRMarks(checksPassing: true)
         let tick = PRMarks(checksPassing: true)
-        XCTAssertEqual(prMarks(green, for: slice(), agent: nil), tick, "at the PR stage, no agent")
-        XCTAssertEqual(prMarks(green, for: slice(), agent: .waiting), tick, "an idle agent left from hand-back")
-        XCTAssertEqual(prMarks(green, for: slice(), agent: .working), .none, "a working agent may push")
-        XCTAssertEqual(prMarks(green, for: slice(resumed: true), agent: nil), .none, "resumed")
-        XCTAssertEqual(prMarks(green, for: slice(status: "Done"), agent: nil), .none, "Done")
-        XCTAssertEqual(
-            prMarks(green, for: slice(pr: "", handedBack: true, branch: "b"), agent: nil), .none, "in review")
-        XCTAssertEqual(prMarks(green, for: slice(pr: ""), agent: nil), .none, "working, sent back")
-        XCTAssertEqual(prMarks(.none, for: slice(), agent: nil), .none, "no reading, or not passing")
+        XCTAssertEqual(prMarks(green, for: slice()), tick, "at the PR stage, whatever its agent reads")
+        XCTAssertEqual(prMarks(green, for: slice(resumed: true)), .none, "resumed")
+        XCTAssertEqual(prMarks(green, for: slice(status: "Done")), .none, "Done")
+        XCTAssertEqual(prMarks(green, for: slice(pr: "", handedBack: true, branch: "b")), .none, "in review")
+        XCTAssertEqual(prMarks(green, for: slice(pr: "")), .none, "working, sent back")
+        XCTAssertEqual(prMarks(.none, for: slice()), .none, "no reading, or not passing")
 
         let conflicted = PRMarks(conflict: BranchConflict(base: "main"), checksPassing: true)
         XCTAssertEqual(
-            prMarks(conflicted, for: slice(), agent: nil), PRMarks(conflict: BranchConflict(base: "main")),
+            prMarks(conflicted, for: slice()), PRMarks(conflict: BranchConflict(base: "main")),
             "a conflict draws alone")
         let contradictory = PRMarks(failingChecks: ["test"], checksPassing: true)
-        XCTAssertEqual(prMarks(contradictory, for: slice(), agent: nil), PRMarks(failingChecks: ["test"]))
+        XCTAssertEqual(prMarks(contradictory, for: slice()), PRMarks(failingChecks: ["test"]))
 
         let both = PRMarks(failingChecks: ["test"], conflict: BranchConflict(base: "main"))
-        XCTAssertEqual(prMarks(both, for: slice(), agent: .working), both, "failing and conflict as before")
-        XCTAssertEqual(
-            prMarks(both, for: slice(resumed: true), agent: .working), .none,
-            "resumed: the reading is of a commit its agent is replacing")
+        XCTAssertEqual(prMarks(both, for: slice()), both, "failing and conflict as read")
     }
 
     func testTheRunningMarkKeepsThePassingTicksGate() {
         let running = PRMarks(checksRunning: true)
         XCTAssertEqual(PRStatusSlice.checksPending, "pending")
-        XCTAssertEqual(prMarks(running, for: slice(), agent: nil), running, "at the PR stage, no agent")
-        XCTAssertEqual(prMarks(running, for: slice(), agent: .waiting), running, "an idle agent left from hand-back")
-        XCTAssertEqual(prMarks(running, for: slice(), agent: .working), .none, "a working agent may push")
-        XCTAssertEqual(prMarks(running, for: slice(resumed: true), agent: nil), .none, "resumed")
-        XCTAssertEqual(prMarks(running, for: slice(status: "Done"), agent: nil), .none, "Done")
+        XCTAssertEqual(prMarks(running, for: slice()), running, "at the PR stage, whatever its agent reads")
+        XCTAssertEqual(prMarks(running, for: slice(resumed: true)), .none, "resumed")
+        XCTAssertEqual(prMarks(running, for: slice(status: "Done")), .none, "Done")
         XCTAssertEqual(
-            prMarks(PRMarks(failingChecks: ["test"], checksRunning: true), for: slice(), agent: nil),
+            prMarks(PRMarks(failingChecks: ["test"], checksRunning: true), for: slice()),
             PRMarks(failingChecks: ["test"]), "failing wins")
         XCTAssertEqual(
-            prMarks(PRMarks(conflict: BranchConflict(base: "main"), checksRunning: true), for: slice(), agent: nil),
+            prMarks(PRMarks(conflict: BranchConflict(base: "main"), checksRunning: true), for: slice()),
             PRMarks(conflict: BranchConflict(base: "main")), "a conflict draws alone")
+        XCTAssertEqual(
+            prMarks(running, for: slice(fixingChecks: ["test"])), running,
+            "handed back, the checks running again: the failure on its log goes")
         XCTAssertEqual(running.runningHelp, "Checks running")
         XCTAssertNil(PRMarks(checksPassing: true).runningHelp)
         XCTAssertFalse(running.isEmpty)
+    }
+
+    /// Work kicked back to the agent draws its failing checks alone — as
+    /// read, or, while the fix's checks run, the failure on its task log
+    /// since its hand-back — until it is handed back.
+    func testAResumedSliceKeepsOnlyItsFailingChecks() {
+        let resumed = slice(resumed: true)
+        let fixing = slice(resumed: true, fixingChecks: ["test"])
+        XCTAssertEqual(
+            prMarks(PRMarks(failingChecks: ["test"], conflict: BranchConflict(base: "main")), for: resumed),
+            PRMarks(failingChecks: ["test"]), "failing as read, the conflict not")
+        XCTAssertEqual(
+            prMarks(PRMarks(checksRunning: true), for: fixing), PRMarks(failingChecks: ["test"]),
+            "its fix's checks running")
+        XCTAssertEqual(
+            prMarks(PRMarks(checksRunning: true), for: resumed), .none,
+            "running, with no failure on its log since the hand-back — sent back for something else")
+        XCTAssertEqual(prMarks(PRMarks(checksPassing: true), for: fixing), .none, "its fix passed")
+        XCTAssertEqual(prMarks(.none, for: fixing), .none, "no reading")
+        XCTAssertEqual(prMarks(PRMarks(conflict: BranchConflict(base: "main")), for: resumed), .none)
     }
 
     func testACheckRowLeadsWithItsOutcomesMark() {
@@ -159,7 +185,7 @@ final class PRMarksTests: XCTestCase {
             milestones: [Milestone(id: "M1", name: "M1", order: 0, status: "Active")],
             slices: [
                 slice("a"), slice("b"), slice("c", pr: ""), slice("d", status: "Done"),
-                slice("g"), slice("h"), slice("i", resumed: true),
+                slice("g"), slice("h"), slice("i", resumed: true), slice("j", resumed: true, fixingChecks: ["test"]),
             ])
         let other = ProjectInfo(
             project: Project(id: "q", name: "Q", conventions: ""),
@@ -173,7 +199,7 @@ final class PRMarksTests: XCTestCase {
             liveAgents: ["b": .waiting, "c": .working, "h": .working],
             prMarks: [
                 "g": PRMarks(checksPassing: true), "h": PRMarks(checksPassing: true),
-                "i": PRMarks(checksPassing: true),
+                "i": PRMarks(checksPassing: true), "j": PRMarks(checksRunning: true),
                 "a": both, "b": PRMarks(failingChecks: ["lint"]), "c": both, "d": both,
                 "e": PRMarks(conflict: BranchConflict(base: nil)),
             ])
@@ -183,8 +209,9 @@ final class PRMarksTests: XCTestCase {
         XCTAssertEqual(active["c"], PRMarks.none, "a working slice has no pull request to mark")
         XCTAssertEqual(active["e"], PRMarks(conflict: BranchConflict(base: nil)), "another project's")
         XCTAssertEqual(active["g"], PRMarks(checksPassing: true), "green at the PR stage")
-        XCTAssertEqual(active["h"], PRMarks.none, "green, but its agent is working")
+        XCTAssertEqual(active["h"], PRMarks(checksPassing: true), "green, its agent left reading working")
         XCTAssertEqual(active["i"], PRMarks.none, "green, but resumed")
+        XCTAssertEqual(active["j"], PRMarks(failingChecks: ["test"]), "resumed, its fix's checks running")
 
         let tree = Dictionary(uniqueKeysWithValues: model.projects.flatMap { project in
             (project.milestones + project.doneMilestones).flatMap(\.slices).map { ($0.sliceID, $0.marks) }
@@ -195,7 +222,8 @@ final class PRMarksTests: XCTestCase {
         XCTAssertEqual(tree["d"], PRMarks.none, "a Done slice carries neither")
         XCTAssertEqual(tree["e"], PRMarks(conflict: BranchConflict(base: nil)))
         XCTAssertEqual(tree["g"], PRMarks(checksPassing: true))
-        XCTAssertEqual(tree["h"], PRMarks.none)
+        XCTAssertEqual(tree["h"], PRMarks(checksPassing: true))
+        XCTAssertEqual(tree["j"], PRMarks(failingChecks: ["test"]))
     }
 
     // MARK: - The PR section
@@ -279,10 +307,10 @@ final class PRMarksTests: XCTestCase {
     func testAConflictedHandBackIsMarkedInReview() {
         let conflict = BranchConflict(base: "origin/main")
         let marks = PRMarks(failingChecks: ["stale"], conflict: conflict, checksPassing: true)
-        XCTAssertEqual(prMarks(marks, for: inReview(), agent: nil), PRMarks(conflict: conflict))
-        XCTAssertEqual(prMarks(.none, for: inReview(), agent: nil), .none)
+        XCTAssertEqual(prMarks(marks, for: inReview()), PRMarks(conflict: conflict))
+        XCTAssertEqual(prMarks(.none, for: inReview()), .none)
         XCTAssertEqual(
-            prMarks(PRMarks(conflict: conflict), for: slice(pr: "", branch: nil), agent: nil), .none,
+            prMarks(PRMarks(conflict: conflict), for: slice(pr: "", branch: nil)), .none,
             "work in progress is not in review")
     }
 

@@ -66,10 +66,16 @@ func info(ctx context.Context, args []string, env Env) error {
 			src = sourceInfo(ctx, ss, project, p, expand)
 		}
 		taken := map[string]bool{}
+		fixing := map[string][]string{}
 		for _, s := range p.Slices {
-			taken[s.ID] = takenBack(s, plan.Shape.HasBranch, func() bool { return handedBackBefore(ctx, st, s.ID) })
+			// The one body read a taken-back slice costs answers both.
+			taken[s.ID] = takenBack(s, plan.Shape.HasBranch, func() bool {
+				log := taskLogOf(ctx, st, s.ID)
+				fixing[s.ID] = fixingChecks(log)
+				return holdsHandBack(log)
+			})
 		}
-		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject, src, plan.Shape.HasBranch, taken)
+		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject, src, plan.Shape.HasBranch, taken, fixing)
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
@@ -162,8 +168,12 @@ type sliceJSON struct {
 	// TakenBack says the slice was handed back and taken back to work —
 	// resumed or sent back, with or without a pull request: see [takenBack].
 	// Only info sets it; container-show leaves it false.
-	TakenBack bool   `json:"taken_back"`
-	State     string `json:"state,omitempty"`
+	TakenBack bool `json:"taken_back"`
+	// FixingChecks are the checks a taken-back slice's agent was last given
+	// failing and has not yet handed back a fix for — see [fixingChecks].
+	// Only info sets it, and only on a taken-back slice.
+	FixingChecks []string `json:"fixing_checks,omitempty"`
+	State        string   `json:"state,omitempty"`
 }
 
 // writeInfoJSON encodes the project as JSON, indented: it is read by people as
@@ -172,8 +182,9 @@ type sliceJSON struct {
 // hasBranch is whether the project has a Branch column, which is what tells
 // resumed work from a pull request recorded on a project that has none.
 // taken names the slices taken back to work after a hand-back — see
-// [takenBack].
-func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool, src *sourceInfoJSON, hasBranch bool, taken map[string]bool) error {
+// [takenBack]; fixing, the checks each of those has to fix — see
+// [fixingChecks].
+func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool, src *sourceInfoJSON, hasBranch bool, taken map[string]bool, fixing map[string][]string) error {
 	doc := infoJSON{
 		Project:    projectJSON{ID: p.ID, Name: p.Name, Conventions: conventions},
 		Milestones: make([]milestoneJSON, 0, len(p.Milestones)),
@@ -191,6 +202,7 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch 
 	for _, s := range p.Slices {
 		sj := sliceJSONOf(s, slicesByID, hasBranch)
 		sj.TakenBack = taken[s.ID]
+		sj.FixingChecks = fixing[s.ID]
 		doc.Slices = append(doc.Slices, sj)
 	}
 	enc := json.NewEncoder(out)

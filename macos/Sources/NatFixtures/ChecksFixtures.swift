@@ -29,13 +29,23 @@ extension Fixtures {
             slices: projectInfo.slices.map { $0.id == approveSliceID ? resumed($0) : $0 })
     }
 
+    /// The plan with the approved slice resumed on the checks nudge, its fix
+    /// not yet handed back: nat's `fixing_checks` names the failed check.
+    public static var fixingChecksProjectInfo: ProjectInfo {
+        ProjectInfo(
+            project: projectInfo.project,
+            milestones: projectInfo.milestones,
+            slices: projectInfo.slices.map { $0.id == approveSliceID ? resumed($0, fixing: ["CI / test"]) : $0 })
+    }
+
     /// A slice as nat reports it once resumed: its PR kept, its Branch
-    /// cleared, not handed back.
-    public static func resumed(_ s: Slice) -> Slice {
+    /// cleared, not handed back — and the checks it was given to fix, where
+    /// a CI failure since its hand-back names some.
+    public static func resumed(_ s: Slice, fixing: [String]? = nil) -> Slice {
         Slice(
             id: s.id, name: s.name, status: s.status, milestoneID: s.milestoneID, assignee: s.assignee, pr: s.pr,
             url: s.url, branch: nil, repo: s.repo, dependsOn: s.dependsOn, blocked: s.blocked,
-            handedBack: false, resumed: true, state: s.state)
+            handedBack: false, resumed: true, takenBack: fixing != nil, fixingChecks: fixing, state: s.state)
     }
 
     /// Why the approved slice was sent back, as the user put it.

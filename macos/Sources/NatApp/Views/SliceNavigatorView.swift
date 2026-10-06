@@ -47,7 +47,7 @@ struct SliceNavigatorView: View {
     /// The failing-checks notice, where the last PR reading has one.
     private var notice: ChecksNotice? {
         checksNotice(
-            slice: slice, failing: prReadingOfProject.failingChecks[slice.id],
+            slice: slice, marks: prReadingOfProject.marks[slice.id] ?? .none,
             hasLiveAgent: agent != nil, events: detail.detail?.events)
     }
     /// The conflict notice, where the last reading — the loaded pull request
@@ -75,8 +75,7 @@ struct SliceNavigatorView: View {
     /// checks still running, under the passing mark's gate.
     private var prRunning: String? { prHeaderMarks.runningHelp }
     private var prHeaderMarks: PRMarks {
-        prMarks(
-            prReadingOfProject.marks[slice.id] ?? .none, for: slice, agent: agent.map { AgentActivity($0.activity) })
+        prMarks(prReadingOfProject.marks[slice.id] ?? .none, for: slice)
     }
     private var detail: SliceDetailLoadState { appModel.sliceDetailStore(projectID: projectID).state(for: slice.id) }
     private var visuals: [VisualChange] { detail.detail?.visuals ?? [] }

@@ -293,9 +293,13 @@ Resuming rule.
 read), and their `state` is `domain.StateOf` with that same `HasBranch`.
 `taken_back` (`takenBack`: In progress, `Branch` empty, `HasBranch`, and
 `holdsHandBack` on the body — `info` reads a body only for slices passing the
-rest, through `handedBackBefore`, an unreadable one concluding false;
+rest, through `taskLogOf`, an unreadable one concluding false;
 `container-show` leaves it false) marks any slice handed back and taken back
-to work, PR or not. `container-show` passes the plan's shape too. `pr-view --json` carries
+to work, PR or not. On a taken-back slice both also carry `fixing_checks`
+(`fixingChecks`, off the same body read: the check names of the latest
+`Checks failed` or CI `Sent back` with no `Handed back` after it) — what
+keeps gnat's failing mark on a resumed slice while its fix's checks run.
+`container-show` passes the plan's shape too. `pr-view --json` carries
 `head_ref_oid` (gh's `headRefOid`), how gnat tells a PR whose head moved.
 
 `slice-checks <slice> [--log] [--json]` (any status, a read only): the

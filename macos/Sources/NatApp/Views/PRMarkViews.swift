@@ -19,7 +19,7 @@ struct ConflictMark: View {
 /// failing checks' danger mark, and the conflict mark — both where both are
 /// wrong — or, in the same slot, the passing checks' success mark or the
 /// running checks' mark (in progress, neutral and static: a pulse means a
-/// live agent) where `prMarks(_:for:agent:)` kept it; nothing where none is.
+/// live agent) where `prMarks(_:for:)` kept it; nothing where none is.
 struct PRMarksView: View {
     let marks: PRMarks
 
