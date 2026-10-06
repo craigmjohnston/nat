@@ -91,13 +91,13 @@ final class StoryNamesTests: XCTestCase {
         }
     }
 
-    /// Project colours are drawn in every place the puck goes, and chosen
+    /// Project colours are drawn in every place the badge goes, and chosen
     /// in the project settings sheet.
     func testProjectColoursAreInTheCatalog() throws {
         let names = try shippedNames()
         for name in [
             "sidebar-project-colours", "sidebar-project-colours-light", "titlebar-band-project-colour",
-            "project-settings-colour-chosen",
+            "project-settings-colour-chosen", "project-badges", "project-badges-light",
         ] {
             XCTAssertTrue(names.contains(name), "no story \(name)")
         }

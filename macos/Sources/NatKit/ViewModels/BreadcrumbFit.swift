@@ -21,27 +21,26 @@ public struct CrumbWidth: Equatable, Sendable {
 /// is still feasible:
 ///
 /// 1. the selection's name ellipsizes, down to 80% of it shown;
-/// 2. the crumb naming the project turns into the project's tag;
-/// 3. the milestone (or container) ellipsizes, down to 50% of it shown, the
+/// 2. the milestone (or container) ellipsizes, down to 50% of it shown, the
 ///    name held at 80%;
-/// 4. past that, the breadcrumb goes and the selection is drawn as its Active
-///    row draws it — state dot, project tag, name — which alone ellipsizes.
+/// 3. past that, the breadcrumb goes and the selection is drawn as its Active
+///    row draws it — project badge, state dot, name — which alone ellipsizes.
 ///
-/// At each stage the selection's name takes all the room it can, up to its
-/// whole width, before anything else gives way.
+/// The crumb naming the project is its badge, already as short as it gets,
+/// so it never gives way on its own. At each stage the selection's name
+/// takes all the room it can, up to its whole width, before anything else
+/// gives way.
 public struct BreadcrumbFit: Equatable, Sendable {
     public enum Stage: Equatable, Sendable {
         /// Every crumb in full; only the name may be shortened.
         case full
-        /// The project crumb drawn as its tag.
-        case projectTag
         /// The milestone crumb shortened as well.
         case parentShortened
-        /// No breadcrumb: the Active row's dot, tag and name alone.
+        /// No breadcrumb: the Active row's badge, dot and name alone.
         case minimal
     }
 
-    /// The least of the name shown before the project crumb gives way.
+    /// The least of the name shown before the milestone gives way.
     public static let titleFloor = 0.8
     /// The least of the milestone shown before the breadcrumb goes.
     public static let parentFloor = 0.5
@@ -52,61 +51,45 @@ public struct BreadcrumbFit: Equatable, Sendable {
     public let titleWidth: Double?
     /// The most the milestone crumb may take; nil for its whole width.
     public let parentWidth: Double?
-    /// Whether the project crumb is drawn as the project's tag — from the
-    /// second stage on, where the project has one.
-    public let projectAsTag: Bool
 
     /// - Parameters:
     ///   - available: the breadcrumb's room.
     ///   - spacing: the gap between crumbs.
-    ///   - project: the crumb naming the project, whole — the project crumb,
-    ///     or a workshop's or session's project-name crumb; nil with none.
-    ///   - projectTag: that crumb drawn as the project's tag; nil where the
-    ///     project has no tag.
+    ///   - project: the crumb naming the project, badge and slash — the
+    ///     project crumb, or a workshop's or session's project crumb; nil
+    ///     with none.
     ///   - parent: the milestone or container crumb; nil with none.
     ///   - title: the selection's crumb.
-    public init(
-        available: Double, spacing: Double, project: CrumbWidth?, projectTag: CrumbWidth?, parent: CrumbWidth?,
-        title: CrumbWidth
-    ) {
-        func row(_ project: CrumbWidth?, parent: Double?, title: Double) -> Double {
-            let parts = [project?.group, parent, title].compactMap { $0 }
+    public init(available: Double, spacing: Double, project: Double?, parent: CrumbWidth?, title: CrumbWidth) {
+        func row(parent: Double?, title: Double) -> Double {
+            let parts = [project, parent, title].compactMap { $0 }
             return parts.reduce(0, +) + spacing * Double(max(0, parts.count - 1))
         }
         let titleFloor = title.fixed + title.text * Self.titleFloor
 
-        // 1, then 2: everything whole but the name, shortened to its floor
-        // at most — first with the project's name, then with its tag.
-        var projects: [(CrumbWidth?, Stage)] = [(project, .full)]
-        if project != nil, let projectTag { projects.append((projectTag, .projectTag)) }
-        for (shown, stage) in projects {
-            let rest = row(shown, parent: parent?.group, title: 0)
-            if row(shown, parent: parent?.group, title: titleFloor) <= available {
-                self.init(
-                    stage: stage, titleWidth: min(title.group, available - rest), parentWidth: nil,
-                    projectAsTag: stage == .projectTag)
-                return
-            }
+        // 1: everything whole but the name, shortened to its floor at most.
+        if row(parent: parent?.group, title: titleFloor) <= available {
+            let rest = row(parent: parent?.group, title: 0)
+            self.init(stage: .full, titleWidth: min(title.group, available - rest), parentWidth: nil)
+            return
         }
 
-        // 3: the milestone shortened, down to its floor, the name at its.
+        // 2: the milestone shortened, down to its floor, the name at its.
         if let parent {
-            let asTag = project != nil && projectTag != nil
-            let parentRoom = available - row(asTag ? projectTag : project, parent: 0, title: titleFloor)
+            let parentRoom = available - row(parent: 0, title: titleFloor)
             if parentRoom >= parent.fixed + parent.text * Self.parentFloor {
-                self.init(stage: .parentShortened, titleWidth: titleFloor, parentWidth: parentRoom, projectAsTag: asTag)
+                self.init(stage: .parentShortened, titleWidth: titleFloor, parentWidth: parentRoom)
                 return
             }
         }
 
-        // 4: the Active row's line alone.
-        self.init(stage: .minimal, titleWidth: nil, parentWidth: nil, projectAsTag: false)
+        // 3: the Active row's line alone.
+        self.init(stage: .minimal, titleWidth: nil, parentWidth: nil)
     }
 
-    init(stage: Stage, titleWidth: Double?, parentWidth: Double?, projectAsTag: Bool) {
+    init(stage: Stage, titleWidth: Double?, parentWidth: Double?) {
         self.stage = stage
         self.titleWidth = titleWidth
         self.parentWidth = parentWidth
-        self.projectAsTag = projectAsTag
     }
 }

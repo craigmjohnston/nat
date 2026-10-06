@@ -199,6 +199,13 @@ final class DesignTokensTests: XCTestCase {
                            { $0.wash(.muted, of: $0.accent, on: ground).hex }))
             checks.append(("accentWash on \(ground.rawValue)", NSColor(DesignTokens.accentWash(on: ground)),
                            { $0.wash(.chip, of: $0.accent, on: ground).hex }))
+            for color in ProjectColor.allCases {
+                let badge = DesignTokens.projectBadge(color, on: ground)
+                checks.append(("projectBadge ink \(color) on \(ground.rawValue)", NSColor(badge.ink),
+                               { $0.chipInk(of: $0.projectTint(color), on: ground).hex }))
+                checks.append(("projectBadge wash \(color) on \(ground.rawValue)", NSColor(badge.wash),
+                               { $0.wash(.chip, of: $0.projectTint(color), on: ground).hex }))
+            }
             checks.append(("systemRedWash on \(ground.rawValue)", NSColor(DesignTokens.systemRedWash(on: ground)),
                            { $0.wash(.chip, of: $0.systemRed, on: ground).hex }))
             checks.append(("systemGreenWash on \(ground.rawValue)", NSColor(DesignTokens.systemGreenWash(on: ground)),

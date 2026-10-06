@@ -12,18 +12,24 @@ import NatKit
 /// refusal stays in the sheet under the row it came from, nothing changed.
 struct ProjectSettingsView: View {
     let projectName: String
+    /// The project's short tag, the word on the Colour row's badge.
+    let projectTag: String
     @State private var model: ProjectSettingsModel
     @Environment(\.dismiss) private var dismiss
 
-    init(projectName: String, model: ProjectSettingsModel) {
+    init(projectName: String, projectTag: String, model: ProjectSettingsModel) {
         self.projectName = projectName
+        self.projectTag = projectTag
         _model = State(initialValue: model)
     }
 
     /// The sheet over the app's own config and `nat`.
-    init(appModel: AppModel, projectID: String, projectName: String, client: NatClientProtocol = NatClient()) {
+    init(
+        appModel: AppModel, projectID: String, projectName: String, projectTag: String,
+        client: NatClientProtocol = NatClient()
+    ) {
         self.init(
-            projectName: projectName,
+            projectName: projectName, projectTag: projectTag,
             model: ProjectSettingsModel(
                 projectID: projectID, config: appModel.config, client: client,
                 reload: { await appModel.reloadConfig() }))
@@ -103,7 +109,7 @@ struct ProjectSettingsView: View {
     }
 
     /// One swatch per project colour, in nat's order — the picked one ringed
-    /// in the accent — then the puck as the sidebar will draw it. No "auto":
+    /// in the accent — then the project's badge as the sidebar will draw it. No "auto":
     /// a project always has a colour, and the one ringed first is the one
     /// its entry holds. nat's refusal, where the last Save had one, under it.
     private var colorRow: some View {
@@ -116,7 +122,7 @@ struct ProjectSettingsView: View {
                         }
                     }
                     if let color = model.edited.color {
-                        ProjectPuck(color: color)
+                        ProjectBadgeView(tag: projectTag, color: color, name: projectName)
                             .padding(.leading, 6)
                     }
                 }

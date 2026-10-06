@@ -60,13 +60,22 @@ struct DoneFolderGlyph: View {
 /// A folder of folders: a closed folder standing behind the project's own,
 /// offset up and to the right — what a project is, a folder of milestones.
 /// The front folder is knocked out of the back one's lines with the ground
-/// it sits on, so the two read as stacked rather than overlapping.
+/// it sits on, so the two read as stacked rather than overlapping. `pip`, a
+/// project row's activity mark, sits on the back folder's top-right
+/// shoulder, the folder's lines cut away a point round it — cut, not
+/// painted over in the ground, so it reads on a hovered or pinned row too.
 struct StackedFolderGlyph: View {
     @Environment(\.ground) private var ground
     let open: Bool
     let color: Color
     let backColor: Color
     var size = CGSize(width: 15, height: 12)
+    /// The pip's colour, where the row has one; nil, none.
+    var pip: Color?
+
+    static let pipSize: CGFloat = 5
+    /// The pip's cut: a point clear all round.
+    private static let pipCut: CGFloat = pipSize + 2
 
     var body: some View {
         let front = CGSize(width: size.width * 0.84, height: size.height * 0.84)
@@ -81,6 +90,23 @@ struct StackedFolderGlyph: View {
             FolderGlyph(open: open, color: color, size: front)
         }
         .frame(width: size.width, height: size.height, alignment: .bottomLeading)
+        .overlay(alignment: .topTrailing) {
+            if pip != nil {
+                Circle()
+                    .frame(width: Self.pipCut, height: Self.pipCut)
+                    .offset(x: Self.pipCut / 2 - 1, y: -Self.pipCut / 2 + 1)
+                    .blendMode(.destinationOut)
+            }
+        }
+        .compositingGroup()
+        .overlay(alignment: .topTrailing) {
+            if let pip {
+                Circle()
+                    .fill(pip)
+                    .frame(width: Self.pipSize, height: Self.pipSize)
+                    .offset(x: Self.pipSize / 2, y: -Self.pipSize / 2)
+            }
+        }
     }
 }
 

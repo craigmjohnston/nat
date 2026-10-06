@@ -39,7 +39,7 @@ func TestProjectCreateReportsTheColorItWasGiven(t *testing.T) {
 	if err := Run(ctx, []string{"project-create", "nat", "--repo", "/src/nat", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
-	if got := createdColor(t, out.Bytes()); got != "orange" || saved.Projects["new-project"].Color != "orange" {
+	if got := createdColor(t, out.Bytes()); got != "teal" || saved.Projects["new-project"].Color != "teal" {
 		t.Errorf("notion: reported %q, saved %+v", got, saved.Projects)
 	}
 

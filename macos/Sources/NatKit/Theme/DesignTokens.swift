@@ -365,11 +365,21 @@ public enum DesignTokens {
         derived { $0.ink(of: $0.systemPink, on: ground.surface(in: $0)) }
     }
 
-    /// A project's colour drawn on a ground — its puck, a settings swatch. A
-    /// mark rather than text, so it is shaded only as far as a mark needs to
-    /// be told from its ground.
+    /// A project's colour drawn on a ground — a settings swatch. A mark
+    /// rather than text, so it is shaded only as far as a mark needs to be
+    /// told from its ground.
     public static func projectInk(_ color: ProjectColor, on ground: Ground) -> Color {
         derived { $0.ink(of: $0.projectTint(color), on: ground.surface(in: $0), clearing: 3) }
+    }
+
+    /// A project's badge in its colour, built as `wireBadge` builds a
+    /// container's: its tag in the chip ink of the palette's tint for the
+    /// colour, on that tint's chip wash into `ground`.
+    public static func projectBadge(_ color: ProjectColor, on ground: Ground) -> (ink: Color, wash: Color) {
+        (
+            derived { $0.chipInk(of: $0.projectTint(color), on: ground) },
+            derived { $0.wash(.chip, of: $0.projectTint(color), on: ground) }
+        )
     }
 
     /// A hue washed into a ground at the weight its role calls for.

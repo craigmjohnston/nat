@@ -339,9 +339,11 @@ public struct Palette: Equatable, Sendable {
     /// the one thing about a theme that anything outside it needs to know.
     public let isDark: Bool
 
-    /// The project colours this palette has no outcome hue for, or whose
-    /// outcome hue would draw two of them alike: a hue of its own for each.
-    /// Every other project colour is its namesake outcome hue (`projectTint`).
+    /// The project colours this palette draws with hues of its own rather
+    /// than its outcome hues — every shipped palette gives all eight
+    /// (`darkProjectHues`, `lightProjectHues`), since outcome hues are picked
+    /// for their outcomes and sit too close together to tell projects apart.
+    /// A colour it leaves out is its namesake outcome hue (`projectTint`).
     public let projectHues: [ProjectColor: Tint]
 
     public init(
@@ -500,7 +502,7 @@ public struct Palette: Equatable, Sendable {
         isDark: true,
         // Its yellow is its orange, and its pink a violet (purple's): a
         // yellow and a pink of its own; the rest are its outcome hues.
-        projectHues: [.yellow: Tint("d8c27e"), .purple: Tint("a093c7"), .pink: Tint("d495b8")]
+        projectHues: Palette.darkProjectHues
     )
 
     /// Slate ink: a blue-grey slate ground under Kanagawa's (rebelot/
@@ -560,7 +562,7 @@ public struct Palette: Equatable, Sendable {
         systemGray: Tint("a8a594"),
         isDark: true,
         // Its pink is a violet, purple's; the rest are its outcome hues.
-        projectHues: [.purple: Tint("957fb8"), .pink: Tint("d27e99")]
+        projectHues: Palette.darkProjectHues
     )
 
     /// The light theme: the design's `.win.light` block, role for role onto
@@ -618,7 +620,7 @@ public struct Palette: Equatable, Sendable {
         systemGray: Tint("55566d"),        // --ink-2
         isDark: false,
         // Its pink is a pink, so purple is its mauve; the rest are its outcome hues.
-        projectHues: [.purple: Tint("8839ef")]
+        projectHues: Palette.lightProjectHues
     )
     /// One Light (Atom): a neutral off-white with soft charcoal ink and a
     /// clear blue accent. It names no orange of its own, so `hot` is its
@@ -677,7 +679,7 @@ public struct Palette: Equatable, Sendable {
         systemGray: Tint("696c77"),
         isDark: false,
         // Its pink is a violet, purple's; the rest are its outcome hues.
-        projectHues: [.purple: Tint("a626a4"), .pink: Tint("d74a96")]
+        projectHues: Palette.lightProjectHues
     )
 
     /// Tokyo Night Day (folke/tokyonight.nvim): lavender-grey paper and
@@ -738,7 +740,7 @@ public struct Palette: Equatable, Sendable {
         systemGray: Tint("6172b0"),
         isDark: false,
         // Its pink is a violet, purple's; the rest are its outcome hues.
-        projectHues: [.purple: Tint("9854f1"), .pink: Tint("c94f9e")]
+        projectHues: Palette.lightProjectHues
     )
 }
 
@@ -838,6 +840,24 @@ extension Palette {
         }
         return tint.wash(on: ground.surface(in: self), share)
     }
+
+    /// The eight project colours on a dark ground: as far apart in hue as
+    /// eight named colours go — evenly round OKLCH's hue circle (red 25°,
+    /// orange 58°, yellow 95°, green 145°, teal 195°, blue 255°, purple 300°,
+    /// pink 345°) at one vivid lightness, red, blue and purple a step darker
+    /// to keep their chroma in sRGB — so no two projects read alike, picked
+    /// by eye against a render.
+    public static let darkProjectHues: [ProjectColor: Tint] = [
+        .red: Tint("f66d67"), .orange: Tint("fe9d4a"), .yellow: Tint("d6b529"), .green: Tint("75d079"),
+        .teal: Tint("0cd1d1"), .blue: Tint("65a7fa"), .purple: Tint("b48df4"), .pink: Tint("fa8ecd"),
+    ]
+
+    /// The same eight hue angles on a light ground, darker — orange and
+    /// yellow less so, or they go to brown and olive.
+    public static let lightProjectHues: [ProjectColor: Tint] = [
+        .red: Tint("cc3336"), .orange: Tint("ce7005"), .yellow: Tint("ac9008"), .green: Tint("008d24"),
+        .teal: Tint("068c8c"), .blue: Tint("0172dc"), .purple: Tint("8851d1"), .pink: Tint("bc378d"),
+    ]
 
     /// A project colour in this palette: its own hue where `projectHues`
     /// gives one, else the outcome hue of that name.

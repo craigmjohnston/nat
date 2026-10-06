@@ -146,7 +146,7 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
     /// The milestones every slice of which is done, in plan order: what the
     /// project's Done folder holds, drawn once there is at least one.
     public let doneMilestones: [SidebarMilestone]
-    /// How many of its rows need the user — the collapsed row's hot dot.
+    /// How many of its rows need the user — the collapsed row's activity pip, on its folder's shoulder.
     public let needsYou: Int
     /// The slices of the scratch project's unfiled milestone (`Milestone.unfiled`):
     /// drawn loose at the head of the tree, above every milestone, with no
@@ -155,14 +155,17 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
     /// A source project's fold — its plugin and tree; nil for every other
     /// project, and for a source project whose plan has not landed yet.
     public let source: SidebarSource?
-    /// The project's colour — its puck; nil for one nat has not coloured yet
-    /// and for an Untitled row, which has no config entry.
+    /// The project's colour — its badge's; nil for one nat has not coloured
+    /// yet and for an Untitled row, which has no config entry.
     public let color: ProjectColor?
+    /// The project's short tag — its badge's word (`sidebarTags`); empty for
+    /// an Untitled row, which draws no badge.
+    public let tag: String
 
     public init(
         id: String, name: String, kind: SidebarProjectKind, status: SidebarPlanStatus,
         milestones: [SidebarMilestone], doneMilestones: [SidebarMilestone] = [], needsYou: Int,
-        loose: [SidebarSliceRow] = [], source: SidebarSource? = nil, color: ProjectColor? = nil
+        loose: [SidebarSliceRow] = [], source: SidebarSource? = nil, color: ProjectColor? = nil, tag: String = ""
     ) {
         self.id = id
         self.name = name
@@ -174,6 +177,7 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
         self.loose = loose
         self.source = source
         self.color = kind == .untitled ? nil : color
+        self.tag = kind == .untitled ? "" : tag
     }
 
     /// Whether the project files a slice, for the default-open rule.
@@ -200,7 +204,7 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
                     slices: milestone.slices.filter { $0.state != .done })
             },
             doneMilestones: [], needsYou: needsYou, loose: loose.filter { $0.state != .done },
-            source: source?.hidingDone(), color: color)
+            source: source?.hidingDone(), color: color, tag: tag)
     }
 }
 
@@ -430,7 +434,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     /// poll's first reading is still to land — drawn as a launching row,
     /// captioned `reconnectingLabel`. False for every other row.
     public let reconnecting: Bool
-    /// The row's project's colour — its puck; nil where it has none yet.
+    /// The row's project's colour — its badge's; nil where it has none yet.
     public let color: ProjectColor?
 
     public var id: String { "\(kind):\(targetID)" }
@@ -675,7 +679,7 @@ public func buildSidebarModel(
                 built.append(SidebarProject(
                     id: project.id, name: project.name, kind: project.kind, status: planStatus(project),
                     milestones: [], needsYou: needsYou, source: buildSidebarSource(info, rows: rows, plan: plan),
-                    color: project.color))
+                    color: project.color, tag: tags[project.id] ?? ""))
                 continue
             }
 
@@ -716,7 +720,7 @@ public func buildSidebarModel(
         built.append(SidebarProject(
             id: project.id, name: project.name, kind: project.kind,
             status: planStatus(project), milestones: milestones, doneMilestones: doneMilestones,
-            needsYou: needsYou, loose: loose, color: project.color))
+            needsYou: needsYou, loose: loose, color: project.color, tag: tags[project.id] ?? ""))
     }
 
     // Stable: needs-you first, the rest of the order kept.

@@ -139,10 +139,11 @@ struct TitlebarCrumbs: Equatable {
 }
 
 /// Where the selection sits, as the titlebar band reads it left to right: a
-/// project crumb, a milestone or container crumb (or what stands for one),
-/// each followed by a quiet slash, then the selection itself — the last
-/// crumb, drawn as `TitlebarIdentityLabel` draws it, with the project's tag
-/// dropped where a crumb before it names the project already.
+/// project crumb — the project's badge — a milestone or container crumb (or
+/// what stands for one), each followed by a quiet slash, then the selection
+/// itself — the last crumb, drawn as `TitlebarIdentityLabel` draws it, with
+/// the project's badge dropped where a crumb before it names the project
+/// already.
 ///
 /// Every crumb that opens the tree picker (`CrumbTreePicker`, `picker`)
 /// opens it on itself; `openPicker` is which one is open. Moving between
@@ -151,17 +152,17 @@ struct TitlebarCrumbs: Equatable {
 /// along while the words cross-fade, and a part that comes or goes fades.
 ///
 /// As room runs out the selection's name is kept longest: it ellipsizes to
-/// 80% of itself, then the project crumb turns into the project's tag, then
-/// the milestone ellipsizes to half of itself, and past that the breadcrumb
-/// gives way to the selection's Active row line alone — dot, tag, name
-/// (`BreadcrumbFit`, from each crumb's width as measured here).
+/// 80% of itself, then the milestone ellipsizes to half of itself, and past
+/// that the breadcrumb gives way to the selection's Active row line alone —
+/// badge, dot, name (`BreadcrumbFit`, from each crumb's width as measured
+/// here).
 struct TitlebarBreadcrumb<Picker: View>: View {
     let crumbs: TitlebarCrumbs
     let identity: TitlebarIdentity?
-    /// The project's colour: its puck, at the far left before the crumbs —
-    /// never in the row, so `measurements` do not count it and it stays at
-    /// every `BreadcrumbFit` stage.
+    /// The project's colour, its badge's; nil for the quiet chip.
     var projectColor: ProjectColor?
+    /// The project's full name, its badge's tooltip.
+    var projectName: String?
     @Binding var openPicker: CrumbPickerOrigin?
     @ViewBuilder var picker: (CrumbPickerOrigin) -> Picker
 
@@ -169,14 +170,8 @@ struct TitlebarBreadcrumb<Picker: View>: View {
 
     private static var spacing: CGFloat { 10 }
 
-    /// The project's tag, for the crumb naming the project to turn into.
+    /// The project's tag, the word on its badge.
     private var tag: String { identity?.tag ?? "" }
-
-    /// The crumb naming the project: the project crumb, or a workshop's or
-    /// session's project name standing where a milestone would.
-    private var projectName: String? {
-        crumbs.project ?? (crumbs.parentKind == .project ? crumbs.parent : nil)
-    }
 
     /// The milestone or container crumb — the one that shortens.
     private var shortenable: String? { crumbs.parentKind == .project ? nil : crumbs.parent }
@@ -187,31 +182,9 @@ struct TitlebarBreadcrumb<Picker: View>: View {
         }
         return BreadcrumbFit(
             available: Double(widths[.available] ?? .infinity), spacing: Double(Self.spacing),
-            project: projectName.map { _ in width(.projectGroup, .projectText) },
-            projectTag: tag.isEmpty ? nil : width(.tagGroup, .tagText),
+            project: crumbs.namesProject ? Double(widths[.projectGroup] ?? 0) : nil,
             parent: shortenable.map { _ in width(.parentGroup, .parentText) },
             title: width(.titleGroup, .titleText))
-    }
-
-    /// The puck drawn, where there is one and a breadcrumb to draw it by.
-    private var puck: ProjectColor? { crumbs.title.isEmpty ? nil : projectColor }
-
-    /// How far the crumbs move right to make room for the puck: as far as a
-    /// sidebar row's leading padding (`GnatMetrics.puckRowInset`) runs past
-    /// the band's own inset, so the puck has the room it has in the trees.
-    private var puckRoom: CGFloat {
-        puck == nil ? 0 : GnatMetrics.puckRowInset - GnatMetrics.breadcrumbInset
-    }
-
-    /// Half a point up: the middle of `CrumbTagLabel`'s capitals, measured
-    /// off a render, against the band's middle.
-    private static var tagLine: CGFloat { -0.5 }
-
-    /// Where the puck sits off the row's middle at a stage: on the line of
-    /// whatever follows it.
-    private func puckDrop(_ fit: BreadcrumbFit) -> CGFloat {
-        if fit.stage == .minimal { return StateDot.drop }
-        return fit.projectAsTag ? Self.tagLine : 0
     }
 
     var body: some View {
@@ -219,8 +192,12 @@ struct TitlebarBreadcrumb<Picker: View>: View {
         Group {
             if fit.stage == .minimal {
                 if !crumbs.title.isEmpty {
-                    // The Active row's line: dot, the project's tag, the name.
-                    crumbButton(.title) { TitlebarIdentityLabel(identity: identity, title: crumbs.title) }
+                    // The Active row's line: the project's badge, dot, name.
+                    crumbButton(.title) {
+                        TitlebarIdentityLabel(
+                            identity: identity, title: crumbs.title, projectColor: projectColor,
+                            projectName: projectName)
+                    }
                 }
             } else {
                 row(fit)
@@ -229,15 +206,6 @@ struct TitlebarBreadcrumb<Picker: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { widths[.available] = $0 }
         .background(alignment: .leading) { measurements.hidden() }
-        // Outside the measured frame, so the room the crumbs fit in is what
-        // the band offers less the puck's.
-        .padding(.leading, puckRoom)
-        // Left of the project crumb's folder glyph, placed as the PROJECTS
-        // row places it; none with no breadcrumb. Beside the state dot (the
-        // minimal stage) it drops onto the dot's line, as an Active row's
-        // does; beside the tag crumb, whose capitals sit above the band's
-        // middle, it rises to theirs.
-        .projectPuck(puck, inset: puckRoom, drop: puckDrop(fit), ground: .header)
         .contentTransition(.interpolate)
         .font(.system(size: GnatMetrics.titlebarText))
         .lineLimit(1)
@@ -247,8 +215,8 @@ struct TitlebarBreadcrumb<Picker: View>: View {
 
     private func row(_ fit: BreadcrumbFit) -> some View {
         HStack(spacing: Self.spacing) {
-            if let project = crumbs.project {
-                projectGroup(project, asTag: fit.projectAsTag, picks: true)
+            if crumbs.project != nil {
+                projectGroup(picks: true)
                     .transition(.opacity)
             }
             if let parent = crumbs.parent {
@@ -258,7 +226,7 @@ struct TitlebarBreadcrumb<Picker: View>: View {
                         parentGroup(parent, picks: true)
                             .frame(maxWidth: fit.parentWidth.map { CGFloat($0) }, alignment: .leading)
                     case .project:
-                        projectGroup(parent, asTag: fit.projectAsTag, picks: false)
+                        projectGroup(picks: false)
                     }
                 }
                 .transition(.opacity)
@@ -272,32 +240,30 @@ struct TitlebarBreadcrumb<Picker: View>: View {
     }
 
     private var titleLabel: TitlebarIdentityLabel {
-        TitlebarIdentityLabel(identity: identity?.lastCrumb(afterProjectCrumb: crumbs.namesProject), title: crumbs.title)
+        TitlebarIdentityLabel(
+            identity: identity?.lastCrumb(afterProjectCrumb: crumbs.namesProject), title: crumbs.title,
+            projectColor: projectColor, projectName: projectName)
     }
 
-    /// The crumb naming the project, then its slash: the project's name, or
-    /// its tag. `picks`: whether it opens the tree picker (the project
-    /// crumb does; a workshop's or session's project name does not).
+    /// The crumb naming the project, then its slash: the project's badge
+    /// alone. `picks`: whether it opens the tree picker (the project crumb
+    /// does; a workshop's or session's project name does not).
     @ViewBuilder
-    private func projectGroup(_ name: String, asTag: Bool, picks: Bool) -> some View {
+    private func projectGroup(picks: Bool) -> some View {
         HStack(spacing: Self.spacing) {
             if picks {
-                crumbButton(.project) { projectLabel(name, asTag: asTag) }
+                crumbButton(.project) { projectBadge }
             } else {
-                projectLabel(name, asTag: asTag)
+                projectBadge
             }
             CrumbSlash()
         }
         .fixedSize()
     }
 
-    @ViewBuilder
-    private func projectLabel(_ name: String, asTag: Bool) -> some View {
-        if asTag {
-            CrumbTagLabel(tag: tag)
-        } else {
-            ProjectCrumbLabel(name: name)
-        }
+    private var projectBadge: some View {
+        ProjectBadgeView(tag: tag, color: projectColor, name: projectName ?? crumbs.project)
+            .frame(height: CrumbLine.height)
     }
 
     /// The milestone or container crumb, then its slash; the name alone
@@ -309,7 +275,7 @@ struct TitlebarBreadcrumb<Picker: View>: View {
             } else {
                 parentLabel(parent)
             }
-            CrumbSlash().fixedSize()
+            CrumbSlash()
         }
     }
 
@@ -337,13 +303,8 @@ struct TitlebarBreadcrumb<Picker: View>: View {
     /// `fit` weighs the room against.
     private var measurements: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let projectName {
-                measured(.projectGroup) { projectGroup(projectName, asTag: false, picks: false) }
-                measured(.projectText) { Text(projectName) }
-            }
-            if !tag.isEmpty {
-                measured(.tagGroup) { projectGroup(tag, asTag: true, picks: false) }
-                measured(.tagText) { CrumbTagLabel(tag: tag) }
+            if crumbs.namesProject {
+                measured(.projectGroup) { projectGroup(picks: false) }
             }
             if let shortenable {
                 measured(.parentGroup) { parentGroup(shortenable, picks: false) }
@@ -384,66 +345,20 @@ struct TitlebarBreadcrumb<Picker: View>: View {
 /// What the breadcrumb measures to fit itself (`BreadcrumbFit`).
 private enum CrumbMeasure: Hashable {
     case available
-    case projectGroup, projectText, tagGroup, tagText, parentGroup, parentText, titleGroup, titleText
-}
-
-/// The project crumb as the project's tag, set as the Active row sets it.
-private struct CrumbTagLabel: View {
-    let tag: String
-
-    var body: some View {
-        Text(tag)
-            .font(Typo.mono(size: Typo.scaled(10), weight: .medium))
-            .tracking(1)
-            .ink(.secondary)
-            .frame(height: CrumbLine.height)
-    }
-}
-
-/// The breadcrumb's one line: every crumb's glyph is framed to the crumb
-/// text's line height, so the row centres them all on the text's middle
-/// rather than each on its own bounds.
-private enum CrumbLine {
-    static let height: CGFloat = 16
-}
-
-/// A crumb naming the project: the sidebar's own project mark, open, then
-/// the name — the glyph framed to the crumb line as the milestone's is.
-private struct ProjectCrumbLabel: View {
-    let name: String
-
-    var body: some View {
-        HStack(spacing: 7) {
-            StackedFolderGlyph(
-                open: true,
-                color: DesignTokens.ink(.tertiary, on: .header),
-                backColor: DesignTokens.ink(.tertiary, on: .header))
-                .frame(height: CrumbLine.height)
-            Text(name).ink(.tertiary)
-        }
-    }
-}
-
-/// The quiet slash after a crumb. A slash descends below the baseline, so
-/// its glyph's middle sits a point under the text's; it is lifted that
-/// point, without moving its frame, onto the line the rest share.
-private struct CrumbSlash: View {
-    var body: some View {
-        Text("/")
-            .ink(.quaternary)
-            .frame(height: CrumbLine.height)
-            .offset(y: -1)
-    }
+    case projectGroup, parentGroup, parentText, titleGroup, titleText
 }
 
 /// The selection as the titlebar band's last crumb names it — its Active
-/// row's dot, project tag and title, or the bare title where it has none —
+/// row's project badge, dot and title, or the bare title where it has none —
 /// and the chevron that says it opens the tree picker. As room runs out the
 /// title alone gives way, ending in an ellipsis with the chevron still
 /// beside it.
 struct TitlebarIdentityLabel: View {
     let identity: TitlebarIdentity?
     let title: String
+    /// The project's colour and full name, its badge's.
+    var projectColor: ProjectColor?
+    var projectName: String?
 
     var body: some View {
         HStack(spacing: 5) {
@@ -451,11 +366,12 @@ struct TitlebarIdentityLabel: View {
                 if let identity, let icon = identity.icon {
                     SourceIdentityLabel(
                         icon: icon, tag: identity.tag, title: identity.title, size: GnatMetrics.titlebarText,
-                        iconInk: .tertiary, titleInk: .tertiary)
+                        projectName: projectName, iconInk: .tertiary, titleInk: .tertiary)
                 } else if let identity {
                     ActiveIdentityLabel(
-                        tag: identity.tag, state: identity.state, live: identity.live, title: identity.title,
-                        symbol: identity.symbol, size: GnatMetrics.titlebarText, titleInk: .tertiary)
+                        tag: identity.tag, color: projectColor, projectName: projectName, state: identity.state,
+                        live: identity.live, title: identity.title, symbol: identity.symbol,
+                        size: GnatMetrics.titlebarText, titleInk: .tertiary)
                 } else {
                     Text(title).ink(.tertiary)
                 }

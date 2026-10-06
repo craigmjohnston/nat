@@ -803,14 +803,15 @@ func TestAssignColors(t *testing.T) {
 		t.Fatalf("an empty config grew projects: %v", empty.Projects)
 	}
 
-	// Nine bare entries, walked in ID order: each name once, then red again.
+	// Nine bare entries, walked in ID order: each name once, each the
+	// farthest round the hue circle from those already given, then red again.
 	nine := Config{Projects: map[string]ProjectConfig{}}
 	for _, id := range []string{"i", "c", "a", "e", "g", "b", "h", "d", "f"} {
 		nine.Projects[id] = ProjectConfig{Name: id}
 	}
 	nine.AssignColors()
-	want := map[string]string{"a": "red", "b": "orange", "c": "yellow", "d": "green", "e": "teal",
-		"f": "blue", "g": "purple", "h": "pink", "i": "red"}
+	want := map[string]string{"a": "red", "b": "teal", "c": "purple", "d": "yellow", "e": "green",
+		"f": "blue", "g": "pink", "h": "orange", "i": "red"}
 	if got := colorsOf(nine); !reflect.DeepEqual(got, want) {
 		t.Errorf("nine = %v, want %v", got, want)
 	}
@@ -818,27 +819,27 @@ func TestAssignColors(t *testing.T) {
 		t.Errorf("assignment lost the rest of the entry: %+v", nine.Projects["a"])
 	}
 
-	// An entry already coloured keeps its colour and counts against it; ties
-	// among the least-held go to palette order.
+	// An entry already coloured keeps its colour and counts against it: the
+	// least-held name farthest from red and orange is teal, then purple.
 	held := Config{Projects: map[string]ProjectConfig{
 		"a": {Color: "red"}, "b": {Color: "red"}, "c": {Color: "orange"}, "d": {}, "e": {},
 	}}
 	held.AssignColors()
-	want = map[string]string{"a": "red", "b": "red", "c": "orange", "d": "yellow", "e": "green"}
+	want = map[string]string{"a": "red", "b": "red", "c": "orange", "d": "teal", "e": "purple"}
 	if got := colorsOf(held); !reflect.DeepEqual(got, want) {
 		t.Errorf("held = %v, want %v", got, want)
 	}
 
-	// Every name held once but blue twice: the next goes to red, the first of
-	// the least held.
+	// Every name held once but blue twice: the next goes to the least held
+	// farthest from blue, orange.
 	full := Config{Projects: map[string]ProjectConfig{"z": {}}}
 	for i, name := range ProjectColors {
 		full.Projects[string(rune('a'+i))] = ProjectConfig{Color: name}
 	}
 	full.Projects["blue2"] = ProjectConfig{Color: "blue"}
 	full.AssignColors()
-	if got := full.Projects["z"].Color; got != "red" {
-		t.Errorf("z = %q, want red", got)
+	if got := full.Projects["z"].Color; got != "orange" {
+		t.Errorf("z = %q, want orange", got)
 	}
 }
 
