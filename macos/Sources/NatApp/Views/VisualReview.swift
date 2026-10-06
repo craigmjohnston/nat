@@ -69,12 +69,11 @@ final class VisualReview {
     // MARK: - Sending
 
     func sendComments(appModel: AppModel, slice: Slice) async {
-        guard let projectID = appModel.projectStore?.projectID else { return }
+        guard appModel.projectStore != nil else { return }
         isSending = true
         sendError = nil
         do {
-            _ = try await store(appModel).sendComments(
-                projectID: projectID, sliceRef: slice.id, branch: slice.branch, handedBack: slice.handedBack)
+            _ = try await appModel.sendVisualComments(slice: slice)
             await appModel.refresh()
         } catch {
             sendError = error.localizedDescription

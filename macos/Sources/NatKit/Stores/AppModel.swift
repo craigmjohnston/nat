@@ -1215,7 +1215,7 @@ public final class AppModel {
     /// project — each project's own scoped tag, and an Untitled tab's
     /// workspace tag under the tab's ID.
     public var planningAgents: [String: AgentActivity] {
-        let agents = activityStore?.agents ?? [:]
+        let agents = activityStore?.displayedAgents ?? [:]
         var found: [String: AgentActivity] = [:]
         for tab in projectTabs {
             let key = workspaceIDs[tab.id] ?? tab.id
@@ -1230,7 +1230,7 @@ public final class AppModel {
     public var sidebarModel: SidebarModel {
         buildSidebarModel(
             projects: sidebarInputs,
-            liveAgents: (activityStore?.agents ?? [:]).mapValues { AgentActivity($0.activity) },
+            liveAgents: (activityStore?.displayedAgents ?? [:]).mapValues { AgentActivity($0.activity) },
             sessions: sessionStore?.sessions ?? [],
             sessionsProjectID: activeProjectID,
             planningAgents: planningAgents,
@@ -1641,7 +1641,7 @@ public final class AppModel {
     /// workshop with everything else.
     public var planningAgent: AgentStatus? {
         guard let key = planningAgentKey else { return nil }
-        return activityStore?.agents[key]
+        return activityStore?.status(for: key)
     }
 
     /// The active project's workshop draft — what `WorkshopPaneView`'s
@@ -1858,7 +1858,7 @@ public final class AppModel {
     /// workspace.
     public func planningStatus(forTab tabID: String) -> AgentStatus? {
         if tabID == activeProjectID { return planningAgent }
-        return activityStore?.agents[TmuxSession.planTag(projectID: workspaceIDs[tabID] ?? tabID)]
+        return activityStore?.status(for: TmuxSession.planTag(projectID: workspaceIDs[tabID] ?? tabID))
     }
 
     /// What ending a tab's workshop session must ask first, or nil where
@@ -2425,7 +2425,7 @@ public final class AppModel {
         prReading: PRReading, sessions: [Session]
     )? {
         guard let projectInfo = stores[projectID]?.state.projectInfo else { return nil }
-        let agents = activityStore?.agents ?? [:]
+        let agents = activityStore?.displayedAgents ?? [:]
         return (
             slices: projectInfo.slices,
             liveAgents: agents.mapValues { AgentActivity($0.activity) },
@@ -2474,9 +2474,73 @@ public final class AppModel {
     /// is read with fresh indexes before it can apply.
     public func applyFollowUps(sliceID: String, batch: Int, followUps: [FollowUp]) async {
         guard let projectID = projectStore?.projectID else { return }
-        await followUpStore.apply(
-            projectID: projectID, sliceID: sliceID, batch: batch, followUps: followUps, client: clientFactory(),
-            then: { await self.refresh() })
+        let client = clientFactory()
+        _ = try? await sendingToAgent(sliceID) {
+            try await Self.landed(followUpStore.apply(
+                projectID: projectID, sliceID: sliceID, batch: batch, followUps: followUps, client: client,
+                then: { await self.refresh() }))
+        }
+    }
+
+    /// Runs `send`, an action that sends to `key`'s agent, with its known
+    /// effect on the pip drawn first: the agent is expected working before
+    /// the `nat` call (`ActivityStore.expectWorking`), the expectation
+    /// withdrawn where the action fails, and the activity re-read where it
+    /// lands — nat clears the waiting marker at the send, so the real reading
+    /// agrees within one poll. Display state only; nothing goes to nat.
+    @discardableResult
+    private func sendingToAgent<T>(_ key: String, _ send: () async throws -> T) async throws -> T {
+        activityStore?.expectWorking(key)
+        do {
+            let result = try await send()
+            activityStore?.reread()
+            return result
+        } catch {
+            activityStore?.withdraw(key)
+            throw error
+        }
+    }
+
+    /// A `FollowUpStore` run's answer as a throw: nil is a refusal (its
+    /// error kept on the card) or an apply already in flight — either way
+    /// nothing was sent.
+    private static func landed(_ result: TriageResult?) throws -> TriageResult {
+        guard let result else { throw CancellationError() }
+        return result
+    }
+
+    /// Sends the diff's pending comments to `slice`'s agent
+    /// (`DiffStore.sendComments`), the pip drawn working at once.
+    @discardableResult
+    public func sendDiffComments(slice: Slice, approving: Bool = false, handedBack: Bool) async throws -> Int {
+        guard let projectID = projectStore?.projectID else { return 0 }
+        let store = diffStore(projectID: projectID)
+        return try await sendingToAgent(slice.id) {
+            try await store.sendComments(
+                projectID: projectID, sliceRef: slice.id, approving: approving, handedBack: handedBack)
+        }
+    }
+
+    /// Sends the visual comments pending on `slice` to its agent
+    /// (`VisualStore.sendComments`), the pip drawn working at once.
+    @discardableResult
+    public func sendVisualComments(slice: Slice) async throws -> Int {
+        guard let projectID = projectStore?.projectID else { return 0 }
+        let store = visualStore(projectID: projectID)
+        return try await sendingToAgent(slice.id) {
+            try await store.sendComments(
+                projectID: projectID, sliceRef: slice.id, branch: slice.branch, handedBack: slice.handedBack)
+        }
+    }
+
+    /// An Enter typed into the embedded terminal of `key`'s agent: where its
+    /// pip is waiting, the keystroke is read as the answer and drawn working
+    /// at once. The one trigger that is a keystroke — an Enter that answered
+    /// nothing goes back to waiting when the expectation's TTL runs out, and
+    /// the agent's own `agent-working` nudges the real reading in.
+    public func terminalSubmitted(agentKey key: String) {
+        guard let store = activityStore, store.activity(for: key) == .waiting else { return }
+        store.expectWorking(key)
     }
 
     /// Send back to agent: a handed-back slice — in review, or at its open
@@ -2501,6 +2565,7 @@ public final class AppModel {
         let client = clientFactory()
         let live = activityStore?.agents[slice.id] != nil
         var sent = false
+        activityStore?.expectWorking(slice.id)
         await sliceActions.run(.sendBack, sliceID: slice.id, select: { _ in }) {
             guard !note.isEmpty else { throw NatError.commandFailed("Say what the agent should change.") }
             try await client.sliceResume(projectID: projectID, sliceRef: slice.id, note: note)
@@ -2514,6 +2579,7 @@ public final class AppModel {
             }
             sent = true
         }
+        if sent { activityStore?.reread() } else { activityStore?.withdraw(slice.id) }
         await refresh()
         return sent
     }
@@ -2522,9 +2588,12 @@ public final class AppModel {
     /// apply does.
     public func discardFollowUps(sliceID: String, batch: Int, followUps: [FollowUp]) async {
         guard let projectID = projectStore?.projectID else { return }
-        await followUpStore.discard(
-            projectID: projectID, sliceID: sliceID, batch: batch, followUps: followUps, client: clientFactory(),
-            then: { await self.refresh() })
+        let client = clientFactory()
+        _ = try? await sendingToAgent(sliceID) {
+            try await Self.landed(followUpStore.discard(
+                projectID: projectID, sliceID: sliceID, batch: batch, followUps: followUps, client: client,
+                then: { await self.refresh() }))
+        }
     }
 
     /// Runs the approve a slice is owed when the plan just read shows it

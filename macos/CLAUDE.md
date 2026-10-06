@@ -418,6 +418,29 @@ sidebar's foot draws `MirrorNudgeCardView` while `mirrorNudgeShown` (armed **and
 `projectMirrored` hands the tab over in place. A refusal shows in the sheet and
 changes nothing. Stories: `window-plan-accepted`, `notion-page-picker`.
 
+## Agent activity: an action's effect is drawn at once
+
+`ActivityStore` polls `nat status` for every running agent (`agents`, by
+tag). Over the readings sits one overlay, display state only and never
+written to nat: an action whose effect on the pip is known is drawn at
+once, and readings rectify it. `expectWorking(key)` records `now` at the
+start of every action that sends to a possibly-waiting agent, before its
+`nat` call — `applyFollowUps`/`discardFollowUps`, `sendBack`,
+`sendDiffComments`/`sendVisualComments` (through `AppModel.sendingToAgent`,
+which `withdraw`s on failure and `reread`s on success), and an Enter typed
+into a slice's, session's or workshop's embedded terminal whose pip is
+waiting (`terminalSubmitted`, off `FirstLayoutTerminalView.onSubmit`). While
+unexpired, a `.waiting` reading reads `.working`. Every reading that lands
+settles them: dropped once a reading says working or the agent is gone,
+kept while one still says waiting until `expectationTTL` (15s, injectable
+with `now`) and then dropped — the honest reading back. nat clears the
+waiting marker at every `SendPrompt`, so the real reading agrees within one
+poll. **Every reader of activity goes through `activity(for:)`/
+`status(for:)`/`displayedAgents`**, never `agents[...]?.activity` — the
+sidebar, titlebar, dock badge, attention and status bar agree; `agents` is
+for liveness and counts only. Story: `sidebar-active-optimistic`. Tests:
+`ActivityStoreTests`, `AppModelExpectationTests`.
+
 ## The dock
 
 `attentionItems` (`ProjectAttention.swift`) is everything waiting on the

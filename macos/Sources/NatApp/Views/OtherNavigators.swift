@@ -18,7 +18,7 @@ struct SessionNavigatorView: View {
     @State private var branchesSessionID: String?
 
     private var projectID: String { appModel.projectStore?.projectID ?? "" }
-    private var agent: AgentStatus? { appModel.activityStore?.agents[session.tag] }
+    private var agent: AgentStatus? { appModel.activityStore?.status(for: session.tag) }
     private var diffStore: SessionDiffStore { appModel.sessionDiffStore(projectID: projectID) }
     private var prStore: PRStore { appModel.prStore(projectID: projectID) }
     private var checkedOut: String? { branches.first }
@@ -192,8 +192,9 @@ struct SessionMainPane: View {
             switch mode {
             case .terminal, .empty, .visuals:
                 AgentTerminalPane(
-                    agent: appModel.activityStore?.agents[session.tag],
-                    sessionExists: { appModel.activityStore?.agents[session.tag] != nil })
+                    agent: appModel.activityStore?.status(for: session.tag),
+                    sessionExists: { appModel.activityStore?.status(for: session.tag) != nil },
+                    onSubmit: { appModel.terminalSubmitted(agentKey: session.tag) })
             case .diff:
                 if let diff = store.loadState.diff {
                     ContinuousDiffView(
@@ -544,7 +545,8 @@ struct WorkshopMainPane: View {
                         : appModel.workshopReconnecting ? "Reconnecting to the planning agent"
                         : appModel.workshopEnded ? "The planning agent has ended. Keep workshopping starts a new one on the plan." : nil,
                     focusRequest: appModel.terminalFocusRequest,
-                    sessionExists: { appModel.planningAgent != nil })
+                    sessionExists: { appModel.planningAgent != nil },
+                    onSubmit: { appModel.planningAgentKey.map { appModel.terminalSubmitted(agentKey: $0) } })
             } else {
                 WorkshopBriefEditor(text: $appModel.workshopDraft) {
                     Task { await appModel.launchWorkshop(request: appModel.workshopDraft) }

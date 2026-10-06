@@ -337,8 +337,12 @@ type pane struct {
 //
 // tmux exits 1 when no server is running at all, which is the ordinary state
 // before the first agent launches — that reads as no panes, not an error.
-func (t *Tmux) panes() ([]pane, error) {
-	out, err := t.run("list-panes", "-a", "-F", listPanesFormat())
+func (t *Tmux) panes() ([]pane, error) { return t.listPanes("-a") }
+
+// listPanes is [Tmux.panes] over the panes scope names — "-a" for the whole
+// server, "-s", "-t", session for one session's.
+func (t *Tmux) listPanes(scope ...string) ([]pane, error) {
+	out, err := t.run(append(append([]string{"list-panes"}, scope...), "-F", listPanesFormat())...)
 	if err != nil {
 		var exitErr *ExitError
 		if errors.As(err, &exitErr) && exitErr.Code == 1 {
@@ -848,7 +852,31 @@ func (t *Tmux) SendPrompt(session, text string) error {
 		return fmt.Errorf("submit the prompt in %s: %w", session, err)
 	}
 	logging.Action("prompt sent to an agent", "session", session, "bytes", len(text))
+	t.clearWaiting(session)
 	return nil
+}
+
+// clearWaiting takes the waiting flag ([WaitingPaneOption]) off the agent pane
+// in session once a prompt has gone to it: an agent that has just been told
+// something is, by definition, no longer waiting on the user, and every reader
+// of presence would otherwise show it waiting until the agent got round to
+// `nat agent-working` itself. A pane not waiting is left alone, and a flag
+// that cannot be cleared is logged and never fails the send — the agent's own
+// agent-working clears it a turn later all the same.
+func (t *Tmux) clearWaiting(session string) {
+	panes, err := t.listPanes("-s", "-t", session)
+	if err != nil {
+		logging.Error("could not read the agent pane to clear its waiting flag", "session", session, "err", err)
+		return
+	}
+	for _, p := range panes {
+		if p.slice == "" || !p.waiting {
+			continue
+		}
+		if err := t.SetWaiting(p.id, false); err != nil {
+			logging.Error("could not clear a prompted agent's waiting flag", "session", session, "pane", p.id, "err", err)
+		}
+	}
 }
 
 // SendKeys types text into session's pane as literal keystrokes, then

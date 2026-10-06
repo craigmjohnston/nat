@@ -8,6 +8,13 @@ import SwiftUI
 /// status bar's live readout rides this same poll.
 /// The poll loop stops itself when no agents are found and is re-armed by calling `kick()`.
 /// Failed readings keep the previous state (following the TUI convention).
+///
+/// Over the readings sits one overlay, display state only: an action whose
+/// effect on the pip is known — a send to an agent waiting on the user — is
+/// drawn at once (`expectWorking`), and readings put it right later only where
+/// reality disagrees. Every reader of an agent's activity goes through
+/// `activity(for:)`/`status(for:)`/`displayedAgents`, never `agents`' own
+/// `activity`, so the sidebar, titlebar, dock badge and attention agree.
 @MainActor
 @Observable
 public final class ActivityStore {
@@ -31,14 +38,80 @@ public final class ActivityStore {
     /// whose agent has ended since the last.
     @ObservationIgnored public var onReading: (() -> Void)?
 
+    /// When each agent was last expected to be working again, keyed like
+    /// `agents`: set by an action that sends to it, before its `nat` call
+    /// (`expectWorking`), and settled by every reading that lands — dropped
+    /// once a reading agrees or the agent is gone, kept while one still reads
+    /// waiting until `expectationTTL` has passed. Never written to nat.
+    public private(set) var expectations: [String: Date] = [:]
+
+    /// How long an expectation outlives readings that still say waiting: long
+    /// enough for nat's marker to move and a poll to read it, short enough
+    /// that an Enter which answered nothing goes back to waiting soon.
+    public nonisolated static let defaultExpectationTTL: TimeInterval = 15
+
     private let client: NatClientProtocol
     private let now: () -> Date
+    private let expectationTTL: TimeInterval
     private var pollTask: Task<Void, Never>?
     private var isPolling = false
 
-    public init(client: NatClientProtocol = NatClient(), now: @escaping () -> Date = { Date() }) {
+    public init(
+        client: NatClientProtocol = NatClient(), now: @escaping () -> Date = { Date() },
+        expectationTTL: TimeInterval = ActivityStore.defaultExpectationTTL
+    ) {
         self.client = client
         self.now = now
+        self.expectationTTL = expectationTTL
+    }
+
+    // MARK: - Expectations
+
+    /// Draw `key`'s agent as working from now, whatever its reading says,
+    /// until a reading settles it.
+    public func expectWorking(_ key: String) {
+        expectations[key] = now()
+    }
+
+    /// Drop `key`'s expectation at once — the action that set it failed.
+    public func withdraw(_ key: String) {
+        expectations[key] = nil
+    }
+
+    /// `key`'s agent's activity as drawn: its reading, except that one read as
+    /// waiting with an unexpired expectation reads working. Nil with no
+    /// reading, whatever the expectation.
+    public func activity(for key: String) -> AgentActivityState? {
+        status(for: key)?.activity
+    }
+
+    /// `key`'s reading with `activity(for:)`'s overlay applied — for readers
+    /// that take the whole status (model, effort, context) along with it.
+    public func status(for key: String) -> AgentStatus? {
+        guard let status = agents[key] else { return nil }
+        guard status.activity == .waiting, let expected = expectations[key],
+              now().timeIntervalSince(expected) < expectationTTL else { return status }
+        return AgentStatus(
+            sliceID: status.sliceID, session: status.session, activity: .working,
+            model: status.model, effort: status.effort,
+            contextPercent: status.contextPercent, contextTokens: status.contextTokens)
+    }
+
+    /// Every running agent through `status(for:)`, keyed like `agents`.
+    public var displayedAgents: [String: AgentStatus] {
+        Dictionary(uniqueKeysWithValues: agents.keys.compactMap { key in status(for: key).map { (key, $0) } })
+    }
+
+    /// The expectations one reading leaves standing: one whose agent now
+    /// reads working is dropped (reality agrees), one whose agent is gone is
+    /// dropped, and one still read as waiting is kept until older than `ttl`.
+    /// Pure, so the rule is testable without the loop.
+    nonisolated static func settle(
+        expectations: [String: Date], agents: [String: AgentStatus], now: Date, ttl: TimeInterval
+    ) -> [String: Date] {
+        expectations.filter { key, expected in
+            agents[key]?.activity == .waiting && now.timeIntervalSince(expected) < ttl
+        }
     }
 
     /// `firstSeen` brought in line with one poll's reading: an agent already
@@ -97,6 +170,9 @@ public final class ActivityStore {
                     self.firstSeen = Self.mergeFirstSeen(
                         existing: self.firstSeen, sliceIDs: newAgents.keys, now: self.now()
                     )
+                    let settled = Self.settle(
+                        expectations: self.expectations, agents: newAgents, now: self.now(), ttl: self.expectationTTL)
+                    if settled != self.expectations { self.expectations = settled }
                     self.hasRead = true
                     self.onReading?()
 

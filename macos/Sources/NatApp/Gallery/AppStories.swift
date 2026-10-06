@@ -219,6 +219,15 @@ enum AppStories {
         await appModel.selectSlice(last.targetID, inProject: last.projectID)
     }
 
+    /// Once the activity poll has read the fixture's waiting agent, expects
+    /// it working — the state just after a send, before nat's marker moves.
+    private static func expectWaitingAgentWorking(_ appModel: AppModel) async {
+        for _ in 0..<50 where appModel.activityStore?.agents[Fixtures.activitySliceID] == nil {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        appModel.activityStore?.expectWorking(Fixtures.activitySliceID)
+    }
+
     /// Waits for the activity poll's first reading to report the active
     /// project's planning agent, so a workshop story is drawn with it live.
     private static func settleOnPlanner(_ appModel: AppModel) async {
@@ -1875,6 +1884,18 @@ enum AppStories {
                 appModel: appModel, folded: ["p:\(Fixtures.secondProjectID)": true],
                 hoveredProject: Fixtures.secondProjectID
             ).environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "sidebar-active-optimistic",
+            summary: "The loaded sidebar just after a send to the agent waiting on the user: its Active row is "
+                + "drawn working from the expectation while its reading still says waiting.",
+            size: sidebar
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            await expectWaitingAgentWorking(appModel)
+            return SidebarView(appModel: appModel).environment(\.pulsesPaused, true)
         },
 
         Story(

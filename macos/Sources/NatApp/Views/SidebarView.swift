@@ -1196,7 +1196,7 @@ struct SidebarView: View {
             return endsIn(last, key: "m:\(project.id)/\(last.name)", byDefault: opensItself)
         }
         if isActive && showsDoneItems {
-            let live = (appModel.activityStore?.agents ?? [:]).mapValues { AgentActivity($0.activity) }
+            let live = (appModel.activityStore?.displayedAgents ?? [:]).mapValues { AgentActivity($0.activity) }
             let ended = (appModel.sessionStore?.sessions ?? [])
                 .filter { sessionIsDone($0, liveAgents: live) }
                 .sorted { $0.startedAt > $1.startedAt }
@@ -1337,7 +1337,7 @@ struct SidebarView: View {
     /// own at the foot of its tree — they belong to no milestone.
     @ViewBuilder
     private func endedSessions(_ project: SidebarProject, outdent: CGFloat = 0) -> some View {
-        let live = (appModel.activityStore?.agents ?? [:]).mapValues { AgentActivity($0.activity) }
+        let live = (appModel.activityStore?.displayedAgents ?? [:]).mapValues { AgentActivity($0.activity) }
         let ended = (appModel.sessionStore?.sessions ?? [])
             .filter { sessionIsDone($0, liveAgents: live) }
             .sorted { $0.startedAt > $1.startedAt }
@@ -1431,7 +1431,7 @@ struct SidebarView: View {
         let plan = appModel.plan(projectID: row.projectID)
         let page = plan?.slices.first { $0.id == row.sliceID }
         let targets = (plan?.milestones ?? []).sorted { $0.order < $1.order }.filter { $0.id != milestone }
-        let agent = appModel.activityStore?.agents[row.sliceID]
+        let agent = appModel.activityStore?.status(for: row.sliceID)
         let hasLiveAgent = agent != nil
         let nav = page.map { NavigatorModel(slice: $0, agent: agent.map { AgentActivity($0.activity) }) }
 
