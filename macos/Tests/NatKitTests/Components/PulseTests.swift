@@ -71,9 +71,39 @@ final class PulseTests: XCTestCase {
         XCTAssertEqual(probe.seen.value, true)
     }
 
+    /// A pulse under a full-size-content window's titlebar — the
+    /// breadcrumb's dot — draws where it was laid out, not pushed down
+    /// past the titlebar by the window's safe area.
+    func testAPulseUnderTheTitlebarDrawsInPlace() throws {
+        let probe = FrameProbe()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),
+            styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+        let content = try XCTUnwrap(window.contentView)
+        let host = PulseHostView(rootView: probe)
+        host.frame = NSRect(x: 10, y: content.bounds.height - 10, width: 7, height: 7)
+        content.addSubview(host)
+        host.layoutSubtreeIfNeeded()
+
+        // `.global` is the window's, top-down: the host's own top edge.
+        let top = content.bounds.height - host.frame.maxY
+        XCTAssertEqual(probe.seen.value?.origin, CGPoint(x: 10, y: top))
+    }
+
     // MARK: - Helpers
 
     private final class Box: @unchecked Sendable { var value: Bool? }
+    private final class FrameBox: @unchecked Sendable { var value: CGRect? }
+
+    /// Records where it is drawn in its hosting view.
+    private struct FrameProbe: View {
+        let seen = FrameBox()
+
+        var body: some View {
+            Color.clear.frame(width: 7, height: 7)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { seen.value = $0 }
+        }
+    }
 
     /// Records the `pulsesPaused` it is drawn with.
     private struct EnvironmentProbe: View {
