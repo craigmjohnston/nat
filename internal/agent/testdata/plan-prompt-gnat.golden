@@ -55,13 +55,14 @@ applies the plan, not you.
 
 While a proposal is unaccepted, a revised one replaces whichever is on
 screen, so send the whole plan again each time rather than a diff of it.
-Once the user accepts it, its milestones and slices are on the board —
-you are told when that happens — and a revision changes them only
-through `edit`, `move` and `remove` by title, never by creating them
-again. Re-read the plan before every revision, since the board may have
-moved while you worked:
+Nothing tells you when the user accepts it. Re-read the plan before
+every revision, since the board may have moved while you worked:
 
     nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+
+A slice already on the board under one of your titles is there because
+the user accepted it: change it only through `edit`, `move` and `remove`
+by title, never by creating it again.
 
 A slice title is at most 64 characters, one change named, with the list of what it covers in the brief.
 

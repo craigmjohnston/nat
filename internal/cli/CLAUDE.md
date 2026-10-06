@@ -552,15 +552,6 @@ is written; a failure after the claim leaves the project (made or already
 there) and what was filed, puts the proposal back (`os.Link`, so a revision
 proposed meanwhile is never overwritten), then nudges.
 
-**Accept notice.** After a `--project` accept has applied and nudged,
-`tellPlanner` reads tmux for the project's own planning session
-(`live[agent.PlanTag(id)]`, never the legacy bare one) and sends one
-`agent.ProposalAcceptedPrompt` (created milestones and slices by name, edit/
-move/remove by title from now on, re-read with `nat info`) — the same
-`SendPrompt` path `slice-note` and `slice-triage` use. A failed listing or
-send is logged, never the command's failure; no live session sends nothing.
-`--workspace` sends nothing (gnat kills that tab's session).
-
 ## `usage`
 
 Probes Claude Code's own statusline for the account's Pro/Max rate-limit

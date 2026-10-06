@@ -520,8 +520,9 @@ func TestQueueWorkCarriesTheAcceptedProposalPassage(t *testing.T) {
 	}
 	text := strings.Join(strings.Fields(string(body)), " ")
 	for _, want := range []string{"While a proposal is unaccepted",
-		"a later revision changes them only through `edit`, `move` and `remove` by title, never by creating them again",
-		"Re-read the plan with `nat info --project <project>` before every revision",
+		"Nothing tells you when the user accepts it",
+		"change it only through `edit`, `move` and `remove` by title, never by creating it again",
+		"re-read the plan with `nat info --project <project>` before every revision",
 		`"title": "Its new title"`, "No two slices may answer to one title."} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the queue-work skill does not say %q", want)
