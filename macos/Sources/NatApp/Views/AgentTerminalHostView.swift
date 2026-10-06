@@ -280,7 +280,16 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
     var onFirstRealLayout: (() -> Void)?
     private var hasFiredFirstLayout = false
 
+    /// A frame set at the size the view already has goes no further.
+    /// AppKit still calls this for one, and SwiftUI sets one on every
+    /// layout pass over the pane; SwiftTerm answers each by redrawing the
+    /// whole terminal. An agent working under tmux sets off a layout pass a
+    /// frame: tmux repaints the pane at the end of every synchronized
+    /// update and hides the cursor while it does, and SwiftTerm removes
+    /// and re-adds its caret subview for that, which schedules one — so
+    /// every frame was drawn twice. `SameSizeFrameTests` pins both halves.
     override func setFrameSize(_ newSize: NSSize) {
+        guard newSize != frame.size else { return }
         super.setFrameSize(newSize)
         guard !hasFiredFirstLayout, newSize.width > 0, newSize.height > 0 else { return }
         hasFiredFirstLayout = true
