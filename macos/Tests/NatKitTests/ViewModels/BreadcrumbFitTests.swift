@@ -1,73 +1,54 @@
 import XCTest
 @testable import NatKit
 
-/// The breadcrumb gives way name first (to 80%), then the project to its
-/// tag, then the milestone (to 50%), then to the Active row's line alone.
+/// The breadcrumb gives way name first (to 80%), then the milestone (to
+/// 50%), then to the Active row's line alone; the project's badge never
+/// gives way on its own.
 final class BreadcrumbFitTests: XCTestCase {
-    private let project = CrumbWidth(group: 150, text: 120)
-    private let tag = CrumbWidth(group: 50, text: 30)
+    private let project = 50.0
     private let milestone = CrumbWidth(group: 140, text: 110)
-    // Whole, the row is 150 + 140 + 220 + two gaps of 10 = 530; the name's
+    // Whole, the row is 50 + 140 + 220 + two gaps of 10 = 430; the name's
     // floor is 20 + 80% of 200 = 180.
     private let title = CrumbWidth(group: 220, text: 200)
 
-    private func fit(
-        _ available: Double, project: CrumbWidth?? = nil, tag: CrumbWidth?? = nil, parent: CrumbWidth?? = nil
-    ) -> BreadcrumbFit {
+    private func fit(_ available: Double, project: Double?? = nil, parent: CrumbWidth?? = nil) -> BreadcrumbFit {
         BreadcrumbFit(
-            available: available, spacing: 10, project: project ?? self.project, projectTag: tag ?? self.tag,
-            parent: parent ?? milestone, title: title)
+            available: available, spacing: 10, project: project ?? self.project, parent: parent ?? milestone,
+            title: title)
     }
 
     func testWithRoomEveryCrumbIsWhole() {
-        XCTAssertEqual(
-            fit(600), BreadcrumbFit(stage: .full, titleWidth: 220, parentWidth: nil, projectAsTag: false))
+        XCTAssertEqual(fit(500), BreadcrumbFit(stage: .full, titleWidth: 220, parentWidth: nil))
     }
 
     func testTheNameGivesWayFirstDownTo80Percent() {
-        XCTAssertEqual(
-            fit(500), BreadcrumbFit(stage: .full, titleWidth: 190, parentWidth: nil, projectAsTag: false))
-        XCTAssertEqual(fit(490).stage, .full, "exactly at the name's floor")
-    }
-
-    func testPastThatTheProjectTurnsToItsTagAndTheNameGetsItsRoomBack() {
-        XCTAssertEqual(
-            fit(480), BreadcrumbFit(stage: .projectTag, titleWidth: 220, parentWidth: nil, projectAsTag: true))
-        XCTAssertEqual(fit(390).titleWidth, 180, "the tag's row at the name's floor")
+        XCTAssertEqual(fit(420), BreadcrumbFit(stage: .full, titleWidth: 210, parentWidth: nil))
+        XCTAssertEqual(fit(390), BreadcrumbFit(stage: .full, titleWidth: 180, parentWidth: nil), "exactly at the name's floor")
     }
 
     func testThenTheMilestoneShortensDownToHalfTheNameHeldAtItsFloor() {
-        XCTAssertEqual(
-            fit(380),
-            BreadcrumbFit(stage: .parentShortened, titleWidth: 180, parentWidth: 130, projectAsTag: true))
+        XCTAssertEqual(fit(380), BreadcrumbFit(stage: .parentShortened, titleWidth: 180, parentWidth: 130))
         // 50 + 85 + 180 + two gaps: the milestone at exactly half.
         XCTAssertEqual(fit(335).stage, .parentShortened)
     }
 
     func testPastEveryFloorTheBreadcrumbGoesForTheActiveRowsLine() {
-        XCTAssertEqual(
-            fit(300), BreadcrumbFit(stage: .minimal, titleWidth: nil, parentWidth: nil, projectAsTag: false))
+        XCTAssertEqual(fit(330), BreadcrumbFit(stage: .minimal, titleWidth: nil, parentWidth: nil))
     }
 
-    func testAProjectWithNoTagKeepsItsNameAndShortensTheMilestone() {
-        XCTAssertEqual(
-            fit(480, tag: .some(nil)),
-            BreadcrumbFit(stage: .parentShortened, titleWidth: 180, parentWidth: 130, projectAsTag: false))
-    }
-
-    func testWithNoMilestoneTheTagIsTheLastStepBeforeTheActiveLine() {
-        // A workshop's or session's band: the project's name, then the name.
-        XCTAssertEqual(fit(400, parent: .some(nil)).stage, .full)
-        XCTAssertEqual(fit(300, parent: .some(nil)).stage, .projectTag)
+    func testWithNoMilestoneTheNameIsTheLastStepBeforeTheActiveLine() {
+        // A workshop's or session's band: the project's badge, then the name.
+        XCTAssertEqual(fit(300, parent: .some(nil)), BreadcrumbFit(stage: .full, titleWidth: 220, parentWidth: nil))
+        XCTAssertEqual(fit(240, parent: .some(nil)).stage, .full)
         XCTAssertEqual(fit(200, parent: .some(nil)).stage, .minimal)
     }
 
-    func testATagWithNoProjectCrumbIsNeverDrawn() {
+    func testWithNoProjectCrumbTheContainerShortens() {
         // A source task's band: its container, then the name — no project
-        // crumb to turn into a tag.
-        // 140 + 180 + a gap is past 300, so the container shortens to 110.
-        let fit = fit(300, project: .some(nil))
-        XCTAssertEqual(fit, BreadcrumbFit(stage: .parentShortened, titleWidth: 180, parentWidth: 110, projectAsTag: false))
+        // crumb. 140 + 180 + a gap is past 300, so the container shortens
+        // to 110.
+        XCTAssertEqual(
+            fit(300, project: .some(nil)), BreadcrumbFit(stage: .parentShortened, titleWidth: 180, parentWidth: 110))
     }
 
     func testANameAloneShortensToItsFloorThenGoesToTheActiveLine() {

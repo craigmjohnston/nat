@@ -135,7 +135,7 @@ public struct CreatedProject: Codable, Equatable, Sendable {
     /// --source`); nil for any other project.
     public let source: String?
 
-    /// The colour nat's save gave the project, so its tab draws its puck with
+    /// The colour nat's save gave the project, so its tab draws its badge with
     /// no second read; nil from an older `nat`.
     public let color: ProjectColor?
 

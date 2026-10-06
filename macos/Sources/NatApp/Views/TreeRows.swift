@@ -1,13 +1,19 @@
 import SwiftUI
 import NatKit
 
-/// What names a piece of work as the sidebar's Active fold does: its state
-/// dot (or, for a workshop, its `symbol` in the dot's ink), the project's
-/// short tag, then its title. The Active rows and the navigator's titlebar
-/// both draw it, so the two read alike.
+/// What names a piece of work as the sidebar's Active fold does: the
+/// project's badge and a quiet slash, as the breadcrumb sets a project
+/// crumb, then its state dot (or, for a workshop, its `symbol` in the dot's
+/// ink) directly left of its title. No tag, no badge and no slash (the
+/// breadcrumb's last crumb, whose project crumb already names the project).
+/// The Active rows and the navigator's titlebar both draw it, so the two
+/// read alike.
 struct ActiveIdentityLabel: View {
-    @Environment(\.ground) private var ground
     let tag: String
+    /// The project's colour, the badge's; nil for the quiet chip.
+    var color: ProjectColor?
+    /// The project's full name, the badge's tooltip.
+    var projectName: String?
     let state: SliceDisplayState
     let live: Bool
     let title: String
@@ -17,6 +23,10 @@ struct ActiveIdentityLabel: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            if !tag.isEmpty {
+                ProjectBadgeView(tag: tag, color: color, name: projectName)
+                CrumbSlash()
+            }
             Group {
                 if let symbol {
                     StateSymbol(symbol: symbol, state: state, live: live)
@@ -25,27 +35,33 @@ struct ActiveIdentityLabel: View {
                 }
             }
             .frame(width: GnatMetrics.treeGlyphColumn)
-            (identityTag(tag, on: ground) + Text(title))
-                .font(.system(size: size))
+            Text(title)
                 .ink(titleInk)
                 .lineLimit(1)
         }
+        .font(.system(size: size))
     }
 }
 
-/// An identity's project tag and the gap after it, ahead of its title — or
-/// nothing at all for no tag (the breadcrumb's last crumb, whose project
-/// crumb already names the project).
-func identityTag(_ tag: String, on ground: Ground) -> Text {
-    guard !tag.isEmpty else { return Text("") }
-    return Text(tag)
-        .font(Typo.mono(size: Typo.scaled(10), weight: .medium))
-        .tracking(1)
-        // Raised off the shared baseline so the small capitals sit
-        // on the title's middle rather than its foot.
-        .baselineOffset(1.5)
-        .foregroundStyle(DesignTokens.ink(.secondary, on: ground))
-        + Text("  \u{2009}")
+/// The quiet slash after a crumb — the breadcrumb's, and the one after an
+/// identity's badge. A slash descends below the baseline, so its glyph's
+/// middle sits a point under the text's; it is lifted that point, without
+/// moving its frame, onto the line the rest share.
+struct CrumbSlash: View {
+    var body: some View {
+        Text("/")
+            .ink(.quaternary)
+            .frame(height: CrumbLine.height)
+            .offset(y: -1)
+            .fixedSize()
+    }
+}
+
+/// The breadcrumb's one line: every crumb's glyph is framed to the crumb
+/// text's line height, so the row centres them all on the text's middle
+/// rather than each on its own bounds.
+enum CrumbLine {
+    static let height: CGFloat = 16
 }
 
 /// A milestone line of a plan tree, as the sidebar draws it: its folder,

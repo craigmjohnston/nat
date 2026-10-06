@@ -348,7 +348,9 @@ falling back to whoever is logged in. Creating one writes the plan file
 board's `N`, which asks where the plan lives only when a projects database
 gives a choice). `config-show` says every project's backend. Every entry also carries a
 `color` (a `config.ProjectColors` name, never hex): `config.Save` assigns one
-to any entry without (`Config.AssignColors`, `Load` never does) — the one
+to any entry without (`Config.AssignColors`, `Load` never does; each the
+least-held name farthest round the hue circle from those held more, so a few
+projects are never neighbours) — the one
 deliberate exception to the round trip, since the first save after it landed
 coloured every entry — and `config-set project.<id>.color` changes it. The
 scratch project and source projects take none (`Config.Colorable`): a save

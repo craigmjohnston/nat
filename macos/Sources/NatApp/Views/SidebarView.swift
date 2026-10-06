@@ -890,7 +890,8 @@ struct SidebarView: View {
     private func activeRow(_ row: SidebarActiveRow) -> some View {
         HStack(spacing: 6) {
             ActiveIdentityLabel(
-                tag: row.projectTag, state: row.state, live: row.live, title: row.title, symbol: row.symbol)
+                tag: row.projectTag, color: row.color, projectName: row.projectName, state: row.state, live: row.live,
+                title: row.title, symbol: row.symbol)
             Spacer(minLength: 0)
             // The pull request was last read failing its checks, or
             // conflicting: its marks, each named under the pointer.
@@ -919,9 +920,6 @@ struct SidebarView: View {
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
-        // Left of the state dot, in the leading padding already there, on
-        // the dot's and the tag's line.
-        .projectPuck(row.color, inset: 18, drop: StateDot.drop, ground: .header)
         .gnatRow(selected: isSelected(row))
         .transformEnvironment(\.hoverForced) { if row.targetID == hoveredActiveRow { $0 = true } }
         .contentShape(Rectangle())
@@ -1048,19 +1046,26 @@ struct SidebarView: View {
                 }
             }
             .frame(width: GnatMetrics.treeFolderColumn)
-            Group {
-                switch project.kind {
-                case .untitled:
-                    Text(project.name).italic()
-                case .scratch:
-                    Label(project.name, systemImage: DesignTokens.scratchSymbol).labelStyle(.titleAndIcon)
-                case .project:
-                    Text(project.name)
+            // The name, then the project's badge 6pt after it — never on an
+            // Untitled row.
+            HStack(spacing: 6) {
+                Group {
+                    switch project.kind {
+                    case .untitled:
+                        Text(project.name).italic()
+                    case .scratch:
+                        Label(project.name, systemImage: DesignTokens.scratchSymbol).labelStyle(.titleAndIcon)
+                    case .project:
+                        Text(project.name)
+                    }
+                }
+                .font(.system(size: GnatMetrics.body))
+                .ink(pinned ? .tertiary : .secondary)
+                .lineLimit(1)
+                if project.kind != .untitled && !project.tag.isEmpty {
+                    ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
                 }
             }
-            .font(.system(size: GnatMetrics.body))
-            .ink(pinned ? .tertiary : .secondary)
-            .lineLimit(1)
             Spacer(minLength: 0)
             if !open && project.needsYou > 0 {
                 Circle().fill(DesignTokens.hot).frame(width: 6, height: 6)
@@ -1089,8 +1094,6 @@ struct SidebarView: View {
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
-        // Left of the folder glyph, in the leading padding already there.
-        .projectPuck(project.color, inset: 18, ground: .header)
         .gnatRow(selected: project.kind == .untitled && isActive, washed: pinned)
         .contentShape(Rectangle())
         .onHover { inside in
@@ -1682,7 +1685,8 @@ struct SidebarView: View {
                     )
                 }
                 .sheet(item: view.$projectForSettings) { project in
-                    ProjectSettingsView(appModel: appModel, projectID: project.id, projectName: project.name)
+                    ProjectSettingsView(
+                        appModel: appModel, projectID: project.id, projectName: project.name, projectTag: project.tag)
                 }
                 .sheet(isPresented: Bindable(appModel).mirrorPickerPresented) {
                     NotionPickerSheetView(

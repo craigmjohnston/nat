@@ -58,51 +58,46 @@ struct SourceBadgeView: View {
     @Environment(\.ground) private var ground
     let badge: SourceBadge
 
-    /// Three characters of the badge's mono face — 10.5 pt Fira Code
-    /// Medium with 0.3 tracking measures 20.3 pt — and 4 pt either side.
-    static let width: CGFloat = 29
+    /// Every badge's one width — `BadgeCapsule.width`.
+    static var width: CGFloat { BadgeCapsule.width }
 
     var body: some View {
         let colors = DesignTokens.wireBadge(badge.color, on: ground)
-        Text(badge.text)
-            .font(Typo.mono(size: Typo.scaled(10.5), weight: .medium))
-            .tracking(0.3)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .foregroundStyle(colors?.ink ?? DesignTokens.chipInk(.labelSecondary, on: ground))
-            .padding(.horizontal, 4)
-            .frame(width: Self.width, height: 16)
-            .background(colors?.wash ?? DesignTokens.chipWash(.labelSecondary, on: ground))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .fixedSize()
+        BadgeCapsule(text: badge.text, ink: colors?.ink, wash: colors?.wash)
             .help(badge.title ?? badge.text)
     }
 }
 
-/// A source container named as the titlebar names it: its source's icon in
-/// the dot's place, the source's tag, then its title — `ActiveIdentityLabel`'s
-/// shape.
+/// A source container named as the titlebar names it — `ActiveIdentityLabel`'s
+/// shape: its source's badge and a slash, then its source's icon in the
+/// dot's place and its title.
 struct SourceIdentityLabel: View {
-    @Environment(\.ground) private var ground
     let icon: SourceIcon
     let tag: String
     let title: String
     var size: CGFloat = GnatMetrics.body
+    /// The project's full name, the badge's tooltip.
+    var projectName: String?
     /// The icon's and the title's inks — the titlebar's quieter crumb passes
-    /// `.tertiary` for both; the tag keeps its own.
+    /// `.tertiary` for both; the badge keeps its own.
     var iconInk: InkRole = .secondary
     var titleInk: InkRole = .primary
 
     var body: some View {
         HStack(spacing: 6) {
+            if !tag.isEmpty {
+                // A source project takes no colour: the quiet chip.
+                ProjectBadgeView(tag: tag, color: nil, name: projectName)
+                CrumbSlash()
+            }
             SourceIconView(icon: icon, size: 12)
                 .ink(iconInk)
                 .frame(width: 12)
-            (identityTag(tag, on: ground) + Text(title))
-                .font(.system(size: size))
+            Text(title)
                 .ink(titleInk)
                 .lineLimit(1)
         }
+        .font(.system(size: size))
     }
 }
 

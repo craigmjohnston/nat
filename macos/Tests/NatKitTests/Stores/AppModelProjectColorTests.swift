@@ -65,7 +65,7 @@ final class AppModelProjectColorTests: XCTestCase {
         XCTAssertEqual(colourWrites(client).count, 1)
     }
 
-    /// A refusal is logged and nothing else: the project draws no puck.
+    /// A refusal is logged and nothing else: the project draws the quiet badge.
     func testARefusalLeavesTheProjectWithNoColour() async {
         let model = model(client: FixtureNatClient(behaviour: .refusing("no")), config: oneUncoloured)
         await model.start(configPath: Fixtures.paths.config, nudgePath: Fixtures.paths.nudge)

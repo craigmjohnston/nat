@@ -974,9 +974,9 @@ public final class AppModel {
     /// gnat never picks a colour: every config project that takes one
     /// (`NatProjectConfig.takesColor`) and whose entry has none
     /// is given one by nat — one `config-set project.<id>.color auto` each,
-    /// one at a time — and config is read again, which puts up their pucks.
+    /// one at a time — and config is read again, which colours their badges.
     /// Each project is asked once a run; a refusal is logged and leaves it
-    /// with no puck until the next launch. Off unless `assignsProjectColors`.
+    /// with the quiet badge until the next launch. Off unless `assignsProjectColors`.
     public func assignProjectColors() async {
         guard assignsProjectColors, let config else { return }
         let bare = config.projects
@@ -1245,7 +1245,7 @@ public final class AppModel {
         }
     }
 
-    /// The colour a project's config entry holds — its puck's — nil for one
+    /// The colour a project's config entry holds — its badge's — nil for one
     /// nat has not coloured yet, for an Untitled tab, which has no entry, and
     /// for the scratch and source projects, which take none.
     public func projectColor(ofProject projectID: String) -> ProjectColor? {

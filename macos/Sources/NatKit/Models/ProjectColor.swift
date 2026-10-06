@@ -10,7 +10,7 @@ public enum ProjectColor: String, CaseIterable, Codable, Equatable, Sendable {
 
     /// The colour a config entry's word names; nil for none, and for a word
     /// this build does not know — a config that will not parse is worse than a
-    /// project drawn with no puck.
+    /// project drawn with the quiet badge.
     public init?(word: String?) {
         guard let word, let color = ProjectColor(rawValue: word) else { return nil }
         self = color

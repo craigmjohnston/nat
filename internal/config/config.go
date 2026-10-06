@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -76,9 +77,25 @@ func (c Config) Colorable(id string) bool {
 	return ok && !p.IsSource() && id != c.ScratchProject
 }
 
+// projectHueAngles is where each of [ProjectColors] sits on gnat's hue
+// circle (OKLCH degrees, as its palettes draw them) — what
+// [Config.AssignColors] spreads new colours by.
+var projectHueAngles = map[string]float64{
+	"red": 25, "orange": 58, "yellow": 95, "green": 145, "teal": 195, "blue": 255, "purple": 300, "pink": 345,
+}
+
+// hueDistance is the distance between two colours round the hue circle.
+func hueDistance(a, b string) float64 {
+	d := math.Abs(projectHueAngles[a] - projectHueAngles[b])
+	return min(d, 360-d)
+}
+
 // AssignColors gives every project with no colour one: entries walked in ID
-// order, each given the palette name the fewest other entries already hold,
-// a tie going to the earlier name in palette order. An entry already coloured
+// order, each given, of the palette names the fewest other entries already
+// hold, the one farthest round the hue circle from the nearest name held
+// more often — so a handful of projects are as far apart as eight colours
+// go, never neighbours — a tie going to the earlier name in palette order.
+// An entry already coloured
 // is never changed — except one that takes no colour ([Config.Colorable]),
 // whose colour is cleared and counts against nothing: scratch-open saves its
 // project before recording it as the scratch one, and the second save takes
@@ -103,10 +120,25 @@ func (c *Config) AssignColors() {
 	}
 	slices.Sort(bare)
 	for _, id := range bare {
-		pick := ProjectColors[0]
+		least := held[ProjectColors[0]]
 		for _, name := range ProjectColors[1:] {
-			if held[name] < held[pick] {
-				pick = name
+			least = min(least, held[name])
+		}
+		// Each least-held name's room: how far it is from the nearest name
+		// held more often (the whole circle where none is).
+		pick, room := "", -1.0
+		for _, name := range ProjectColors {
+			if held[name] != least {
+				continue
+			}
+			r := 360.0
+			for _, other := range ProjectColors {
+				if held[other] > least {
+					r = min(r, hueDistance(name, other))
+				}
+			}
+			if r > room {
+				pick, room = name, r
 			}
 		}
 		held[pick]++

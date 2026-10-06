@@ -159,7 +159,7 @@ final class ProjectSettingsModelTests: XCTestCase {
         XCTAssertEqual(model.colorKey, "project.p1.color")
         XCTAssertEqual(model.original.color, .purple)
         XCTAssertTrue(model.changes.isEmpty)
-        XCTAssertEqual(calls.reloads, 1, "config is re-read, which repaints every puck")
+        XCTAssertEqual(calls.reloads, 1, "config is re-read, which repaints every badge")
     }
 
     /// A project with no colour yet writes none until a swatch is picked.

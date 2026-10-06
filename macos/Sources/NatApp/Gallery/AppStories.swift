@@ -84,6 +84,20 @@ enum AppStories {
             .environment(\.pulsesPaused, true)
     }
 
+    /// Every project colour's badge, then the no-colour chip, on the
+    /// sidebar's ground.
+    private static func projectBadgeRow() -> some View {
+        HStack(spacing: 6) {
+            ForEach(ProjectColor.allCases, id: \.self) { color in
+                ProjectBadgeView(tag: String(color.rawValue.prefix(3)).uppercased(), color: color)
+            }
+            ProjectBadgeView(tag: "SCR", color: nil)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DesignTokens.fill(.header))
+        .environment(\.ground, .header)
+    }
+
     private static func sourceSidebar(
         client: FixtureNatClient = FixtureNatClient(), folded: [String: Bool] = ["work": true],
         hoveredContainer: String? = nil, hoveredGroup: String? = nil
@@ -1905,10 +1919,10 @@ enum AppStories {
 
         Story(
             name: "sidebar-project-colours",
-            summary: "Every project's colour as its puck: a thin capsule in each Active row's leading padding, "
-                + "left of the state dot, and in each PROJECTS row's, left of the folder glyph \u{2014} "
-                + "nothing else in any row moved. The source fold and Scratch take no colour: their rows "
-                + "and headings have none.",
+            summary: "Every project's colour as its badge: each Active row reads badge, slash, state dot, "
+                + "title, and each PROJECTS row folder, name, badge. The source fold's and Scratch's projects "
+                + "take no colour: their Active rows' badges are the quiet grey chip, and their headings "
+                + "carry none.",
             size: sidebar
         ) {
             await projectColoursSidebar()
@@ -1916,11 +1930,30 @@ enum AppStories {
 
         Story(
             name: "sidebar-project-colours-light",
-            summary: "As sidebar-project-colours, in the light theme: each puck in the light palette's hue.",
+            summary: "As sidebar-project-colours, in the light theme: each badge's ink and wash in the light palette's hue.",
             size: sidebar,
             colorScheme: .light
         ) {
             await projectColoursSidebar()
+        },
+
+        Story(
+            name: "project-badges",
+            summary: "All eight project colours as badges on the sidebar's ground, in nat's order, then the "
+                + "quiet grey chip a project with no colour takes: eight hues spread evenly round the circle, "
+                + "no two alike.",
+            size: CGSize(width: 340, height: 40)
+        ) {
+            projectBadgeRow()
+        },
+
+        Story(
+            name: "project-badges-light",
+            summary: "As project-badges, in the light theme: the light set's darker hues on their washes.",
+            size: CGSize(width: 340, height: 40),
+            colorScheme: .light
+        ) {
+            projectBadgeRow()
         },
 
         Story(
@@ -2160,7 +2193,7 @@ enum AppStories {
 
         Story(
             name: "window-container",
-            summary: "A card selected: the source's icon and tag in the titlebar, Story open with its facts "
+            summary: "A card selected: the source's grey badge and icon in the titlebar, Story open with its facts "
                 + "and tasks and New task, Comments and Links folded with their counts; the story and its "
                 + "comments with the composer in the main pane, Open in Demo source at the trailing edge.",
             size: window
@@ -2231,8 +2264,8 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-slice",
-            summary: "The titlebar band over a slice: the breadcrumb at the navigator\u{2019}s inset \u{2014} project, "
-                + "milestone, then the slice\u{2019}s dot and title with no project tag, the project crumb naming it "
+            summary: "The titlebar band over a slice: the breadcrumb at the navigator\u{2019}s inset \u{2014} the project\u{2019}s badge, "
+                + "milestone, then the slice\u{2019}s dot and title with no second badge, the project crumb naming it "
                 + "already \u{2014} no rule at the split, the tabs filling from the trailing edge (PR, Changes, "
                 + "Terminal left to right, Terminal rightmost) and nothing beside them.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
@@ -2311,7 +2344,7 @@ enum AppStories {
         Story(
             name: "titlebar-band-long-title",
             summary: "A long task name runs on past the navigator\u{2019}s width into the gap, the project crumb "
-                + "turned to its tag to give it room, the tabs still at the right and never left of the split.",
+                + "its badge, the tabs still at the right and never left of the split.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(longBandTitle))
@@ -2320,7 +2353,7 @@ enum AppStories {
         Story(
             name: "titlebar-band-long-title-narrow",
             summary: "The same band in a narrower window: too little room for the name at 80% with any crumb "
-                + "before it, so just the Active row\u{2019}s line \u{2014} dot, tag, name ellipsized, the chevron beside it.",
+                + "before it, so just the Active row\u{2019}s line \u{2014} badge, slash, dot, name ellipsized, the chevron beside it.",
             size: CGSize(width: 760, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(longBandTitle))
@@ -2328,23 +2361,15 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-fit-title",
-            summary: "Room running out, first step: the task\u{2019}s name ellipsizes, still showing at least 80% of itself; project and milestone whole.",
-            size: CGSize(width: 860, height: GnatMetrics.titlebarHeight)
-        ) {
-            band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
-        },
-
-        Story(
-            name: "titlebar-band-fit-project-tag",
-            summary: "Second step: the project crumb turns into the project\u{2019}s tag, GNA, and the name has its whole width back.",
-            size: CGSize(width: 800, height: GnatMetrics.titlebarHeight)
+            summary: "Room running out, first step: the task\u{2019}s name ellipsizes, still showing at least 80% of itself; the project\u{2019}s badge and the milestone whole.",
+            size: CGSize(width: 780, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
         },
 
         Story(
             name: "titlebar-band-fit-milestone",
-            summary: "Third step: the name held at 80%, the milestone ellipsizes, down to half of itself.",
+            summary: "Second step: the name held at 80%, the milestone ellipsizes, down to half of itself; the badge stays.",
             size: CGSize(width: 680, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
@@ -2352,7 +2377,7 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-fit-minimal",
-            summary: "Past every floor: no breadcrumb, just the Active row\u{2019}s line \u{2014} state dot, GNA, the name, which alone ellipsizes.",
+            summary: "Past every floor: no breadcrumb, just the Active row\u{2019}s line \u{2014} the GNA badge, a slash, the state dot, the name, which alone ellipsizes.",
             size: CGSize(width: 620, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
@@ -2360,9 +2385,8 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-project-colour",
-            summary: "The band over a slice of a pink project: the project\u{2019}s puck at the far left, in the "
-                + "navigator\u{2019}s inset before the project crumb\u{2019}s folder, the PROJECTS row\u{2019}s gap "
-                + "between them; the crumbs where they always are.",
+            summary: "The band over a slice of a pink project: the project crumb is its badge alone, GNA in pink "
+                + "on a pink wash, then its slash \u{2014} no folder glyph and no name \u{2014} from the navigator\u{2019}s inset.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(
@@ -2372,19 +2396,19 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-workshop",
-            summary: "The workshop\u{2019}s band: the project\u{2019}s name then the wand and Workshop, no tag, and no tabs.",
+            summary: "The workshop\u{2019}s band: the project\u{2019}s badge then the wand and Workshop, no second badge, and no tabs.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(
                 tabs: [], selected: nil,
                 crumbs: TitlebarCrumbs(parent: Fixtures.project.name, parentKind: .project, title: workshopRowTitle),
                 identity: TitlebarIdentity(
-                    tag: "", state: .working, live: true, title: workshopRowTitle, symbol: workshopSymbol))
+                    tag: "GNA", state: .working, live: true, title: workshopRowTitle, symbol: workshopSymbol))
         },
 
         Story(
             name: "titlebar-band-session",
-            summary: "An ad hoc session\u{2019}s band: the project\u{2019}s name then the session, and its own tabs.",
+            summary: "An ad hoc session\u{2019}s band: the project\u{2019}s badge then the session, and its own tabs.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(
@@ -2397,26 +2421,28 @@ enum AppStories {
         Story(
             name: "titlebar-band-source-task",
             summary: "A source task\u{2019}s band: its container crumb with the card mark, then the task \u{2014} "
-                + "tag kept, no project crumb before it.",
+                + "its source\u{2019}s grey badge and slash kept before the dot, no project crumb before it.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(
                 tabs: [.terminal, .changes], selected: .terminal,
                 crumbs: TitlebarCrumbs(parent: "Billing export", parentKind: .container, title: "Add the CSV column"),
-                identity: TitlebarIdentity(tag: "SC", state: .working, live: true, title: "Add the CSV column"))
+                identity: TitlebarIdentity(tag: "SC", state: .working, live: true, title: "Add the CSV column"),
+                projectColor: nil)
         },
 
         Story(
             name: "titlebar-band-container",
             summary: "A container\u{2019}s band: no project crumb \u{2014} a source\u{2019}s trail starts at the "
-                + "card \u{2014} just the source\u{2019}s icon, tag and the container\u{2019}s title; no tabs and "
+                + "card \u{2014} just the source\u{2019}s grey badge, a slash, its icon and the container\u{2019}s title; no tabs and "
                 + "no trailing items.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(
                 tabs: [], selected: nil,
                 crumbs: TitlebarCrumbs(title: "Billing export"),
-                identity: .container(title: "Billing export", tag: "SC", icon: SourceIcon(symbol: "rectangle.stack")))
+                identity: .container(title: "Billing export", tag: "SC", icon: SourceIcon(symbol: "rectangle.stack")),
+                projectColor: nil)
         },
 
         // MARK: - The Changes section
@@ -2878,13 +2904,13 @@ enum AppStories {
             summary: "A project's settings sheet (the project menu's Project settings\u{2026}): titled with the "
                 + "project's name, one grouped form holding its working directory \u{2014} the field "
                 + "and Choose\u{2026} beside it \u{2014} and its Colour, a swatch per colour with the "
-                + "project's own ringed and its puck after them, then Cancel and Save.",
+                + "project's own ringed and its badge (NOT, in its teal) after them, then Cancel and Save.",
             size: CGSize(width: 520, height: 260),
             colorScheme: .light
         ) {
             ProjectSettingsView(
                 appModel: await Fixtures.startedAppModel(), projectID: Fixtures.projectID,
-                projectName: "notion-agent-tracker", client: FixtureNatClient())
+                projectName: "notion-agent-tracker", projectTag: "NOT", client: FixtureNatClient())
         },
 
         Story(
@@ -2901,13 +2927,13 @@ enum AppStories {
                 reload: {})
             model.edited.workingDir = "/Users/craig/nowhere"
             _ = await model.save()
-            return ProjectSettingsView(projectName: "notion-agent-tracker", model: model)
+            return ProjectSettingsView(projectName: "notion-agent-tracker", projectTag: "NOT", model: model)
         },
 
         Story(
             name: "project-settings-colour-chosen",
             summary: "The project settings sheet, dark, with another colour picked than the one its entry "
-                + "holds: purple ringed in the accent and the puck beside the swatches in it, written by Save.",
+                + "holds: purple ringed in the accent and the badge beside the swatches in it, written by Save.",
             size: CGSize(width: 520, height: 260)
         ) {
             let appModel = await Fixtures.startedAppModel()
@@ -2916,7 +2942,7 @@ enum AppStories {
             model.edited.color = .purple
             // A real sheet stands on the window's own ground; a render has
             // none, so the story gives it the system's, dark.
-            return ProjectSettingsView(projectName: "notion-agent-tracker", model: model)
+            return ProjectSettingsView(projectName: "notion-agent-tracker", projectTag: "NOT", model: model)
                 .background(.background)
         },
 

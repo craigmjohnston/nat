@@ -1,5 +1,6 @@
 import XCTest
 @testable import NatKit
+@testable import NatFixtures
 
 final class SidebarModelTests: XCTestCase {
     private func slice(
@@ -334,5 +335,22 @@ final class SidebarModelTests: XCTestCase {
         let model = buildSidebarModel(
             projects: inputs, liveAgents: [:], pinnedWorkshops: ["p"], reconnectingWorkshops: ["q"])
         XCTAssertEqual(model.active.map(\.color), [.blue, .pink])
+    }
+
+    /// Every project row carries its badge's word — the tag its Active rows
+    /// carry, a source project's its plugin's — and an Untitled row none.
+    func testEveryProjectRowCarriesItsTag() {
+        let model = buildSidebarModel(
+            projects: [
+                SidebarProjectInput(id: "p", name: "Pancake", plan: plan([slice("a", status: "In progress")])),
+                SidebarProjectInput(id: "w", name: "Work", plan: Fixtures.sourceProjectInfo(), isSource: true),
+                SidebarProjectInput(id: "u", name: "Untitled", kind: .untitled, plan: nil),
+            ],
+            liveAgents: [:])
+
+        XCTAssertEqual(model.projects.map(\.tag), ["PAN", ""])
+        XCTAssertEqual(model.sources.map(\.tag), ["DM"])
+        XCTAssertEqual(model.active.first { $0.projectID == "p" }?.projectTag, "PAN")
+        XCTAssertEqual(model.projects[0].hidingDone().tag, "PAN", "hiding done work keeps the tag")
     }
 }

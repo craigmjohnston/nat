@@ -89,13 +89,14 @@ or its hover-only three-dot) opens `ProjectSettingsView`, a sheet on the
 main window titled with the project's name — one grouped `Form`, no
 sidebar or tabs — holding the working directory (field + Choose…) and, under it, Colour:
 one swatch per `ProjectColor` in nat's order (the picked one ringed in the
-accent, its name its tooltip and accessibility label) then a `ProjectPuck`
-of the pick — no "auto", a colour is always set; no row at all for the
+accent, its name its tooltip and accessibility label) then the project's
+badge in the pick (`ProjectBadgeView`, the tag given by whoever opens the
+sheet) — no "auto", a colour is always set; no row at all for the
 scratch or a source project (`ProjectSettingsModel.takesColor`). Its
 logic is `ProjectSettingsModel` (NatKit, tested): the same one `config-set`
 per changed key (`SettingsModel.workingDirKey`, `colorKey`), a refusal kept under its
 row with the baseline as read, `AppModel.reloadConfig` after any write so
-Reveal and launches use the new path, and every puck its new colour, at once. A further per-project row is
+Reveal and launches use the new path, and every badge its new colour, at once. A further per-project row is
 a `ProjectSettingsFields` field and a row in the sheet. Stories:
 `project-settings`, `project-settings-refused`, `project-settings-colour-chosen`. Project, milestone and task
 rows in the sidebar tree each carry that hover-only three-dot
@@ -510,27 +511,36 @@ nothing. Tests: `ClosedTabTests`.
 
 **Project colours.** Every config entry but the scratch project's and a
 source project's (`NatProjectConfig.takesColor`, nat's `Config.Colorable` —
-no puck, no auto, no Colour row) carries a `color`, a
-`ProjectColor` name nat chooses (`config.Save`) — never hex: each `Palette`
-resolves it (`projectTint`, its own hue where its outcome hues fall short),
-`DesignTokens.projectInk(_:on:)` on a ground. gnat never picks one: once
-config is read, and whenever a project joins the strip (`addProject`,
-`ensureSourceProjects`, `projectMirrored`), `AppModel.assignProjectColors`
-runs one `config-set project.<id>.color auto` per such project with none, each
-once a run, then `reloadConfig` — only where `assignsProjectColors`, which
-only `NatApp` sets (tests run the real `nat`). It is drawn as `ProjectPuck`,
-a 3pt vertical capsule, **in space already there** (`projectPuck(_:inset:)`,
-an overlay in the leading padding, `ProjectPuck.gap` short of the first
-glyph — nothing in the row moves): Active rows left of the state dot,
-dropped onto its line (`StateDot.drop`; `SidebarActiveRow.color`), PROJECTS
-rows left of the folder glyph (`SidebarProject.color`; never an Untitled
-row), and the titlebar breadcrumb, whose crumbs move right by
-`GnatMetrics.puckRowInset` less `breadcrumbInset` to give it a sidebar row's
-room (`TitlebarBreadcrumb.projectColor`, at every `BreadcrumbFit` stage,
-uncounted by its measurements, on the line of what follows it — the dot at
-the minimal stage, the tag crumb's capitals at the tag stage; none with no
-breadcrumb). No colour, no puck. Stories: `sidebar-project-colours`
-(`-light`), `titlebar-band-project-colour`.
+no auto, no Colour row) carries a `color`, a `ProjectColor` name nat chooses
+(`config.Save`, spreading new ones round the hue circle) — never hex: every
+shipped `Palette` resolves all eight through its scheme's own spread set
+(`darkProjectHues`, `lightProjectHues` — evenly round OKLCH hue, not the
+outcome hues, which sit too close to tell projects apart; `projectTint`
+falls back to an outcome hue only for a colour a palette leaves out).
+gnat never picks one: once config is read, and whenever a project joins the
+strip (`addProject`, `ensureSourceProjects`, `projectMirrored`),
+`AppModel.assignProjectColors` runs one `config-set project.<id>.color auto`
+per such project with none, each once a run, then `reloadConfig` — only
+where `assignsProjectColors`, which only `NatApp` sets (tests run the real
+`nat`). It is drawn as the project's **badge**, `ProjectBadgeView`: the
+project's tag (`sidebarTags` — a source project's its plugin's) on
+`BadgeCapsule`, the one capsule a source container's `SourceBadgeView` is
+drawn on too, so the two are one shape and size by construction (mono face,
+16pt high, `BadgeCapsule.width`, the word centred and shrinking to fit, 4pt
+corners); its ink and wash `DesignTokens.projectBadge` (`chipInk` and the
+chip wash of `projectTint`, as `wireBadge` is built), the quiet secondary
+chip with no colour (scratch, source, not yet coloured); its tooltip the
+project's full name. Where: every Active row (`ActiveIdentityLabel`: badge,
+`CrumbSlash`, state dot or wand, title; `SidebarActiveRow.color`), which is
+also the titlebar's minimal stage and last crumb (`TitlebarIdentityLabel`;
+no tag — `lastCrumb` after a project crumb — no badge and no slash) and a
+container's identity (`SourceIdentityLabel`); the breadcrumb's project crumb
+— the badge alone, then its slash, still opening the picker
+(`TitlebarBreadcrumb.projectColor`/`projectName`); each PROJECTS row 6pt
+after its name (`SidebarProject.tag`/`.color`; never an Untitled row); and
+the project settings sheet's Colour row. Fold headings (Scratch, a source)
+carry none. Stories: `sidebar-project-colours` (`-light`),
+`titlebar-band-project-colour`, `project-settings-colour-chosen`.
 
 The gnat hi-fi design (Claude Design project `e81457f6-…`, `gnat.html` with
 `gnat-data/shell/nav/main.jsx` and `gnat.css`) is the spec: `SidebarView`
@@ -589,15 +599,15 @@ rule at the split, holds the breadcrumb (`TitlebarBreadcrumb`) from the
 navigator's inset — project, milestone or container (or a workshop's or
 session's project name), each followed by a quiet slash, then the selection
 as its Active row names it (`TitlebarIdentityLabel` over
-`ActiveIdentityLabel`: dot, project tag, title, read through
-`AppModel.titlebarIdentity`; the tag dropped where a crumb before it names
+`ActiveIdentityLabel`: project badge, slash, dot, title, read through
+`AppModel.titlebarIdentity`; the badge dropped where a crumb before it names
 the project, `TitlebarIdentity.lastCrumb`) — free to run past the
 navigator's width. As room runs out the selection's name is kept longest
 (`BreadcrumbFit`, from widths the breadcrumb measures): it ellipsizes to
-80% of itself, then the project crumb turns into the project's tag, then the
-milestone (or container) ellipsizes to half of itself, and past that the
-breadcrumb gives way to the Active row's line alone — dot, tag, name
-(stories `titlebar-band-fit-*`). Then the `MainPaneTab`s at the
+80% of itself, then the milestone (or container) ellipsizes to half of
+itself, and past that the breadcrumb gives way to the Active row's line
+alone — badge, dot, name; the project crumb is already its badge and never
+gives way on its own (stories `titlebar-band-fit-*`). Then the `MainPaneTab`s at the
 right — Zed-style tabs, full height and square, one per section that would
 put its view up (`NavigatorModel.tabs`, `MainPaneTab.forSession`,
 `WorkshopTab.available`, which say which exist) — **filling from the right**

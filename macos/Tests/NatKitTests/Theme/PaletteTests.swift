@@ -271,16 +271,17 @@ final class PaletteTests: XCTestCase {
         }
     }
 
-    /// A colour with no hue of the palette's own is its namesake outcome hue.
+    /// Every shipped palette draws all eight from its scheme's own spread
+    /// set, never its outcome hues; a colour with no hue of the palette's own
+    /// is its namesake outcome hue.
     func testAProjectColourIsItsOutcomeHueUnlessThePaletteGivesOne() {
         let iceberg = Palette.iceberg
-        XCTAssertEqual(iceberg.projectTint(.red), iceberg.systemRed)
-        XCTAssertEqual(iceberg.projectTint(.orange), iceberg.systemOrange)
-        XCTAssertEqual(iceberg.projectTint(.green), iceberg.systemGreen)
-        XCTAssertEqual(iceberg.projectTint(.teal), iceberg.systemTeal)
-        XCTAssertEqual(iceberg.projectTint(.blue), iceberg.systemBlue)
-        XCTAssertNotEqual(iceberg.projectTint(.yellow), iceberg.systemYellow, "iceberg's yellow is its orange")
-        XCTAssertEqual(Palette.light.projectTint(.pink), Palette.light.systemPink)
+        for (name, palette) in palettes {
+            let set = palette.isDark ? Palette.darkProjectHues : Palette.lightProjectHues
+            for color in ProjectColor.allCases {
+                XCTAssertEqual(palette.projectTint(color), set[color], "\(name) \(color)")
+            }
+        }
 
         let bare = Palette(
             windowBg: iceberg.windowBg, chromeBg: iceberg.chromeBg, titlebarBg: iceberg.titlebarBg,
