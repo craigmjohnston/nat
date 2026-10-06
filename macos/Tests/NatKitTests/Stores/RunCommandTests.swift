@@ -49,6 +49,26 @@ final class RunCommandModelTests: XCTestCase {
 
 @MainActor
 final class AppModelRunTests: XCTestCase {
+    func testASourceProjectsRunProjectCarriesItsPluginsIconAndTagAndNoColour() async {
+        let source = Fixtures.sourceConfig
+        var projects = source.projects
+        let work = projects[Fixtures.sourceProjectID]!
+        projects[Fixtures.sourceProjectID] = ProjectConfig(
+            name: work.name, workingDir: work.workingDir, backend: .source, source: "demo",
+            runs: [RunCommand(label: "Run", command: "make run")])
+        let config = NatProjectConfig(
+            projects: projects, agentSplitPercent: source.agentSplitPercent, pollSeconds: source.pollSeconds,
+            assigneeUserName: source.assigneeUserName)
+        let model = await Fixtures.startedAppModel(config: config)
+        let project = model.runProjects.first { $0.id == Fixtures.sourceProjectID }
+        XCTAssertEqual(project?.tag, "DM")
+        XCTAssertNil(project?.color)
+        XCTAssertEqual(project?.icon, SourceIcon(symbol: "rectangle.on.rectangle.angled"))
+        XCTAssertEqual(model.sourceIcon(ofProject: Fixtures.sourceProjectID), project?.icon)
+        XCTAssertNil(model.sourceIcon(ofProject: Fixtures.projectID), "not a source project")
+        XCTAssertNil(model.sourceIcon(ofProject: "nowhere"), "no plan read")
+    }
+
     func testARunIsHeldAndItsButtonBusyUntilItEnds() async {
         let model = await Fixtures.startedAppModel(config: Fixtures.runsConfig)
         model.runSessionExists = { _ in true }
@@ -56,6 +76,12 @@ final class AppModelRunTests: XCTestCase {
         XCTAssertEqual(model.sliceRuns(ofProject: Fixtures.projectID).map(\.command), ["./scripts/play.sh --windowed", "go run . --sandbox"])
         XCTAssertEqual(model.runProjects.map(\.name), ["gnat", "notion-agent-tracker"])
         XCTAssertEqual(model.runProjects.last?.runs.map(\.label), ["Play", "Board"])
+        XCTAssertEqual(model.runProjects.map(\.tag), ["GNA", "NOT"], "each project's badge word, sidebarTags'")
+        XCTAssertEqual(
+            model.runProjects.map(\.color),
+            [Fixtures.runsConfig.projects[Fixtures.secondProjectID]?.color,
+             Fixtures.runsConfig.projects[Fixtures.projectID]?.color])
+        XCTAssertEqual(model.runProjects.map(\.icon), [nil, nil], "no source project, no icon")
 
         XCTAssertFalse(model.anyRunBusy)
         await model.startRun(projectID: Fixtures.projectID)

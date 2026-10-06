@@ -86,8 +86,9 @@ struct SourceIdentityLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             if !tag.isEmpty {
-                // A source project takes no colour: the quiet chip.
-                ProjectBadgeView(tag: tag, color: nil, name: projectName)
+                // A source project takes no colour: the quiet chip, led by
+                // its plugin's icon.
+                ProjectBadgeView(tag: tag, color: nil, name: projectName, icon: icon)
                 CrumbSlash()
             }
             SourceIconView(icon: icon, size: 12)

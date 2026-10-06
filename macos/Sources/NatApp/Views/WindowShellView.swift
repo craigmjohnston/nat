@@ -156,6 +156,7 @@ struct WindowShellView: View {
                 crumbs: crumbs, identity: titlebarIdentity,
                 projectColor: appModel.activeProjectID.flatMap(appModel.projectColor(ofProject:)),
                 projectName: appModel.activeProjectID.map { appModel.tabName($0) },
+                projectIcon: appModel.activeProjectID.flatMap(appModel.sourceIcon(ofProject:)),
                 openPicker: $crumbPicker
             ) { origin in
                 crumbTreePicker(openingOn: origin)

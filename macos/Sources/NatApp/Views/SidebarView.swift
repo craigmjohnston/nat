@@ -548,6 +548,10 @@ struct SidebarView: View {
                 Text("\(project.needsYou)").monoXS().ink(.hot)
             }
             Spacer(minLength: 0)
+            // The project's badge, right-aligned as a project row's is.
+            if !project.tag.isEmpty {
+                ProjectBadgeView(tag: project.tag, color: nil, name: project.name, icon: source?.icon)
+            }
             if let filter = source?.menu.filterAction {
                 filterButton(filter, projectID: project.id, group: nil, size: 12)
             }
@@ -890,7 +894,8 @@ struct SidebarView: View {
     private func activeRow(_ row: SidebarActiveRow) -> some View {
         HStack(spacing: 6) {
             ActiveIdentityLabel(
-                tag: row.projectTag, color: row.color, projectName: row.projectName, state: row.state, live: row.live,
+                tag: row.projectTag, color: row.color, projectName: row.projectName,
+                projectIcon: appModel.sourceIcon(ofProject: row.projectID), state: row.state, live: row.live,
                 title: row.title, symbol: row.symbol)
             Spacer(minLength: 0)
             // The pull request was last read failing its checks, or
@@ -1050,27 +1055,27 @@ struct SidebarView: View {
                 }
             }
             .frame(width: GnatMetrics.treeFolderColumn)
-            // The name, then the project's badge 6pt after it — never on an
-            // Untitled row.
-            HStack(spacing: 6) {
-                Group {
-                    switch project.kind {
-                    case .untitled:
-                        Text(project.name).italic()
-                    case .scratch:
-                        Label(project.name, systemImage: DesignTokens.scratchSymbol).labelStyle(.titleAndIcon)
-                    case .project:
-                        Text(project.name)
-                    }
-                }
-                .font(.system(size: GnatMetrics.body))
-                .ink(pinned ? .tertiary : .secondary)
-                .lineLimit(1)
-                if project.kind != .untitled && !project.tag.isEmpty {
-                    ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
+            Group {
+                switch project.kind {
+                case .untitled:
+                    Text(project.name).italic()
+                case .scratch:
+                    Label(project.name, systemImage: DesignTokens.scratchSymbol).labelStyle(.titleAndIcon)
+                case .project:
+                    Text(project.name)
                 }
             }
+            .font(.system(size: GnatMetrics.body))
+            .ink(pinned ? .tertiary : .secondary)
+            .lineLimit(1)
             Spacer(minLength: 0)
+            // The project's badge at the row's trailing edge, before the
+            // hover-only slots, so it stays put as they come and go and a
+            // column of project rows lines its badges up — never on an
+            // Untitled row.
+            if project.kind != .untitled && !project.tag.isEmpty {
+                ProjectBadgeView(tag: project.tag, color: project.color, name: project.name, icon: project.source?.icon)
+            }
             if projectMenuHasItems(project) {
                 // The right-click menu as a button, only under the pointer
                 // (unlike the `+`), its slot always kept.

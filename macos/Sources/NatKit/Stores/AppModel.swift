@@ -1258,6 +1258,12 @@ public final class AppModel {
         stores[projectID]?.state.projectInfo
     }
 
+    /// A source project's plugin icon — its badge leads with it — nil for
+    /// any other project, and for one whose plan has not landed.
+    public func sourceIcon(ofProject projectID: String) -> SourceIcon? {
+        plan(projectID: projectID)?.source.map { SourceIcon(symbol: $0.iconSymbol, svg: $0.iconSVG) }
+    }
+
     /// The live planning agent of every open project that has one, keyed by
     /// project — each project's own scoped tag, and an Untitled tab's
     /// workspace tag under the tab's ID.
@@ -3076,15 +3082,29 @@ public struct RunAttachment: Equatable, Sendable {
     }
 }
 
-/// A project as the titlebar's run tree lists it: its name and its runs.
+/// A project as the titlebar's run tree lists it: its name, its badge —
+/// tag, colour and, for a source project, its plugin's icon — and its runs.
 public struct RunProject: Equatable, Identifiable, Sendable {
     public let id: String
     public let name: String
+    /// The project's badge word (`sidebarTags`); empty for a project not
+    /// open as a tab, which draws no badge.
+    public let tag: String
+    /// The project's colour; nil for the quiet chip.
+    public let color: ProjectColor?
+    /// A source project's plugin icon, its badge's; nil for any other.
+    public let icon: SourceIcon?
     public let runs: [RunCommand]
 
-    public init(id: String, name: String, runs: [RunCommand]) {
+    public init(
+        id: String, name: String, tag: String = "", color: ProjectColor? = nil, icon: SourceIcon? = nil,
+        runs: [RunCommand]
+    ) {
         self.id = id
         self.name = name
+        self.tag = tag
+        self.color = color
+        self.icon = icon
         self.runs = runs
     }
 }
@@ -3099,9 +3119,12 @@ extension AppModel {
     /// Every project with runs to offer from the titlebar, by name, each
     /// with its global runs — the titlebar's run tree.
     public var runProjects: [RunProject] {
-        (config?.projects ?? [:]).compactMap { id, project in
+        let tags = sidebarTags(sidebarInputs)
+        return (config?.projects ?? [:]).compactMap { id, project in
             let runs = project.runs.globalRuns
-            return runs.isEmpty ? nil : RunProject(id: id, name: tabName(id, fallback: project.name), runs: runs)
+            return runs.isEmpty ? nil : RunProject(
+                id: id, name: tabName(id, fallback: project.name), tag: tags[id] ?? "",
+                color: projectColor(ofProject: id), icon: sourceIcon(ofProject: id), runs: runs)
         }
         .sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
     }

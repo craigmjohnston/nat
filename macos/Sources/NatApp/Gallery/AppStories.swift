@@ -84,14 +84,15 @@ enum AppStories {
             .environment(\.pulsesPaused, true)
     }
 
-    /// Every project colour's badge, then the no-colour chip, on the
-    /// sidebar's ground.
+    /// Every project colour's badge, then the no-colour chip, then a source
+    /// project's — its plugin's icon, then its tag — on the sidebar's ground.
     private static func projectBadgeRow() -> some View {
         HStack(spacing: 6) {
             ForEach(ProjectColor.allCases, id: \.self) { color in
                 ProjectBadgeView(tag: String(color.rawValue.prefix(3)).uppercased(), color: color)
             }
             ProjectBadgeView(tag: "SCR", color: nil)
+            ProjectBadgeView(tag: "DM", color: nil, icon: SourceIcon(symbol: Fixtures.sourceInfo().iconSymbol))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.fill(.header))
@@ -427,7 +428,8 @@ enum AppStories {
         tabs: [MainPaneTab], selected: MainPaneMode?, crumbs: TitlebarCrumbs, state: SliceDisplayState = .working,
         identity: TitlebarIdentity? = nil, hoveredTab: MainPaneTab? = nil, runs: Bool = false,
         runBusy: Bool = false, runHovered: Bool = false,
-        projectColor: ProjectColor? = Fixtures.config.projects[Fixtures.projectID]?.color
+        projectColor: ProjectColor? = Fixtures.config.projects[Fixtures.projectID]?.color,
+        projectIcon: SourceIcon? = nil
     ) -> some View {
         TitlebarBand(
             navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs.map(\.titlebarTab),
@@ -442,7 +444,7 @@ enum AppStories {
             TitlebarBreadcrumb(
                 crumbs: crumbs,
                 identity: identity ?? TitlebarIdentity(tag: "GNA", state: state, live: true, title: crumbs.title),
-                projectColor: projectColor,
+                projectColor: projectColor, projectIcon: projectIcon,
                 openPicker: .constant(nil)
             ) { _ in EmptyView() }
         }
@@ -1920,9 +1922,10 @@ enum AppStories {
         Story(
             name: "sidebar-project-colours",
             summary: "Every project's colour as its badge: each Active row reads badge, slash, state dot, "
-                + "title, and each PROJECTS row folder, name, badge. The source fold's and Scratch's projects "
-                + "take no colour: their Active rows' badges are the quiet grey chip, and their headings "
-                + "carry none.",
+                + "title, and each PROJECTS row folder, name, then its badge at the row's trailing edge. The "
+                + "source fold's and Scratch's projects take no colour: their Active rows' badges are the quiet "
+                + "grey chip, the source's led by its plugin's icon; the source heading carries that badge "
+                + "right-aligned before its filter and menu, Scratch's none.",
             size: sidebar
         ) {
             await projectColoursSidebar()
@@ -1940,9 +1943,9 @@ enum AppStories {
         Story(
             name: "project-badges",
             summary: "All eight project colours as badges on the sidebar's ground, in nat's order, then the "
-                + "quiet grey chip a project with no colour takes: eight hues spread evenly round the circle, "
-                + "no two alike.",
-            size: CGSize(width: 340, height: 40)
+                + "quiet grey chip a project with no colour takes, then a source project's — its plugin's icon "
+                + "then its tag on the same chip, wider: eight hues spread evenly round the circle, no two alike.",
+            size: CGSize(width: 380, height: 40)
         ) {
             projectBadgeRow()
         },
@@ -1950,7 +1953,7 @@ enum AppStories {
         Story(
             name: "project-badges-light",
             summary: "As project-badges, in the light theme: the light set's darker hues on their washes.",
-            size: CGSize(width: 340, height: 40),
+            size: CGSize(width: 380, height: 40),
             colorScheme: .light
         ) {
             projectBadgeRow()
@@ -2421,14 +2424,14 @@ enum AppStories {
         Story(
             name: "titlebar-band-source-task",
             summary: "A source task\u{2019}s band: its container crumb with the card mark, then the task \u{2014} "
-                + "its source\u{2019}s grey badge and slash kept before the dot, no project crumb before it.",
+                + "its source\u{2019}s grey badge, led by the source\u{2019}s icon, and slash kept before the dot, no project crumb before it.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(
                 tabs: [.terminal, .changes], selected: .terminal,
                 crumbs: TitlebarCrumbs(parent: "Billing export", parentKind: .container, title: "Add the CSV column"),
                 identity: TitlebarIdentity(tag: "SC", state: .working, live: true, title: "Add the CSV column"),
-                projectColor: nil)
+                projectColor: nil, projectIcon: SourceIcon(symbol: "rectangle.stack"))
         },
 
         Story(

@@ -14,6 +14,8 @@ struct ActiveIdentityLabel: View {
     var color: ProjectColor?
     /// The project's full name, the badge's tooltip.
     var projectName: String?
+    /// A source project's plugin icon, its badge's.
+    var projectIcon: SourceIcon?
     let state: SliceDisplayState
     let live: Bool
     let title: String
@@ -24,7 +26,7 @@ struct ActiveIdentityLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             if !tag.isEmpty {
-                ProjectBadgeView(tag: tag, color: color, name: projectName)
+                ProjectBadgeView(tag: tag, color: color, name: projectName, icon: projectIcon)
                 CrumbSlash()
             }
             Group {

@@ -526,20 +526,28 @@ where `assignsProjectColors`, which only `NatApp` sets (tests run the real
 project's tag (`sidebarTags` — a source project's its plugin's) on
 `BadgeCapsule`, the one capsule a source container's `SourceBadgeView` is
 drawn on too, so the two are one shape and size by construction (mono face,
-16pt high, `BadgeCapsule.width`, the word centred and shrinking to fit, 4pt
-corners); its ink and wash `DesignTokens.projectBadge` (`chipInk` and the
+16pt high, `BadgeCapsule.width`, the word centred and shrinking to fit,
+`BadgeCapsule.cornerRadius` 2.5pt corners); its ink and wash `DesignTokens.projectBadge` (`chipInk` and the
 chip wash of `projectTint`, as `wireBadge` is built), the quiet secondary
 chip with no colour (scratch, source, not yet coloured); its tooltip the
-project's full name. Where: every Active row (`ActiveIdentityLabel`: badge,
+project's full name. A source project's badge (`ProjectBadgeView.icon`, each
+call site passing the plugin's `SourceIcon` — `SidebarProject.source?.icon`,
+`RunProject.icon`, `AppModel.sourceIcon(ofProject:)`) leads with the plugin's
+icon in the chip's ink, the capsule widening to hold both; container badges
+keep the one width. Where: every Active row (`ActiveIdentityLabel`: badge,
 `CrumbSlash`, state dot or wand, title; `SidebarActiveRow.color`), which is
 also the titlebar's minimal stage and last crumb (`TitlebarIdentityLabel`;
 no tag — `lastCrumb` after a project crumb — no badge and no slash) and a
 container's identity (`SourceIdentityLabel`); the breadcrumb's project crumb
 — the badge alone, then its slash, still opening the picker
-(`TitlebarBreadcrumb.projectColor`/`projectName`); each PROJECTS row 6pt
-after its name (`SidebarProject.tag`/`.color`; never an Untitled row); and
-the project settings sheet's Colour row. Fold headings (Scratch, a source)
-carry none. Stories: `sidebar-project-colours` (`-light`),
+(`TitlebarBreadcrumb.projectColor`/`projectName`/`projectIcon`); each
+PROJECTS row at its trailing edge, before the hover-only menu and `+` slots,
+so it never moves and the rows' badges line up (`SidebarProject.tag`/`.color`;
+never an Untitled row), and a source fold's heading likewise, before its
+filter and menu; both tree pickers' project rows (`CrumbTreePicker`,
+`RunTreePicker` — `RunProject.tag`/`.color`/`.icon`), 6pt before the name,
+after the folder; and the project settings sheet's Colour row. The Scratch
+fold heading carries none. Stories: `sidebar-project-colours` (`-light`),
 `titlebar-band-project-colour`, `project-settings-colour-chosen`.
 
 The gnat hi-fi design (Claude Design project `e81457f6-…`, `gnat.html` with
