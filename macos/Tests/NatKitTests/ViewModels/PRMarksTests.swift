@@ -205,4 +205,70 @@ final class PRMarksTests: XCTestCase {
         XCTAssertNil(conflictNotice(slice: slice(resumed: true), conflict: main, hasLiveAgent: false), "resumed")
         XCTAssertNotNil(conflictNotice(slice: slice(), conflict: main, hasLiveAgent: false))
     }
+
+    // MARK: - A handed-back branch with no pull request
+
+    private func inReview(_ id: String = "s-1") -> Slice {
+        slice(id, pr: "", handedBack: true, branch: "slice/\(id)")
+    }
+
+    func testPRStatusDecodesBranchesAndDefaultsThemEmpty() throws {
+        let json = """
+        {"slices": [], "branches": [
+          {"slice_id": "s-1", "name": "A", "branch": "slice/a", "base": "origin/main", "conflicting": true}
+        ]}
+        """
+        let doc = try JSONDecoder().decode(PRStatusDoc.self, from: Data(json.utf8))
+        XCTAssertEqual(doc.branches, [
+            PRStatusBranch(sliceID: "s-1", name: "A", branch: "slice/a", base: "origin/main", conflicting: true),
+        ])
+        XCTAssertEqual(try JSONDecoder().decode(PRStatusDoc.self, from: JSONEncoder().encode(doc)), doc)
+        let older = try JSONDecoder().decode(PRStatusDoc.self, from: Data(#"{"slices": []}"#.utf8))
+        XCTAssertEqual(older.branches, [], "an older nat sends no branches")
+    }
+
+    /// A conflicted branch is marked, a clean one is not; a branch nat could
+    /// not test never reaches the reading.
+    func testTheReadingMarksAConflictedBranchAndNotACleanOne() {
+        let reading = PRReading(PRStatusDoc(slices: [], branches: [
+            PRStatusBranch(sliceID: "bad", name: "", branch: "b", base: "origin/main", conflicting: true),
+            PRStatusBranch(sliceID: "ok", name: "", branch: "c", base: "origin/main", conflicting: false),
+        ]))
+        XCTAssertEqual(reading.branchConflicts, ["bad": BranchConflict(base: "origin/main")])
+        XCTAssertEqual(reading.conflicts, [:], "no pull request conflicts")
+        XCTAssertEqual(reading.marks, ["bad": PRMarks(conflict: BranchConflict(base: "origin/main"))])
+    }
+
+    /// In review, a slice's rows carry its branch's conflict and nothing else
+    /// of a reading; with none, nothing.
+    func testAConflictedHandBackIsMarkedInReview() {
+        let conflict = BranchConflict(base: "origin/main")
+        let marks = PRMarks(failingChecks: ["stale"], conflict: conflict, checksPassing: true)
+        XCTAssertEqual(prMarks(marks, for: inReview(), agent: nil), PRMarks(conflict: conflict))
+        XCTAssertEqual(prMarks(.none, for: inReview(), agent: nil), .none)
+        XCTAssertEqual(
+            prMarks(PRMarks(conflict: conflict), for: slice(pr: "", branch: nil), agent: nil), .none,
+            "work in progress is not in review")
+    }
+
+    func testTheBranchNoticeSaysToRebase() {
+        let base = BranchConflict(base: "origin/main")
+        let noAgent = branchConflictNotice(slice: inReview(), conflict: base, hasLiveAgent: false)
+        XCTAssertEqual(noAgent, ConflictNotice(conflict: base, action: .sendBack, hasPullRequest: false))
+        XCTAssertEqual(
+            noAgent?.text,
+            "This branch conflicts with origin/main — send it back to the agent to rebase it on origin/main and resolve them.")
+        XCTAssertEqual(
+            branchConflictNotice(slice: inReview(), conflict: base, hasLiveAgent: true)?.text,
+            "This branch conflicts with origin/main — the live agent has it: ask it to rebase it on origin/main and resolve them.")
+    }
+
+    /// Only a slice in review draws it: an unknown reading (no conflict in
+    /// hand) draws nothing, and an approved slice keeps the PR's own notice.
+    func testTheBranchNoticeIsDrawnOnlyInReview() {
+        let base = BranchConflict(base: "origin/main")
+        XCTAssertNil(branchConflictNotice(slice: inReview(), conflict: nil, hasLiveAgent: false), "clean or untested")
+        XCTAssertNil(branchConflictNotice(slice: slice(), conflict: base, hasLiveAgent: false), "approved")
+        XCTAssertNil(branchConflictNotice(slice: slice(status: "Done"), conflict: base, hasLiveAgent: false))
+    }
 }

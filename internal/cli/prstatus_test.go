@@ -164,7 +164,7 @@ func TestPRStatusJSON(t *testing.T) {
 	want := prStatusDoc{Slices: []prStatusSliceJSON{
 		{SliceID: "s1", Name: "Awaiting review", PR: "https://github.test/craig/nat/pull/1", Readiness: "awaiting review",
 			Checks: &prChecksJSON{Verdict: "none", Failing: []prCheckJSON{}}},
-	}}
+	}, Branches: []branchJSON{}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("json = %+v\nwant %+v", got, want)
 	}
@@ -709,7 +709,7 @@ func TestPRStatusJSONConflicting(t *testing.T) {
 		entry("s3", "Clean", "3", "ready to merge", "false") + `,` +
 		entry("s4", "Unknown", "4", "awaiting review", "false") + `,` +
 		`{"slice_id":"s5","name":"Landed","pr":"` + pr + `5","readiness":"unread","conflicting":false}` +
-		`]}`
+		`],"branches":[]}`
 	if compact.String() != want {
 		t.Errorf("json =\n%s\nwant\n%s", compact.String(), want)
 	}

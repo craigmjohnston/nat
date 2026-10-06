@@ -5,9 +5,45 @@ import Foundation
 /// in the plan's own order.
 public struct PRStatusDoc: Codable, Equatable, Sendable {
     public let slices: [PRStatusSlice]
+    /// Every hand-back awaiting review with no pull request whose merge into
+    /// its base nat could test — empty from an older `nat` that sent no such
+    /// key. A branch nat could not test is absent, never conflicting.
+    public let branches: [PRStatusBranch]
 
-    public init(slices: [PRStatusSlice]) {
+    public init(slices: [PRStatusSlice], branches: [PRStatusBranch] = []) {
         self.slices = slices
+        self.branches = branches
+    }
+
+    enum CodingKeys: String, CodingKey { case slices, branches }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        slices = try c.decode([PRStatusSlice].self, forKey: .slices)
+        branches = try c.decodeIfPresent([PRStatusBranch].self, forKey: .branches) ?? []
+    }
+}
+
+/// One handed-back branch with no pull request, as `nat pr-status` tested it:
+/// whether it still merges into `base`, the repository's default branch.
+public struct PRStatusBranch: Codable, Equatable, Sendable {
+    public let sliceID: String
+    public let name: String
+    public let branch: String
+    public let base: String
+    public let conflicting: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case sliceID = "slice_id"
+        case name, branch, base, conflicting
+    }
+
+    public init(sliceID: String, name: String, branch: String, base: String, conflicting: Bool) {
+        self.sliceID = sliceID
+        self.name = name
+        self.branch = branch
+        self.base = base
+        self.conflicting = conflicting
     }
 }
 

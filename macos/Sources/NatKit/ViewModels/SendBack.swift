@@ -2,8 +2,9 @@ import Foundation
 
 /// What Send back to agent offers to say, before the user says anything: the
 /// pull request's own trouble, where it has any — its failing checks, a
-/// conflict with its base — as the reason the slice goes back. "" where it
-/// has none, and the field opens empty.
+/// conflict with its base (or a handed-back branch's, with none) — as the
+/// reason the slice goes back. "" where it has none, and the field opens
+/// empty.
 public func sendBackReason(checks: ChecksNotice?, conflict: ConflictNotice?) -> String {
     var reasons: [String] = []
     if let checks {
@@ -14,7 +15,7 @@ public func sendBackReason(checks: ChecksNotice?, conflict: ConflictNotice?) -> 
     }
     if let conflict {
         let base = conflict.conflict.base ?? "its base"
-        reasons.append("The branch conflicts with \(base): merge \(base) in and resolve the conflicts.")
+        reasons.append("The branch conflicts with \(base): \(conflict.remedy) and resolve the conflicts.")
     }
     return reasons.joined(separator: " ")
 }

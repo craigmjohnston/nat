@@ -13,6 +13,14 @@ extension Fixtures {
             conflicting: true, base: "main"),
     ])
 
+    /// `nat pr-status --json` with the handed-back slice — in review, no pull
+    /// request yet — tested conflicting with origin/main.
+    public static let prStatusBranchConflicting = PRStatusDoc(slices: [], branches: [
+        PRStatusBranch(
+            sliceID: mergeBoxSliceID, name: "Draw the merge box on the PR tab", branch: diffBranch, base: "origin/main",
+            conflicting: true),
+    ])
+
     /// The same pull request mergeable, its checks all passed.
     public static let prStatusChecksPassing = PRStatusDoc(slices: [
         PRStatusSlice(

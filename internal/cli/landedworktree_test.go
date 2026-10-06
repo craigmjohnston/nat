@@ -205,7 +205,7 @@ func TestPRStatusSweepSurvivesARefusedRemoval(t *testing.T) {
 	if len(w.removed) != 1 {
 		t.Errorf("removed = %+v, want the one attempt", w.removed)
 	}
-	if got := strings.TrimSpace(out.String()); got != "{\n  \"slices\": []\n}" {
+	if got := strings.TrimSpace(out.String()); got != "{\n  \"slices\": [],\n  \"branches\": []\n}" {
 		t.Errorf("output = %q, want the reading as before", got)
 	}
 }

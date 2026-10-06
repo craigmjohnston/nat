@@ -11,6 +11,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/source"
 	"github.com/craigmjohnston/nat/internal/store"
@@ -91,11 +92,6 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 		return LaunchResult{Toast: p.Toast, Sev: p.Sev}, nil
 	}
 	c.WorkingDir, c.Branch, c.Repo = p.Dir, p.Branch, p.Repo
-	// A resume has commits already on the branch worth reading; a first-time
-	// launch has nothing yet to gather.
-	if c.Branch != "" && agent.Resuming(c) {
-		c.GitBase, c.GitLog, c.GitDiffStat = gitSnapshot(r, c.WorkingDir, c.Branch)
-	}
 	if err := ClaimSlice(ctx, st, c.Slice, assigneeID); err != nil {
 		return LaunchResult{Toast: fmt.Sprintf("Could not %v — no agent was launched.", err), Sev: SevError}, nil
 	}
@@ -108,12 +104,28 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 		return LaunchResult{}, fmt.Errorf("claimed %q but could not read the project conventions: %w", c.Slice.Name, err)
 	}
 	c.Brief, c.Conventions = brief, conventions
+	// Whether it was handed back is the brief's to say — a review sent back
+	// has its Branch cleared and may have no pull request, and is resuming
+	// all the same — so the resume's git snapshot is gathered once the brief
+	// is read. A first-time launch has nothing yet to gather.
+	c.HandedBack = handedBack(brief)
+	if c.Branch != "" && agent.Resuming(c) {
+		c.GitBase, c.GitLog, c.GitDiffStat = gitSnapshot(r, c.WorkingDir, c.Branch)
+	}
 	c.MilestoneDigest = milestoneDigest(ctx, st, c.Milestone, c.MilestoneSlices)
 	// A slice with a pull request recorded is work already out: the prompt
 	// tells the agent so and carries the review as it stood at launch, read
 	// here once rather than left for the agent to read with gh.
 	if c.Slice.PRURL != "" {
 		c.ReviewComments, c.ReviewChecks = reviewSnapshot(viewer, c.WorkingDir, c.Slice.PRURL)
+	}
+	// A hand-back with no pull request yet has nothing on GitHub to say
+	// whether it still merges, so the launch tests the branch itself, and a
+	// conflict tells the agent to rebase before anything else. One with a
+	// pull request has that from GitHub, and the user's own word sending it
+	// back says so.
+	if c.Slice.PRURL == "" && c.Branch != "" && c.HandedBack {
+		c.ConflictBase = conflictBase(r, c.WorkingDir, c.Branch)
 	}
 	// A relaunch — the slice's brief already carries history from an
 	// earlier pass ([store.HasHistory]: a note alone is not history, since
@@ -222,6 +234,28 @@ func gitSnapshot(r Repo, dir, branch string) (base, log, diffStat string) {
 		logging.Action("could not read a branch's diff stat for a launch prompt", "dir", dir, "branch", branch, "err", err)
 	}
 	return base, log, diffStat
+}
+
+// handedBack reports whether a slice's task log, read off its brief, holds a
+// hand-back: work an earlier session pushed and gave up for review, whether
+// its branch is still recorded or was cleared when it was taken back.
+func handedBack(brief string) bool {
+	for _, e := range store.TaskEvents(brief) {
+		if e.Kind == store.HandedBackKind {
+			return true
+		}
+	}
+	return false
+}
+
+// conflictBase is the base a handed-back branch conflicts with, read at
+// launch: empty where it merges cleanly, and where the test could not be made
+// at all — an unknown reading concludes nothing, and is never a conflict.
+func conflictBase(r Repo, dir, branch string) string {
+	if r.ConflictsWithBase(dir, branch) != git.MergeConflicted {
+		return ""
+	}
+	return r.Base(dir)
 }
 
 // reviewSnapshot is a launch's read of a recorded pull request's review: its

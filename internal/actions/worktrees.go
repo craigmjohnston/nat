@@ -8,6 +8,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/git"
 )
 
 // Worktrees is what a launch needs of git's worktrees: where a slice's branch
@@ -36,12 +37,14 @@ type Worktrees interface {
 // wherever the shared checkout's own main was last left — plus the two reads
 // [Launch] gathers for a resume launch's prompt once the worktree is
 // placed: the one-line commit log and the diff stat of what is already on
-// the branch.
+// the branch — and, for a hand-back relaunched with no pull request, whether
+// that branch still merges into the base ([git.CLI.ConflictsWithBase]).
 type Repo interface {
 	Fetch(dir string)
 	Base(dir string) string
 	LogOneline(dir, base, branch string) (string, error)
 	DiffStat(dir, base, branch string) (string, error)
+	ConflictsWithBase(dir, branch string) git.MergeState
 }
 
 // branchPrefix is what every slice's branch is named under, matching the
