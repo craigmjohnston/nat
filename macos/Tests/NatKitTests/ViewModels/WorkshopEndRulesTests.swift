@@ -31,4 +31,27 @@ final class WorkshopEndRulesTests: XCTestCase {
         XCTAssertNil(ask(nil))
         XCTAssertNil(ask(nil, proposal: true))
     }
+
+    // MARK: - An agent that has ended
+
+    func testAnEndedAgentsPlanUpIsKept() {
+        XCTAssertEqual(EndedWorkshop.decide(proposalRead: true, hasProposal: true, accepted: false), .keepPlan)
+        XCTAssertEqual(EndedWorkshop.decide(proposalRead: true, hasProposal: true, accepted: true), .keepPlan,
+                       "proposed again after an accept: still unkept")
+        XCTAssertEqual(EndedWorkshop.decide(proposalRead: false, hasProposal: true, accepted: false), .keepPlan,
+                       "one already on screen")
+    }
+
+    func testNothingProposedRestoresTheBrief() {
+        XCTAssertEqual(EndedWorkshop.decide(proposalRead: true, hasProposal: false, accepted: false), .restoreBrief)
+    }
+
+    func testAnAcceptedPlanWithNothingSinceIsTrashed() {
+        XCTAssertEqual(EndedWorkshop.decide(proposalRead: true, hasProposal: false, accepted: true), .trash)
+    }
+
+    func testAnUnreadableProposalConcludesNothing() {
+        XCTAssertEqual(EndedWorkshop.decide(proposalRead: false, hasProposal: false, accepted: true), .keepAll)
+        XCTAssertEqual(EndedWorkshop.decide(proposalRead: false, hasProposal: false, accepted: false), .keepAll)
+    }
 }

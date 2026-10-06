@@ -303,7 +303,7 @@ struct WorkshopNavigatorView: View {
         if appModel.planningAgent != nil {
             Button(action: endSession) { HeaderActionLabel(title: "End session") }
                 .buttonStyle(GnatHeaderButtonStyle())
-        } else if !appModel.workshopReconnecting {
+        } else if !appModel.workshopReconnecting, !appModel.workshopEnded {
             Button(action: { Task { await appModel.launchWorkshop(request: appModel.workshopDraft) } }) {
                 HeaderActionLabel(title: "Plan", systemImage: "arrow.right", isBusy: appModel.workshopLaunching)
             }
@@ -532,7 +532,8 @@ struct WorkshopMainPane: View {
                 AgentTerminalPane(
                     agent: appModel.planningAgent,
                     emptyText: appModel.workshopLaunching ? "Starting the workshop session\u{2026}"
-                        : appModel.workshopReconnecting ? "Reconnecting to the planning agent" : nil,
+                        : appModel.workshopReconnecting ? "Reconnecting to the planning agent"
+                        : appModel.workshopEnded ? "The planning agent has ended. Keep workshopping starts a new one on the plan." : nil,
                     focusRequest: appModel.terminalFocusRequest,
                     sessionExists: { appModel.planningAgent != nil })
             } else {

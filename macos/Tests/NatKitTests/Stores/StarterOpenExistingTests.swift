@@ -68,7 +68,7 @@ final class StarterOpenExistingTests: XCTestCase {
         let request = client.launches[0].request
         XCTAssertTrue(request.hasPrefix("Build it small.\n\n"), request)
         XCTAssertTrue(request.contains("----- BEGIN plan.md -----\n# Plan\n- M1\n----- END plan.md -----"), request)
-        XCTAssertNil(appModel.workshopPlanFile, "a launch that took uses the file up")
+        XCTAssertEqual(appModel.workshopPlanFile?.name, "plan.md", "kept, should the agent end before proposing")
         XCTAssertTrue(appModel.tabHasLiveWorkshop(tab))
     }
 

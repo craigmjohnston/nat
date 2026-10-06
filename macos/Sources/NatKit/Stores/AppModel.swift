@@ -97,21 +97,33 @@ public final class AppModel {
     /// the kept request is the whole signal.
     public private(set) var reconnectingWorkshops: Set<String> = []
 
+    /// The tabs whose workshop has had its plan accepted, its session still
+    /// running — kept across launches, so an agent found gone after that is
+    /// known to have left nothing unsaved (`EndedWorkshop.trash`). A fresh
+    /// launch, and anything that closes the workshop, takes it off.
+    private var workshopAcceptedTabs: Set<String> = [] {
+        didSet { workshopsChanged() }
+    }
+
+    /// The tabs the last activity reading held a planning agent for: what an
+    /// agent gone by the next reading is told from one never seen.
+    @ObservationIgnored private var planningTabsLastRead: Set<String> = []
+
     /// The composer's typed-but-not-yet-launched request, per project — kept
     /// here rather than as `WorkshopPaneView`'s own `@State` so switching to a
     /// slice and back does not tear the composer down with it (`PaneView`
-    /// mounts the workshop pane in a plain conditional). Cleared only by a
-    /// successful launch (`launchWorkshop(request:)`) or the ✕ closing the
-    /// tab outright — never by navigating away, which is the one thing this
-    /// exists to survive — and kept across launches, saved as it is typed
-    /// (debounced, `workshopsChanged`) and flushed on quit.
+    /// mounts the workshop pane in a plain conditional). Kept through a
+    /// launch, so an agent that ends before proposing hands the composer back
+    /// with it (`EndedWorkshop.restoreBrief`); cleared only by closing or
+    /// dismissing the workshop, or by its session ending after an accepted
+    /// plan — never by navigating away — and kept across launches, saved as
+    /// it is typed (debounced, `workshopsChanged`) and flushed on quit.
     private var workshopDrafts: [String: String] = [:] {
         didSet { workshopsChanged() }
     }
 
     /// The plan document chosen or dropped on an Untitled tab's starter card,
-    /// per tab, held with the draft and cleared as it is: by a launch that
-    /// took, or the tab closing.
+    /// per tab, held with the draft and cleared as it is.
     private var workshopPlanFiles: [String: PlanFile] = [:] {
         didSet { workshopsChanged() }
     }
@@ -259,7 +271,7 @@ public final class AppModel {
     /// running, or launching — where it would otherwise show the starter
     /// card. The pane, and the rail's TODO explainer, both read it.
     public var untitledWorkshopVisible: Bool {
-        activeTabIsUntitled && (planningAgent != nil || workshopLaunching || workshopReconnecting)
+        activeTabIsUntitled && (planningAgent != nil || workshopLaunching || workshopReconnecting || workshopEnded)
     }
 
     /// The ID of the currently active project.
@@ -885,11 +897,11 @@ public final class AppModel {
         }
     }
 
-    /// The app-wide activity store, its first reading wired to settle the
-    /// workshops restored as reconnecting.
+    /// The app-wide activity store, each reading wired to settle the
+    /// workshops restored as reconnecting and those whose agent has ended.
     private func makeActivityStore() -> ActivityStore {
         let store = activityStoreFactory()
-        store.onFirstReading = { [weak self] in self?.settleReconnectingWorkshops() }
+        store.onReading = { [weak self] in self?.planningAgentsRead() }
         return store
     }
 
@@ -1579,6 +1591,7 @@ public final class AppModel {
         workshopPlanFiles[projectID] = nil
         workshopRequests[projectID] = nil
         reconnectingWorkshops.remove(projectID)
+        workshopAcceptedTabs.remove(projectID)
         workshopSelectedProjects.remove(projectID)
     }
 
@@ -1641,12 +1654,13 @@ public final class AppModel {
             workspaceIDs[tab.id].map { WorkshopSnapshot.UntitledTab(id: tab.id, workspaceID: $0) }
         }
         let ids = workshopPinnedProjects.union(workshopDrafts.keys)
-            .union(workshopPlanFiles.keys).union(workshopRequests.keys)
+            .union(workshopPlanFiles.keys).union(workshopRequests.keys).union(workshopAcceptedTabs)
         var workshops: [String: WorkshopSnapshot.Workshop] = [:]
         for id in ids {
             workshops[id] = WorkshopSnapshot.Workshop(
                 pinned: workshopPinnedProjects.contains(id), draft: workshopDrafts[id],
-                planFile: workshopPlanFiles[id], request: workshopRequests[id]
+                planFile: workshopPlanFiles[id], request: workshopRequests[id],
+                accepted: workshopAcceptedTabs.contains(id) ? true : nil
             )
         }
         return WorkshopSnapshot(untitledTabs: untitled, workshops: workshops)
@@ -1677,25 +1691,76 @@ public final class AppModel {
             workshopPlanFiles[id] = workshop.planFile
             workshopRequests[id] = workshop.request
             if workshop.request != nil { reconnectingWorkshops.insert(id) }
+            if workshop.accepted == true { workshopAcceptedTabs.insert(id) }
         }
     }
 
-    /// The activity poll's first reading has landed: every workshop drawn
-    /// from the last run's request stops being provisional. One whose
-    /// planning agent the reading holds is simply live; one whose agent is
-    /// gone loses its request, as a closed one does — its row goes, or
-    /// stays the pinned composer where it was pinned.
-    private func settleReconnectingWorkshops() {
-        for tabID in reconnectingWorkshops where planningStatus(forTab: tabID) == nil {
-            workshopRequests[tabID] = nil
-        }
+    /// An activity reading has landed. Every workshop drawn from the last
+    /// run's request stops being provisional — one whose planning agent the
+    /// reading holds is simply live — and every launched workshop whose
+    /// agent is gone (never there this run, or there at the last reading)
+    /// degrades as `workshopAgentEnded` decides. A workshop with no request
+    /// was closed, or never launched from here, and has nothing to keep.
+    private func planningAgentsRead() {
+        let present = Set(projectTabs.map(\.id).filter { planningStatus(forTab: $0) != nil })
+        let ended = reconnectingWorkshops.union(planningTabsLastRead).subtracting(present)
         reconnectingWorkshops = []
+        planningTabsLastRead = present
+        for tabID in ended where workshopRequests[tabID] != nil {
+            // Pinned at once, so the row holds its place while the proposal
+            // is read.
+            workshopPinnedProjects.insert(tabID)
+            Task { await workshopAgentEnded(tabID) }
+        }
+    }
+
+    /// A launched workshop's planning agent has ended on its own: its
+    /// proposal is read, and the workshop degrades so nothing unsaved is
+    /// lost (`EndedWorkshop`) — a pending plan kept up, Plan in front, with
+    /// the request; with nothing proposed, the composer, its brief still in
+    /// it; after an accepted plan, nothing left, and the workshop goes.
+    public func workshopAgentEnded(_ tabID: String) async {
+        let read = await readProposal(tabID: tabID)
+        // Relaunched or closed while the proposal was read: not this.
+        guard planningStatus(forTab: tabID) == nil, workshopRequests[tabID] != nil else { return }
+        switch EndedWorkshop.decide(
+            proposalRead: read, hasProposal: proposalStates[tabID]?.proposal != nil,
+            accepted: workshopAcceptedTabs.contains(tabID)
+        ) {
+        case .keepPlan:
+            workshopPinnedProjects.insert(tabID)
+            workshopTabPicks[tabID] = .plan
+        case .restoreBrief:
+            workshopPinnedProjects.insert(tabID)
+            // A workshop launched before drafts were kept through a launch
+            // has only its request: that goes back into the composer.
+            if (workshopDrafts[tabID] ?? "").isEmpty { workshopDrafts[tabID] = workshopRequests[tabID] }
+            workshopRequests[tabID] = nil
+            workshopAcceptedTabs.remove(tabID)
+        case .trash:
+            workshopDrafts[tabID] = nil
+            workshopPlanFiles[tabID] = nil
+            workshopRequests[tabID] = nil
+            workshopAcceptedTabs.remove(tabID)
+            workshopPinnedProjects.remove(tabID)
+            if tabID == activeProjectID { workshopSelected = false }
+        case .keepAll:
+            workshopPinnedProjects.insert(tabID)
+        }
     }
 
     /// Whether the workshop on screen is drawn from the last run's request,
     /// waiting on the first activity reading to confirm its agent.
     public var workshopReconnecting: Bool {
         activeProjectID.map(reconnectingWorkshops.contains) ?? false
+    }
+
+    /// Whether the workshop on screen is one whose agent has ended with a
+    /// plan still up and unaccepted (`EndedWorkshop.keepPlan`): drawn as
+    /// launched, its terminal empty, Keep workshopping starting a new agent.
+    public var workshopEnded: Bool {
+        planningAgent == nil && !workshopLaunching && !workshopReconnecting
+            && workshopRequest != nil && activeProposal != nil
     }
 
     /// A tab's planning agent as the activity poll last saw it: the active
@@ -1751,6 +1816,7 @@ public final class AppModel {
         workshopPinnedProjects.remove(tabID)
         workshopRequests[tabID] = nil
         reconnectingWorkshops.remove(tabID)
+        workshopAcceptedTabs.remove(tabID)
         // Discarded rather than removed, so a reading still in flight for
         // this tab finds it and is dropped as stale.
         proposalStates[tabID]?.discard()
@@ -1781,30 +1847,36 @@ public final class AppModel {
     /// than drawn. One that will not read or parse is logged and concludes
     /// nothing — the agent will propose again.
     public func refreshProposals() async {
-        for (tabID, workspace) in workspaceIDs {
-            await readProposal(tabID: tabID) { try await $0.planProposal(workspaceID: workspace) }
+        for tabID in workspaceIDs.keys {
+            await readProposal(tabID: tabID)
         }
         let planners = planningAgents
         for tab in projectTabs where !isUntitledTab(tab.id) {
             guard planners[tab.id] != nil || workshopPinnedProjects.contains(tab.id)
                 || proposalStates[tab.id]?.proposal != nil
             else { continue }
-            await readProposal(tabID: tab.id) { try await $0.planProposal(projectID: tab.id) }
+            await readProposal(tabID: tab.id)
         }
     }
 
-    /// One reading of one tab's proposal: a ticket taken before nat is asked,
-    /// handed back with what it found.
-    private func readProposal(
-        tabID: String, _ read: (NatClientProtocol) async throws -> PlanProposal?
-    ) async {
+    /// One reading of one tab's proposal — an Untitled tab's by its
+    /// workspace, a project's by the project: a ticket taken before nat is
+    /// asked, handed back with what it found. False where nat could not be
+    /// read, which concludes nothing.
+    @discardableResult
+    private func readProposal(tabID: String) async -> Bool {
         let ticket = proposalStates[tabID, default: ProposalState()].beginReading()
+        let client = clientFactory()
         let found: PlanProposal?
         do {
-            found = try await read(clientFactory())
+            if let workspace = workspaceIDs[tabID] {
+                found = try await client.planProposal(workspaceID: workspace)
+            } else {
+                found = try await client.planProposal(projectID: tabID)
+            }
         } catch {
             NSLog("AppModel: could not read the proposal for %@: %@", tabID, error.localizedDescription)
-            return
+            return false
         }
         let arriving = found != nil && proposalStates[tabID]?.proposal == nil
         // A proposal's first arrival puts the Plan tab up; a revision
@@ -1812,6 +1884,7 @@ public final class AppModel {
         if proposalStates[tabID]?.land(ticket, found: found) == true, arriving {
             workshopTabPicks[tabID] = .plan
         }
+        return true
     }
 
     /// The proposal the tab on screen holds, if any.
@@ -1840,9 +1913,32 @@ public final class AppModel {
 
     /// "Keep workshopping": back to the terminal, the tree left as it is — a
     /// revised proposal replaces it in place.
+    /// On a workshop whose agent has ended (`workshopEnded`), a new agent is
+    /// started on the plan left up (`continueEndedWorkshop`).
     public func keepWorkshopping() {
+        if workshopEnded {
+            Task { await continueEndedWorkshop() }
+            return
+        }
         if let id = activeProjectID { workshopTabPicks[id] = .terminal }
         terminalFocusRequest += 1
+    }
+
+    /// Keep workshopping on a workshop whose agent has ended with a plan
+    /// still up: a new planning agent on the same request, told the plan is
+    /// there and how to read it, to take it up from where it was left. The
+    /// Brief goes on showing the request as it was first sent.
+    public func continueEndedWorkshop() async {
+        guard workshopEnded, let tabID = activeProjectID, let request = workshopRequest else { return }
+        let read = workspaceIDs[tabID].map { "nat plan-proposal --workspace \($0) --json" }
+            ?? "nat plan-proposal --project \(tabID) --json"
+        let continuing = [
+            request,
+            "A plan was proposed for this by an earlier planning session, which has since ended, and it is still "
+                + "waiting for the user to accept it. Read it with `\(read)` and take it up from there: ask the "
+                + "user what to change, and propose the revised plan with `nat plan-propose` as before.",
+        ].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        await startWorkshop(tabID: tabID, shown: request, description: continuing)
     }
 
     /// Whether the workshop on screen has been launched — its agent live, or
@@ -1850,7 +1946,9 @@ public final class AppModel {
     /// terminal up in its place.
     /// A workshop restored as reconnecting counts as launched, so the pane
     /// keeps its launched layout rather than flashing the composer.
-    public var workshopLaunched: Bool { planningAgent != nil || workshopLaunching || workshopReconnecting }
+    public var workshopLaunched: Bool {
+        planningAgent != nil || workshopLaunching || workshopReconnecting || workshopEnded
+    }
 
     /// The workshop pane's tabs as they stand.
     public var workshopTabs: [WorkshopTab] {
@@ -1951,6 +2049,12 @@ public final class AppModel {
             _ = try await clientFactory().planAccept(projectID: projectID)
             await stores[projectID]?.refresh(.replica)
             proposalStates[projectID]?.endAccept(refusal: nil)
+            // The plan is kept. A session still running may go on planning;
+            // one already gone has nothing left, and its workshop goes now.
+            workshopAcceptedTabs.insert(projectID)
+            if planningStatus(forTab: projectID) == nil, workshopRequests[projectID] != nil {
+                await workshopAgentEnded(projectID)
+            }
         } catch {
             proposalStates[projectID]?.endAccept(refusal: refusalMessage(error))
         }
@@ -2096,29 +2200,42 @@ public final class AppModel {
         if workspace != nil, trimmed.isEmpty, planFile == nil { return }
         workshopSelected = true
         guard planningAgent == nil, !workshopLaunching else { return }
+        // What the Brief shows, read-only, from the moment Launch is pressed;
+        // a launch that does not take takes it back off again.
+        let shown = [trimmed, planFile.map { "Attached: \($0.name)" }]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
+        await startWorkshop(tabID: projectID, shown: shown, description: trimmed)
+    }
 
+    /// Start a planning agent on a tab, its Brief showing `shown` and the
+    /// agent sent `description` (with an Untitled tab's attached plan file).
+    /// The draft and file are kept, not cleared: if the agent ends before it
+    /// proposes anything, the composer comes back with them in it
+    /// (`EndedWorkshop.restoreBrief`); closing or dismissing the workshop is
+    /// what discards them.
+    private func startWorkshop(tabID projectID: String, shown: String, description: String) async {
+        let workspace = workspaceIDs[projectID]
+        let planFile = workspace != nil ? workshopPlanFiles[projectID] : nil
         workshopLaunching = true
         workshopLaunchError = nil
         workshopTabPicks[projectID] = .terminal
-        // What the Brief shows, read-only, from the moment Launch is pressed:
-        // the draft it came from is cleared by a launch that takes, and one
-        // that does not takes this back off again.
-        workshopRequests[projectID] = [trimmed, planFile.map { "Attached: \($0.name)" }]
-            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
+        workshopRequests[projectID] = shown
+        // A fresh session has accepted nothing yet.
+        workshopAcceptedTabs.remove(projectID)
         do {
             if let workspace {
                 _ = try await clientFactory().workspaceLaunch(
                     workspaceID: workspace,
                     model: config?.workshopAgent?.model,
                     effort: config?.workshopAgent?.effort,
-                    request: planFile?.request(description: trimmed) ?? trimmed
+                    request: planFile?.request(description: description) ?? description
                 )
             } else {
                 _ = try await workshopLauncher(
                     projectID,
                     config?.workshopAgent?.model,
                     config?.workshopAgent?.effort,
-                    trimmed
+                    description
                 )
             }
         } catch let error as NatError {
@@ -2139,12 +2256,6 @@ public final class AppModel {
         // poll reports the session, so the launching state is held across
         // that wait rather than flickering the composer back over it.
         if workshopLaunchError == nil {
-            // The one thing that discards the draft besides the ✕: a launch
-            // that took is the request actually being used, so there is
-            // nothing left in it worth keeping for the next visit — bar the
-            // request itself, which the Brief goes on showing.
-            workshopDrafts[projectID] = nil
-            workshopPlanFiles[projectID] = nil
             await settleOnPlanningAgent()
             // The live agent's row takes the pinned one's place.
             if workshopLaunchError == nil { workshopPinnedProjects.remove(projectID) }
@@ -2400,6 +2511,7 @@ public final class AppModel {
         workshopPlanFiles[projectID] = nil
         workshopRequests[projectID] = nil
         reconnectingWorkshops.remove(projectID)
+        workshopAcceptedTabs.remove(projectID)
         workshopPinnedProjects.remove(projectID)
         workshopSelected = false
         return nil

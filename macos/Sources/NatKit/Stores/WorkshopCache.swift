@@ -29,12 +29,20 @@ public struct WorkshopSnapshot: Codable, Equatable, Sendable {
         public var draft: String?
         public var planFile: PlanFile?
         public var request: String?
+        /// True once the session's plan has been accepted: an agent found
+        /// gone after that has nothing left unsaved, and its workshop goes.
+        /// Nil rather than false, so a file written before it reads the same.
+        public var accepted: Bool?
 
-        public init(pinned: Bool = false, draft: String? = nil, planFile: PlanFile? = nil, request: String? = nil) {
+        public init(
+            pinned: Bool = false, draft: String? = nil, planFile: PlanFile? = nil, request: String? = nil,
+            accepted: Bool? = nil
+        ) {
             self.pinned = pinned
             self.draft = draft
             self.planFile = planFile
             self.request = request
+            self.accepted = accepted
         }
     }
 

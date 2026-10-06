@@ -317,19 +317,32 @@ workspace ids) are kept across relaunches in `workshops.json`
 everywhere else), restored once config is read, written debounced and on
 quit (`flushWorkshops`). A restored workshop with a request was running at
 quit: until the activity poll's first reading (`ActivityStore.hasRead`,
-`onFirstReading`) it is drawn as launched from that request alone
+`onReading`) it is drawn as launched from that request alone
 (`AppModel.reconnectingWorkshops`) — its Active row a launching one captioned
 `Reconnecting…` (`SidebarActiveRow.reconnecting`, `buildWorkshopEntry`'s
 `isReconnecting`), `workshopLaunched` true, the pane a quiet "Reconnecting to
 the planning agent" note, attaching nothing — then live where the reading
-holds its agent, its request cleared where it does not; a failed reading
-settles nothing. `start` kicks the activity poll as soon as the store exists,
+holds its agent; a failed reading settles nothing. **A planning agent that
+ends on its own** — found gone by that first reading, or gone between two
+readings (`ActivityStore.onReading`, `AppModel.planningAgentsRead`) — is
+degraded so nothing unsaved is lost (`workshopAgentEnded`, its proposal read
+first; `EndedWorkshop.decide`): a plan up and unaccepted is kept, the row
+pinned, Plan in front and Terminal empty (`workshopEnded`), Keep workshopping
+starting a new agent told to read it with `nat plan-proposal`
+(`continueEndedWorkshop`, the Brief still the first request); nothing
+proposed hands the composer back with the brief (a launch keeps the draft and
+attached file — only a close, a dismiss or a trash discards them); an
+accepted plan with nothing since (`accepted` in the snapshot, set by a
+project's Accept, cleared by a launch) trashes the workshop; an unreadable
+proposal keeps everything. A workshop with no request (closed, or not
+launched from here) is left alone. `start` kicks the activity poll as soon as the store exists,
 before the plan loads, so that reading is not queued behind it. End session
 — the Brief's, the workshop row's ✕ and menu, an Untitled tab's close — asks
 only where `WorkshopEndRules.confirmation` gives a message (agent working or
 unreadable, or a proposal up or an Accept in flight), else ends at once
 (`AppModel.workshopEndConfirmation(forTab:)`). Stories:
-`window-workshop-reconnecting`, `sidebar-workshop-reconnecting`, `workshop-*` (`workshop-proposal-scrolled` the Plan tab scrolled, `workshop-proposal-folded` boxes folded), `window-workshop*`,
+`window-workshop-reconnecting`, `sidebar-workshop-reconnecting`,
+`window-workshop-ended`, `window-workshop-ended-terminal`, `workshop-*` (`workshop-proposal-scrolled` the Plan tab scrolled, `workshop-proposal-folded` boxes folded), `window-workshop*`,
 `untitled-*`, `window-untitled-proposal`, `window-plan-accepted`.
 
 ## The Notion mirror nudge

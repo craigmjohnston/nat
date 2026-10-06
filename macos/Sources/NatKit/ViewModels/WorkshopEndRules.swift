@@ -22,3 +22,28 @@ public enum WorkshopEndRules {
         }
     }
 }
+
+/// What becomes of a workshop whose planning agent has ended on its own —
+/// found gone at startup, or gone between two readings — so that nothing
+/// the user has not yet kept is lost.
+public enum EndedWorkshop: Equatable, Sendable {
+    /// A plan is up and not accepted: kept on screen with the request, the
+    /// terminal empty, Keep workshopping starting a new agent on it.
+    case keepPlan
+    /// Nothing was proposed: back to the composer, the brief in it.
+    case restoreBrief
+    /// The plan was accepted and nothing has been proposed since: there is
+    /// nothing left to keep, and the workshop goes.
+    case trash
+    /// The proposal could not be read: nothing is concluded, and everything
+    /// is kept, the row pinned, until a reading says otherwise.
+    case keepAll
+
+    /// `proposalRead` is whether the tab's proposal could be read just now;
+    /// `hasProposal` whether one is up (from that reading, or one before).
+    public static func decide(proposalRead: Bool, hasProposal: Bool, accepted: Bool) -> EndedWorkshop {
+        if hasProposal { return .keepPlan }
+        guard proposalRead else { return .keepAll }
+        return accepted ? .trash : .restoreBrief
+    }
+}

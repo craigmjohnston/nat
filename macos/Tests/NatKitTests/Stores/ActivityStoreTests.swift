@@ -86,6 +86,16 @@ class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
+    /// Declared on the class, as `workspaceLaunch` is, so a subclass can
+    /// answer a project's proposal and Accept.
+    func planProposal(projectID: String) async throws -> PlanProposal? {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func planAccept(projectID: String) async throws -> PlanAccepted {
+        throw NSError(domain: "test", code: -1)
+    }
+
     func notionSearch(query: String) async throws -> [NotionPlace] {
         throw NSError(domain: "test", code: -1)
     }
@@ -352,11 +362,11 @@ final class ActivityStoreTests: XCTestCase {
     // MARK: - The first reading
 
     @MainActor
-    func testHasReadTurnsTrueOnTheFirstReadingEvenAnEmptyOne() async throws {
+    func testHasReadTurnsTrueOnTheFirstReadingEvenAnEmptyOneAndEachReadingIsTold() async throws {
         let client = MockActivityClient(response: .agents([]))
         let store = ActivityStore(client: client)
         var calls = 0
-        store.onFirstReading = { calls += 1 }
+        store.onReading = { calls += 1 }
         XCTAssertFalse(store.hasRead)
 
         store.kick()
@@ -365,7 +375,7 @@ final class ActivityStoreTests: XCTestCase {
         try await waitUntil { client.callCount == 2 }
 
         XCTAssertTrue(store.hasRead)
-        XCTAssertEqual(calls, 1, "told once, on the first reading alone")
+        XCTAssertEqual(calls, 2, "told of every reading that lands")
     }
 
     @MainActor
@@ -373,7 +383,7 @@ final class ActivityStoreTests: XCTestCase {
         let client = MockActivityClient(response: .failure(TestError()))
         let store = ActivityStore(client: client)
         var told = false
-        store.onFirstReading = { told = true }
+        store.onReading = { told = true }
 
         store.kick()
         defer { store.stop() }

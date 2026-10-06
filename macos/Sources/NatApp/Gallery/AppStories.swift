@@ -255,6 +255,24 @@ enum AppStories {
         return appModel
     }
 
+    /// A project's workshop that was running at quit, whose agent the first
+    /// activity reading finds gone with its plan still up: kept, Plan in
+    /// front (`EndedWorkshop.keepPlan`).
+    private static func endedWorkshop() async -> AppModel {
+        let client = FixtureNatClient()
+        client.setProposal(Fixtures.proposal, forProject: Fixtures.projectID)
+        let appModel = Fixtures.appModel(
+            client: client,
+            workshopCache: InMemoryWorkshopCache(WorkshopSnapshot(
+                workshops: [Fixtures.projectID: .init(request: "Split the importer into a reader and a writer.")])))
+        await Fixtures.start(appModel)
+        appModel.workshopSelected = true
+        for _ in 0..<50 where !appModel.workshopEnded {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return appModel
+    }
+
     /// The sidebar over a project whose live workshop has a proposal up —
     /// `hovered` drawing its Active row under the pointer.
     private static func workshopPlanReadySidebar(hovered: Bool) async -> some View {
@@ -1372,6 +1390,24 @@ enum AppStories {
             size: window
         ) {
             shell(await reconnectingWorkshop())
+        },
+
+        Story(
+            name: "window-workshop-ended",
+            summary: "A project's workshop whose planning agent ended with a plan still up and unaccepted: the row pinned with Plan ready, the Brief showing the request with no Plan or End session, Terminal and Plan tabs with Plan up; Keep workshopping starts a new agent on the plan.",
+            size: window
+        ) {
+            shell(await endedWorkshop())
+        },
+
+        Story(
+            name: "window-workshop-ended-terminal",
+            summary: "As window-workshop-ended, the Terminal tab up: the empty pane saying the agent has ended and Keep workshopping starts a new one.",
+            size: window
+        ) {
+            let appModel = await endedWorkshop()
+            appModel.showWorkshopTab(.terminal)
+            return shell(appModel)
         },
 
         Story(
