@@ -131,6 +131,9 @@ public struct NavigatorModel: Equatable, Sendable {
     /// in `resumedNotice`'s place — the notice itself its tooltip.
     public static let reworkingLabel = "Reworking"
     public static let reworkingSymbol = "arrow.triangle.2.circlepath"
+    /// The badge a section header wears while its branch conflicts with its
+    /// base — the merge glyph before it, what to do in its tooltip.
+    public static let conflictLabel = "Conflict"
 
     public let state: SliceDisplayState
     public let hasPR: Bool

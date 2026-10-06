@@ -586,7 +586,7 @@ enum AppStories {
 
         Story(
             name: "window-review-conflicting",
-            summary: "A handed-back slice with no pull request whose branch nat tested conflicting with origin/main, no agent on it: the conflict mark on its Active and tree rows, a danger icon on the Changes header, and a notice atop the Changes body naming origin/main and saying to send it back to the agent to rebase.",
+            summary: "A handed-back slice with no pull request whose branch nat tested conflicting with origin/main, no agent on it: the conflict mark on its Active and tree rows, and a Conflict badge (the same merge glyph) on the Changes header whose tooltip names origin/main and says to send it back to the agent to rebase.",
             size: window
         ) {
             await slicePane(Fixtures.mergeBoxSliceID, agents: [], prStatus: Fixtures.prStatusBranchConflicting)

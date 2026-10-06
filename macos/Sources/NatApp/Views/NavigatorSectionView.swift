@@ -27,6 +27,10 @@ struct NavSectionView<Actions: View, Content: View>: View {
     /// (`NavigatorModel.showsReworking`). The text is its tooltip; nil draws
     /// nothing.
     var reworking: String?
+    /// Conflict, after the status: the section's branch conflicts with its
+    /// base — a danger badge in the merge glyph the sidebar's conflict mark
+    /// draws. The text is its tooltip; nil draws nothing.
+    var conflict: String?
     /// A warning after the label and status, drawn open or folded as a small
     /// danger icon whose tooltip is its text — the PR section's failing
     /// checks. Nil draws nothing.
@@ -86,6 +90,14 @@ struct NavSectionView<Actions: View, Content: View>: View {
                 if let status {
                     Chip(status.label, tone: status.tone, size: .small).fixedSize()
                 }
+                if let conflict {
+                    Chip(NavigatorModel.conflictLabel, tone: .danger, size: .small) {
+                        MergeIcon(size: 10, lineWidth: 1.3)
+                    }
+                    .fixedSize()
+                    .help(conflict)
+                    .accessibilityLabel(conflict)
+                }
                 if let warning {
                     Image(systemName: "xmark.octagon")
                         .font(.system(size: 12, weight: .medium))
@@ -100,7 +112,7 @@ struct NavSectionView<Actions: View, Content: View>: View {
                 }
             }
             .frame(minWidth: 58, alignment: .leading)
-            if status == nil, reworking == nil, let meta, !open {
+            if status == nil, reworking == nil, conflict == nil, let meta, !open {
                 Text(meta).monoXS().ink(.tertiary).lineLimit(1)
             }
             Spacer(minLength: 0)

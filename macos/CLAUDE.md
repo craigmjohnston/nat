@@ -198,10 +198,12 @@ agent (both prefill Send back's note). `projectAttention` counts a red pr
 slice once. **A hand-back with no PR**: `PRStatusDoc.branches` (nat's
 own merge test of the branch; absent where it could not test) gives
 `PRReading.branchConflicts`, merged into `marks`; `prMarks` draws a slice
-`inReview` with its conflict alone. The Changes header takes
-`branchConflictNotice`'s text as its `warning` and the notice atop its body
-— "rebase it on <base>" (`ConflictNotice.hasPullRequest` false), the PR's
-own notice keeps "merge <base> in" — and Send back's prefill says the same;
+`inReview` with its conflict alone. The Changes header wears a **Conflict**
+badge (`NavSectionView.conflict`: a small danger `Chip` with `MergeIcon`
+before `NavigatorModel.conflictLabel` — the sidebar mark's glyph, never a
+callout in the body), its tooltip `branchConflictNotice`'s text — "rebase it
+on <base>" (`ConflictNotice.hasPullRequest` false), the PR's own notice
+keeps "merge <base> in" — and Send back's prefill says the same;
 a launch then carries nat's rebase passage. Stories:
 `window-review-conflicting`, `window-review-conflicting-send-back`,
 `sidebar-checks-failing`,

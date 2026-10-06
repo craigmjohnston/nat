@@ -103,20 +103,15 @@ struct SliceNavigatorView: View {
                     // says so.
                     status: diffStore.sectionStatus,
                     reworking: reworking(nav, .changes),
-                    warning: branchConflictNotice?.text,
+                    conflict: branchConflictNotice?.text,
                     onHead: { click(.changes) }, onFold: { fold(.changes) }
                 ) {
                     if nav.showsChangesSend { sendCommentsAction }
                 } content: {
-                    VStack(spacing: 0) {
-                        if let branchConflictNotice {
-                            NavNotice(text: branchConflictNotice.text, role: .danger)
-                        }
-                        ChangesSectionBody(
-                            appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions
-                        ) {
-                            main = .diff
-                        }
+                    ChangesSectionBody(
+                        appModel: appModel, review: review, slice: slice, reviewing: nav.showsReviewActions
+                    ) {
+                        main = .diff
                     }
                 }
             }

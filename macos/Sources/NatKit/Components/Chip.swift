@@ -39,6 +39,10 @@ public struct Chip: View {
     /// An SF Symbol before the word, in the word's own ink — a section
     /// header's Reworking. Nil draws the word alone.
     let systemImage: String?
+    /// A drawn glyph before the word, where no SF Symbol says it — a section
+    /// header's Conflict, in the app's own merge glyph. It takes the word's
+    /// ink as its foreground.
+    let icon: AnyView?
     @Environment(\.ground) private var ground
 
     public init(_ label: String, tone: Tone, size: Size = .regular, systemImage: String? = nil) {
@@ -46,6 +50,15 @@ public struct Chip: View {
         self.tone = tone
         self.size = size
         self.systemImage = systemImage
+        self.icon = nil
+    }
+
+    public init(_ label: String, tone: Tone, size: Size = .regular, @ViewBuilder icon: () -> some View) {
+        self.label = label
+        self.tone = tone
+        self.size = size
+        self.systemImage = nil
+        self.icon = AnyView(icon())
     }
 
     public var body: some View {
@@ -55,6 +68,7 @@ public struct Chip: View {
                 Image(systemName: systemImage)
                     .font(.system(size: small ? Typo.caption - 1 : Typo.subhead - 1, weight: .semibold))
             }
+            if let icon { icon }
             Text(label)
         }
             .font(.system(size: small ? Typo.caption : Typo.subhead, weight: small ? .regular : .semibold))
