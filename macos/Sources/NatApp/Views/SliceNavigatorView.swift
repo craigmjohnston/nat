@@ -166,9 +166,9 @@ struct SliceNavigatorView: View {
         .task(id: "\(slice.id)|\(slice.pr)") {
             guard !slice.pr.isEmpty else { return }
             await prStore.fetch(projectID: projectID, sliceRef: slice.id)
-            prStore.startPolling()
+            prStore.setVisible(true)
         }
-        .onDisappear { prStore.stopPolling() }
+        .onDisappear { prStore.setVisible(false) }
         // The row menu asking for this slice, already selected.
         .onChange(of: appModel.sendBackRequest) {
             if appModel.takeSendBackRequest(sliceID: slice.id) { sendBackDraft = "" }
@@ -757,7 +757,6 @@ struct SliceNavigatorView: View {
             try await store.merge()
             await appModel.refresh()
         }
-        store.startPolling()
     }
 
     @ViewBuilder
@@ -774,7 +773,7 @@ struct SliceNavigatorView: View {
         } else if let message = prStore.loadState.errorMessage {
             NavProse {
                 Text("The pull request could not be read: \(message)").ink(.danger)
-                Button("Retry") { Task { await prStore.refresh(); prStore.startPolling() } }
+                Button("Retry") { Task { await prStore.refresh() } }
                     .buttonStyle(GnatButtonStyle())
             }
         } else {

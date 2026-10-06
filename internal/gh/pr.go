@@ -28,7 +28,7 @@ const prViewFields = "number,title,body,state,isDraft,author,baseRefName,headRef
 // PR is one pull request as it is drawn: gh's answer decoded into the fields
 // the viewer has a use for. GitHub's vocabulary is kept as GitHub writes it —
 // State is OPEN, CLOSED or MERGED, ReviewDecision and Mergeable are the words
-// [OpenPRs] already reads, MergeStateStatus is CLEAN, BLOCKED, DIRTY, BEHIND,
+// [StatusOf] reads, MergeStateStatus is CLEAN, BLOCKED, DIRTY, BEHIND,
 // UNSTABLE and the rest — because deciding what any of them means is the
 // caller's, and a word this package invented would only have to be turned back.
 type PR struct {
@@ -61,6 +61,9 @@ type PR struct {
 	// ReviewRequests is who has been asked for a review and not yet given
 	// one: a user by login, a team as its slug.
 	ReviewRequests []string
+	// MergedAt is when it merged — read by [CLI.ReadPRs] alone, zero from a
+	// view and for a pull request that has not merged.
+	MergedAt time.Time
 }
 
 // The two states a pull request is in that a reader acts on: GitHub's own
@@ -187,12 +190,8 @@ func (c CLI) Checks(dir, ref string) (string, error) {
 	return trimmed, nil
 }
 
-// headPRFields is everything [CLI.ListPRsForHead] reads about each pull
-// request of a branch: what it is, its URL, whether it is open, closed or
-// merged, and when it merged.
-const headPRFields = "number,title,url,state,mergedAt"
-
-// HeadPR is one pull request [CLI.ListPRsForHead] lists for a branch. State
+// HeadPR is one pull request a branch has had as its head, as a reading
+// ([CLI.ReadPRs]) lists them. State
 // is GitHub's own word — OPEN, CLOSED or MERGED — kept as GitHub writes it
 // for the reason [PR.State] is: deciding what it means is the caller's.
 type HeadPR struct {
@@ -201,44 +200,6 @@ type HeadPR struct {
 	URL      string
 	State    string
 	MergedAt time.Time
-}
-
-// ListPRsForHead is every pull request the repository at dir has ever had
-// for branch as its head, open or not — an ad hoc session's own branches may
-// each have opened one, and a session that made three branches and three
-// pull requests has to be told about all three, not only whichever is still
-// open.
-//
-// An empty branch is refused before gh ever runs, for the same reason
-// [CLI.ViewPR] refuses an empty ref: gh given nothing named would answer for
-// whatever branch the directory happens to be on, which is not the question
-// being asked.
-func (c CLI) ListPRsForHead(dir, branch string) ([]HeadPR, error) {
-	if branch == "" {
-		return nil, fmt.Errorf("%s pr list needs a branch to read", Binary)
-	}
-	out, err := c.runner.Run(dir, Binary,
-		"pr", "list", "--head", branch, "--state", "all", "--json", headPRFields)
-	if err != nil {
-		logging.Error("could not list a branch's pull requests", "dir", dir, "branch", branch, "error", err)
-		return nil, err
-	}
-	var list []struct {
-		Number   int       `json:"number"`
-		Title    string    `json:"title"`
-		URL      string    `json:"url"`
-		State    string    `json:"state"`
-		MergedAt time.Time `json:"mergedAt"`
-	}
-	if err := json.Unmarshal([]byte(out), &list); err != nil {
-		logging.Error("could not read what gh said about a branch's pull requests", "dir", dir, "branch", branch, "error", err)
-		return nil, fmt.Errorf("%s pr list printed no readable JSON: %w", Binary, err)
-	}
-	prs := make([]HeadPR, len(list))
-	for i, pr := range list {
-		prs[i] = HeadPR{Number: pr.Number, Title: pr.Title, URL: pr.URL, State: pr.State, MergedAt: pr.MergedAt}
-	}
-	return prs, nil
 }
 
 // prView is gh's JSON as gh writes it, kept apart from [PR] so the nesting

@@ -40,7 +40,6 @@ final class SequencedUsageClient: NatClientProtocol, @unchecked Sendable {
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult { throw NSError(domain: "test", code: -1) }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw NSError(domain: "test", code: -1) }
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult { throw NSError(domain: "test", code: -1) }
-    func prStatus(projectID: String) async throws -> PRStatusDoc { throw NSError(domain: "test", code: -1) }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail { throw NSError(domain: "test", code: -1) }
     func prMerge(projectID: String, sliceRef: String) async throws { throw NSError(domain: "test", code: -1) }
     func prComment(projectID: String, sliceRef: String, body: String) async throws { throw NSError(domain: "test", code: -1) }
@@ -200,7 +199,6 @@ private final class GatedUsageClient: NatClientProtocol, @unchecked Sendable {
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult { throw NSError(domain: "test", code: -1) }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { throw NSError(domain: "test", code: -1) }
     func sliceLaunch(projectID: String, sliceRef: String, model: String?, effort: String?) async throws -> LaunchResult { throw NSError(domain: "test", code: -1) }
-    func prStatus(projectID: String) async throws -> PRStatusDoc { throw NSError(domain: "test", code: -1) }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail { throw NSError(domain: "test", code: -1) }
     func prMerge(projectID: String, sliceRef: String) async throws { throw NSError(domain: "test", code: -1) }
     func prComment(projectID: String, sliceRef: String, body: String) async throws { throw NSError(domain: "test", code: -1) }

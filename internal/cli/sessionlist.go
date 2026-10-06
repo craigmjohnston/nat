@@ -12,16 +12,13 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
-	"github.com/craigmjohnston/nat/internal/logging"
 )
 
 // sessionList prints every ad hoc session on the project: whether tmux still
-// has it, its branch, and its pull request summary. The pull request read
-// is the one thing here that is not free — one `gh pr list` for each branch
-// the session has been on (see [sessionBranches]), which is cheap enough to
-// run for every session in the list; a session with no branch at all is
-// skipped rather than asked about, since there is nothing yet for gh to
-// answer.
+// has it, its branch, and its pull request summary — each branch's pull
+// requests as the last batched reading (pr-status's, [lastReading]) found
+// them, so the listing asks GitHub nothing; a session with no branch at all
+// has nothing to read.
 func sessionList(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("session-list", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -55,12 +52,13 @@ func sessionList(ctx context.Context, args []string, env Env) error {
 	}
 
 	gitCLI := env.NewGit()
+	kept := env.loadLastReading()
 	rows := make([]sessionRow, len(sessions))
 	for i, s := range sessions {
 		tag := agent.SessionTag(projectID, s.ID)
 		tmuxSession, isLive := live[tag]
 		row := sessionRow{Session: s, Tag: tag, Tmux: tmuxSession, Live: isLive}
-		row.PRs, row.PRsStale = sessionPRs(env.NewGH(), gitCLI, s)
+		row.PRs, row.PRsStale = sessionPRs(kept, gitCLI, s)
 		rows[i] = row
 	}
 
@@ -72,19 +70,18 @@ func sessionList(ctx context.Context, args []string, env Env) error {
 }
 
 // sessionPRs is every pull request any branch of a session's has opened, as
-// [sessionStatus] reads them — one `gh pr list` per branch, so a session
-// that opened three pull requests from three branches reports all three
-// here rather than only the one its launch branch has. A branch whose read
-// failed marks the whole reading stale and keeps whatever the others gave.
-func sessionPRs(ghCLI PRHeadLister, gitCLI GitCLI, s domain.Session) (prs []gh.HeadPR, stale bool) {
+// [sessionStatus] reads them — off the last reading kept, so a session that
+// opened three pull requests from three branches reports all three here
+// rather than only the one its launch branch has. A branch the reading has
+// not read marks the whole reading stale and keeps whatever the others gave.
+func sessionPRs(kept lastReading, gitCLI GitCLI, s domain.Session) (prs []gh.HeadPR, stale bool) {
 	for _, b := range sessionBranches(gitCLI, s) {
-		got, err := ghCLI.ListPRsForHead(s.Dir, b)
-		if err != nil {
-			logging.Action("could not read a session's pull requests", "session", s.ID, "branch", b, "err", err)
+		got, read := kept.Sessions[s.ID][b]
+		if !read {
 			stale = true
 			continue
 		}
-		prs = append(prs, got...)
+		prs = append(prs, headPRsOf(got)...)
 	}
 	return prs, stale
 }

@@ -43,9 +43,30 @@ type fakeChecksGH struct {
 	statusErr error
 	failOn    string
 	calls     []string
+	// views counts ViewPR, which only slice-checks itself may make.
+	views int
 }
 
 func (f *fakeChecksGH) ViewPR(dir, ref string) (gh.PR, error) {
+	f.views++
+	return f.pr(ref)
+}
+
+// ReadPRs answers the batched reading with the same pull request ViewPR
+// would — what slice-checks-rerun and -cancel read it by.
+func (f *fakeChecksGH) ReadPRs(q gh.BatchQuery) (gh.Batch, error) {
+	batch := gh.Batch{PRs: map[gh.PRRef]gh.PR{}}
+	for _, ref := range q.PRs {
+		pr, err := f.pr(checksPR)
+		if err != nil {
+			return gh.Batch{}, err
+		}
+		batch.PRs[ref] = pr
+	}
+	return batch, nil
+}
+
+func (f *fakeChecksGH) pr(ref string) (gh.PR, error) {
 	if f.viewErr != nil {
 		return gh.PR{}, f.viewErr
 	}

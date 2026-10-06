@@ -89,9 +89,9 @@ struct SessionNavigatorView: View {
         .task(id: selectedPRURL) {
             guard let url = selectedPRURL else { return }
             await prStore.fetch(projectID: projectID, sliceRef: url, sessionID: session.id)
-            prStore.startPolling()
+            prStore.setVisible(true)
         }
-        .onDisappear { prStore.stopPolling() }
+        .onDisappear { prStore.setVisible(false) }
     }
 
     /// A header click — see `NavigatorFocus.clickingHead`. Every section of

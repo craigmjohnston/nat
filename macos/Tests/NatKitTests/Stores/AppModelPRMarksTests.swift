@@ -21,9 +21,14 @@ final class AppModelPRMarksTests: XCTestCase {
     private func started(_ client: FixtureNatClient, planCache: PlanCaching = NullPlanCache()) async -> AppModel {
         let model = await Fixtures.startedAppModel(
             client: client, config: Fixtures.twoProjectConfig, planCache: planCache)
-        for _ in 0..<500 where model.prStatusStore?.readings[Fixtures.secondProjectID] == nil {
-            await Task.yield()
+        // On the clock, not a count of yields: the background project's
+        // reading lands through its plan load and a settle read, each a hop
+        // a busy CI runner can take its time over.
+        let deadline = ContinuousClock.now + .seconds(10)
+        while model.prStatusStore?.readings[Fixtures.secondProjectID] == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(2))
         }
+        await model.githubReadingStore?.idle()
         return model
     }
 
@@ -38,25 +43,19 @@ final class AppModelPRMarksTests: XCTestCase {
     private let redMarks = PRMarks(failingChecks: ["CI / build"])
     private let conflictMarks = PRMarks(conflict: BranchConflict(base: "main"))
 
-    /// Every open project reads on its own loop — the background one too —
-    /// and closing its tab stops it; reopening starts one again.
-    func testEveryOpenProjectPollsAndAClosedTabStopsItsLoop() async {
-        let model = await Fixtures.startedAppModel(
-            client: client(), config: Fixtures.twoProjectConfig, prStatusFastInterval: .seconds(10))
-        for _ in 0..<500 where model.prStatusStore?.intervals[Fixtures.secondProjectID] == nil {
-            await Task.yield()
-        }
-        let store = model.prStatusStore
-        XCTAssertEqual(store?.intervals[Fixtures.secondProjectID], .seconds(3600), "slow: the plan poll's cadence")
-        XCTAssertNotNil(store?.intervals[Fixtures.projectID])
+    /// One reading names every open project with pull request work — the
+    /// background one too — and a closed tab is named no more.
+    func testOneReadingNamesEveryOpenProjectAndAClosedTabLeavesIt() async {
+        let client = client()
+        let model = await started(client)
+        let both = Set([Fixtures.projectID, Fixtures.secondProjectID])
+        XCTAssertTrue(client.prStatusRuns.contains { Set($0.split(separator: ",").map(String.init)) == both })
 
         _ = await model.closeProject(Fixtures.secondProjectID)
-        XCTAssertNil(store?.intervals[Fixtures.secondProjectID])
-        await model.addProject(id: Fixtures.secondProjectID, name: "gnat")
-        for _ in 0..<500 where store?.intervals[Fixtures.secondProjectID] == nil { await Task.yield() }
-        XCTAssertNotNil(store?.intervals[Fixtures.secondProjectID])
+        await model.githubReadingStore?.read()
+        XCTAssertEqual(client.prStatusRuns.last, Fixtures.projectID)
         model.cleanup()
-        XCTAssertEqual(store?.intervals, [:])
+        XCTAssertNil(model.githubReadingStore)
     }
 
     func testABackgroundProjectsPullRequestsAreMarkedWithoutOpeningIt() async {
@@ -113,7 +112,7 @@ final class AppModelPRMarksTests: XCTestCase {
         XCTAssertEqual(activeMarks(model, conflicting), conflictMarks)
 
         client.setPRStatus(nil, forProject: Fixtures.secondProjectID)
-        await model.activateProject(Fixtures.secondProjectID)
+        await model.githubReadingStore?.read()
         XCTAssertEqual(activeMarks(model, red), redMarks, "a failed pr-status clears no mark")
         XCTAssertEqual(treeMarks(model, conflicting), conflictMarks)
 
@@ -125,21 +124,20 @@ final class AppModelPRMarksTests: XCTestCase {
                 sliceID: conflicting, name: "", pr: "", readiness: PRStatusSlice.awaitingReview,
                 checks: PRStatusChecks(verdict: "passing"), base: "main"),
         ]), forProject: Fixtures.secondProjectID)
-        await model.refresh()
+        await model.githubReadingStore?.read()
         // The trouble cleared, and the green tick in its place.
         XCTAssertEqual(activeMarks(model, red), PRMarks(checksPassing: true))
         XCTAssertEqual(treeMarks(model, conflicting), PRMarks(checksPassing: true))
     }
 
-    /// A background project's reading follows its plan's own refreshes.
-    func testABackgroundRefreshTakesAFreshReading() async {
+    /// A background project's reading is the tick's, not its plan's refresh.
+    func testTheTickTakesABackgroundProjectsFreshReading() async {
         let client = client()
         let model = await started(client)
         client.setPRStatus(PRStatusDoc(slices: []), forProject: Fixtures.secondProjectID)
         await model.refresh()
-        for _ in 0..<500 where !(model.prStatusStore?.reading(projectID: Fixtures.secondProjectID).doc.slices.isEmpty ?? false) {
-            await Task.yield()
-        }
+        XCTAssertEqual(activeMarks(model, red), redMarks, "a plan refresh reads no GitHub")
+        await model.githubReadingStore?.read()
         XCTAssertEqual(activeMarks(model, red), PRMarks.none)
     }
 

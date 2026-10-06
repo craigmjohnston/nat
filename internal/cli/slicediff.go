@@ -9,6 +9,7 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/domain"
+	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/store"
@@ -49,16 +50,16 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 	// request records, where there is one — a pull request against anything
 	// but the default branch is measured against what it would merge into —
 	// and the repository's own default where there is not, which is every
-	// hand-back still waiting to be approved. A gh that cannot answer is
-	// logged and the default resolution stands: a diff against main beats no
-	// diff over a network error.
+	// hand-back still waiting to be approved. The pull request's base is the
+	// last batched reading's ([lastReading]): this ran on every Changes tab
+	// load and every tally refresh, and asks GitHub nothing. A pull request
+	// no reading has reached yet diffs against the default, as one gh could
+	// not answer for always did: a diff against main beats no diff.
 	baseName := ""
 	if s.PRURL != "" {
-		if pr, err := env.NewGH().ViewPR(workdir, s.PRURL); err != nil {
-			logging.Action("could not read the pull request's base; diffing against the default",
-				"pr", s.PRURL, "error", err)
-		} else {
-			baseName = pr.BaseRefName
+		baseName = env.loadLastReading().Bases[gh.NormaliseURL(s.PRURL)]
+		if baseName == "" {
+			logging.Action("no reading of the pull request's base yet; diffing against the default", "pr", s.PRURL)
 		}
 	}
 

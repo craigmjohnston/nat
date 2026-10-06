@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -75,7 +74,8 @@ func TestPRMergeSucceedsThoughTheRemovalIsRefused(t *testing.T) {
 	}
 }
 
-// A merge pr-status settles takes the slice's worktree with it.
+// A merge pr-status settles takes the slice's worktree with it — off the
+// reading alone, with no view of the pull request.
 func TestPRStatusRemovesASettledSlicesWorktree(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
@@ -84,12 +84,8 @@ func TestPRStatusRemovesASettledSlicesWorktree(t *testing.T) {
 		},
 	}
 	env, _ := testEnv(testConfig(t), api)
-	env.NewGH = func() GH {
-		return &fakePRReader{
-			open: map[string]map[string]gh.PRStatus{"/tmp/nat": {}},
-			view: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateMerged}},
-		}
-	}
+	reader := &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateMerged}}}
+	env.NewGH = func() GH { return reader }
 	w := withWorktree(&env)
 
 	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
@@ -97,6 +93,9 @@ func TestPRStatusRemovesASettledSlicesWorktree(t *testing.T) {
 	}
 	if want := []removal{{"/tmp/nat", "slice/merged-on-github"}}; !reflect.DeepEqual(w.removed, want) {
 		t.Errorf("removed = %+v, want %+v", w.removed, want)
+	}
+	if len(api.updates) != 1 || len(reader.viewed) != 0 {
+		t.Errorf("updates = %+v, viewed = %v, want Done written and no view", api.updates, reader.viewed)
 	}
 }
 
@@ -111,10 +110,7 @@ func TestPRStatusKeepsAClosedPRsWorktree(t *testing.T) {
 	}
 	env, _ := testEnv(testConfig(t), api)
 	env.NewGH = func() GH {
-		return &fakePRReader{
-			open: map[string]map[string]gh.PRStatus{"/tmp/nat": {}},
-			view: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateClosed}},
-		}
+		return &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateClosed}}}
 	}
 	w := withWorktree(&env)
 	w.branches = map[string][]string{"/tmp/nat": {"slice/closed-on-github"}}
@@ -127,11 +123,11 @@ func TestPRStatusKeepsAClosedPRsWorktree(t *testing.T) {
 	}
 }
 
-// The sweep removes the worktree of every Done slice whose pull request is
-// merged or absent, and leaves everything else: a Done slice whose pull
-// request reads open, one whose repository could not be listed, slices in
-// progress or still to do, a slice with a live agent, and a worktree no slice
-// owns. Each repository is listed once.
+// The sweep removes the worktree of every Done slice whose pull request reads
+// merged, or that has none, and leaves everything else: a Done slice whose
+// pull request reads open, one the reading did not find, slices in progress
+// or still to do, a slice with a live agent, and a worktree no slice owns.
+// Each repository is listed once, between deciding what to ask and sweeping.
 func TestPRStatusSweepsLandedWorktrees(t *testing.T) {
 	const pr = "https://github.test/craig/nat/pull/"
 	api := &fakeAPI{
@@ -149,13 +145,11 @@ func TestPRStatusSweepsLandedWorktrees(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 	env.NewGH = func() GH {
-		return &fakePRReader{
-			open: map[string]map[string]gh.PRStatus{"/tmp/nat": {
-				pr + "2": {Approved: true, Mergeable: true},
-				pr + "4": {Approved: true, Mergeable: true},
-			}},
-			err: map[string]error{"/repo/unread": errors.New("gh is down")},
-		}
+		return &fakePRReader{prs: map[string]gh.PR{
+			pr + "1": {State: gh.PRStateMerged},
+			pr + "2": openPR(true, true),
+			pr + "4": openPR(true, true),
+		}}
 	}
 	env.NewTmux = func() *agent.Tmux {
 		return agent.NewTmuxWithRunner(&agentTestRunner{liveSessions: map[string]string{"live": "nat-live"}})
@@ -174,7 +168,7 @@ func TestPRStatusSweepsLandedWorktrees(t *testing.T) {
 	if !reflect.DeepEqual(w.removed, want) {
 		t.Errorf("removed = %+v, want %+v", w.removed, want)
 	}
-	if want := []string{"/tmp/nat"}; !reflect.DeepEqual(w.listed, want) {
+	if want := []string{"/tmp/nat", "/repo/unread"}; !reflect.DeepEqual(w.listed, want) {
 		t.Errorf("listed = %v, want %v", w.listed, want)
 	}
 	if !strings.Contains(out.String(), "Merged — unread — "+pr+"1") {
@@ -205,7 +199,7 @@ func TestPRStatusSweepSurvivesARefusedRemoval(t *testing.T) {
 	if len(w.removed) != 1 {
 		t.Errorf("removed = %+v, want the one attempt", w.removed)
 	}
-	if got := strings.TrimSpace(out.String()); got != "{\n  \"slices\": [],\n  \"branches\": []\n}" {
+	if got := strings.TrimSpace(out.String()); got != "{\n  \"slices\": [],\n  \"branches\": [],\n  \"sessions\": []\n}" {
 		t.Errorf("output = %q, want the reading as before", got)
 	}
 }

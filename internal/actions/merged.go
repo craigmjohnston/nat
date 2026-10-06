@@ -9,14 +9,6 @@ import (
 	"github.com/craigmjohnston/nat/internal/logging"
 )
 
-// PRViewer is what settling a pull request needs of the GitHub CLI: the pull
-// request's own reading, since a listing of what a repository has open cannot
-// tell a merged pull request from one closed unmerged — both are simply
-// absent. It is an interface for the reason [PRCreator] is.
-type PRViewer interface {
-	ViewPR(dir, ref string) (gh.PR, error)
-}
-
 // MarkDone moves a slice to Done: the one write that says its work is on
 // main. Nothing but a merge reaches it — approving records the pull request
 // and leaves the slice in progress, so the status on the page means the same
@@ -61,18 +53,15 @@ func ReopenUnmerged(ctx context.Context, st Store, s domain.Slice) error {
 	return nil
 }
 
-// SettleMerged asks GitHub what became of a pull request an open listing no
-// longer names, and marks the slice Done where the answer is merged — how a
-// merge made on GitHub itself, with nat not running to make it, still moves
-// the slice. A pull request closed unmerged is the other thing absence means,
-// and it is work going round again rather than work landed: the slice is left
-// exactly as it is. Reports whether Done was written.
-func SettleMerged(ctx context.Context, st Store, viewer PRViewer, s domain.Slice, dir string) (bool, error) {
-	pr, err := viewer.ViewPR(dir, s.PRURL)
-	if err != nil {
-		return false, fmt.Errorf("read what became of %s: %w", s.PRURL, err)
-	}
-	if pr.State != gh.PRStateMerged {
+// SettleMerged marks the slice Done where a reading of its pull request says
+// merged — how a merge made on GitHub itself, with nat not running to make it,
+// still moves the slice. The reading is the batch's ([gh.CLI.ReadPRs]), which
+// carries the pull request's state, so nothing more is asked of gh here. A
+// pull request closed unmerged is work going round again rather than work
+// landed, and an open one is still under review: the slice is left exactly as
+// it is. Reports whether Done was written.
+func SettleMerged(ctx context.Context, st Store, s domain.Slice, reading gh.PRStatus) (bool, error) {
+	if reading.State != gh.PRStateMerged {
 		return false, nil
 	}
 	if err := MarkDone(ctx, st, s); err != nil {

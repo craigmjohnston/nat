@@ -82,7 +82,6 @@ private final class GatedProposalClient: NatClientProtocol, @unchecked Sendable 
     func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult { throw NatError.missingOutput }
     func sliceApprove(projectID: String, sliceRef: String) async throws -> String { "" }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail { throw NatError.missingOutput }
-    func prStatus(projectID: String) async throws -> PRStatusDoc { throw NatError.missingOutput }
     func prMerge(projectID: String, sliceRef: String) async throws {}
     func prComment(projectID: String, sliceRef: String, body: String) async throws {}
     func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult { throw NatError.missingOutput }

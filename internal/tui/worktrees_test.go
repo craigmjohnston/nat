@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 
 	"github.com/craigmjohnston/nat/internal/git"
 )
@@ -56,8 +57,16 @@ func (f *fakeWorktrees) Remove(dir, branch string) error {
 	return f.removeErr
 }
 
-// Branches is never asked of the board: only `nat pr-status` sweeps.
-func (f *fakeWorktrees) Branches(dir string) ([]string, error) { return nil, nil }
+// Branches lists existing's branches, sorted — what the board's reading asks
+// to tell a Done slice with a worktree still to settle from one without.
+func (f *fakeWorktrees) Branches(dir string) ([]string, error) {
+	var out []string
+	for b := range f.existing {
+		out = append(out, b)
+	}
+	slices.Sort(out)
+	return out, nil
+}
 
 // Reset is never asked of the board: only `nat run` resets a worktree.
 func (f *fakeWorktrees) Reset(path, ref string) error { return nil }

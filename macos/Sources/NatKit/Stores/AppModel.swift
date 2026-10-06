@@ -295,6 +295,12 @@ public final class AppModel {
     /// tab's attention all read it.
     public private(set) var prStatusStore: PRStatusStore?
 
+    /// The app's one read of GitHub: every open project in one `nat
+    /// pr-status` on the poll tick, and a settle read after an action — see
+    /// `GitHubReadingStore`. It feeds `prStatusStore`, the visible PR tab and
+    /// the session rows; nothing else in the app reads GitHub on a timer.
+    public private(set) var githubReadingStore: GitHubReadingStore?
+
     /// The active project's ad hoc sessions (app-wide store, active-project
     /// reading — mirrors `reviewStatsStore`'s own shape).
     public private(set) var sessionStore: SessionStore?
@@ -496,9 +502,11 @@ public final class AppModel {
     @ObservationIgnored private var workshopSaveTask: Task<Void, Never>?
 
     private let pollInterval: UInt64 // in seconds
-    /// The pull-request reading's fast cadence (`PRStatusStore.Cadence`) —
-    /// nil, as in tests, for no loop of its own.
-    private let prStatusFastInterval: Duration?
+    /// Whether the GitHub reading runs on the poll tick — true in the app;
+    /// false, as in tests, for readings taken only when asked for.
+    private let readsGitHubOnATick: Bool
+    /// How long a settle read waits after the action that asked for it.
+    private let githubSettleDelay: Duration
     private var pollTask: Task<Void, Never>?
     private var nudgeWatcher: NudgeWatcher?
 
@@ -570,7 +578,8 @@ public final class AppModel {
         configReader: ConfigReaderProtocol = FileConfigReader(),
         planCache: PlanCaching = DiskPlanCache(),
         pollIntervalSeconds: UInt64 = 30,
-        prStatusFastInterval: Duration? = nil,
+        readsGitHubOnATick: Bool = false,
+        githubSettleDelay: Duration = .seconds(5),
         pathsProvider: @escaping @Sendable () async throws -> NatPaths = { try await NatClient().paths() },
         workshopLauncher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult = {
             try await NatClient().workshopLaunch(projectID: $0, model: $1, effort: $2, request: $3)
@@ -607,7 +616,8 @@ public final class AppModel {
         self.configReader = configReader
         self.planCache = planCache
         self.pollInterval = pollIntervalSeconds
-        self.prStatusFastInterval = prStatusFastInterval
+        self.readsGitHubOnATick = readsGitHubOnATick
+        self.githubSettleDelay = githubSettleDelay
         self.pathsProvider = pathsProvider
         self.clientFactory = clientFactory
         self.workshopLauncher = workshopLauncher
@@ -861,8 +871,9 @@ public final class AppModel {
             self.activityStore = activityStore
             activityStore.kick()
             self.reviewStatsStore = ReviewStatsStore(client: clientFactory())
-            self.prStatusStore = makePRStatusStore()
+            self.prStatusStore = PRStatusStore(cache: planCache)
             self.sessionStore = SessionStore(client: clientFactory())
+            startGitHubReading()
             startUsageStore()
 
             // Activate the first project (if any): the first real one, since
@@ -886,6 +897,10 @@ public final class AppModel {
             if let firstProjectID {
                 await activateProject(firstProjectID, nudgePath: nudgePath, config: loadedConfig)
             }
+            // The first GitHub reading, off the startup path: the marks the
+            // cache put up stand meanwhile. A background plan landing after
+            // it asks for a settle read of its own (`loadBackgroundProject`).
+            githubReadingStore?.readSoon()
             // The plugins' reading may have landed before config did, with
             // nowhere then to look for their projects.
             if makesSourceProjects { await ensureSourceProjects() }
@@ -914,8 +929,9 @@ public final class AppModel {
             activityStore = makeActivityStore()
             activityStore?.kick()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
-            prStatusStore = makePRStatusStore()
+            prStatusStore = PRStatusStore(cache: planCache)
             sessionStore = SessionStore(client: clientFactory())
+            startGitHubReading()
         }
         if usageStore == nil {
             startUsageStore()
@@ -959,6 +975,9 @@ public final class AppModel {
         // Load the project store
         await projectStore.load()
         await updateReviewStats(projectID: projectID, projectStore: projectStore)
+        // Its sessions: `session-list` asks GitHub nothing — each row's pull
+        // requests are the ones the last GitHub reading kept.
+        await sessionStore?.update(projectID: projectID)
         // Every session a previous run left behind on a finished slice is
         // dangling, and this is the first sweep that sees them.
         await reapFinishedAgents()
@@ -977,8 +996,9 @@ public final class AppModel {
     /// store if it has none, then loads it — cache first, then a network
     /// refresh, `ProjectStore.load()`'s own shape — as an unawaited task, so
     /// one slow project's read never holds up the rest of startup. Its pull
-    /// requests' last reading is put up first and a fresh one taken once the
-    /// plan has landed, as every background refresh takes one.
+    /// requests' last reading is put up first, and once the plan has landed
+    /// a settle read is asked for, where it has pull request work: every
+    /// project loading at launch folds into that one reading.
     private func loadBackgroundProject(_ projectID: String) {
         if stores[projectID] == nil {
             stores[projectID] = ProjectStore(projectID: projectID, client: clientFactory(), cache: planCache)
@@ -987,7 +1007,7 @@ public final class AppModel {
         Task {
             await prStatusStore?.restore(projectID: projectID)
             await store.load()
-            await updatePRStatus(of: store)
+            if hasPullRequestWork(projectID: projectID) { githubReadingStore?.scheduleSettle() }
         }
     }
 
@@ -1108,8 +1128,9 @@ public final class AppModel {
         if activityStore == nil {
             activityStore = makeActivityStore()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
-            prStatusStore = makePRStatusStore()
+            prStatusStore = PRStatusStore(cache: planCache)
             sessionStore = SessionStore(client: clientFactory())
+            startGitHubReading()
         }
         if usageStore == nil {
             startUsageStore()
@@ -1393,25 +1414,13 @@ public final class AppModel {
 
     /// Re-read every open project but the active one, in the background —
     /// the sidebar draws all of their plans, and a nudge or a poll tick is as
-    /// much news for them as for the one on screen. Each plan that lands
-    /// takes its pull requests' reading too, as the active one's does.
+    /// much news for them as for the one on screen. A plan read only: the
+    /// GitHub reading is `githubReadingStore`'s, on its own tick.
     private func refreshBackgroundProjects(_ read: PlanRead) {
         for tab in projectTabs where tab.id != activeProjectID && !isUntitledTab(tab.id) {
             guard let store = stores[tab.id] else { continue }
-            Task {
-                await store.refresh(read)
-                await updatePRStatus(of: store)
-            }
+            Task { await store.refresh(read) }
         }
-    }
-
-    /// Takes a project's `pr-status` reading on the plan its store holds —
-    /// the Go board's cadence, every plan that lands — and skips it where no
-    /// slice has a pull request worth asking about, nor a handed-back branch
-    /// under review for nat to test against its base.
-    private func updatePRStatus(of store: ProjectStore) async {
-        guard hasPullRequestWork(projectID: store.projectID) else { return }
-        await prStatusStore?.update(projectID: store.projectID)
     }
 
     /// Whether a project's plan, as its store holds it, has anything for
@@ -1422,16 +1431,66 @@ public final class AppModel {
         return info.slices.contains(where: { !$0.pr.isEmpty || inReview($0) })
     }
 
-    /// The app-wide pull-request reading, polling every open project on its
-    /// own loop where `prStatusFastInterval` is set — its slow cadence the
-    /// plan poll's, its liveness the activity store's.
-    private func makePRStatusStore() -> PRStatusStore {
-        let slow = Duration.seconds(Int64(config.map(pollSeconds) ?? pollInterval))
-        return PRStatusStore(
-            client: clientFactory(), cache: planCache,
-            cadence: prStatusFastInterval.map { PRStatusStore.Cadence(fast: $0, slow: slow) },
-            liveSliceIDs: { [weak self] in Set((self?.activityStore?.agents.values).map { $0.map(\.sliceID) } ?? []) },
-            shouldRead: { [weak self] in self?.hasPullRequestWork(projectID: $0) ?? false })
+    /// Makes and starts the one GitHub reading — on the poll tick where
+    /// `readsGitHubOnATick`, else only when asked for.
+    private func startGitHubReading() {
+        let tick = readsGitHubOnATick ? Duration.seconds(Int64(config.map(pollSeconds) ?? pollInterval)) : nil
+        let store = GitHubReadingStore(
+            client: clientFactory(),
+            request: { [weak self] in self?.githubReadingRequest() },
+            deliver: { [weak self] reading in await self?.deliver(reading) },
+            tick: tick, settleDelay: githubSettleDelay)
+        githubReadingStore = store
+        store.start()
+    }
+
+    /// What one GitHub reading asks: every open project tab with pull
+    /// request work, the active one always (its sessions' branches ride the
+    /// reading), in tab order — and the pull request on a visible PR tab in
+    /// full, its project named too.
+    private func githubReadingRequest() -> GitHubReadingStore.Request? {
+        var projectIDs = projectTabs.map(\.id).filter {
+            !isUntitledTab($0) && ($0 == activeProjectID || hasPullRequestWork(projectID: $0))
+        }
+        var detail: String?
+        for (projectID, store) in prStores.sorted(by: { $0.key < $1.key }) {
+            guard let url = store.detailURL else { continue }
+            detail = url
+            if !projectIDs.contains(projectID) { projectIDs.append(projectID) }
+            break
+        }
+        guard !projectIDs.isEmpty else { return nil }
+        return GitHubReadingStore.Request(projectIDs: projectIDs, detail: detail)
+    }
+
+    /// Hands a GitHub reading on: each open project's part to
+    /// `prStatusStore`, the detail to the PR tab showing it, and the active
+    /// project's session rows a fresh `session-list` — which reads the pull
+    /// requests this reading kept, and asks GitHub nothing.
+    private func deliver(_ reading: GitHubReading) async {
+        let open = Set(projectTabs.map(\.id))
+        for (projectID, doc) in reading.projects.sorted(by: { $0.key < $1.key }) where open.contains(projectID) {
+            await prStatusStore?.apply(doc, projectID: projectID)
+        }
+        if let detail = reading.detail {
+            for store in prStores.values { store.applyDetail(detail) }
+        }
+        if let active = activeProjectID, !isUntitledTab(active) {
+            await sessionStore?.update(projectID: active)
+        }
+    }
+
+    /// Asks for the GitHub reading's settle read, 5 seconds out — after an
+    /// action that changed something on GitHub. See `GitHubReadingStore`.
+    public func scheduleGitHubReading() {
+        githubReadingStore?.scheduleSettle()
+    }
+
+    /// The manual refresh: the plan read the nudge makes, and the GitHub
+    /// reading's settle read.
+    public func refreshByHand() async {
+        await refresh()
+        scheduleGitHubReading()
     }
 
     /// The slice-detail cache for one project, created on first use — the
@@ -1466,7 +1525,9 @@ public final class AppModel {
     /// `sliceDetailStore(projectID:)`.
     public func prStore(projectID: String) -> PRStore {
         if let existing = prStores[projectID] { return existing }
-        let store = PRStore(client: clientFactory(), seen: seenMemory)
+        let store = PRStore(client: clientFactory(), seen: seenMemory, settle: { [weak self] in
+            self?.scheduleGitHubReading()
+        })
         prStores[projectID] = store
         return store
     }
@@ -2483,6 +2544,7 @@ public final class AppModel {
                 await sliceActions.run(.approve, sliceID: sliceID, select: { _ in }) {
                     _ = try await client.sliceApprove(projectID: projectID, sliceRef: sliceID)
                     await projectStore.refresh()
+                    self.scheduleGitHubReading()
                 }
             }
         }
@@ -2790,10 +2852,6 @@ public final class AppModel {
             .filter { $0.handedBack }
             .map { ReviewStatsStore.HandedBackSlice(sliceID: $0.id, branch: $0.branch ?? "") }
         await reviewStatsStore?.update(projectID: projectID, handedBack: handedBack)
-        await updatePRStatus(of: projectStore)
-        // Ad hoc sessions ride the same cadence: every plan reload and the
-        // poll's own tick, alongside the PR-readiness reading above.
-        await sessionStore?.update(projectID: projectID)
     }
 
     private func startNudgeWatcher(for projectStore: ProjectStore, nudgePath: String) {
@@ -2861,7 +2919,8 @@ public final class AppModel {
         usageStore?.stop()
         usageStore = nil
         reviewStatsStore = nil
-        prStatusStore?.stop()
+        githubReadingStore?.stop()
+        githubReadingStore = nil
         prStatusStore = nil
         sessionStore = nil
         sliceDetailStores = [:]

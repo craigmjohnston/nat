@@ -1,11 +1,13 @@
 import Foundation
 
-/// The active project's ad hoc sessions — `nat session-list`, read on the
-/// same cadence `ReviewStatsStore`'s PR-readiness reading rides (every plan
-/// reload and the poll's own tick), through `AppModel.updateReviewStats`.
+/// The active project's ad hoc sessions — `nat session-list`, read when a
+/// project is activated, after a session is launched, ended or discarded,
+/// and after every GitHub reading lands (`AppModel.deliver`): the listing
+/// asks GitHub nothing itself, each row's pull requests being the ones that
+/// reading kept on disk.
 ///
 /// A failed read is quiet, mirroring `ReviewStatsStore`: the rail simply
-/// keeps whatever it last held, and the next reload tries again on its own.
+/// keeps whatever it last held, and the next reading tries again on its own.
 @MainActor
 @Observable
 public final class SessionStore {

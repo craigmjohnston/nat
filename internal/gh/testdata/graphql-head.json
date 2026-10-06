@@ -1,0 +1,12 @@
+{
+  "data": {
+    "rateLimit": { "limit": 5000, "remaining": 4208, "resetAt": "2026-10-06T13:00:00Z" },
+    "r0": {
+      "h0": { "nodes": [
+        { "number": 12, "title": "Second go", "url": "https://github.com/craig/nat/pull/12", "state": "OPEN", "mergedAt": null },
+        { "number": 10, "title": "First go", "url": "https://github.com/craig/nat/pull/10", "state": "MERGED", "mergedAt": "2026-10-01T09:00:00Z" }
+      ] },
+      "h1": { "nodes": [] }
+    }
+  }
+}

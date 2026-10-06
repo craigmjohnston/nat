@@ -104,10 +104,11 @@ func (t ciTarget) checkNames() string {
 	return strings.Join(names, ", ")
 }
 
-// loadCITarget loads the slice and its pull request. No pull request is
-// refused, and so is one that is not open — asking gh, and refusing where gh
-// cannot answer, since the cost of being wrong is CI spent or killed on a
-// review that is over.
+// loadCITarget loads the slice and its pull request — its state and its
+// checks' run URLs, off one batched reading of it alone ([readOnePR]). No
+// pull request is refused, and so is one that is not open — asking GitHub,
+// and refusing where it cannot answer, since the cost of being wrong is CI
+// spent or killed on a review that is over.
 func loadCITarget(ctx context.Context, command, sliceRef, projectRef string, env Env) (ciTarget, GH, error) {
 	id, err := pageID(command, sliceRef)
 	if err != nil {
@@ -130,7 +131,7 @@ func loadCITarget(ctx context.Context, command, sliceRef, projectRef string, env
 	}
 	ghClient := env.NewGH()
 	dir := actions.WorkdirFor(s, project)
-	pr, err := ghClient.ViewPR(dir, s.PRURL)
+	pr, err := readOnePR(ghClient, s.PRURL)
 	if err != nil {
 		return ciTarget{}, nil, fmt.Errorf("%s: read the pull request %s: %w", command, s.PRURL, err)
 	}
@@ -347,6 +348,9 @@ func sentSoFar(doc checksActionDoc) string {
 
 // waitCompleted polls a cancelled run until it reads completed, about two
 // minutes at most. A read that fails concludes nothing and is polled again.
+// Each poll is `gh run view --json status`, GitHub's REST API — a budget of
+// its own, apart from the GraphQL one every pull request reading spends, and
+// one nat barely touches — so it stays a poll rather than riding a reading.
 func waitCompleted(ghClient GH, dir string, ref gh.ActionsRef) error {
 	for range rerunPolls {
 		status, err := ghClient.RunStatus(dir, ref)

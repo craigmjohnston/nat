@@ -1,0 +1,19 @@
+{
+  "data": {
+    "rateLimit": { "limit": 5000, "remaining": 4210, "resetAt": "2026-10-06T13:00:00Z" },
+    "r0": {
+      "p0": {
+        "number": 8,
+        "url": "https://github.com/craig/nat/pull/8",
+        "state": "MERGED",
+        "isDraft": false,
+        "mergedAt": "2026-10-06T12:19:00Z",
+        "reviewDecision": "APPROVED",
+        "mergeable": "UNKNOWN",
+        "mergeStateStatus": "UNKNOWN",
+        "baseRefName": "main",
+        "lastCommit": { "nodes": [ { "commit": { "statusCheckRollup": null } } ] }
+      }
+    }
+  }
+}

@@ -74,9 +74,22 @@ func TestPRReviewersListsRequestedAndCandidates(t *testing.T) {
 			t.Errorf("a plain read edited the pull request: %v", run)
 		}
 	}
+
+	env, out = reviewersEnv(t, runner)
+	if err := Run(context.Background(), []string{"pr-reviewers", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr-reviewers: %v", err)
+	}
+	for _, line := range []string{"- Requested: octocat", "- Could also ask: hubot"} {
+		if !strings.Contains(out.String(), line) {
+			t.Errorf("markdown lacks %q:\n%s", line, out)
+		}
+	}
 }
 
-func TestPRReviewersEditsBeforeReadingBack(t *testing.T) {
+// An edit reports its own result and reads nothing back: no gh pr view, no
+// collaborator listing — the next reading of the pull request says who is
+// asked now.
+func TestPRReviewersEditReportsTheEditAlone(t *testing.T) {
 	runner := &fakeReviewersRunner{view: `{"number":7,"reviewRequests":[{"login":"hubot"}]}`}
 	env, out := reviewersEnv(t, runner)
 
@@ -88,16 +101,27 @@ func TestPRReviewersEditsBeforeReadingBack(t *testing.T) {
 		t.Fatalf("pr-reviewers: %v", err)
 	}
 	wantEdit := []string{"pr", "edit", reviewersPR, "--add-reviewer", "hubot,org/core,x", "--remove-reviewer", "octocat"}
-	if !reflect.DeepEqual(runner.runs[0], wantEdit) {
-		t.Errorf("first run = %v, want the edit %v", runner.runs[0], wantEdit)
+	if !reflect.DeepEqual(runner.runs, [][]string{wantEdit}) {
+		t.Errorf("runs = %v, want the edit alone %v", runner.runs, wantEdit)
 	}
-	if runner.runs[1][1] != "view" {
-		t.Errorf("second run = %v, want the read back", runner.runs[1])
-	}
-	for _, line := range []string{"- Requested: hubot", "- Could also ask: none"} {
+	for _, line := range []string{"- Asked: hubot, org/core, x", "- No longer asked: octocat"} {
 		if !strings.Contains(out.String(), line) {
 			t.Errorf("markdown lacks %q:\n%s", line, out)
 		}
+	}
+
+	env, out = reviewersEnv(t, runner)
+	if err := Run(context.Background(), []string{
+		"pr-reviewers", testSliceID, "--remove", "octocat", "--json", "--project", "project-1",
+	}, env); err != nil {
+		t.Fatalf("pr-reviewers --json: %v", err)
+	}
+	var doc prReviewersEditJSON
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("decode: %v\n%s", err, out)
+	}
+	if want := (prReviewersEditJSON{PR: reviewersPR, Added: []string{}, Removed: []string{"octocat"}}); !reflect.DeepEqual(doc, want) {
+		t.Errorf("doc = %+v, want %+v", doc, want)
 	}
 }
 

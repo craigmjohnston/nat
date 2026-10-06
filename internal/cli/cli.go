@@ -57,7 +57,8 @@ func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
 
 // GH is everything the pull request commands need of the GitHub CLI:
 // [actions.PRCreator] for slice-approve, [PRViewer] for pr-view, [PRMerger]
-// for pr-merge, [PRReader] for pr-status, [PRCommenter] for pr-comment and
+// for pr-merge, [PRBatchReader] for pr-status and every command that reads a
+// pull request's state, [PRCommenter] for pr-comment and
 // [PRReviewerEditor] for pr-reviewers, [RunLogReader] and [JobReader] for
 // slice-checks --log, [RunController] for slice-checks-rerun and
 // slice-checks-cancel, and [actions.PRReviewReader] for a launch's review snapshot. One gh.CLI
@@ -68,9 +69,8 @@ type GH interface {
 	actions.PRCreator
 	PRViewer
 	PRMerger
-	PRReader
+	PRBatchReader
 	PRCommenter
-	PRHeadLister
 	PRReviewerEditor
 	RunLogReader
 	JobReader
@@ -100,6 +100,7 @@ type GitCLI interface {
 	Show(dir, branch, path string) ([]string, error)
 	CurrentBranch(dir string) (string, error)
 	ReflogBranches(dir string) ([]string, error)
+	RemoteURL(dir string) (string, error)
 }
 
 // NewGitFunc builds the git driver.
@@ -172,6 +173,11 @@ type Env struct {
 	// In is where a command reads input a flag was not given for; it is stdin
 	// in production, and may be nil where nothing is ever piped in.
 	In io.Reader
+	// ReadingPath is where pr-status keeps its last batched GitHub reading for
+	// the commands that read it back (slice-diff, session-list,
+	// session-status) — DefaultReadingPath in production; nil keeps none, and
+	// every such command reads nothing kept.
+	ReadingPath func() (string, error)
 	// Nudge marks that a write landed in Notion, so a board running on this
 	// machine can refetch at once instead of waiting out a poll interval. It is
 	// nudge.Touch in production, and may be nil where nothing listens.
@@ -333,10 +339,12 @@ usage:
                       directory itself where it is not
   nat session-list --project ID [--json]
                       list every ad hoc session on the project: whether tmux
-                      still has it, its branch, and its pull requests
+                      still has it, its branch, and its pull requests as the
+                      last pr-status reading found them
   nat session-status <session> --project ID [--discard] [--json]
-                      read every branch a session has been on and the pull
-                      requests each has opened; once every one has merged —
+                      read the five most recent branches a session has been
+                      on and the pull requests the last pr-status reading
+                      found each has opened; once every one has merged —
                       or, with --discard, the session has ended with none
                       open — its worktree is removed and it is marked ended
   nat session-diff <session> --project ID [--branch NAME] [--json]
@@ -596,17 +604,22 @@ usage:
                       --body - or absent reads it from stdin
   nat pr-reviewers <slice> [--add LOGIN]... [--remove LOGIN]... [--json] --project ID
                       who is asked to review the slice's pull request, and who
-                      else could be; --add/--remove ask or withdraw first
+                      else could be; --add/--remove ask or withdraw instead,
+                      reporting what the edit did
   nat pr-merge <slice> [--json] --project ID
                       merge a slice's pull request through gh and mark the
                       slice Done, refused in the merge box's own words when a
                       review, a check or the branch itself says it should not
                       go in yet
-  nat pr-status [--json] --project ID
+  nat pr-status [--detail PR_URL] [--json] --project ID [--project ID]...
                       read every slice with a pull request still worth
-                      watching and print how close each is to landing; an
-                      in-progress slice whose pull request turns out to have
-                      merged is marked Done on the way
+                      watching, and every ad hoc session's branches, in one
+                      batched GitHub reading across every project named, and
+                      print how close each is to landing (keyed by project
+                      where several are named) with GitHub's remaining
+                      budget; an in-progress slice whose pull request turns
+                      out to have merged is marked Done on the way. --detail
+                      adds that pull request in full, as pr-view prints it
   nat workshop-launch [--model M] [--effort E] [--request TEXT|-] [--json] --project ID
                       launch a planning agent detached in tmux on the
                       project's working dir, on the request when one is

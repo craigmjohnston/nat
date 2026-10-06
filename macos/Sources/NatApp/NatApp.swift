@@ -82,7 +82,7 @@ struct NatApp: App {
         // `Typo.mono` calls it too, so this is only about when it happens.
         MonoFont.register()
         let model = AppModel(
-            prStatusFastInterval: .seconds(10),
+            readsGitHubOnATick: true,
             mirrorNudgeMemory: MirrorNudgeMemory(), seenMemory: SeenMemory(),
             closedTabMemory: ClosedTabMemory(), workshopCache: DiskWorkshopCache(), makesSourceProjects: true)
         _appModel = State(initialValue: model)

@@ -38,13 +38,6 @@ private final class MockReviewStatsClient: NatClientProtocol, @unchecked Sendabl
     }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail { throw ReviewStatsTestError() }
 
-    /// What `prStatus` answers with — nil throws, standing in for a nat that
-    /// failed outright.
-    var prStatusDoc: PRStatusDoc?
-    func prStatus(projectID: String) async throws -> PRStatusDoc {
-        guard let doc = prStatusDoc else { throw ReviewStatsTestError() }
-        return doc
-    }
     func prMerge(projectID: String, sliceRef: String) async throws { throw ReviewStatsTestError() }
     func prComment(projectID: String, sliceRef: String, body: String) async throws { throw ReviewStatsTestError() }
     func workshopLaunch(projectID: String, model: String?, effort: String?, request: String?) async throws -> WorkshopLaunchResult {

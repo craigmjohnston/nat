@@ -156,7 +156,7 @@ enum AppStories {
         let store = PRStore(client: client)
         await store.fetch(projectID: Fixtures.projectID, sliceRef: Fixtures.approveSliceID)
         await act(store, client)
-        store.stopPolling()
+        store.setVisible(false)
         return PRSectionBody(
             pr: store.loadState.pr ?? Fixtures.pr(checks: checks), checksStore: store, hoveredCheck: hovered)
             .frame(width: checksSize.width, height: checksSize.height, alignment: .top)

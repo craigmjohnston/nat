@@ -127,8 +127,8 @@ the PR is open, a push updates it, the review snapshot, and exactly one
 slice-checks`. No hand-back is ever blocked by any of this.
 
 **CI failures.** Every agent reads CI with `nat slice-checks <slice> [--log]`
-(slice prompt, `/next-slice`), never `gh`. After every PR
-listing, `nat pr-status` and the TUI's `refreshPRStates` hand each slice
+(slice prompt, `/next-slice`), never `gh`. After every batched PR
+reading, `nat pr-status` and the TUI's `refreshPRStates` hand each slice
 reading `PRChecksFailing` to `actions.NoticeFailingChecks`: a failure is the
 set of its failing checks' run URLs, news only where the latest `Checks
 failed`/`Sent back` names a different set. A live session is a resumption:
@@ -269,9 +269,8 @@ again on every plan load; `pr-merge` after its Done, `pr-status` where
 `SettleMerged` writes Done, a Done-closing `complete-slice`, `slice-delete`
 after the trash; and `pr-status`'s sweep (`actions.SweepLanded`, one `git
 worktree list` per repository) for what nothing witnessed — every Done
-slice whose PR, if any, the listing read and did not find open, with no
-live agent. A Done slice whose PR reads open, or could not be read, keeps
-it. Every removal goes through `actions.RemoveWorktree`, in
+slice whose PR, if any, the reading found merged or closed, with no live
+agent. A Done slice whose PR reads open, or could not be read, keeps it. Every removal goes through `actions.RemoveWorktree`, in
 `actions.WorkdirFor`'s repository by `actions.AgentBranch` (the branch
 recorded at hand-back, else the derived `slice/<slug>`) — the pair the
 launch placed the agent by, which must never disagree; a task with no
@@ -406,8 +405,8 @@ sitting. A failed read logs and draws the plan unordered rather than not at
 all.
 
 **Reads that fail conclude nothing** — the default posture everywhere in
-this app: a failed `OpenPRs` listing is no news (never read as "merged" or
-"closed"), a failed `Fetch` cuts from refs as last known, an unreadable
+this app: a pull request a batched GitHub reading did not read is no news
+(never read as "merged" or "closed"), a failed `Fetch` cuts from refs as last known, an unreadable
 dependency never blocks. The one deliberate exception is the diff screen: a
 failed re-read of a handed-back branch **drops** what was on screen, since a
 diff is of one branch at one moment and an old one under a fresh push would

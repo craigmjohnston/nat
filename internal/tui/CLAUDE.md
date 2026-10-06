@@ -73,7 +73,10 @@ directly; check each file, don't assume every one routes through `actions`.
 
 ## Pull request screen (`pr*.go`)
 
-- `V` opens one PR in full via `gh.ViewPR`; `checkOutcome`/`mergeRefusal` in
+- `V` opens one PR in full via `gh.ViewPR` (as does the refresh key); the
+  screen's 12-second poll re-reads it as the batched reading's detail
+  (`readDetail`, `gh.BatchQuery.Detail`) through `App.prReader`, never a
+  view. `checkOutcome`/`mergeRefusal` in
   `prmerge.go` are the **canonical** version `actions.MergeRefusal` hand-ports
   for `internal/cli` — see `internal/actions/CLAUDE.md`'s duplication note,
   keep both wordings in sync on any change here.
@@ -92,6 +95,10 @@ directly; check each file, don't assume every one routes through `actions`.
   while the wizard, a form, a row prompt, or another load is in flight (would
   clobber what the user's mid-edit); **not** suspended by an open agent
   terminal — the plan behind the split stays live.
+- `prstate.go`'s reading is one `PRReader.ReadPRs` for every pull request
+  `actions.PRsWorthAsking` names (the Done slices' worktrees listed off the
+  event loop, through `newWorktrees`); merged or closed settles a slice, an
+  In progress one reading MERGED is `SettleMerged` off the reading.
 - `prstate.go` hands every slice a reading finds `PRChecksFailing` to
   `actions.NoticeFailingChecks` (the same call `nat pr-status` makes): a
   live agent is sent `agent.ChecksPrompt` and a `Sent back` filed, else a

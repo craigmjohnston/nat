@@ -81,7 +81,7 @@ struct WindowShellView: View {
         }
         .focusedSceneValue(\.shellMenu, ShellMenuActions(
             newProject: { appModel.openUntitledTab() },
-            refresh: { Task { await appModel.refresh() } }))
+            refresh: { Task { await appModel.refreshByHand() } }))
     }
 
     private var board: some View {

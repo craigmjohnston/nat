@@ -23,8 +23,8 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   wants to be shown. `internal/tui/toast.go` aliases it under its own name
   (`severity = actions.Severity`) rather than keeping a second enum, so a
   toast reads the same whichever key produced it.
-- `Launcher` (tmux), `Worktrees`/`Repo` (git), `PRCreator`/`PRViewer` (gh) are
-  each narrower interfaces than the real packages behind them — only the one
+- `Launcher` (tmux), `Worktrees`/`Repo` (git), `PRCreator` (gh) are each
+  narrower interfaces than the real packages behind them — only the one
   call each flow makes — so a test can drive the whole flow with fakes.
 
 ## Claim / launch (`claim.go`, `launch.go`, `worktrees.go`)
@@ -122,8 +122,16 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   `RecordPR` writes the URL only — the slice stays `In progress`.
 - `MarkDone` is the **only** function that writes Done, and always re-reads
   `Shape` first. `SettleMerged` (nat not running when a merge happened on
-  GitHub) and `ReopenUnmerged` (a legacy Done row whose PR is still open) are
-  both built on it — see root CLAUDE.md's `StateOf`/Done rules.
+  GitHub — it takes the batched reading's `gh.PRStatus` and acts on `State`
+  MERGED alone, asking gh nothing) and `ReopenUnmerged` (a legacy Done row
+  whose PR is still open) are both built on it — see root CLAUDE.md's
+  `StateOf`/Done rules.
+- `PRsWorthAsking(w, p, slices)` (`prreadings.go`) is what a batched reading
+  asks about, for `pr-status` and the board alike: every In progress slice
+  with a PR, and a Done one only while its `AgentBranch` has a worktree (one
+  `Worktrees.Branches` per repository; a failed listing asks about none of
+  its Done slices). `ListedOnce(w)` memoises `Branches` for one run, so the
+  decision and `SweepLanded` list each repository once between them.
 - `RemoveWorktree` treats "no worktree for this branch" as success (every
   sweep after the first), and a `git` refusal (dirty worktree, unreadable
   repo) as a logged no-op, never an error — the slice is Done regardless of

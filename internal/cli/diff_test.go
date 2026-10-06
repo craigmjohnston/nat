@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -155,9 +156,10 @@ func TestSliceDiffReadsADoneSlicesBranch(t *testing.T) {
 	}
 }
 
-// A slice whose pull request records a base is diffed against that base —
-// origin's copy of it, being the freshest ref that answers to the name —
-// rather than against the repository's default branch.
+// A slice whose pull request the last reading found a base for is diffed
+// against that base — origin's copy of it, being the freshest ref that
+// answers to the name — rather than against the repository's default
+// branch, and gh is never asked.
 func TestSliceDiffUsesThePullRequestsBase(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
@@ -168,7 +170,9 @@ func TestSliceDiffUsesThePullRequestsBase(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &fakeGitRunner{diffOut: sampleDiff, knownRefs: []string{"refs/remotes/origin/release"}}
 	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
-	env.NewGH = func() GH { return &fakePRBase{base: "release"} }
+	prs := &fakePRBase{base: "main"}
+	env.NewGH = func() GH { return prs }
+	keepBase(t, &env, "https://github.test/Craig/nat/pull/9/", "release")
 	var out strings.Builder
 	env.Out = &out
 
@@ -183,10 +187,22 @@ func TestSliceDiffUsesThePullRequestsBase(t *testing.T) {
 	if !slices.Equal(runner.diffArgs, want) {
 		t.Errorf("diff args = %v, want the merge base against origin/release", runner.diffArgs)
 	}
+	if prs.calls != 0 {
+		t.Errorf("gh was asked %d times, want none: the base is the last reading's", prs.calls)
+	}
 }
 
-// gh refusing to answer for the pull request is logged and the default
-// resolution stands: a diff against main beats no diff over a network error.
+// keepBase files base as the last reading's base of the pull request at url,
+// at a reading path of the test's own.
+func keepBase(t *testing.T, env *Env, url, base string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), lastReadingFileName)
+	env.ReadingPath = func() (string, error) { return path, nil }
+	env.saveLastReading(lastReading{Bases: map[string]string{gh.NormaliseURL(url): base}})
+}
+
+// A pull request no reading has reached yet is diffed against the default
+// branch: a diff against main beats no diff.
 func TestSliceDiffFallsBackWhenThePullRequestCannotBeRead(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
@@ -197,7 +213,6 @@ func TestSliceDiffFallsBackWhenThePullRequestCannotBeRead(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), api)
 	runner := &fakeGitRunner{diffOut: sampleDiff}
 	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
-	env.NewGH = func() GH { return &fakePRBase{err: errors.New("no network")} }
 	var out strings.Builder
 	env.Out = &out
 

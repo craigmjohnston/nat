@@ -495,19 +495,29 @@ public final class NatClient: Sendable {
         return try decodeJSON(PRDetail.self, from: output)
     }
 
-    /// The board's PR-readiness reading, taken headlessly
-    /// (`internal/cli/prstatus.go`): every slice whose pull request anything
-    /// might still be waiting on, and how close each is to landing — one gh
-    /// listing per repository the plan spans, so the cost is the number of
-    /// repositories rather than of pull requests.
+    /// The batched GitHub reading (`internal/cli/prstatus.go`): every open
+    /// project named at once, one GraphQL document behind it whatever their
+    /// number — each slice whose pull request anything might still be waiting
+    /// on and how close it is to landing, each project's ad hoc sessions'
+    /// branches, GitHub's remaining budget, and with `detail` that one pull
+    /// request in full, as `pr-view` prints it.
     ///
-    /// - Parameter projectID: The project's Notion page ID
-    /// - Returns: One reading per slice worth watching, in plan order
-    /// - Throws: NatError if nat itself fails (a repository gh could not
-    ///   answer for is not an error — its slices simply read "unread")
-    public func prStatus(projectID: String) async throws -> PRStatusDoc {
-        let output = try await runNat(arguments: ["pr-status", "--project", projectID, "--json"])
-        return try decodeJSON(PRStatusDoc.self, from: output)
+    /// - Parameters:
+    ///   - projectIDs: Every project to read, by Notion page ID — one or more
+    ///   - detail: A pull request URL to read in full, or nil
+    /// - Returns: Each project's reading by ID, the rate limit and the detail
+    /// - Throws: NatError if nat itself fails (a pull request GitHub could not
+    ///   answer for is not an error — its slice simply reads "unread")
+    public func prStatus(projectIDs: [String], detail: String? = nil) async throws -> GitHubReading {
+        var arguments = ["pr-status", "--json"]
+        for id in projectIDs { arguments += ["--project", id] }
+        if let detail { arguments += ["--detail", detail] }
+        let output = try await runNat(arguments: arguments)
+        do {
+            return try GitHubReading.decode(Data(output.utf8), projectIDs: projectIDs)
+        } catch {
+            throw NatError.invalidJSON(output, details: error.localizedDescription)
+        }
     }
 
     /// Merge a slice's recorded pull request, mirroring the PR screen's own

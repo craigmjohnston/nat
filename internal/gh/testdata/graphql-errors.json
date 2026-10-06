@@ -1,0 +1,25 @@
+{
+  "data": {
+    "rateLimit": { "limit": 5000, "remaining": 4206, "resetAt": "2026-10-06T13:00:00Z" },
+    "r0": {
+      "p0": null,
+      "p1": {
+        "number": 7,
+        "url": "https://github.com/craig/nat/pull/7",
+        "state": "OPEN",
+        "isDraft": false,
+        "mergedAt": null,
+        "reviewDecision": "",
+        "mergeable": "UNKNOWN",
+        "mergeStateStatus": "UNKNOWN",
+        "baseRefName": "main",
+        "lastCommit": { "nodes": [] }
+      }
+    },
+    "r1": null
+  },
+  "errors": [
+    { "type": "NOT_FOUND", "path": ["r0", "p0"], "message": "Could not resolve to a PullRequest with the number of 999." },
+    { "type": "NOT_FOUND", "path": ["r1"], "message": "Could not resolve to a Repository with the name 'craig/gone'." }
+  ]
+}

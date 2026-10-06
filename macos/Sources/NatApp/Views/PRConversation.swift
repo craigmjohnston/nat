@@ -336,9 +336,11 @@ struct ReviewersBlock: View {
         error = nil
         Task {
             do {
+                // nat answers an edit with what it did, not who could be asked
+                // now: whoever was just asked leaves the candidates here, and
+                // the settle read the edit asks for brings the rest.
                 if let answer = try await store.editReviewers(add: add, remove: remove) {
-                    candidates = answer.candidates
-                    candidatesError = answer.candidatesError
+                    candidates.removeAll { answer.added.contains($0) }
                 }
             } catch {
                 self.error = SliceActionTracker.message(for: error)

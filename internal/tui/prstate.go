@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"maps"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -15,11 +14,13 @@ import (
 
 // PRReader is what the board needs of the GitHub CLI to tell a pull request
 // still waiting on a reviewer from one the review is over on, and either from
-// one that has already landed. It is an interface for the reason [PRCreator]
-// is: the flow can then be driven without gh, without a network and without a
-// GitHub account.
+// one that has already landed: one batched reading ([gh.CLI.ReadPRs]) — the
+// same `nat pr-status` takes — which the pull request screen's poll reads its
+// one pull request in full through too. It is an interface for the reason
+// [PRCreator] is: the flow can then be driven without gh, without a network
+// and without a GitHub account.
 type PRReader interface {
-	OpenPRs(dir string) (map[string]gh.PRStatus, error)
+	ReadPRs(q gh.BatchQuery) (gh.Batch, error)
 }
 
 // The reader's edge, held as a variable so the tests can stand in for it: the
@@ -71,11 +72,12 @@ type prStateMsg struct {
 // plan's finished work would otherwise be re-read for as long as the board is
 // up.
 //
-// The reading is one listing per repository rather than one view per slice, so
-// what it costs is the number of repositories the plan spans rather than the
-// number of pull requests it has ever produced. One reading runs at a time —
-// see [App.prReading] — since a gh on a slow network can outlast the interval
-// it was started on.
+// The reading is one batched GraphQL document for every pull request worth
+// asking about ([actions.PRsWorthAsking] — a Done slice only while its
+// worktree is still there to settle), so what it costs is a point of GitHub's
+// budget a reading, however many pull requests and repositories the plan has.
+// One reading runs at a time — see [App.prReading] — since a gh on a slow
+// network can outlast the interval it was started on.
 func (a *App) refreshPRStates() tea.Cmd {
 	if a.prReader == nil || a.project == nil || a.prReading {
 		return nil
@@ -84,21 +86,13 @@ func (a *App) refreshPRStates() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	// The directories are kept in the order the plan first names them, so a
-	// reading runs the same way twice.
-	var dirs []string
-	reads := map[string][]domain.Slice{}
+	var candidates []domain.Slice
 	for _, s := range a.project.Slices {
-		if !worthReading(s) || a.prSettled[s.ID] {
-			continue
+		if worthReading(s) && !a.prSettled[s.ID] {
+			candidates = append(candidates, s)
 		}
-		dir := expandHome(strings.TrimSpace(workdirFor(s, project)))
-		if _, seen := reads[dir]; !seen {
-			dirs = append(dirs, dir)
-		}
-		reads[dir] = append(reads[dir], s)
 	}
-	if len(dirs) == 0 {
+	if len(candidates) == 0 {
 		return nil
 	}
 	st, _, ok := a.activeStore()
@@ -106,67 +100,82 @@ func (a *App) refreshPRStates() tea.Cmd {
 		return nil
 	}
 	a.prReading = true
-	reader, viewer := a.prReader, a.prViewer
+	reader := a.prReader
 	// The live sessions are copied here, on the event loop, since the reading
 	// runs off it and the board's own map is the loop's to change.
 	sender, live, projectID := a.checksSender(), maps.Clone(a.live), a.cfg.ActiveProjectID
 	return func() tea.Msg {
 		msg := prStateMsg{state: map[string]domain.PRReadiness{}, failing: map[string][]string{}}
-		var red []actions.FailingChecks
-		for _, dir := range dirs {
-			open, err := reader.OpenPRs(dir)
-			if err != nil {
-				// gh has logged the failure itself; this is the decision taken
-				// about it. Every slice of that repository is left out — nothing
-				// is read and, above all, nothing is settled: a listing that never
-				// happened must not be taken for a pull request that has landed.
-				logging.Action("left a repository's pull requests unread", "dir", dir, "error", err)
+		// Which Done slices still have a worktree is git's to say, so it is
+		// asked here, off the event loop.
+		var q gh.BatchQuery
+		asked := map[string]gh.PRRef{}
+		for _, s := range actions.PRsWorthAsking(newWorktrees(), project, candidates) {
+			ref, ok := gh.ParsePRURL(s.PRURL)
+			if !ok {
+				logging.Action("left a pull request unread: its URL names none", "slice", s.ID, "pr", s.PRURL)
 				continue
 			}
-			for _, s := range reads[dir] {
-				status, still := open[gh.NormaliseURL(s.PRURL)]
-				if !still {
-					// An in-progress slice whose pull request is absent is either
-					// merged — GitHub made the merge nat would have — or closed
-					// unmerged, which is work going round again; the pull
-					// request's own reading tells them apart, and a merged one
-					// marks the slice Done here, since nothing else witnessed it.
-					// A reading that failed settles nothing: the next pass asks
-					// again rather than watching an answer nobody has.
-					if s.Status == domain.SliceClaimed && viewer != nil {
-						done, err := actions.SettleMerged(context.Background(), st, viewer, s, dir)
-						if err != nil {
-							logging.Action("left an absent pull request unsettled", "slice", s.ID, "error", err)
-							continue
-						}
-						if done {
-							msg.marked = append(msg.marked, s.ID)
-						}
-					}
-					msg.settled = append(msg.settled, s.ID)
-					continue
-				}
-				msg.state[s.ID] = readinessOf(status)
-				if msg.state[s.ID] == domain.PRChecksFailing {
-					red = append(red, actions.FailingChecks{Slice: s, Failing: status.Failing})
-					for _, c := range status.Failing {
-						msg.failing[s.ID] = append(msg.failing[s.ID], c.Name)
-					}
-				}
-				if s.Status == domain.SliceDone {
-					// A Done slice whose pull request reads open is Notion's
-					// word disagreeing with the work: Done was written at
-					// approve, under the old rule, rather than at a merge
-					// that has not happened. Writing it back to In progress
-					// is the un-done rule — the mirror of the settle branch
-					// above — and what lets every other reading of the page
-					// trust Done to mean merged from here on.
-					if err := actions.ReopenUnmerged(context.Background(), st, s); err != nil {
-						logging.Action("left a Done slice with an open pull request unreopened", "slice", s.ID, "error", err)
+			asked[s.ID] = ref
+			q.PRs = append(q.PRs, ref)
+		}
+		if len(q.PRs) == 0 {
+			return msg
+		}
+		batch, err := reader.ReadPRs(q)
+		if err != nil {
+			// gh has logged each failed document; this is the decision taken
+			// about it. What a failed document asked about is absent below, and
+			// absent concludes nothing — above all, settles nothing: a reading
+			// that never happened must not be taken for a pull request landed.
+			logging.Action("read the pull requests in part", "error", err)
+		}
+		var red []actions.FailingChecks
+		for _, s := range candidates {
+			ref, isAsked := asked[s.ID]
+			pr, read := batch.PRs[ref]
+			if !isAsked || !read {
+				continue
+			}
+			status := gh.StatusOf(pr)
+			if status.State == gh.PRStateMerged || status.State == gh.PRStateClosed {
+				// Merged — GitHub made the merge nat would have — or closed,
+				// which is work going round again. A merged in-progress slice
+				// is marked Done here, since nothing else witnessed it; either
+				// way the answer cannot change, so the slice is settled.
+				if s.Status == domain.SliceClaimed {
+					done, err := actions.SettleMerged(context.Background(), st, s, status)
+					if err != nil {
+						logging.Action("left a merged pull request unsettled", "slice", s.ID, "error", err)
 						continue
 					}
-					msg.reopened = append(msg.reopened, s.ID)
+					if done {
+						msg.marked = append(msg.marked, s.ID)
+					}
 				}
+				msg.settled = append(msg.settled, s.ID)
+				continue
+			}
+			msg.state[s.ID] = readinessOf(status)
+			if msg.state[s.ID] == domain.PRChecksFailing {
+				red = append(red, actions.FailingChecks{Slice: s, Failing: status.Failing})
+				for _, c := range status.Failing {
+					msg.failing[s.ID] = append(msg.failing[s.ID], c.Name)
+				}
+			}
+			if s.Status == domain.SliceDone {
+				// A Done slice whose pull request reads open is Notion's
+				// word disagreeing with the work: Done was written at
+				// approve, under the old rule, rather than at a merge
+				// that has not happened. Writing it back to In progress
+				// is the un-done rule — the mirror of the settle branch
+				// above — and what lets every other reading of the page
+				// trust Done to mean merged from here on.
+				if err := actions.ReopenUnmerged(context.Background(), st, s); err != nil {
+					logging.Action("left a Done slice with an open pull request unreopened", "slice", s.ID, "error", err)
+					continue
+				}
+				msg.reopened = append(msg.reopened, s.ID)
 			}
 		}
 		// What the reading found red is told to the agent on it, or put on the

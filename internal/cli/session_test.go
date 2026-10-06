@@ -118,6 +118,8 @@ type fakeSessionRepo struct {
 	diffFromCalls        []string
 	diffWorkingTreeCalls int
 	diffWorkingTreeErr   error
+	remote               string
+	remoteErr            error
 }
 
 func (f *fakeSessionRepo) Fetch(dir string)                                    { f.fetched = append(f.fetched, dir) }
@@ -138,12 +140,13 @@ func (f *fakeSessionRepo) DiffWorkingTreeFrom(dir, baseName string) (string, str
 func (f *fakeSessionRepo) CommitsFrom(dir, baseName, branch string) (string, []git.Commit, error) {
 	return "", nil, nil
 }
-func (f *fakeSessionRepo) CommitDiff(dir, sha string) (string, error) { return "", nil }
+func (f *fakeSessionRepo) CommitDiff(dir, sha string) (string, error)      { return "", nil }
 func (f *fakeSessionRepo) Show(dir, branch, path string) ([]string, error) { return nil, nil }
 func (f *fakeSessionRepo) CurrentBranch(dir string) (string, error) {
 	return f.currentBranch, f.currentErr
 }
 func (f *fakeSessionRepo) ReflogBranches(dir string) ([]string, error) { return f.reflog, f.reflogErr }
+func (f *fakeSessionRepo) RemoteURL(dir string) (string, error)        { return f.remote, f.remoteErr }
 func (f *fakeSessionRepo) ConflictsWithBase(dir, branch string) git.MergeState {
 	return git.MergeUnknown
 }
@@ -250,30 +253,46 @@ func TestSessionLaunchRefusesAMissingDirectory(t *testing.T) {
 	}
 }
 
-// fakeSessionGH stands in for gh's pull request reads across the session
-// commands: OpenPRs/CreatePR/MergePR/CommentPR are stubbed since none of
-// them are ever called by session-list/-status.
+// fakeSessionGH is what the last batched reading found of the session
+// commands' branches: each branch's pull requests, and the branches whose
+// read failed — which a reading leaves out, so the commands read them stale.
 type fakeSessionGH struct {
-	noActions
 	byBranch map[string][]gh.HeadPR
 	err      map[string]error
-	calls    []string
 }
 
-func (f *fakeSessionGH) ListPRsForHead(dir, branch string) ([]gh.HeadPR, error) {
-	f.calls = append(f.calls, branch)
-	if err := f.err[branch]; err != nil {
-		return nil, err
+// keepSessionReading files reading as the last batched reading of every
+// session the project has — what pr-status would have kept — at a reading
+// path of the test's own, so session-list and session-status read it back.
+func keepSessionReading(t *testing.T, env *Env, reading *fakeSessionGH) {
+	t.Helper()
+	ctx := context.Background()
+	_, projectID, project, err := env.projectFor("project-1")
+	if err != nil {
+		t.Fatalf("projectFor: %v", err)
 	}
-	return f.byBranch[branch], nil
+	st, err := env.storeFor(ctx, projectID, project)
+	if err != nil {
+		t.Fatalf("storeFor: %v", err)
+	}
+	sessions, err := st.Sessions(ctx, storeProject(projectID, project))
+	if err != nil {
+		t.Fatalf("Sessions: %v", err)
+	}
+	kept := lastReading{Bases: map[string]string{}, Sessions: map[string]map[string][]headPRJSON{}}
+	for _, sess := range sessions {
+		branches := map[string][]headPRJSON{}
+		for b, prs := range reading.byBranch {
+			if reading.err[b] == nil {
+				branches[b] = headPRsJSON(prs)
+			}
+		}
+		kept.Sessions[sess.ID] = branches
+	}
+	path := filepath.Join(t.TempDir(), lastReadingFileName)
+	env.ReadingPath = func() (string, error) { return path, nil }
+	env.saveLastReading(kept)
 }
-func (f *fakeSessionGH) CreatePR(dir, branch, title, body string) (string, error) { return "", nil }
-func (f *fakeSessionGH) MergePR(dir, ref string) error                            { return nil }
-func (f *fakeSessionGH) CommentPR(dir, ref, body string) (string, error)          { return "", nil }
-func (f *fakeSessionGH) OpenPRs(dir string) (map[string]gh.PRStatus, error)       { return nil, nil }
-func (f *fakeSessionGH) ViewPR(dir, ref string) (gh.PR, error)                    { return gh.PR{}, nil }
-
-var _ GH = (*fakeSessionGH)(nil)
 
 // launchOneSession is the shared setup for session-list/-status/-diff tests:
 // a session already filed against the project, with no live tmux and no
@@ -304,7 +323,7 @@ func TestSessionListReportsLiveAndPullRequests(t *testing.T) {
 
 	tmuxRunner := &agentTestRunner{liveSessions: map[string]string{agent.SessionTag("project-1", id): "nat-session-abcd1234"}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(tmuxRunner) }
-	env.NewGH = func() GH { return &fakeSessionGH{} }
+	keepSessionReading(t, &env, &fakeSessionGH{})
 	var out strings.Builder
 	env.Out = &out
 
@@ -344,7 +363,7 @@ func TestSessionStatusReportsPullRequestsFromEveryBranch(t *testing.T) {
 		"session/one": {{Number: 1, Title: "First", State: "MERGED", URL: "https://github.test/x/y/pull/1"}},
 		"session/two": {{Number: 2, Title: "Second", State: "OPEN", URL: "https://github.test/x/y/pull/2"}},
 	}}
-	env.NewGH = func() GH { return ghCLI }
+	keepSessionReading(t, &env, ghCLI)
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	env.NewWorktrees = func() actions.Worktrees { return &fakeSessionWorktrees{} }
 	var out strings.Builder
@@ -388,7 +407,7 @@ func TestSessionStatusEndsOnceEveryPRIsMerged(t *testing.T) {
 	ghCLI := &fakeSessionGH{byBranch: map[string][]gh.HeadPR{
 		"session/one": {{Number: 1, Title: "First", State: "MERGED"}},
 	}}
-	env.NewGH = func() GH { return ghCLI }
+	keepSessionReading(t, &env, ghCLI)
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	worktrees := &fakeSessionWorktrees{}
 	worktrees.existingPath = "/repo.worktrees/session-one"
@@ -551,7 +570,7 @@ func TestSessionListMarkdown(t *testing.T) {
 	dir := t.TempDir()
 	launchOneSession(t, env, dir, "")
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
-	env.NewGH = func() GH { return &fakeSessionGH{} }
+	keepSessionReading(t, &env, &fakeSessionGH{})
 	var out strings.Builder
 	env.Out = &out
 
@@ -589,7 +608,7 @@ func TestSessionListReportsAStaleReadRatherThanNone(t *testing.T) {
 	seedSession(t, env, dir, "session/one")
 
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
-	env.NewGH = func() GH { return &fakeSessionGH{err: map[string]error{"session/one": errListFailed}} }
+	keepSessionReading(t, &env, &fakeSessionGH{err: map[string]error{"session/one": errListFailed}})
 	var out strings.Builder
 	env.Out = &out
 	if err := Run(context.Background(), []string{
@@ -629,15 +648,13 @@ func TestSessionListReportsPullRequestsFromEveryBranch(t *testing.T) {
 	env.NewGit = func() GitCLI {
 		return &fakeSessionRepo{currentBranch: "session/two", reflog: []string{"session/one", "session/two", "session/three"}}
 	}
-	env.NewGH = func() GH {
-		return &fakeSessionGH{
-			byBranch: map[string][]gh.HeadPR{
-				"session/one": {{Number: 1, Title: "First", State: "MERGED", URL: "https://github.test/x/y/pull/1"}},
-				"session/two": {{Number: 2, Title: "Second", State: "OPEN", URL: "https://github.test/x/y/pull/2"}},
-			},
-			err: map[string]error{"session/three": errListFailed},
-		}
-	}
+	keepSessionReading(t, &env, &fakeSessionGH{
+		byBranch: map[string][]gh.HeadPR{
+			"session/one": {{Number: 1, Title: "First", State: "MERGED", URL: "https://github.test/x/y/pull/1"}},
+			"session/two": {{Number: 2, Title: "Second", State: "OPEN", URL: "https://github.test/x/y/pull/2"}},
+		},
+		err: map[string]error{"session/three": errListFailed},
+	})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	var out strings.Builder
 	env.Out = &out
@@ -665,11 +682,9 @@ func TestSessionStatusMarkdown(t *testing.T) {
 	id := launchOneSession(t, env, dir, "")
 
 	env.NewGit = func() GitCLI { return &fakeSessionRepo{currentBranch: "session/one"} }
-	env.NewGH = func() GH {
-		return &fakeSessionGH{byBranch: map[string][]gh.HeadPR{
-			"session/one": {{Number: 1, Title: "First", State: "OPEN", URL: "https://github.test/x/y/pull/1"}},
-		}}
-	}
+	keepSessionReading(t, &env, &fakeSessionGH{byBranch: map[string][]gh.HeadPR{
+		"session/one": {{Number: 1, Title: "First", State: "OPEN", URL: "https://github.test/x/y/pull/1"}},
+	}})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	env.NewWorktrees = func() actions.Worktrees { return &fakeSessionWorktrees{} }
 	var out strings.Builder
@@ -697,9 +712,7 @@ func TestSessionStatusMarkdownStaleAndEmptyBranches(t *testing.T) {
 
 	gitCLI := &fakeSessionRepo{currentBranch: "session/one", reflog: []string{"session/one", "session/two"}}
 	env.NewGit = func() GitCLI { return gitCLI }
-	env.NewGH = func() GH {
-		return &fakeSessionGH{err: map[string]error{"session/one": errListFailed}}
-	}
+	keepSessionReading(t, &env, &fakeSessionGH{byBranch: map[string][]gh.HeadPR{"session/two": nil}, err: map[string]error{"session/one": errListFailed}})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	var out strings.Builder
 	env.Out = &out
@@ -724,7 +737,7 @@ func TestSessionStatusLiveAndGoneStates(t *testing.T) {
 	dir := t.TempDir()
 	id := launchOneSession(t, env, dir, "")
 	env.NewGit = func() GitCLI { return &fakeSessionRepo{} }
-	env.NewGH = func() GH { return &fakeSessionGH{} }
+	keepSessionReading(t, &env, &fakeSessionGH{})
 
 	tag := agent.SessionTag("project-1", id)
 	env.NewTmux = func() *agent.Tmux {
@@ -758,11 +771,9 @@ func TestSessionStatusDiscardEndsAnIdleSession(t *testing.T) {
 	id := launchOneSession(t, env, dir, "")
 
 	env.NewGit = func() GitCLI { return &fakeSessionRepo{currentBranch: "session/one"} }
-	env.NewGH = func() GH {
-		return &fakeSessionGH{byBranch: map[string][]gh.HeadPR{
-			"session/one": {{Number: 1, Title: "First", State: "CLOSED"}},
-		}}
-	}
+	keepSessionReading(t, &env, &fakeSessionGH{byBranch: map[string][]gh.HeadPR{
+		"session/one": {{Number: 1, Title: "First", State: "CLOSED"}},
+	}})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	worktrees := &fakeSessionWorktrees{existingPath: "/repo.worktrees/session-one"}
 	env.NewWorktrees = func() actions.Worktrees { return worktrees }
@@ -793,7 +804,7 @@ func TestSessionStatusDiscardNeverEndsALiveSession(t *testing.T) {
 	id := launchOneSession(t, env, dir, "")
 
 	env.NewGit = func() GitCLI { return &fakeSessionRepo{} }
-	env.NewGH = func() GH { return &fakeSessionGH{} }
+	keepSessionReading(t, &env, &fakeSessionGH{})
 	tag := agent.SessionTag("project-1", id)
 	env.NewTmux = func() *agent.Tmux {
 		return agent.NewTmuxWithRunner(&agentTestRunner{liveSessions: map[string]string{tag: "nat-session-abcd1234"}})
@@ -824,12 +835,10 @@ func TestSessionStatusNeverEndsOnAPartialRead(t *testing.T) {
 
 	gitCLI := &fakeSessionRepo{currentBranch: "session/one", reflog: []string{"session/one", "session/two"}}
 	env.NewGit = func() GitCLI { return gitCLI }
-	env.NewGH = func() GH {
-		return &fakeSessionGH{
-			byBranch: map[string][]gh.HeadPR{"session/one": {{Number: 1, State: "MERGED"}}},
-			err:      map[string]error{"session/two": errListFailed},
-		}
-	}
+	keepSessionReading(t, &env, &fakeSessionGH{
+		byBranch: map[string][]gh.HeadPR{"session/one": {{Number: 1, State: "MERGED"}}},
+		err:      map[string]error{"session/two": errListFailed},
+	})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	var out strings.Builder
 	env.Out = &out

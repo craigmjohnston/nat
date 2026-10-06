@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
@@ -17,21 +19,22 @@ import (
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
-// fakePRReader stands in for gh's own PR listing, answered by directory —
-// one entry per repository the plan spans, exactly as [PRReader.OpenPRs] does
-// — and for the per-pull-request reading pr-status settles an absent one by.
+// fakePRReader stands in for gh's batched reading: it answers each pull
+// request asked about by its URL in prs, each branch by name in heads, the
+// detail with detail, and records every query — or fails the whole reading
+// with err. A URL not in prs is one the reading did not find: unread.
 type fakePRReader struct {
 	noActions
-	open  map[string]map[string]gh.PRStatus
-	err   map[string]error
-	dirs  []string
-	calls int
+	prs     map[string]gh.PR
+	heads   map[string][]gh.HeadPR
+	detail  *gh.PR
+	rate    *gh.RateLimit
+	err     error
+	queries []gh.BatchQuery
+	calls   int
 
-	// view answers ViewPR by ref, viewErr fails it, viewed records what was
-	// asked about — the settling of an absent pull request.
-	view    map[string]gh.PR
-	viewErr error
-	viewed  []string
+	// viewed records every ViewPR — which nothing pr-status does may make.
+	viewed []string
 
 	// logs answers FailedLog by job (or run, where no job is named), logErr
 	// fails it, logged records what was asked for.
@@ -40,6 +43,44 @@ type fakePRReader struct {
 	logged []string
 	// comments answers ReviewComments, the review a launch on a pull request gathers.
 	comments string
+}
+
+func (f *fakePRReader) ReadPRs(q gh.BatchQuery) (gh.Batch, error) {
+	f.calls++
+	f.queries = append(f.queries, q)
+	batch := gh.Batch{PRs: map[gh.PRRef]gh.PR{}, Heads: map[gh.HeadRef][]gh.HeadPR{}, RateLimit: f.rate}
+	if f.err != nil {
+		return gh.Batch{}, f.err
+	}
+	for url, pr := range f.prs {
+		ref, _ := gh.ParsePRURL(url)
+		if slices.Contains(q.PRs, ref) {
+			batch.PRs[ref] = pr
+		}
+	}
+	for _, h := range q.Heads {
+		if prs, ok := f.heads[h.Branch]; ok {
+			batch.Heads[h] = prs
+		}
+	}
+	if q.Detail != nil && f.detail != nil {
+		d := *f.detail
+		batch.Detail = &d
+	}
+	return batch, nil
+}
+
+// openPR is an open pull request as the reading decodes one: approved or not,
+// mergeable or not, with checks.
+func openPR(approved, mergeable bool, checks ...gh.Check) gh.PR {
+	pr := gh.PR{State: "OPEN", BaseRefName: "main", Checks: checks}
+	if approved {
+		pr.ReviewDecision = "APPROVED"
+	}
+	if mergeable {
+		pr.Mergeable = "MERGEABLE"
+	}
+	return pr
 }
 
 func (f *fakePRReader) FailedLog(dir string, ref gh.ActionsRef) (string, error) {
@@ -57,21 +98,9 @@ func (f *fakePRReader) FailedLog(dir string, ref gh.ActionsRef) (string, error) 
 func (f *fakePRReader) ReviewComments(dir, ref string) (string, error) { return f.comments, nil }
 func (f *fakePRReader) Checks(dir, ref string) (string, error)         { return "", nil }
 
-func (f *fakePRReader) OpenPRs(dir string) (map[string]gh.PRStatus, error) {
-	f.dirs = append(f.dirs, dir)
-	f.calls++
-	if err := f.err[dir]; err != nil {
-		return nil, err
-	}
-	return f.open[dir], nil
-}
-
 func (f *fakePRReader) ViewPR(dir, ref string) (gh.PR, error) {
 	f.viewed = append(f.viewed, ref)
-	if f.viewErr != nil {
-		return gh.PR{}, f.viewErr
-	}
-	return f.view[ref], nil
+	return gh.PR{}, errors.New("pr-status views no pull request")
 }
 
 // The rest of [GH] pr-status never calls; stubbed so *fakePRReader can stand
@@ -79,7 +108,18 @@ func (f *fakePRReader) ViewPR(dir, ref string) (gh.PR, error) {
 func (f *fakePRReader) CreatePR(dir, branch, title, body string) (string, error) { return "", nil }
 func (f *fakePRReader) MergePR(dir, ref string) error                            { return nil }
 func (f *fakePRReader) CommentPR(dir, ref, body string) (string, error)          { return "", nil }
-func (f *fakePRReader) ListPRsForHead(dir, branch string) ([]gh.HeadPR, error)   { return nil, nil }
+
+// withDoneWorktree gives env a worktree on the agent branch of each named
+// slice — what makes a Done slice worth asking about.
+func withDoneWorktree(env *Env, names ...string) *fakeSessionWorktrees {
+	var branches []string
+	for _, name := range names {
+		branches = append(branches, actions.SliceBranch(domain.Slice{Name: name}))
+	}
+	w := &fakeSessionWorktrees{branches: map[string][]string{"/tmp/nat": branches}}
+	env.NewWorktrees = func() actions.Worktrees { return w }
+	return w
+}
 
 func slicePageForStatus(id, name, status, milestone, pr string) notion.Page {
 	props := map[string]notion.PropertyValue{
@@ -101,19 +141,17 @@ func TestPRStatusReportsReadiness(t *testing.T) {
 		pages: map[string][]notion.Page{
 			"slices-ds": {
 				slicePageForStatus("s1", "Awaiting review", notion.SliceInProgress, "M1", "https://github.test/craig/nat/pull/1"),
-				slicePageForStatus("s2", "Ready to merge", notion.SliceDone, "M1", "https://github.test/craig/nat/pull/2"),
+				slicePageForStatus("s2", "Ready to merge", notion.SliceInProgress, "M1", "https://github.test/craig/nat/pull/2"),
 				slicePageForStatus("s3", "Landed", notion.SliceDone, "M1", "https://github.test/craig/nat/pull/3"),
 				slicePageForStatus("s4", "Not out yet", notion.SliceTodo, "M1", ""),
 			},
 		},
 	}
 	env, out := testEnv(testConfig(t), api)
-	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
-		"/tmp/nat": {
-			"https://github.test/craig/nat/pull/1": {Approved: false, Mergeable: true},
-			"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true},
-			// pull/3 is absent: gh no longer lists it as open, so it has landed.
-		},
+	reader := &fakePRReader{prs: map[string]gh.PR{
+		"https://github.test/craig/nat/pull/1": openPR(false, true),
+		"https://github.test/craig/nat/pull/2": openPR(true, true),
+		// pull/3 is Done with no worktree: not asked about at all.
 	}}
 	env.NewGH = func() GH { return reader }
 
@@ -122,7 +160,11 @@ func TestPRStatusReportsReadiness(t *testing.T) {
 		t.Fatalf("pr-status: %v", err)
 	}
 	if reader.calls != 1 {
-		t.Errorf("gh calls = %d, want one listing for the one repository", reader.calls)
+		t.Errorf("gh calls = %d, want one reading", reader.calls)
+	}
+	want := []gh.PRRef{{Owner: "craig", Repo: "nat", Number: 1}, {Owner: "craig", Repo: "nat", Number: 2}}
+	if !reflect.DeepEqual(reader.queries[0].PRs, want) {
+		t.Errorf("asked about %+v, want the two in progress and not the Done one with no worktree", reader.queries[0].PRs)
 	}
 	for _, want := range []string{
 		"Awaiting review — awaiting review — https://github.test/craig/nat/pull/1",
@@ -148,9 +190,7 @@ func TestPRStatusJSON(t *testing.T) {
 		},
 	}
 	env, out := testEnv(testConfig(t), api)
-	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
-		"/tmp/nat": {"https://github.test/craig/nat/pull/1": {Approved: false, Mergeable: false}},
-	}}
+	reader := &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/1": openPR(false, false)}}
 	env.NewGH = func() GH { return reader }
 
 	err := Run(context.Background(), []string{"pr-status", "--json", "--project", "project-1"}, env)
@@ -163,8 +203,8 @@ func TestPRStatusJSON(t *testing.T) {
 	}
 	want := prStatusDoc{Slices: []prStatusSliceJSON{
 		{SliceID: "s1", Name: "Awaiting review", PR: "https://github.test/craig/nat/pull/1", Readiness: "awaiting review",
-			Checks: &prChecksJSON{Verdict: "none", Failing: []prCheckJSON{}}},
-	}, Branches: []branchJSON{}}
+			Base: "main", Checks: &prChecksJSON{Verdict: "none", Failing: []prCheckJSON{}}},
+	}, Branches: []branchJSON{}, Sessions: []sessionPRsJSON{}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("json = %+v\nwant %+v", got, want)
 	}
@@ -192,7 +232,7 @@ func TestPRStatusNoSlicesWorthReading(t *testing.T) {
 	}
 }
 
-func TestPRStatusLeavesAnUnreadableRepositoryOut(t *testing.T) {
+func TestPRStatusLeavesAFailedReadingUnread(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
 			"slices-ds": {slicePageForStatus("s1", "Awaiting review", notion.SliceInProgress, "",
@@ -200,7 +240,7 @@ func TestPRStatusLeavesAnUnreadableRepositoryOut(t *testing.T) {
 		},
 	}
 	env, out := testEnv(testConfig(t), api)
-	reader := &fakePRReader{err: map[string]error{"/tmp/nat": errors.New("gh: not authenticated")}}
+	reader := &fakePRReader{err: errors.New("gh: not authenticated")}
 	env.NewGH = func() GH { return reader }
 
 	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
@@ -212,10 +252,10 @@ func TestPRStatusLeavesAnUnreadableRepositoryOut(t *testing.T) {
 	}
 }
 
-// An in-progress slice whose pull request the listing no longer names is
-// asked about directly, and one that merged is marked Done — with a nudge, so
-// a board watching the marker sees the change.
-func TestPRStatusMarksAMergedAbsentPRDone(t *testing.T) {
+// An in-progress slice whose pull request reads merged is marked Done — with
+// a nudge, so a board watching the marker sees the change — off the reading
+// itself, with no view of the pull request.
+func TestPRStatusMarksAMergedPRDone(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
 			"slices-ds": {slicePageForStatus("s1", "Merged on GitHub", notion.SliceInProgress, "",
@@ -225,18 +265,15 @@ func TestPRStatusMarksAMergedAbsentPRDone(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
-	reader := &fakePRReader{
-		open: map[string]map[string]gh.PRStatus{"/tmp/nat": {}},
-		view: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateMerged}},
-	}
+	reader := &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateMerged}}}
 	env.NewGH = func() GH { return reader }
 
 	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
 	if err != nil {
 		t.Fatalf("pr-status: %v", err)
 	}
-	if want := []string{"https://github.test/craig/nat/pull/7"}; !equalLines(reader.viewed, want) {
-		t.Errorf("viewed = %v, want the absent pull request asked about", reader.viewed)
+	if len(reader.viewed) != 0 {
+		t.Errorf("viewed = %v, want no pull request viewed", reader.viewed)
 	}
 	if len(api.updates) != 1 || api.updates[0].id != "s1" {
 		t.Fatalf("updates = %+v, want the slice marked Done", api.updates)
@@ -253,8 +290,9 @@ func TestPRStatusMarksAMergedAbsentPRDone(t *testing.T) {
 }
 
 // A slice Done under the old rule — at approve, rather than at the merge —
-// whose pull request the listing still names is written back to In progress:
-// the un-done rule, with a nudge like any other write this read makes.
+// whose worktree is still there and whose pull request reads open is written
+// back to In progress: the un-done rule, with a nudge like any other write
+// this read makes.
 func TestPRStatusReopensADoneSliceWithAnOpenPR(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
@@ -265,10 +303,9 @@ func TestPRStatusReopensADoneSliceWithAnOpenPR(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
-	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
-		"/tmp/nat": {"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true}},
-	}}
+	reader := &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/2": openPR(true, true)}}
 	env.NewGH = func() GH { return reader }
+	withDoneWorktree(&env, "Awaiting merge")
 
 	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
 	if err != nil {
@@ -306,10 +343,9 @@ func TestPRStatusReopensLocallyEvenWhenThePushFails(t *testing.T) {
 	env, out := testEnv(cfg, api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
-	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
-		"/tmp/nat": {"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true}},
-	}}
+	reader := &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/2": openPR(true, true)}}
 	env.NewGH = func() GH { return reader }
+	withDoneWorktree(&env, "Awaiting merge")
 
 	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
 	if err != nil {
@@ -344,9 +380,9 @@ func TestPRStatusReopensLocallyEvenWhenThePushFails(t *testing.T) {
 	}
 }
 
-// The other thing absence means: a pull request closed unmerged is work going
-// round again, and the slice is left exactly as it is — no write, no nudge.
-func TestPRStatusLeavesAClosedAbsentPRAlone(t *testing.T) {
+// A pull request closed unmerged is work going round again, and the slice is
+// left exactly as it is — no write, no nudge.
+func TestPRStatusLeavesAClosedPRAlone(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
 			"slices-ds": {slicePageForStatus("s1", "Closed unmerged", notion.SliceInProgress, "",
@@ -356,10 +392,7 @@ func TestPRStatusLeavesAClosedAbsentPRAlone(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
-	reader := &fakePRReader{
-		open: map[string]map[string]gh.PRStatus{"/tmp/nat": {}},
-		view: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateClosed}},
-	}
+	reader := &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateClosed}}}
 	env.NewGH = func() GH { return reader }
 
 	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
@@ -370,9 +403,9 @@ func TestPRStatusLeavesAClosedAbsentPRAlone(t *testing.T) {
 	}
 }
 
-// A reading that fails settles nothing: it is logged, the slice reads unread,
-// and the next run asks again.
-func TestPRStatusLeavesAnUnviewableAbsentPRAlone(t *testing.T) {
+// A pull request the reading did not find — GitHub could not resolve it —
+// settles nothing: the slice reads unread, and the next run asks again.
+func TestPRStatusLeavesAnUnresolvedPRAlone(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
 			"slices-ds": {slicePageForStatus("s1", "Unreadable", notion.SliceInProgress, "",
@@ -380,10 +413,7 @@ func TestPRStatusLeavesAnUnviewableAbsentPRAlone(t *testing.T) {
 		},
 	}
 	env, out := testEnv(testConfig(t), api)
-	reader := &fakePRReader{
-		open:    map[string]map[string]gh.PRStatus{"/tmp/nat": {}},
-		viewErr: errors.New("gh: not authenticated"),
-	}
+	reader := &fakePRReader{}
 	env.NewGH = func() GH { return reader }
 
 	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
@@ -397,7 +427,8 @@ func TestPRStatusLeavesAnUnviewableAbsentPRAlone(t *testing.T) {
 	}
 }
 
-func TestPRStatusGroupsRepositoriesBySliceRepo(t *testing.T) {
+// Two repositories are one reading.
+func TestPRStatusReadsEveryRepositoryAtOnce(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
 			"slices-ds": {
@@ -407,17 +438,17 @@ func TestPRStatusGroupsRepositoriesBySliceRepo(t *testing.T) {
 		},
 	}
 	env, _ := testEnv(testConfig(t), api)
-	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
-		"/repo/one": {"https://github.test/craig/nat/pull/1": {Approved: true, Mergeable: true}},
-		"/repo/two": {"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true}},
+	reader := &fakePRReader{prs: map[string]gh.PR{
+		"https://github.test/craig/nat/pull/1": openPR(true, true),
+		"https://github.test/craig/nat/pull/2": openPR(true, true),
 	}}
 	env.NewGH = func() GH { return reader }
 
 	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("pr-status: %v", err)
 	}
-	if reader.calls != 2 {
-		t.Errorf("gh calls = %d, want one listing per repository", reader.calls)
+	if reader.calls != 1 || len(reader.queries[0].PRs) != 2 {
+		t.Errorf("gh calls = %d (%+v), want one reading of both", reader.calls, reader.queries)
 	}
 }
 
@@ -472,10 +503,9 @@ func TestPRStatusLeavesADoneSliceAloneWhenItCannotBeReopenedLocally(t *testing.T
 	env, out := testEnv(cfg, &fakeAPI{})
 	var nudges int
 	env.Nudge = func() { nudges++ }
-	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
-		"/tmp/nat": {"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true}},
-	}}
+	reader := &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/2": openPR(true, true)}}
 	env.NewGH = func() GH { return reader }
+	withDoneWorktree(&env, "Awaiting merge")
 
 	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
 
@@ -558,13 +588,11 @@ func redStatusEnv(t *testing.T, runner *agentTestRunner) (Env, *fakeAPI, interfa
 		},
 	}
 	env, out := testEnv(testConfig(t), api)
-	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
-		"/tmp/nat": {
-			"https://github.test/craig/nat/pull/1": {Checks: gh.ChecksFailing, Failing: []gh.Check{
-				{Name: "test", State: "FAILURE", URL: "https://github.test/craig/nat/actions/runs/9/job/1"}}},
-			"https://github.test/craig/nat/pull/2": {Approved: true, Mergeable: true, Checks: gh.ChecksPassing},
-			"https://github.test/craig/nat/pull/3": {Checks: gh.ChecksPending},
-		},
+	reader := &fakePRReader{prs: map[string]gh.PR{
+		"https://github.test/craig/nat/pull/1": openPR(false, false,
+			gh.Check{Name: "test", State: "FAILURE", URL: "https://github.test/craig/nat/actions/runs/9/job/1"}),
+		"https://github.test/craig/nat/pull/2": openPR(true, true, gh.Check{Name: "test", State: "SUCCESS"}),
+		"https://github.test/craig/nat/pull/3": openPR(false, false, gh.Check{Name: "test", State: "IN_PROGRESS"}),
 	}}
 	env.NewGH = func() GH { return reader }
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
@@ -584,12 +612,12 @@ func TestPRStatusJSONReportsFailingChecks(t *testing.T) {
 	}
 	want := []prStatusSliceJSON{
 		{SliceID: "s1", Name: "Red", PR: "https://github.test/craig/nat/pull/1", Readiness: "checks failing",
-			Checks: &prChecksJSON{Verdict: "failing", Failing: []prCheckJSON{
+			Base: "main", Checks: &prChecksJSON{Verdict: "failing", Failing: []prCheckJSON{
 				{Name: "test", URL: "https://github.test/craig/nat/actions/runs/9/job/1"}}}},
 		{SliceID: "s2", Name: "Green", PR: "https://github.test/craig/nat/pull/2", Readiness: "ready to merge",
-			Checks: &prChecksJSON{Verdict: "passing", Failing: []prCheckJSON{}}},
+			Base: "main", Checks: &prChecksJSON{Verdict: "passing", Failing: []prCheckJSON{}}},
 		{SliceID: "s3", Name: "Pending", PR: "https://github.test/craig/nat/pull/3", Readiness: "awaiting review",
-			Checks: &prChecksJSON{Verdict: "pending", Failing: []prCheckJSON{}}},
+			Base: "main", Checks: &prChecksJSON{Verdict: "pending", Failing: []prCheckJSON{}}},
 	}
 	if !reflect.DeepEqual(got.Slices, want) {
 		t.Errorf("json = %+v\nwant %+v", got.Slices, want)
@@ -649,25 +677,31 @@ func TestPRStatusLeavesFailingChecksWhenTmuxIsUnread(t *testing.T) {
 	}
 }
 
-// listingRunner answers gh pr list with a fixed printout — gh's own output,
-// read by the real [gh.CLI].
-type listingRunner string
+// readingRunner answers gh api graphql with a fixed printout — GitHub's own
+// answer, read by the real [gh.CLI] — and records each document it was asked.
+type readingRunner struct {
+	out  string
+	docs []string
+}
 
-func (r listingRunner) Run(dir, name string, args ...string) (string, error) { return string(r), nil }
+func (r *readingRunner) Run(dir, name string, args ...string) (string, error) {
+	r.docs = append(r.docs, strings.TrimPrefix(args[len(args)-1], "query="))
+	return r.out, nil
+}
 
-// realListing is a fakePRReader whose listing is the real gh.CLI's reading
-// of real gh output, so pr-status is tested against the shapes gh prints.
-type realListing struct {
+// realReading is a fakePRReader whose reading is the real gh.CLI's of a real
+// GraphQL answer, so pr-status is tested against the shapes GitHub prints.
+type realReading struct {
 	*fakePRReader
 	cli gh.CLI
 }
 
-func (r realListing) OpenPRs(dir string) (map[string]gh.PRStatus, error) { return r.cli.OpenPRs(dir) }
+func (r realReading) ReadPRs(q gh.BatchQuery) (gh.Batch, error) { return r.cli.ReadPRs(q) }
 
 // TestPRStatusJSONConflicting pins the per-slice conflicting fact, exactly as
-// printed, from gh pr list's own output: CONFLICTING or a DIRTY merge state is
-// a conflict, MERGEABLE and UNKNOWN are not, and a slice the listing did not
-// name says false with no base.
+// printed, from GitHub's own answer: CONFLICTING or a DIRTY merge state is a
+// conflict, MERGEABLE and UNKNOWN are not, and a slice the reading did not ask
+// about says false with no base. The reading's rate limit rides along.
 func TestPRStatusJSONConflicting(t *testing.T) {
 	const pr = "https://github.test/craig/nat/pull/"
 	api := &fakeAPI{
@@ -683,14 +717,15 @@ func TestPRStatusJSONConflicting(t *testing.T) {
 		},
 	}
 	env, out := testEnv(testConfig(t), api)
-	env.NewGH = func() GH {
-		return realListing{fakePRReader: &fakePRReader{}, cli: gh.NewWithRunner(listingRunner(`[
-{"url":"` + pr + `1","reviewDecision":"","mergeable":"CONFLICTING","mergeStateStatus":"DIRTY","baseRefName":"main","statusCheckRollup":[]},
-{"url":"` + pr + `2","reviewDecision":"APPROVED","mergeable":"UNKNOWN","mergeStateStatus":"DIRTY","baseRefName":"main","statusCheckRollup":[]},
-{"url":"` + pr + `3","reviewDecision":"APPROVED","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","baseRefName":"main","statusCheckRollup":[]},
-{"url":"` + pr + `4","reviewDecision":"","mergeable":"UNKNOWN","mergeStateStatus":"UNKNOWN","baseRefName":"main","statusCheckRollup":[]}
-]`))}
+	node := func(alias, n, decision, mergeable, state string) string {
+		return `"` + alias + `":{"number":` + n + `,"url":"` + pr + n + `","state":"OPEN","reviewDecision":"` + decision +
+			`","mergeable":"` + mergeable + `","mergeStateStatus":"` + state + `","baseRefName":"main",` +
+			`"lastCommit":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}`
 	}
+	runner := &readingRunner{out: `{"data":{"rateLimit":{"limit":5000,"remaining":4990,"resetAt":"2026-10-06T13:00:00Z"},"r0":{` +
+		node("p0", "1", "", "CONFLICTING", "DIRTY") + `,` + node("p1", "2", "APPROVED", "UNKNOWN", "DIRTY") + `,` +
+		node("p2", "3", "APPROVED", "MERGEABLE", "CLEAN") + `,` + node("p3", "4", "", "UNKNOWN", "UNKNOWN") + `}}}`}
+	env.NewGH = func() GH { return realReading{fakePRReader: &fakePRReader{}, cli: gh.NewWithRunner(runner)} }
 
 	if err := Run(context.Background(), []string{"pr-status", "--json", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("pr-status --json: %v", err)
@@ -709,7 +744,7 @@ func TestPRStatusJSONConflicting(t *testing.T) {
 		entry("s3", "Clean", "3", "ready to merge", "false") + `,` +
 		entry("s4", "Unknown", "4", "awaiting review", "false") + `,` +
 		`{"slice_id":"s5","name":"Landed","pr":"` + pr + `5","readiness":"unread","conflicting":false}` +
-		`],"branches":[]}`
+		`],"branches":[],"sessions":[],"rate_limit":{"limit":5000,"remaining":4990,"reset_at":"2026-10-06T13:00:00Z"}}`
 	if compact.String() != want {
 		t.Errorf("json =\n%s\nwant\n%s", compact.String(), want)
 	}

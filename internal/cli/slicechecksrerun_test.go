@@ -24,6 +24,11 @@ func (noActions) CancelRun(string, gh.ActionsRef) error            { return nil 
 func (noActions) RerunRun(string, gh.ActionsRef, bool) error       { return nil }
 func (noActions) RerunJob(string, gh.ActionsRef) error             { return nil }
 
+// ReadPRs reads nothing: every pull request asked about is unread.
+func (noActions) ReadPRs(gh.BatchQuery) (gh.Batch, error) {
+	return gh.Batch{PRs: map[gh.PRRef]gh.PR{}, Heads: map[gh.HeadRef][]gh.HeadPR{}}, nil
+}
+
 // noSleep stands in for the poll's wait, counting the waits.
 func noSleep(t *testing.T) *int {
 	t.Helper()
@@ -70,6 +75,9 @@ func TestSliceChecksRerunAll(t *testing.T) {
 	want := "cancel o/r 11,status 11,status 11,rerun 11,rerun 12"
 	if got := strings.Join(fake.calls, ","); got != want {
 		t.Errorf("calls = %s, want %s", got, want)
+	}
+	if fake.views != 0 {
+		t.Errorf("viewed the pull request %d times, want none: the batched reading names the runs", fake.views)
 	}
 	if *slept != 1 || nudges != 1 {
 		t.Errorf("slept %d, nudged %d, want 1 and 1", *slept, nudges)
@@ -260,8 +268,8 @@ func TestSliceChecksCancel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("slice-checks-cancel: %v", err)
 	}
-	if got := strings.Join(fake.calls, ","); got != "cancel o/r 11,cancel x/y 50" || nudges != 1 {
-		t.Errorf("calls = %s, nudged %d", got, nudges)
+	if got := strings.Join(fake.calls, ","); got != "cancel o/r 11,cancel x/y 50" || nudges != 1 || fake.views != 0 {
+		t.Errorf("calls = %s, nudged %d, viewed %d, want no view", got, nudges, fake.views)
 	}
 	if want := "Cancelled: test, lint, e2e\nSkipped, no GitHub Actions run behind them: vercel\n"; out != want {
 		t.Errorf("output = %q, want %q", out, want)
