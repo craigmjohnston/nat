@@ -185,8 +185,8 @@ struct WindowShellView: View {
     private var selectionAgent: AgentStatus? {
         if appModel.activeTabIsUntitled && !appModel.untitledWorkshopVisible { return nil }
         if appModel.workshopSelected || appModel.untitledWorkshopVisible { return appModel.planningAgent }
-        if let session = selectedSession { return appModel.activityStore?.agents[session.tag] }
-        if let slice = selectedSlice { return appModel.activityStore?.agents[slice.id] }
+        if let session = selectedSession { return appModel.activityStore?.status(for: session.tag) }
+        if let slice = selectedSlice { return appModel.activityStore?.status(for: slice.id) }
         return nil
     }
 
@@ -332,7 +332,7 @@ struct WindowShellView: View {
     private var navigatorModel: NavigatorModel? {
         selectedSlice.map { slice in
             NavigatorModel(
-                slice: slice, agent: appModel.activityStore?.agents[slice.id].map { AgentActivity($0.activity) },
+                slice: slice, agent: appModel.activityStore?.status(for: slice.id).map { AgentActivity($0.activity) },
                 hasVisuals: !(appModel.sliceDetailStore(projectID: appModel.projectStore?.projectID ?? "")
                     .state(for: slice.id).detail?.visuals.isEmpty ?? true))
         }
@@ -358,7 +358,7 @@ struct WindowShellView: View {
     /// live; once it has exited, its pull request's section and conversation,
     /// or with none its diff.
     private var sessionLive: Bool {
-        selectedSession.map { appModel.activityStore?.agents[$0.tag] != nil } ?? false
+        selectedSession.map { appModel.activityStore?.status(for: $0.tag) != nil } ?? false
     }
 
     private var defaultOpen: Set<NavigatorSection> {

@@ -180,7 +180,13 @@ running agent's state.
   refuses (`ErrNotAgentPane`) a pane with no `@nat_slice` tag, read back with
   `display-message` by pane ID *and* tag — tmux answers one aimed at a
   missing pane with an empty line, not an error. The flag lives on the pane
-  alone, so a relaunch starts clear. It's a poll with no timer of its own;
+  alone, so a relaunch starts clear. **A send clears it**: `SendPrompt`,
+  once its keys have gone, reads the session's panes (`list-panes -s`) and
+  runs `SetWaiting(pane, false)` on a tagged pane that is waiting — an agent
+  just told something is no longer waiting on the user, and every sender
+  (`agent-send`, triage, notes, plan-accept, the checks nudge) goes through
+  it. A pane not waiting is left alone; a failed clear is logged, never the
+  send's error. `SendKeys`/`Interrupt` leave it: an interrupt answers nothing. It's a poll with no timer of its own;
   the caller decides cadence.
 - `SendPrompt` delivers text to a running agent through a **paste buffer**
   (`set-buffer` then `paste-buffer -d -p`), never `send-keys`'s literal mode

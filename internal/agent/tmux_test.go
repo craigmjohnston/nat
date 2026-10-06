@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/logging"
 )
 
 // call is one invocation recorded by fakeRunner.
@@ -1207,14 +1208,15 @@ func TestSendPrompt(t *testing.T) {
 	if err := NewTmuxWithRunner(runner).SendPrompt(session, text); err != nil {
 		t.Fatalf("SendPrompt: %v", err)
 	}
-	if len(runner.calls) != 3 {
-		t.Fatalf("calls = %v, want a set-buffer, a paste-buffer and a send-keys", runner.calls)
+	if len(runner.calls) != 4 {
+		t.Fatalf("calls = %v, want a set-buffer, a paste-buffer, a send-keys and a pane read", runner.calls)
 	}
 	buffer := promptBuffer(session)
 	want := [][]string{
 		{"-u", "set-buffer", "-b", buffer, "--", text},
 		{"-u", "paste-buffer", "-d", "-p", "-b", buffer, "-t", session},
 		{"-u", "send-keys", "-t", session, "Enter"},
+		{"-u", "list-panes", "-s", "-t", session, "-F", listPanesFormat()},
 	}
 	for i, args := range want {
 		if runner.calls[i].name != TmuxBinary || !slices.Equal(runner.calls[i].args, args) {
@@ -1251,6 +1253,89 @@ func TestSendPromptFailures(t *testing.T) {
 				t.Errorf("last call = %v, want the staged buffer deleted", last.args)
 			}
 		})
+	}
+}
+
+// A prompt sent to an agent that said it was waiting answers it: once the keys
+// have gone, the session's agent pane has its waiting flag taken off — and a
+// pane in the session nat did not tag is left alone however it is flagged.
+func TestSendPromptClearsTheWaitingFlag(t *testing.T) {
+	waiting := agentApart
+	waiting.waiting = true
+	untagged := pane{id: "%2", session: agentApart.session, window: "@1", waiting: true}
+	runner := &fakeRunner{outs: map[string]string{
+		"list-panes":      panesOutput(untagged, waiting),
+		"display-message": waiting.id + "\t" + waiting.slice + "\n",
+	}}
+	if err := NewTmuxWithRunner(runner).SendPrompt(agentApart.session, "go on"); err != nil {
+		t.Fatalf("SendPrompt: %v", err)
+	}
+	got := runner.calls[3:]
+	want := []call{
+		{name: TmuxBinary, args: []string{"-u", "list-panes", "-s", "-t", agentApart.session, "-F", listPanesFormat()}},
+		{name: TmuxBinary, args: []string{"-u", "display-message", "-p", "-t", waiting.id, "#{pane_id}\t#{@nat_slice}"}},
+		{name: TmuxBinary, args: []string{"-u", "set-option", "-p", "-u", "-t", waiting.id, WaitingPaneOption}},
+	}
+	if !slices.EqualFunc(got, want, func(a, b call) bool { return a.name == b.name && slices.Equal(a.args, b.args) }) {
+		t.Errorf("calls after the send = %v, want %v", got, want)
+	}
+}
+
+// A send to an agent that was not waiting touches no option at all.
+func TestSendPromptLeavesAWorkingPaneAlone(t *testing.T) {
+	runner := &fakeRunner{outs: map[string]string{"list-panes": panesOutput(agentApart)}}
+	if err := NewTmuxWithRunner(runner).SendPrompt(agentApart.session, "go on"); err != nil {
+		t.Fatalf("SendPrompt: %v", err)
+	}
+	for _, c := range runner.calls {
+		if c.args[1] == "set-option" || c.args[1] == "display-message" {
+			t.Errorf("call %v, want no option touched on a pane not waiting", c.args)
+		}
+	}
+}
+
+// A flag that cannot be cleared — the pane read or the unset failing — is
+// logged and never fails a send whose keys have already gone.
+func TestSendPromptSucceedsWhenTheFlagCannotBeCleared(t *testing.T) {
+	waiting := agentApart
+	waiting.waiting = true
+	boom := errors.New("boom")
+	for name, runner := range map[string]*fakeRunner{
+		"pane read": {errs: map[string]error{"list-panes": boom}},
+		"unset": {outs: map[string]string{
+			"list-panes":      panesOutput(waiting),
+			"display-message": waiting.id + "\t" + waiting.slice + "\n",
+		}, errs: map[string]error{"set-option": boom}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			read := logTo(t)
+			if err := NewTmuxWithRunner(runner).SendPrompt(agentApart.session, "go on"); err != nil {
+				t.Fatalf("SendPrompt: %v, want the send to stand", err)
+			}
+			if log := read(); !strings.Contains(log, "waiting flag") || !strings.Contains(log, "boom") {
+				t.Errorf("log = %q, want the failed clear logged", log)
+			}
+		})
+	}
+}
+
+// logTo points the log at a file of the test's own and returns a func reading
+// back what was written to it.
+func logTo(t *testing.T) func() string {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", "")
+	path, err := logging.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logging.Close() })
+	return func() string {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
 	}
 }
 

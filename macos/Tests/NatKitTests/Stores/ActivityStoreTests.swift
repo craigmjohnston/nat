@@ -406,6 +406,115 @@ final class ActivityStoreTests: XCTestCase {
         try await Task.sleep(nanoseconds: 2_500_000_000)
         XCTAssertEqual(client.callCount, 1)
     }
+
+    // MARK: - Expectations
+
+    private static let waiting = AgentStatus(
+        sliceID: "slice-1", session: "nat-abc123", activity: .waiting, model: "opus", contextPercent: 12)
+    private static let working = AgentStatus(sliceID: "slice-1", session: "nat-abc123", activity: .working)
+
+    @MainActor
+    func testAnExpectationTurnsAWaitingReadingWorking() async throws {
+        let client = MockActivityClient(response: .agents([Self.waiting]))
+        let store = ActivityStore(client: client)
+        defer { store.stop() }
+        store.kick()
+        try await waitUntil { store.hasRead }
+        XCTAssertEqual(store.activity(for: "slice-1"), .waiting)
+
+        store.expectWorking("slice-1")
+
+        XCTAssertEqual(store.activity(for: "slice-1"), .working)
+        XCTAssertEqual(store.status(for: "slice-1")?.model, "opus", "the rest of the reading is kept")
+        XCTAssertEqual(store.status(for: "slice-1")?.contextPercent, 12)
+        XCTAssertEqual(store.displayedAgents["slice-1"]?.activity, .working)
+        XCTAssertEqual(store.agents["slice-1"]?.activity, .waiting, "the reading itself is untouched")
+    }
+
+    @MainActor
+    func testAReadingOfWorkingDropsTheExpectation() async throws {
+        let client = SequencedActivityClient([.agents([Self.waiting]), .agents([Self.working])])
+        let store = ActivityStore(client: client)
+        defer { store.stop() }
+        store.kick()
+        try await waitUntil { client.callCount == 1 }
+        store.expectWorking("slice-1")
+
+        store.reread()
+        try await waitUntil { client.callCount == 2 }
+        try await waitUntil { store.expectations.isEmpty }
+
+        XCTAssertEqual(store.activity(for: "slice-1"), .working)
+    }
+
+    @MainActor
+    func testAReadingOfWaitingKeepsTheExpectationUntilTheTTL() async throws {
+        let clock = TestClock(Date(timeIntervalSince1970: 1_000))
+        let client = MockActivityClient(response: .agents([Self.waiting]))
+        let store = ActivityStore(client: client, now: { clock.now }, expectationTTL: 15)
+        defer { store.stop() }
+        store.kick()
+        try await waitUntil { client.callCount == 1 }
+        store.expectWorking("slice-1")
+
+        clock.now = clock.now.addingTimeInterval(10)
+        store.reread()
+        try await waitUntil { client.callCount == 2 }
+        XCTAssertEqual(store.expectations.keys.sorted(), ["slice-1"])
+        XCTAssertEqual(store.activity(for: "slice-1"), .working)
+
+        clock.now = clock.now.addingTimeInterval(6)
+        XCTAssertEqual(store.activity(for: "slice-1"), .waiting, "an expired expectation draws nothing")
+        store.reread()
+        try await waitUntil { client.callCount == 3 }
+        try await waitUntil { store.expectations.isEmpty }
+    }
+
+    @MainActor
+    func testTheAgentGoingDropsTheExpectation() async throws {
+        let client = SequencedActivityClient([.agents([Self.waiting]), .agents([])])
+        let store = ActivityStore(client: client)
+        defer { store.stop() }
+        store.kick()
+        try await waitUntil { client.callCount == 1 }
+        store.expectWorking("slice-1")
+
+        store.reread()
+        try await waitUntil { client.callCount == 2 }
+        try await waitUntil { store.expectations.isEmpty }
+    }
+
+    @MainActor
+    func testWithdrawDropsTheExpectation() async throws {
+        let client = MockActivityClient(response: .agents([Self.waiting]))
+        let store = ActivityStore(client: client)
+        defer { store.stop() }
+        store.kick()
+        try await waitUntil { store.hasRead }
+        store.expectWorking("slice-1")
+
+        store.withdraw("slice-1")
+
+        XCTAssertEqual(store.expectations, [:])
+        XCTAssertEqual(store.activity(for: "slice-1"), .waiting)
+    }
+
+    @MainActor
+    func testAnAgentWithNoReadingHasNoActivityWhateverTheExpectation() {
+        let store = ActivityStore(client: MockActivityClient(response: .agents([])))
+        store.expectWorking("slice-1")
+
+        XCTAssertNil(store.activity(for: "slice-1"))
+        XCTAssertNil(store.status(for: "slice-1"))
+        XCTAssertEqual(store.displayedAgents, [:])
+    }
+}
+
+/// A clock a test moves by hand.
+@MainActor
+final class TestClock {
+    var now: Date
+    init(_ now: Date) { self.now = now }
 }
 
 /// Polls `condition` until it is true or `timeout` elapses, so a test waits

@@ -36,7 +36,7 @@ struct SliceNavigatorView: View {
     @Environment(\.sendBackOpen) private var sendBackOpen
 
     private var projectID: String { appModel.projectStore?.projectID ?? "" }
-    private var agent: AgentStatus? { appModel.activityStore?.agents[slice.id] }
+    private var agent: AgentStatus? { appModel.activityStore?.status(for: slice.id) }
     private var nav: NavigatorModel {
         NavigatorModel(
             slice: slice, agent: agent.map { AgentActivity($0.activity) },
@@ -533,7 +533,7 @@ struct SliceNavigatorView: View {
     private func taskRow(_ other: Slice) -> DependencyRow {
         DependencyRow(
             slice: other, state: state(of: other),
-            live: appModel.activityStore?.agents[other.id] != nil,
+            live: appModel.activityStore?.status(for: other.id) != nil,
             milestone: milestoneName(of: other),
             onSelect: { Task { await appModel.selectSlice(other.id, inProject: projectID) } })
     }
@@ -550,7 +550,7 @@ struct SliceNavigatorView: View {
 
     private func state(of other: Slice) -> SliceDisplayState {
         displayState(
-            for: other, agent: appModel.activityStore?.agents[other.id].map { AgentActivity($0.activity) })
+            for: other, agent: appModel.activityStore?.status(for: other.id).map { AgentActivity($0.activity) })
     }
 
     private func milestoneName(of other: Slice) -> String {

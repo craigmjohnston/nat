@@ -101,16 +101,19 @@ struct AgentTerminalPane: View {
     var emptyText: String?
     var focusRequest = 0
     var sessionExists: () -> Bool = { true }
+    /// An Enter typed at the agent — `AppModel.terminalSubmitted`.
+    var onSubmit: () -> Void = {}
     @Environment(\.terminalStubbed) private var terminalStubbed
 
     init(
         agent: AgentStatus?, emptyText: String? = nil, focusRequest: Int = 0,
-        sessionExists: @escaping () -> Bool = { true }
+        sessionExists: @escaping () -> Bool = { true }, onSubmit: @escaping () -> Void = {}
     ) {
         self.session = agent?.session
         self.emptyText = emptyText
         self.focusRequest = focusRequest
         self.sessionExists = sessionExists
+        self.onSubmit = onSubmit
     }
 
     var body: some View {
@@ -125,7 +128,8 @@ struct AgentTerminalPane: View {
                             attachSpec: AttachSpec(session: session),
                             sessionExists: sessionExists,
                             onExit: { _ in },
-                            focusRequest: focusRequest
+                            focusRequest: focusRequest,
+                            onSubmit: onSubmit
                         )
                         .id(session)
                     }
@@ -246,7 +250,7 @@ struct SliceMainPane: View {
 
     private var nav: NavigatorModel {
         NavigatorModel(
-            slice: slice, agent: appModel.activityStore?.agents[slice.id].map { AgentActivity($0.activity) })
+            slice: slice, agent: appModel.activityStore?.status(for: slice.id).map { AgentActivity($0.activity) })
     }
 
     var body: some View {
@@ -262,8 +266,9 @@ struct SliceMainPane: View {
                     AgentSkeletonView()
                 } else {
                     AgentTerminalPane(
-                        agent: appModel.activityStore?.agents[slice.id],
-                        sessionExists: { appModel.activityStore?.agents[slice.id] != nil })
+                        agent: appModel.activityStore?.status(for: slice.id),
+                        sessionExists: { appModel.activityStore?.status(for: slice.id) != nil },
+                        onSubmit: { appModel.terminalSubmitted(agentKey: slice.id) })
                 }
             case .diff:
                 diffPane

@@ -140,14 +140,13 @@ final class DiffReview {
     // MARK: - Sending and approving
 
     func sendComments(appModel: AppModel, slice: Slice) async {
-        guard let projectID = appModel.projectStore?.projectID else { return }
+        guard appModel.projectStore != nil else { return }
         isSending = true
         sendError = nil
         do {
             // A resumed slice's agent is already at work and hands back of
             // its own accord: no hand-back line, no rework.
-            _ = try await store(appModel).sendComments(
-                projectID: projectID, sliceRef: slice.id, handedBack: slice.handedBack)
+            _ = try await appModel.sendDiffComments(slice: slice, handedBack: slice.handedBack)
             await appModel.refresh()
         } catch {
             sendError = error.localizedDescription
@@ -165,7 +164,7 @@ final class DiffReview {
             isSending = true
             sendError = nil
             do {
-                try await store.sendComments(projectID: projectID, sliceRef: slice.id, approving: true)
+                try await appModel.sendDiffComments(slice: slice, approving: true, handedBack: true)
                 appModel.markApprovePending(sliceID: slice.id)
                 await appModel.refresh()
             } catch {

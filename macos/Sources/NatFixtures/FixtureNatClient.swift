@@ -213,6 +213,25 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// The writes this client was asked to make, oldest first.
     public var writes: [String] { recorded.all() }
 
+    /// Told of every write as it goes out — before it is recorded or refused,
+    /// on the main actor — for a test that must see the app's state at the
+    /// moment a call is made.
+    private let writeObserver = Box<(@MainActor @Sendable (String) -> Void)?>(nil)
+
+    /// Set once every write should refuse with this message while every
+    /// read still answers — a refused action on a loaded app.
+    private let writeRefusal = Box<String?>(nil)
+
+    /// Refuse every write from now on with `message`.
+    public func refuseWrites(_ message: String) {
+        writeRefusal.set(message)
+    }
+
+    /// Call `observer` with every write from now on, as it goes out.
+    public func observeWrites(_ observer: @escaping @MainActor @Sendable (String) -> Void) {
+        writeObserver.set(observer)
+    }
+
     /// Arms every `sliceDiff` read from now on to refuse with `message` —
     /// see `diffFailureMessage`. Called after whatever has already read
     /// successfully (an `AppModel`'s own startup included), so a story can
@@ -236,6 +255,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     private func record(_ call: String) async throws {
+        if let observer = writeObserver.get() { await observer(call) }
+        if let message = writeRefusal.get() { throw NatError.commandFailed(message) }
         switch behaviour {
         case .answering:
             recorded.append(call)

@@ -37,16 +37,21 @@ public struct AgentTerminalHostView: NSViewRepresentable {
     /// arrives with asks for nothing — only a change does.
     private let focusRequest: Int
 
+    /// Called on every plain Enter typed at the pane — a submit to the agent.
+    private let onSubmit: () -> Void
+
     public init(
         attachSpec: AttachSpec,
         sessionExists: @escaping () -> Bool,
         onExit: @escaping (TerminalExitReason) -> Void,
-        focusRequest: Int = 0
+        focusRequest: Int = 0,
+        onSubmit: @escaping () -> Void = {}
     ) {
         self.attachSpec = attachSpec
         self.sessionExists = sessionExists
         self.onExit = onExit
         self.focusRequest = focusRequest
+        self.onSubmit = onSubmit
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -57,6 +62,7 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         let view = FirstLayoutTerminalView(frame: .zero)
         TerminalTheme.apply(DesignTokens.palette(for: colorScheme), to: view)
         view.processDelegate = context.coordinator
+        view.onSubmit = onSubmit
         // Link tracking, said out loud rather than left to SwiftTerm's
         // defaults. `.implicit` is the part that matters: it finds a URL an
         // agent simply printed as well as one it wrapped in an OSC 8
@@ -110,6 +116,7 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         // any later one this view's own `notifyAppearanceChange` prompts,
         // always reads gnat's current chrome.
         TerminalTheme.apply(DesignTokens.palette(for: colorScheme), to: nsView)
+        (nsView as? FirstLayoutTerminalView)?.onSubmit = onSubmit
         context.coordinator.notifyAppearanceChange(colorScheme, on: nsView)
         if context.coordinator.takeFocusRequest(focusRequest) {
             nsView.window?.makeFirstResponder(nsView)
@@ -280,6 +287,11 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
     var onFirstRealLayout: (() -> Void)?
     private var hasFiredFirstLayout = false
 
+    /// Fired when a bare carriage return — a plain Enter, the agent's submit —
+    /// goes to the pty. A modified enter goes as its CSI-u encoding and a
+    /// paste as a bracketed run, so neither reads as one.
+    var onSubmit: (() -> Void)?
+
     /// A frame set at the size the view already has goes no further.
     /// AppKit still calls this for one, and SwiftUI sets one on every
     /// layout pass over the pane; SwiftTerm answers each by redrawing the
@@ -395,6 +407,7 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
             KeyDebug.log("sent by:\n" + Thread.callStackSymbols.dropFirst().prefix(20).joined(separator: "\n"))
         }
         super.send(source: source, data: data)
+        if data.elementsEqual([0x0d]) { onSubmit?() }
     }
 
     /// Whether this pane is where typing currently goes — itself, or any view
