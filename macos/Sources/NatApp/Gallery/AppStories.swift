@@ -142,6 +142,29 @@ enum AppStories {
         return appModel
     }
 
+    /// The status bar over an app whose GitHub readings carry `limit`.
+    private static func githubBudgetStatusBar(_ limit: GitHubRateLimit) async -> some View {
+        let client = FixtureNatClient(plan: statusBarPlan, agents: Fixtures.agentStatuses, usage: Fixtures.usageReading)
+        client.setRateLimit(limit)
+        return StatusBarView(appModel: await Fixtures.startedAppModel(client: client))
+    }
+
+    /// Settings ▸ About, Diagnostics open: launched 2h 14m before the
+    /// gallery's clock, a throttled reading in, and a tally of readings and
+    /// actions behind it.
+    private static func aboutDiagnostics() async -> some View {
+        let client = FixtureNatClient()
+        client.setRateLimit(GitHubRateLimit(
+            limit: 5000, remaining: 412, resetAt: Fixtures.now.addingTimeInterval(46 * 60),
+            projectedRemainingAtReset: 120, throttled: true, pollAfterSeconds: 300, cost: 1))
+        let launched = Fixtures.now.addingTimeInterval(-(2 * 3600 + 14 * 60))
+        let appModel = await Fixtures.startedAppModel(client: client, now: { launched })
+        for _ in 0..<3 { appModel.githubActionRan() }
+        await appModel.githubReadingStore?.idle()
+        for _ in 0..<4 { await appModel.githubReadingStore?.read() }
+        return SettingsView(appModel: appModel, client: client, initialTab: .about, diagnosticsExpanded: true)
+    }
+
     /// The size the PR section's Checks stories are drawn at: the
     /// navigator's width.
     private static let checksSize = CGSize(width: 330, height: 330)
@@ -2329,6 +2352,40 @@ enum AppStories {
         },
 
         Story(
+            name: "status-bar-github-healthy",
+            summary: "The bar after a healthy GitHub reading: nothing about GitHub at all, "
+                + "the usage windows the last clause.",
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
+        ) {
+            await githubBudgetStatusBar(GitHubRateLimit(
+                limit: 5000, remaining: 4211, resetAt: Fixtures.now.addingTimeInterval(46 * 60),
+                projectedRemainingAtReset: 4100, pollAfterSeconds: 30, cost: 1))
+        },
+
+        Story(
+            name: "status-bar-github-throttled",
+            summary: "The bar once nat throttles polling to keep the reserve: \u{201C}GitHub \u{00B7} 412 "
+                + "left\u{201D} after the usage windows, the projection and the reset its tooltip.",
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
+        ) {
+            await githubBudgetStatusBar(GitHubRateLimit(
+                limit: 5000, remaining: 412, resetAt: Fixtures.now.addingTimeInterval(46 * 60),
+                projectedRemainingAtReset: 120, throttled: true, pollAfterSeconds: 300, cost: 1))
+        },
+
+        Story(
+            name: "status-bar-github-paused",
+            summary: "The bar once GitHub refused and nat paused polling: \u{201C}GitHub limit \u{00B7} "
+                + "resets\u{201D} and the time, in the warning tint.",
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
+        ) {
+            await githubBudgetStatusBar(GitHubRateLimit(
+                limit: 5000, remaining: 0, resetAt: Fixtures.now.addingTimeInterval(46 * 60),
+                projectedRemainingAtReset: 0, pausedUntil: Fixtures.now.addingTimeInterval(46 * 60),
+                pollAfterSeconds: 2760))
+        },
+
+        Story(
             name: "status-bar-no-agents",
             summary: "The same bar with nothing running: the agent count reads zero, "
                 + "the usage windows after it.",
@@ -2641,6 +2698,16 @@ enum AppStories {
             colorScheme: .light
         ) {
             SettingsView(appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(), initialTab: .about)
+        },
+
+        Story(
+            name: "settings-about-diagnostics",
+            summary: "About with Diagnostics unfolded: a throttled GitHub reading's used and total and its "
+                + "reset, gnat's own points, readings and actions this session, and how long it has been open.",
+            size: CGSize(width: 760, height: 560),
+            colorScheme: .light
+        ) {
+            await aboutDiagnostics()
         },
 
         Story(

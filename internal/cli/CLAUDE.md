@@ -384,9 +384,17 @@ the reading too (`sessionHeads`: its five most recent branches —
 get-url origin`; one with no GitHub origin is asked nothing and reads
 stale), printed under `sessions` `{id, prs, prs_stale}`. `--detail <PR URL>`
 adds that pull request in full under `detail`, `pr-view --json`'s shape.
-Every reading carries `rate_limit {limit, remaining, reset_at}` (markdown:
-a `GitHub budget:` line) — absent where nothing was asked, since then no gh
-runs at all. What the reading found that a later command wants is kept in
+It is a polling read (`PRPoller.PollPRs`, `gh.CLI.PollPRs`): while the
+budget's refusal stop holds it runs no gh and every PR reads unread;
+`--settle` (gnat's read after an action) reads through `ReadPRs`, which always
+runs. Every reading that asked anything carries `rate_limit {limit,
+remaining, reset_at, projected_remaining_at_reset, throttled, paused_until,
+poll_after_seconds, cost}` (`rateLimitOf`, from `PRPoller.Outlook` at the
+config's `PollInterval`; the reading's own figures, else the last kept) —
+markdown: a `GitHub budget:` line saying the same (`budgetLine`) — absent
+where nothing was asked, since then no gh runs at all. `Run` returns a
+`*gh.LimitError` bare, whatever a command wrapped it in, so every action
+refused on the limit fails with the retry time alone. What the reading found that a later command wants is kept in
 `<state dir>/github-reading.json` (`lastReading`, `Env.ReadingPath`; nil in
 tests keeps none): each PR's base by normalised URL, each session's
 branches' PRs — merged over the last, written atomically.

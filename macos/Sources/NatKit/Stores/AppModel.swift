@@ -1007,7 +1007,7 @@ public final class AppModel {
         Task {
             await prStatusStore?.restore(projectID: projectID)
             await store.load()
-            if hasPullRequestWork(projectID: projectID) { githubReadingStore?.scheduleSettle() }
+            if hasPullRequestWork(projectID: projectID) { githubReadingStore?.scheduleSettle(afterAction: false) }
         }
     }
 
@@ -1439,7 +1439,7 @@ public final class AppModel {
             client: clientFactory(),
             request: { [weak self] in self?.githubReadingRequest() },
             deliver: { [weak self] reading in await self?.deliver(reading) },
-            tick: tick, settleDelay: githubSettleDelay)
+            tick: tick, settleDelay: githubSettleDelay, now: now)
         githubReadingStore = store
         store.start()
     }
@@ -1480,10 +1480,17 @@ public final class AppModel {
         }
     }
 
-    /// Asks for the GitHub reading's settle read, 5 seconds out — after an
-    /// action that changed something on GitHub. See `GitHubReadingStore`.
+    /// Asks for the GitHub reading's settle read, 5 seconds out — after the
+    /// user asked for one. See `GitHubReadingStore`.
     public func scheduleGitHubReading() {
         githubReadingStore?.scheduleSettle()
+    }
+
+    /// An action that changed something on GitHub — approve, merge, comment,
+    /// reviewers, re-run or cancel checks — has run: counted in gnat's spend
+    /// this session, then the settle read after it.
+    public func githubActionRan() {
+        githubReadingStore?.actionRan()
     }
 
     /// The manual refresh: the plan read the nudge makes, and the GitHub
@@ -1526,7 +1533,7 @@ public final class AppModel {
     public func prStore(projectID: String) -> PRStore {
         if let existing = prStores[projectID] { return existing }
         let store = PRStore(client: clientFactory(), seen: seenMemory, settle: { [weak self] in
-            self?.scheduleGitHubReading()
+            self?.githubActionRan()
         })
         prStores[projectID] = store
         return store
@@ -2544,7 +2551,7 @@ public final class AppModel {
                 await sliceActions.run(.approve, sliceID: sliceID, select: { _ in }) {
                     _ = try await client.sliceApprove(projectID: projectID, sliceRef: sliceID)
                     await projectStore.refresh()
-                    self.scheduleGitHubReading()
+                    self.githubActionRan()
                 }
             }
         }

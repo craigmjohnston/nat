@@ -180,7 +180,7 @@ final class DiffReview {
             await appModel.refresh()
             // The pull request exists now; what GitHub says about it — its
             // mergeability, its checks — comes a few seconds after.
-            appModel.scheduleGitHubReading()
+            appModel.githubActionRan()
         }
     }
 }

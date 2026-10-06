@@ -198,6 +198,70 @@ final class GitHubReadingStoreTests: XCTestCase {
         XCTAssertEqual(client.prStatusRuns, [])
     }
 
+    /// The tick sleeps for what the last reading's budget asked for —
+    /// `poll_after_seconds` — and for its own interval again once a reading
+    /// says nothing of it.
+    func testTheTickSleepsForWhatTheReadingSays() async {
+        let client = FixtureNatClient()
+        client.setRateLimit(GitHubRateLimit(
+            limit: 5000, remaining: 412, resetAt: Date(timeIntervalSince1970: 0), throttled: true, pollAfterSeconds: 300))
+        let sleeps = Sleeps()
+        let reading = store(client, tick: .seconds(30), sleeps: sleeps)
+        reading.start()
+        await waitUntil { sleeps.held == 1 }
+        sleeps.release()
+        await waitUntil { client.prStatusRuns.count == 1 && sleeps.held == 1 }
+        XCTAssertEqual(sleeps.requested, [.seconds(30), .seconds(300)])
+
+        client.setRateLimit(nil)
+        sleeps.release()
+        await waitUntil { client.prStatusRuns.count == 2 && sleeps.held == 1 }
+        XCTAssertEqual(sleeps.requested.last, .seconds(30))
+        reading.stop()
+    }
+
+    /// The tick's reads are polls; a settle read after an action runs past
+    /// nat's throttle and pause (`--settle`), one for a plan that loaded does
+    /// not — unless an action folds into it.
+    func testASettleReadAfterAnActionGoesThroughThePause() async {
+        let client = FixtureNatClient()
+        client.setRateLimit(GitHubRateLimit(
+            limit: 5000, remaining: 0, resetAt: Date(timeIntervalSince1970: 0),
+            pausedUntil: Date(timeIntervalSince1970: 0), pollAfterSeconds: 2760))
+        let reading = GitHubReadingStore(client: client, request: { .init(projectIDs: ["p-1"]) }, deliver: { _ in },
+                                         settleDelay: .zero)
+        await reading.read()
+        reading.scheduleSettle(afterAction: false)
+        await reading.idle()
+        reading.actionRan()
+        await reading.idle()
+        reading.scheduleSettle(afterAction: false)
+        reading.scheduleSettle()
+        await reading.idle()
+        XCTAssertEqual(client.prStatusKinds, ["poll", "poll", "settle", "settle"])
+    }
+
+    /// gnat's own spend this session: every reading's cost, one per action,
+    /// and the readings and actions counted; a failed reading counts nothing.
+    /// The launch time is read once, off the clock it is given.
+    func testTheSessionTallyAddsEachReadingsCostAndOnePerAction() async {
+        let client = FixtureNatClient()
+        client.setRateLimit(GitHubRateLimit(limit: 5000, remaining: 4000, resetAt: Date(timeIntervalSince1970: 0), cost: 2))
+        let launched = Date(timeIntervalSince1970: 1_000)
+        let reading = GitHubReadingStore(client: client, request: { .init(projectIDs: ["p-1"]) }, deliver: { _ in },
+                                         settleDelay: .zero, now: { launched })
+        XCTAssertEqual(reading.launchedAt, launched)
+        await reading.read()
+        await reading.read()
+        reading.actionRan()
+        await reading.idle()
+        client.setPRStatus(nil, forProject: "p-1")
+        await reading.read()
+        XCTAssertEqual(reading.sessionReadings, 3, "two reads and the settle read after the action")
+        XCTAssertEqual(reading.sessionActions, 1)
+        XCTAssertEqual(reading.sessionPoints, 3 * 2 + 1)
+    }
+
     /// nat's answer decodes for one project named — its doc at the top — and
     /// for several, keyed by ID, the rate limit and detail beside them.
     func testTheAnswerDecodesInBothShapes() throws {

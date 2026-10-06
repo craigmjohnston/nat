@@ -134,10 +134,19 @@ func TestExitErrorWithoutStderr(t *testing.T) {
 }
 
 // TestNewDrivesTheRealBinary pins what the constructor with no seam in it is
-// wired to.
+// wired to: the real subprocesses, keeping the budget in nat's state
+// directory.
 func TestNewDrivesTheRealBinary(t *testing.T) {
-	if _, ok := New().runner.(ExecRunner); !ok {
-		t.Errorf("New() runs through %T, want the real subprocesses", New().runner)
+	c := New()
+	runner, ok := c.runner.(budgetRunner)
+	if !ok {
+		t.Fatalf("New() runs through %T, want the budget's runner", c.runner)
+	}
+	if _, ok := runner.inner.(ExecRunner); !ok {
+		t.Errorf("New()'s budget runs through %T, want the real subprocesses", runner.inner)
+	}
+	if c.budget == nil || filepath.Base(c.budget.path) != BudgetFileName {
+		t.Errorf("New() keeps its budget at %+v, want %s in the state directory", c.budget, BudgetFileName)
 	}
 }
 

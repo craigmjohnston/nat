@@ -22,7 +22,7 @@ public protocol NatClientProtocol: Sendable {
     func sliceResume(projectID: String, sliceRef: String, note: String) async throws -> Void
     func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail
-    func prStatus(projectIDs: [String], detail: String?) async throws -> GitHubReading
+    func prStatus(projectIDs: [String], detail: String?, settle: Bool) async throws -> GitHubReading
     func prMerge(projectID: String, sliceRef: String) async throws -> Void
     func prComment(projectID: String, sliceRef: String, body: String) async throws -> Void
     func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers
@@ -196,7 +196,7 @@ extension NatClientProtocol {
 
     /// The batched GitHub reading: only `NatClient`, the fixture client and
     /// the tests of the stores it feeds answer it.
-    public func prStatus(projectIDs: [String], detail: String?) async throws -> GitHubReading {
+    public func prStatus(projectIDs: [String], detail: String?, settle: Bool) async throws -> GitHubReading {
         throw NatError.commandFailed("pr-status: not stubbed by this test client")
     }
 

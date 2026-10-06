@@ -27,7 +27,7 @@ final class FixtureClientTests: XCTestCase {
         XCTAssertEqual(commits, Fixtures.commitsDoc)
         let pr = try await client.prView(projectID: Fixtures.projectID, sliceRef: Fixtures.approveSliceID)
         XCTAssertEqual(pr, Fixtures.prGreen)
-        let status = try await client.prStatus(projectIDs: [Fixtures.projectID], detail: nil)
+        let status = try await client.prStatus(projectIDs: [Fixtures.projectID], detail: nil, settle: false)
         XCTAssertEqual(status, GitHubReading(projects: [Fixtures.projectID: Fixtures.prStatusDoc]))
         let config = try await client.configShow()
         XCTAssertEqual(config, Fixtures.configDoc)
@@ -85,7 +85,7 @@ final class FixtureClientTests: XCTestCase {
         await assertRefuses { _ = try await client.sliceDiff(projectID: "p", sliceRef: "s") }
         await assertRefuses { _ = try await client.sliceCommits(projectID: "p", sliceRef: "s") }
         await assertRefuses { _ = try await client.prView(projectID: "p", sliceRef: "s") }
-        await assertRefuses { _ = try await client.prStatus(projectIDs: ["p"], detail: nil) }
+        await assertRefuses { _ = try await client.prStatus(projectIDs: ["p"], detail: nil, settle: false) }
         await assertRefuses { _ = try await client.configShow() }
         await assertRefuses { _ = try await client.sliceEdit(projectID: "p", sliceRef: "s", description: "d") }
         await assertRefuses { _ = try await client.sliceLaunch(projectID: "p", sliceRef: "s", model: nil, effort: nil) }

@@ -262,7 +262,7 @@ func TestBatchDocument(t *testing.T) {
 		{head: HeadRef{Owner: "craig", Repo: "nat", Branch: `odd"branch`}, isHead: true},
 	})
 	want := `query {
-  rateLimit { limit remaining resetAt }
+  rateLimit { limit remaining resetAt cost }
   r0: repository(owner: "craig", name: "nat") {
     d: pullRequest(number: 3) { ...status ...detail }
     p1: pullRequest(number: 7) { ...status }

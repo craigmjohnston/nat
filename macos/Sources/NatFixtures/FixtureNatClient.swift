@@ -97,6 +97,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// `--detail` after a space — one entry a run.
     private let prStatusRunRecorded = Recorder()
     public var prStatusRuns: [String] { prStatusRunRecorded.all() }
+    private let prStatusSettleRecorded = Recorder()
+    /// Each `pr-status` run's kind, in order: "settle" for one after an
+    /// action (`--settle`), else "poll".
+    public var prStatusKinds: [String] { prStatusSettleRecorded.all() }
     /// Every `pr-view` of a slice's pull request, by slice ref.
     private let prViewRecorded = Recorder()
     public var prViewReads: [String] { prViewRecorded.all() }
@@ -387,8 +391,9 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// Every project named reads its own doc — `prStatusByProject`'s, else
     /// the fixture's — and `detail` reads the fixture's pull request. A
     /// project set to fail fails the whole run, as one failed document does.
-    public func prStatus(projectIDs: [String], detail: String?) async throws -> GitHubReading {
+    public func prStatus(projectIDs: [String], detail: String?, settle: Bool) async throws -> GitHubReading {
         for id in projectIDs { prStatusRecorded.append(id) }
+        prStatusSettleRecorded.append(settle ? "settle" : "poll")
         prStatusRunRecorded.append(projectIDs.joined(separator: ",") + (detail.map { " " + $0 } ?? ""))
         while prStatusHeld.get() { try await Task.sleep(for: .milliseconds(1)) }
         var projects: [String: PRStatusDoc] = [:]

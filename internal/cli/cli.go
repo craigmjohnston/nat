@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -70,6 +71,7 @@ type GH interface {
 	PRViewer
 	PRMerger
 	PRBatchReader
+	PRPoller
 	PRCommenter
 	PRReviewerEditor
 	RunLogReader
@@ -666,7 +668,22 @@ func usageErrorf(format string, args ...any) error {
 func IsCommand(args []string) bool { return len(args) > 0 }
 
 // Run executes the command named by args[0] and returns when it is done.
+//
+// A command that failed because GitHub refused on its API limit fails with
+// that alone ([gh.LimitError], naming the retry time), whatever the command
+// wrapped it in: what the caller — gnat's approve and merge toasts above all —
+// shows is when to try again, not where in the command it happened.
 func Run(ctx context.Context, args []string, env Env) error {
+	err := runCommand(ctx, args, env)
+	var limited *gh.LimitError
+	if errors.As(err, &limited) {
+		return limited
+	}
+	return err
+}
+
+// runCommand is Run's dispatch.
+func runCommand(ctx context.Context, args []string, env Env) error {
 	if len(args) == 0 {
 		return usageErrorf("no command given")
 	}

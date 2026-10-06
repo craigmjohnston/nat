@@ -91,12 +91,15 @@ type RateLimit struct {
 // A pull request in PRs carries what [StatusOf] and a merge refusal read —
 // state, merge time, review decision, mergeability, merge state, base, draft,
 // checks — and nothing of the detail's (title, body, reviews…); Detail is the
-// one asked for in full, every field [CLI.ViewPR] reads.
+// one asked for in full, every field [CLI.ViewPR] reads. Cost is the points
+// the reading spent, the sum of every document's rateLimit cost — zero for a
+// reading that ran none.
 type Batch struct {
 	PRs       map[PRRef]PR
 	Heads     map[HeadRef][]HeadPR
 	Detail    *PR
 	RateLimit *RateLimit
+	Cost      int
 }
 
 // batchChunk is how many things — pull requests, branches, the detail — one
@@ -150,8 +153,24 @@ func (c CLI) ReadPRs(q BatchQuery) (Batch, error) {
 			errs = append(errs, err)
 		}
 	}
+	c.budget.record(out.RateLimit)
 	return out, errors.Join(errs...)
 }
+
+// PollPRs is [CLI.ReadPRs] for a polling read — pr-status on its tick, the
+// board's reading — which heeds the budget's stop: before its retry time it
+// reads nothing and runs no gh, the empty batch every asked-for thing unread
+// in, and says so in the log once per stop. An action's read is ReadPRs,
+// which always runs: the reserve is there for it.
+func (c CLI) PollPRs(q BatchQuery) (Batch, error) {
+	if c.budget.pausedPoll() {
+		return Batch{PRs: map[PRRef]PR{}, Heads: map[HeadRef][]HeadPR{}}, nil
+	}
+	return c.ReadPRs(q)
+}
+
+// Outlook is the budget's policy for the next polling read ([Budget.Outlook]).
+func (c CLI) Outlook(poll time.Duration) Outlook { return c.budget.Outlook(poll) }
 
 // readDocument asks one document's worth of items and files what came back
 // into out.
@@ -180,7 +199,7 @@ func (c CLI) readDocument(items []batchItem, out *Batch) error {
 			// An error about no node is about the whole document — a refusal
 			// of the budget, a document GitHub would not run.
 			logging.Error("GitHub refused the pull requests' reading", "items", len(items), "type", e.Type, "error", e.Message)
-			return fmt.Errorf("GraphQL: %s", e.Message)
+			return c.documentRefusal(runErr, e.Type, e.Message)
 		}
 		logging.Action("left a pull request GitHub could not resolve unread", "path", fmt.Sprint(e.Path), "type", e.Type)
 	}
@@ -194,9 +213,11 @@ func (c CLI) readDocument(items []batchItem, out *Batch) error {
 			Limit     int       `json:"limit"`
 			Remaining int       `json:"remaining"`
 			ResetAt   time.Time `json:"resetAt"`
+			Cost      int       `json:"cost"`
 		}
 		if json.Unmarshal(raw, &rl) == nil {
 			out.RateLimit = &RateLimit{Limit: rl.Limit, Remaining: rl.Remaining, ResetAt: rl.ResetAt}
+			out.Cost += rl.Cost
 		}
 	}
 	for repoAlias, nodes := range aliases {
@@ -210,6 +231,22 @@ func (c CLI) readDocument(items []batchItem, out *Batch) error {
 	}
 	logging.Action("read pull requests", "items", len(items))
 	return nil
+}
+
+// documentRefusal is the error a document GitHub refused outright fails
+// with: a refusal on the API limit is the budget's [LimitError] — the runner
+// already made one where gh's stderr said so, and GraphQL's own words or its
+// RATE_LIMITED type make one here where it did not — anything else GitHub's
+// message.
+func (c CLI) documentRefusal(runErr error, kind, message string) error {
+	var limited *LimitError
+	if errors.As(runErr, &limited) {
+		return limited
+	}
+	if c.budget != nil && (kind == "RATE_LIMITED" || isLimitRefusal(message)) {
+		return c.budget.refuse()
+	}
+	return fmt.Errorf("GraphQL: %s", message)
 }
 
 // fileNode decodes one aliased node into out; a null or unreadable one is
@@ -269,7 +306,7 @@ func batchDocument(items []batchItem) (string, map[string]map[string]batchItem) 
 	}
 
 	var b strings.Builder
-	b.WriteString("query {\n  rateLimit { limit remaining resetAt }\n")
+	b.WriteString("query {\n  rateLimit { limit remaining resetAt cost }\n")
 	aliases := map[string]map[string]batchItem{}
 	usesStatus, usesDetail := false, false
 	n := 0

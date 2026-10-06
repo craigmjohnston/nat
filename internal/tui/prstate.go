@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"maps"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -19,9 +20,19 @@ import (
 // one pull request in full through too. It is an interface for the reason
 // [PRCreator] is: the flow can then be driven without gh, without a network
 // and without a GitHub account.
+//
+// The board's reading is a polling one ([gh.CLI.PollPRs]): it reads nothing
+// while a refusal's stop holds, and Outlook is the budget's word on when to
+// read next.
 type PRReader interface {
 	ReadPRs(q gh.BatchQuery) (gh.Batch, error)
+	PollPRs(q gh.BatchQuery) (gh.Batch, error)
+	Outlook(poll time.Duration) gh.Outlook
 }
+
+// prNow is the board's clock for the budget's interval, held as a variable so
+// the tests can stand in for it.
+var prNow = time.Now
 
 // The reader's edge, held as a variable so the tests can stand in for it: the
 // real one shells out to gh.
@@ -44,12 +55,16 @@ func defaultPRReader() PRReader { return gh.New() }
 //
 // failing names, for each slice read with a failed check, the checks that
 // failed — what the Active panel says beside the state.
+//
+// notBefore is when GitHub's budget next allows a reading — zero where the
+// plan's own tick may read again, or nothing was read.
 type prStateMsg struct {
-	state    map[string]domain.PRReadiness
-	failing  map[string][]string
-	settled  []string
-	marked   []string
-	reopened []string
+	state     map[string]domain.PRReadiness
+	failing   map[string][]string
+	settled   []string
+	marked    []string
+	reopened  []string
+	notBefore time.Time
 }
 
 // refreshPRStates reads what GitHub says about the pull request of every slice
@@ -78,8 +93,16 @@ type prStateMsg struct {
 // budget a reading, however many pull requests and repositories the plan has.
 // One reading runs at a time — see [App.prReading] — since a gh on a slow
 // network can outlast the interval it was started on.
+//
+// GitHub's budget has the last word on the cadence: where its outlook after a
+// reading stretched polling past the plan's tick ([gh.Outlook.PollAfter]), or
+// paused it, no reading is started before then ([App.prNotBefore]).
 func (a *App) refreshPRStates() tea.Cmd {
 	if a.prReader == nil || a.project == nil || a.prReading {
+		return nil
+	}
+	started := prNow()
+	if started.Before(a.prNotBefore) {
 		return nil
 	}
 	project, ok := a.activeProject()
@@ -104,6 +127,7 @@ func (a *App) refreshPRStates() tea.Cmd {
 	// The live sessions are copied here, on the event loop, since the reading
 	// runs off it and the board's own map is the loop's to change.
 	sender, live, projectID := a.checksSender(), maps.Clone(a.live), a.cfg.ActiveProjectID
+	poll := a.cfg.PollInterval()
 	return func() tea.Msg {
 		msg := prStateMsg{state: map[string]domain.PRReadiness{}, failing: map[string][]string{}}
 		// Which Done slices still have a worktree is git's to say, so it is
@@ -122,7 +146,10 @@ func (a *App) refreshPRStates() tea.Cmd {
 		if len(q.PRs) == 0 {
 			return msg
 		}
-		batch, err := reader.ReadPRs(q)
+		batch, err := reader.PollPRs(q)
+		if outlook := reader.Outlook(poll); outlook.PollAfter > poll {
+			msg.notBefore = started.Add(outlook.PollAfter)
+		}
 		if err != nil {
 			// gh has logged each failed document; this is the decision taken
 			// about it. What a failed document asked about is absent below, and
@@ -236,6 +263,7 @@ func readinessOf(status gh.PRStatus) domain.PRReadiness {
 // [App.removeLanded].
 func (a *App) prStateRead(msg prStateMsg) tea.Cmd {
 	a.prReading = false
+	a.prNotBefore = msg.notBefore
 	a.prState = msg.state
 	if len(msg.settled) > 0 && a.prSettled == nil {
 		a.prSettled = map[string]bool{}
