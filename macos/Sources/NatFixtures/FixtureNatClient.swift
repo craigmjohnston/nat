@@ -47,6 +47,9 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     private let acceptHangs = Box<Bool>(false)
     /// The same for a workshop launch — the launching story's state.
     private let launchHangs = Box<Bool>(false)
+    /// The same for `status` — the activity poll's first reading never
+    /// landing, the reconnecting story's state.
+    private let statusHangs = Box<Bool>(false)
     /// The same for a checks re-run or cancel — the mid-call story's state.
     private let checksHang = Box<Bool>(false)
     private let acceptRefusal = Box<String?>(nil)
@@ -186,6 +189,11 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         launchHangs.set(true)
     }
 
+    /// Arms every `status` read from now on to never come back.
+    public func holdStatus() {
+        statusHangs.set(true)
+    }
+
     /// The writes this client was asked to make, oldest first.
     public var writes: [String] { recorded.all() }
 
@@ -323,7 +331,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func status() async throws -> [AgentStatus] {
-        try await answer(agents + workspaceAgents.get())
+        if statusHangs.get() { try await Self.never() }
+        return try await answer(agents + workspaceAgents.get())
     }
 
     public func usage() async throws -> UsageReading {

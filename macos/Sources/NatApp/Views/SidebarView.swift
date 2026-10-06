@@ -54,6 +54,9 @@ struct SidebarView: View {
     @State private var sliceForEdit: SidebarSliceRow?
     @State private var projectPendingClose: String?
     @State private var workshopPendingClose = false
+    /// What the workshop and project close alerts say — `WorkshopEndRules`'
+    /// message, taken as the close was asked for.
+    @State private var workshopCloseMessage = ""
     @State private var actionError: String?
     @State private var newMilestoneProject: String?
     @State private var newMilestoneText = ""
@@ -892,6 +895,10 @@ struct SidebarView: View {
             // The pull request was last read failing its checks, or
             // conflicting: its marks, each named under the pointer.
             PRMarksView(marks: row.marks)
+            // Restored from the last run, its agent not yet read again.
+            if row.reconnecting {
+                Text(reconnectingLabel).font(.system(size: 11)).ink(.tertiary).lineLimit(1).fixedSize()
+            }
             // A badge, not a button: the row's click opens the workshop,
             // which lands on its Plan. Never squeezed — the title gives first.
             if row.planReady {
@@ -936,9 +943,19 @@ struct SidebarView: View {
             appModel.dismissWorkshop(inProject: row.projectID)
             return
         }
-        Task {
-            await appModel.selectWorkshop(inProject: row.projectID)
+        Task { await endWorkshop(inProject: row.projectID) }
+    }
+
+    /// Ending a project's live workshop from the sidebar: the workshop is
+    /// selected, then asked about only where `WorkshopEndRules` says
+    /// something would be lost, else ended at once.
+    private func endWorkshop(inProject projectID: String) async {
+        await appModel.selectWorkshop(inProject: projectID)
+        if let message = appModel.workshopEndConfirmation(forTab: projectID) {
+            workshopCloseMessage = message
             workshopPendingClose = true
+        } else if let refusal = await appModel.closeWorkshopTab() {
+            actionError = refusal
         }
     }
 
@@ -962,10 +979,7 @@ struct SidebarView: View {
             }
         case .workshop:
             Button("End workshop session\u{2026}", systemImage: "stop.circle") {
-                Task {
-                    await appModel.selectWorkshop(inProject: row.projectID)
-                    workshopPendingClose = true
-                }
+                Task { await endWorkshop(inProject: row.projectID) }
             }
         case .slice:
             if let plan = appModel.plan(projectID: row.projectID),
@@ -1448,7 +1462,10 @@ struct SidebarView: View {
     }
 
     private func requestClose(_ projectID: String) {
-        if appModel.tabHasLiveWorkshop(projectID) {
+        // Only a tab whose close ends a planning session (an Untitled
+        // one's) asks, and only where that session has something to lose.
+        if appModel.tabHasLiveWorkshop(projectID), let message = appModel.workshopEndConfirmation(forTab: projectID) {
+            workshopCloseMessage = message
             projectPendingClose = projectID
         } else {
             Task { await appModel.closeProject(projectID) }
@@ -1668,7 +1685,7 @@ struct SidebarView: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("The planning agent is still running. Ending it ends its session; the draft goes with it.")
+                    Text(view.workshopCloseMessage)
                 }
                 .alert(
                     "End the workshop session?",
@@ -1682,7 +1699,7 @@ struct SidebarView: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: { _ in
-                    Text("The planning agent is still running. Closing the project ends its session; the draft goes with it.")
+                    Text(view.workshopCloseMessage)
                 }
                 .alert(
                     "Discard this session?",

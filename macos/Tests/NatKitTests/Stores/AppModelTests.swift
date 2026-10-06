@@ -975,7 +975,9 @@ final class AppModelTests: XCTestCase {
     }
 
     @MainActor
-    func testLaunchWorkshop_clearsTheDraftOnSuccess() async {
+    func testLaunchWorkshop_keepsTheDraftOnSuccess() async {
+        // Kept, so an agent that ends before proposing hands the composer
+        // back with it.
         let appModel = await workshopModel(planningAgentAppears: true) { _, _, _, _ in
             WorkshopLaunchResult(session: "nat-plan", workdir: "/path/a")
         }
@@ -983,7 +985,7 @@ final class AppModelTests: XCTestCase {
 
         await appModel.launchWorkshop(request: appModel.workshopDraft)
 
-        XCTAssertEqual(appModel.workshopDraft, "")
+        XCTAssertEqual(appModel.workshopDraft, "Add dark mode.")
     }
 
     @MainActor

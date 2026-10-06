@@ -237,6 +237,9 @@ struct WorkshopNavigatorView: View {
     let projectName: String
     @State private var folded: Set<String> = []
     @State private var confirmingEnd = false
+    /// What `confirmingEnd`'s alert says — `WorkshopEndRules`' message, taken
+    /// as End session was pressed.
+    @State private var endMessage = ""
     @State private var endError: String?
 
     var body: some View {
@@ -273,7 +276,7 @@ struct WorkshopNavigatorView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The planning agent is still running. Ending it ends its session; the draft goes with it.")
+            Text(endMessage)
         }
     }
 
@@ -298,15 +301,27 @@ struct WorkshopNavigatorView: View {
     @ViewBuilder
     private var briefActions: some View {
         if appModel.planningAgent != nil {
-            Button(action: { confirmingEnd = true }) { HeaderActionLabel(title: "End session") }
+            Button(action: endSession) { HeaderActionLabel(title: "End session") }
                 .buttonStyle(GnatHeaderButtonStyle())
-        } else {
+        } else if !appModel.workshopReconnecting, !appModel.workshopEnded {
             Button(action: { Task { await appModel.launchWorkshop(request: appModel.workshopDraft) } }) {
                 HeaderActionLabel(title: "Plan", systemImage: "arrow.right", isBusy: appModel.workshopLaunching)
             }
             .buttonStyle(GnatHeaderButtonStyle(primary: true))
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(appModel.workshopLaunching)
+        }
+    }
+
+    /// End session: asked first only where `WorkshopEndRules` says
+    /// something would be lost, else ended at once.
+    private func endSession() {
+        guard let tab = appModel.activeProjectID else { return }
+        if let message = appModel.workshopEndConfirmation(forTab: tab) {
+            endMessage = message
+            confirmingEnd = true
+        } else {
+            Task { endError = await appModel.closeWorkshopTab() }
         }
     }
 
@@ -516,7 +531,9 @@ struct WorkshopMainPane: View {
             } else if appModel.workshopLaunched {
                 AgentTerminalPane(
                     agent: appModel.planningAgent,
-                    emptyText: appModel.workshopLaunching ? "Starting the workshop session\u{2026}" : nil,
+                    emptyText: appModel.workshopLaunching ? "Starting the workshop session\u{2026}"
+                        : appModel.workshopReconnecting ? "Reconnecting to the planning agent"
+                        : appModel.workshopEnded ? "The planning agent has ended. Keep workshopping starts a new one on the plan." : nil,
                     focusRequest: appModel.terminalFocusRequest,
                     sessionExists: { appModel.planningAgent != nil })
             } else {

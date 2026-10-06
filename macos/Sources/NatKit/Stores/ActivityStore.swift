@@ -20,6 +20,17 @@ public final class ActivityStore {
     /// starts the clock again.
     public private(set) var firstSeen: [String: Date] = [:]
 
+    /// Whether a reading has landed this run — any that completed, an empty
+    /// one included; a failed one is no reading. Until then `agents` being
+    /// empty says nothing about what is running.
+    public private(set) var hasRead = false
+
+    /// Called right after every reading that lands: what `AppModel` reads
+    /// planning agents coming and going off — the workshops it draws
+    /// provisionally from the last run until the first reading, and those
+    /// whose agent has ended since the last.
+    @ObservationIgnored public var onReading: (() -> Void)?
+
     private let client: NatClientProtocol
     private let now: () -> Date
     private var pollTask: Task<Void, Never>?
@@ -86,6 +97,8 @@ public final class ActivityStore {
                     self.firstSeen = Self.mergeFirstSeen(
                         existing: self.firstSeen, sliceIDs: newAgents.keys, now: self.now()
                     )
+                    self.hasRead = true
+                    self.onReading?()
 
                     // If no agents, stop polling. Said out loud, because an
                     // empty reading ends the loop until the next kick(): a

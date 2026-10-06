@@ -422,6 +422,10 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     /// A workshop row whose workshop has a proposal up — the row's Plan ready
     /// badge. False for every slice and session row.
     public let planReady: Bool
+    /// A workshop row drawn from the last run's request while the activity
+    /// poll's first reading is still to land — drawn as a launching row,
+    /// captioned `reconnectingLabel`. False for every other row.
+    public let reconnecting: Bool
 
     public var id: String { "\(kind):\(targetID)" }
 
@@ -432,7 +436,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     public init(
         kind: SidebarActiveKind, targetID: String, projectID: String, projectName: String,
         projectTag: String? = nil, title: String, state: SliceDisplayState, live: Bool,
-        marks: PRMarks = .none, planReady: Bool = false
+        marks: PRMarks = .none, planReady: Bool = false, reconnecting: Bool = false
     ) {
         self.kind = kind
         self.targetID = targetID
@@ -444,6 +448,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
         self.live = live
         self.marks = marks
         self.planReady = kind == .workshop && planReady
+        self.reconnecting = kind == .workshop && reconnecting
     }
 }
 
@@ -563,8 +568,10 @@ public let planReadyLabel = "Plan ready"
 /// agent of each project that has one, keyed by project ID. `pinnedWorkshops`
 /// are the projects whose workshop was opened and not yet launched or
 /// dismissed, each a workshop row of its own with nothing running —
-/// `launchingWorkshop` the one whose launch is in flight. A live agent wins
-/// over both. Active is sorted needs-you first and otherwise left in project,
+/// `launchingWorkshop` the one whose launch is in flight, and
+/// `reconnectingWorkshops` the ones restored as running that the activity
+/// poll has yet to read (`AppModel.reconnectingWorkshops`). A live agent wins
+/// over all three. Active is sorted needs-you first and otherwise left in project,
 /// then plan, order. `prMarks` is every project's pull request marks by slice
 /// id (`PRStatusStore.marks`), drawn on a slice's Active and tree rows alike
 /// as `prMarks(_:for:agent:)` gates them. `proposedWorkshops` are the tabs
@@ -578,6 +585,7 @@ public func buildSidebarModel(
     planningAgents: [String: AgentActivity] = [:],
     pinnedWorkshops: Set<String> = [],
     launchingWorkshop: String? = nil,
+    reconnectingWorkshops: Set<String> = [],
     prMarks: [String: PRMarks] = [:],
     proposedWorkshops: Set<String> = []
 ) -> SidebarModel {
@@ -595,6 +603,13 @@ public func buildSidebarModel(
                 kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
                 title: workshopRowTitle, state: state, live: true,
                 planReady: proposedWorkshops.contains(project.id)))
+        } else if reconnectingWorkshops.contains(project.id) {
+            // Running when the app last quit, and not yet read again: drawn
+            // as a launch is, until the first reading confirms or ends it.
+            active.append(SidebarActiveRow(
+                kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
+                title: workshopRowTitle, state: .working, live: false,
+                planReady: proposedWorkshops.contains(project.id), reconnecting: true))
         } else if pinnedWorkshops.contains(project.id) || launchingWorkshop == project.id {
             // Opened and not yet running: a draft being written, or a launch
             // on its way — the row holds the workshop's place until then.

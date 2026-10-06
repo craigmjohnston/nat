@@ -125,14 +125,20 @@ public struct ActiveEntry: Equatable, Identifiable {
     }
 }
 
+/// The status word of a workshop drawn from the last run's request until the
+/// activity poll's first reading confirms its agent.
+public let reconnectingLabel = "Reconnecting\u{2026}"
+
 /// Builds the workshop's ACTIVE entry, or nil when there is no planning
-/// agent to draw: none live, no launch in flight, and the entry not selected
-/// — a selected entry with nothing running is the composer being typed into,
-/// drawn so the rail's selection stays visible while it is. A live agent
-/// wins over both flags — it is the only reading taken fresh.
+/// agent to draw: none live, no launch in flight, none reconnecting, and the
+/// entry not selected — a selected entry with nothing running is the
+/// composer being typed into, drawn so the rail's selection stays visible
+/// while it is. A live agent wins over every flag — it is the only reading
+/// taken fresh.
 public func buildWorkshopEntry(
     activity: AgentActivity?,
     isLaunching: Bool,
+    isReconnecting: Bool = false,
     isSelected: Bool = false,
     firstSeen: Date? = nil,
     now: Date = Date()
@@ -149,6 +155,8 @@ public func buildWorkshopEntry(
     case nil:
         if isLaunching {
             state = ("Launching…", .launching)
+        } else if isReconnecting {
+            state = (reconnectingLabel, .launching)
         } else if isSelected {
             state = ("New session", .new)
         } else {

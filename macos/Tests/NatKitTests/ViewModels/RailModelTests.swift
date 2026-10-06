@@ -651,6 +651,15 @@ final class RailModelTests: XCTestCase {
         XCTAssertNil(buildWorkshopEntry(activity: nil, isLaunching: false))
     }
 
+    func testWorkshopEntryReconnectingIsALaunchingRowSaidSo() {
+        XCTAssertEqual(
+            buildWorkshopEntry(activity: nil, isLaunching: false, isReconnecting: true),
+            workshopEntry("Reconnecting…", .launching))
+        XCTAssertEqual(
+            buildWorkshopEntry(activity: .working, isLaunching: false, isReconnecting: true)?.displayState, "Working",
+            "a live reading wins")
+    }
+
     func testBuildWorkshopEntry_launching() {
         let entry = buildWorkshopEntry(activity: nil, isLaunching: true)
 

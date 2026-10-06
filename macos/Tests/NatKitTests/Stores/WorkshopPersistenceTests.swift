@@ -225,7 +225,7 @@ final class WorkshopPersistenceTests: XCTestCase {
         XCTAssertNil(model.workshopPlanFile)
     }
 
-    func testALaunchThatTakesKeepsTheRequestAndDropsTheDraftAndFile() async throws {
+    func testALaunchThatTakesKeepsTheRequestTheDraftAndTheFile() async throws {
         let cache = InMemoryWorkshopCache()
         let model = await Fixtures.startedAppModel(config: Fixtures.emptyConfig, toolsReady: true, workshopCache: cache)
         let tab = model.activeProjectID ?? ""
@@ -235,7 +235,9 @@ final class WorkshopPersistenceTests: XCTestCase {
         await model.launchWorkshop(request: model.workshopDraft)
         model.flushWorkshops()
 
-        XCTAssertEqual(kept(cache).workshops[tab], .init(request: "Build it.\n\nAttached: kept-plan.md"))
+        XCTAssertEqual(kept(cache).workshops[tab], .init(
+            draft: "Build it.", planFile: PlanFile(name: "kept-plan.md", content: "# Plan\n"),
+            request: "Build it.\n\nAttached: kept-plan.md"))
     }
 
     func testAFailedLaunchKeepsTheDraft() async {

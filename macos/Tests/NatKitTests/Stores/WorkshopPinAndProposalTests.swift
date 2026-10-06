@@ -80,7 +80,7 @@ final class WorkshopPinAndProposalTests: XCTestCase {
         await model.launchWorkshop(request: model.workshopDraft)
 
         XCTAssertEqual(model.workshopRequest, "A habit tracker.")
-        XCTAssertEqual(model.workshopDraft, "")
+        XCTAssertEqual(model.workshopDraft, "  A habit tracker.  ", "kept, should the agent end before proposing")
         XCTAssertFalse(model.isWorkshopPinned(tab), "the live agent's row takes over")
         XCTAssertEqual(workshopRows(model).map(\.live), [true])
     }

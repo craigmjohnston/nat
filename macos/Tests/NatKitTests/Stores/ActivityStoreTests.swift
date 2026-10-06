@@ -86,6 +86,16 @@ class MockActivityClient: NatClientProtocol, @unchecked Sendable {
         throw NSError(domain: "test", code: -1)
     }
 
+    /// Declared on the class, as `workspaceLaunch` is, so a subclass can
+    /// answer a project's proposal and Accept.
+    func planProposal(projectID: String) async throws -> PlanProposal? {
+        throw NSError(domain: "test", code: -1)
+    }
+
+    func planAccept(projectID: String) async throws -> PlanAccepted {
+        throw NSError(domain: "test", code: -1)
+    }
+
     func notionSearch(query: String) async throws -> [NotionPlace] {
         throw NSError(domain: "test", code: -1)
     }
@@ -347,6 +357,41 @@ final class ActivityStoreTests: XCTestCase {
         store.kick()
         try? await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(client.callCount, 2)
+    }
+
+    // MARK: - The first reading
+
+    @MainActor
+    func testHasReadTurnsTrueOnTheFirstReadingEvenAnEmptyOneAndEachReadingIsTold() async throws {
+        let client = MockActivityClient(response: .agents([]))
+        let store = ActivityStore(client: client)
+        var calls = 0
+        store.onReading = { calls += 1 }
+        XCTAssertFalse(store.hasRead)
+
+        store.kick()
+        try await waitUntil { store.hasRead }
+        store.kick()
+        try await waitUntil { client.callCount == 2 }
+
+        XCTAssertTrue(store.hasRead)
+        XCTAssertEqual(calls, 2, "told of every reading that lands")
+    }
+
+    @MainActor
+    func testAFailedReadingIsNoReading() async throws {
+        let client = MockActivityClient(response: .failure(TestError()))
+        let store = ActivityStore(client: client)
+        var told = false
+        store.onReading = { told = true }
+
+        store.kick()
+        defer { store.stop() }
+        try await waitUntil { client.callCount == 1 }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertFalse(store.hasRead)
+        XCTAssertFalse(told)
     }
 
     @MainActor
