@@ -115,6 +115,10 @@ public final class PulseHostView<Root: View>: NSView {
         // min/max options add required ones that would fight the autoresizing
         // mask): the intrinsic size is only read, by `Pulsing.sizeThatFits`.
         hosting.sizingOptions = [.intrinsicContentSize]
+        // No safe area: a hosting view under a full-size-content titlebar
+        // (the breadcrumb's dot) is otherwise inset by the titlebar's height
+        // and draws its content that far below where it was laid out.
+        hosting.safeAreaRegions = []
         hosting.autoresizingMask = [.width, .height]
         hosting.frame = bounds
         addSubview(hosting)
