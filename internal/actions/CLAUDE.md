@@ -119,7 +119,9 @@ etc.) — this file is the mechanics, not a restatement of the rules.
 - `OpenPR` reads the slice's last-filed `PR description` section
   (`PRTitleBody` splits it: first line title, rest body) and hands it to
   `PRCreator`; an empty description lets `gh --fill` build it from commits.
-  `RecordPR` writes the URL only — the slice stays `In progress`.
+  Claude Code's attribution footer is dropped first
+  (`StripAgentAttribution`, `attribution.go`; `complete-slice` strips it
+  before filing too). `RecordPR` writes the URL only — the slice stays `In progress`.
 - `MarkDone` is the **only** function that writes Done, and always re-reads
   `Shape` first. `SettleMerged` (nat not running when a merge happened on
   GitHub — it takes the batched reading's `gh.PRStatus` and acts on `State`

@@ -83,6 +83,30 @@ func TestOpenPR(t *testing.T) {
 	}
 }
 
+// TestOpenPRStripsTheAgentAttribution opens a hand-back filed before
+// complete-slice stripped Claude Code's footer: the pull request goes without.
+func TestOpenPRStripsTheAgentAttribution(t *testing.T) {
+	client := &fakeClient{blocks: func(string) ([]notion.Block, error) {
+		return []notion.Block{
+			block(t, "heading_3", notion.PRDescriptionHeading),
+			block(t, "paragraph", "Open a clean PR"),
+			block(t, "paragraph", "What it does."),
+			block(t, "paragraph", "🤖 Generated with [Claude Code](https://claude.com/claude-code)"),
+			block(t, "paragraph", "https://claude.ai/code/session_01ABC"),
+		}, nil
+	}}
+	prs := &fakePRs{}
+	s := domain.Slice{ID: "hb", Branch: "slice/approve"}
+
+	if _, err := OpenPR(context.Background(), client.store(), prs, s, "/repo"); err != nil {
+		t.Fatalf("OpenPR() = %v, want it to go through", err)
+	}
+	want := prCall{"/repo", "slice/approve", "Open a clean PR", "What it does."}
+	if len(prs.made) != 1 || prs.made[0] != want {
+		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
+	}
+}
+
 // TestOpenPRWithoutARecordedDescription covers every hand-back written before
 // there was a flag for one: nothing is read off the page as a title, so gh is
 // given none and fills the pull request from the commits as it always did.

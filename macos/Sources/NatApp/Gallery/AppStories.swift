@@ -92,6 +92,21 @@ enum AppStories {
     /// The window on one slice, the fixture plan beside the second project's,
     /// with the live readings the fixtures carry, waiting for those readings
     /// to land so the slice is drawn in the state it is a story about.
+    /// The PR view alone over a fixture pull request, with an entry's reply
+    /// open (`replyTo`, its index in the conversation) or the description
+    /// being edited.
+    private static func prConversation(
+        _ pr: PRDetail = Fixtures.prGreen, replyTo index: Int? = nil, replyText: String = "",
+        editing: String? = nil
+    ) async -> some View {
+        let store = PRStore(client: FixtureNatClient(pr: pr))
+        await store.fetch(projectID: Fixtures.projectID, sliceRef: Fixtures.approveSliceID)
+        let entries = conversation(comments: pr.comments, reviews: pr.reviews)
+        let reply = index.map { (key: entries[$0].replyKey, text: replyText) }
+        return PRConversationPane(store: store, expectedNumber: pr.number, reply: reply, editingDescription: editing)
+            .surface(.window)
+    }
+
     private static func slicePane(
         _ sliceID: String, agents: [AgentStatus] = Fixtures.agentStatuses, plan: ProjectInfo = Fixtures.projectInfo,
         prStatus: PRStatusDoc = Fixtures.prStatusDoc, pr: PRDetail = Fixtures.prGreen,
@@ -2514,6 +2529,35 @@ enum AppStories {
             size: CGSize(width: 560, height: 140)
         ) {
             PRComposerTypedStory()
+        },
+
+        Story(
+            name: "pr-conversation-reply",
+            summary: "The PR view with Reply pressed on the first comment and a reply typed: its "
+                + "composer inside the comment's box under the body, placeholder Reply to <author>, "
+                + "Cancel beside send; the pull request's own composer still at the foot.",
+            size: pane
+        ) {
+            await prConversation(replyTo: 0, replyText: "Agreed — the worst verdict wins.\nI'll add a test for the tie.")
+        },
+
+        Story(
+            name: "pr-conversation-closed",
+            summary: "A closed pull request under the pointer: every entry's Reply and the "
+                + "description's Edit showing, and the comment box at the foot — GitHub takes "
+                + "comments on a closed or merged pull request.",
+            size: pane
+        ) {
+            await prConversation(Fixtures.prGreenClosed).environment(\.hoverForced, true)
+        },
+
+        Story(
+            name: "pr-description-editing",
+            summary: "The description in edit mode: the markdown swapped for the composer's editor "
+                + "prefilled with the body, Cancel and Save under it.",
+            size: pane
+        ) {
+            await prConversation(editing: Fixtures.prGreen.body)
         },
 
         Story(

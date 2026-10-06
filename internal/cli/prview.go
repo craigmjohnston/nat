@@ -85,21 +85,9 @@ func prViewSession(ctx context.Context, sessionID, projectRef string, rest []str
 	if err != nil {
 		return err
 	}
-	_, projectID, project, err := env.projectFor(projectRef)
+	sess, err := lookupSession(ctx, env, projectRef, id)
 	if err != nil {
 		return err
-	}
-	st, err := env.storeFor(ctx, projectID, project)
-	if err != nil {
-		return err
-	}
-	sessions, err := st.Sessions(ctx, storeProject(projectID, project))
-	if err != nil {
-		return fmt.Errorf("read the sessions: %w", err)
-	}
-	sess, found := findSession(sessions, id)
-	if !found {
-		return noSessionError(id)
 	}
 	pr, err := env.NewGH().ViewPR(sess.Dir, rest[0])
 	if err != nil {

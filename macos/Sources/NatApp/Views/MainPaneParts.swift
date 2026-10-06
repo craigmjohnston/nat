@@ -489,9 +489,16 @@ struct PROpenInGitHubButton: View {
 }
 
 /// The size the PR view sets its prose in — the description and every
-/// comment alike.
+/// comment alike — and the insets of a conversation entry's box.
 enum PRConversationMetrics {
     static var textSize: CGFloat { Typo.headline }
+    /// Byline and body alike, either side.
+    static let entryHorizontalPadding: CGFloat = 14
+    static let bylineVerticalPadding: CGFloat = 10
+    /// The body's, and an open reply composer's under it.
+    static let bodyVerticalPadding: CGFloat = 12
+    /// How tall the description editor grows before it scrolls itself.
+    static let descriptionEditorMaxHeight: CGFloat = 320
 }
 
 /// A pull request's description and conversation, with the comment box at
@@ -499,6 +506,11 @@ enum PRConversationMetrics {
 /// navigator's. `expectedNumber` keeps a reading of some other pull request
 /// (the store is shared across the project) from showing while the right
 /// one is read.
+///
+/// Every entry takes a Reply (one composer open at a time, each entry's
+/// draft kept until sent or cancelled) and the description an Edit, whatever
+/// the pull request's state: GitHub takes comments and edits on a merged or
+/// closed one too.
 struct PRConversationPane: View {
     let store: PRStore
     let expectedNumber: Int?
@@ -507,12 +519,47 @@ struct PRConversationPane: View {
     @State private var isSending = false
     @State private var commentError: String?
 
+    /// The entry whose reply composer is open (`ConvoEntry.replyKey`).
+    @State private var replyingTo: String?
+    /// Each entry's reply draft, kept while another's composer is open.
+    @State private var replyDrafts: [String: String] = [:]
+    @State private var isSendingReply = false
+    @State private var replyError: String?
+
+    /// The description being edited, nil while it is drawn.
+    @State private var descriptionDraft: String?
+    @State private var isSavingDescription = false
+    @State private var descriptionError: String?
+    @State private var hoveringDescription = false
+    @Environment(\.hoverForced) private var hoverForced
+
+    /// - Parameters:
+    ///   - reply: an entry's reply composer open with this draft — a story's,
+    ///     since a render has no pointer to press Reply with.
+    ///   - editingDescription: the description editor open with this text,
+    ///     for the same reason.
+    init(
+        store: PRStore, expectedNumber: Int?,
+        reply: (key: String, text: String)? = nil, editingDescription: String? = nil
+    ) {
+        self.store = store
+        self.expectedNumber = expectedNumber
+        _replyingTo = State(initialValue: reply?.key)
+        _replyDrafts = State(initialValue: reply.map { [$0.key: $0.text] } ?? [:])
+        _descriptionDraft = State(initialValue: editingDescription)
+    }
+
     var body: some View {
         if let pr = store.loadState.pr, expectedNumber == nil || pr.number == expectedNumber {
             content(pr)
                 .onChange(of: pr.number) { _, _ in
                     commentText = ""
                     commentError = nil
+                    replyingTo = nil
+                    replyDrafts = [:]
+                    replyError = nil
+                    descriptionDraft = nil
+                    descriptionError = nil
                 }
         } else if let message = store.loadState.errorMessage {
             MainPaneNote(text: "The pull request could not be read: \(message)")
@@ -533,34 +580,92 @@ struct PRConversationPane: View {
                 }
                 .font(.system(size: Typo.scaled(20), weight: .semibold))
                 .textSelection(.enabled)
-                NavHeading(text: "Description")
-                if described.isEmpty {
-                    Text("No description.").font(.system(size: PRConversationMetrics.textSize)).ink(.secondary)
-                } else {
-                    Excerpt(text: described, maxWords: briefExcerptWords * 3) { shown in
-                        MarkdownView(text: shown, size: PRConversationMetrics.textSize)
-                    }
-                }
+                description(described)
 
                 NavHeading(text: entries.isEmpty ? "Conversation" : "Conversation · \(entries.count)")
                 if entries.isEmpty {
                     Text("No comments yet.").font(.system(size: PRConversationMetrics.textSize)).ink(.secondary)
                 }
                 ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
-                    PRConversationEntryView(entry: entry)
+                    PRConversationEntryView(entry: entry, reply: reply(to: entry))
                 }
-                if pr.state != PRLifecycleState.merged && pr.state != PRLifecycleState.closed {
-                    PRComposerView(
-                        placeholder: "Comment on the pull request\u{2026}",
-                        text: $commentText, isSending: isSending, error: commentError,
-                        onSend: { Task { await send() } })
-                }
+                PRComposerView(
+                    placeholder: "Comment on the pull request\u{2026}",
+                    text: $commentText, isSending: isSending, error: commentError,
+                    onSend: { Task { await send() } })
             }
             .padding(20)
             .frame(maxWidth: 820, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .thinScrollers()
+    }
+
+    /// The Description heading with its hover-only Edit, over the rendered
+    /// markdown — or, while it is edited, the editor with Save and Cancel.
+    @ViewBuilder
+    private func description(_ described: String) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                NavHeading(text: "Description")
+                editButton(described)
+                Spacer(minLength: 0)
+            }
+            if let draft = descriptionDraft {
+                PRComposerView(
+                    placeholder: "Describe the pull request\u{2026}",
+                    text: Binding(get: { draft }, set: { descriptionDraft = $0 }),
+                    isSending: isSavingDescription, error: descriptionError,
+                    onSend: { Task { await saveDescription() } },
+                    onCancel: {
+                        descriptionDraft = nil
+                        descriptionError = nil
+                    },
+                    sendTitle: "Save",
+                    editorMaxHeight: PRConversationMetrics.descriptionEditorMaxHeight)
+            } else if described.isEmpty {
+                Text("No description.").font(.system(size: PRConversationMetrics.textSize)).ink(.secondary)
+            } else {
+                Excerpt(text: described, maxWords: briefExcerptWords * 3) { shown in
+                    MarkdownView(text: shown, size: PRConversationMetrics.textSize)
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { hoveringDescription = $0 }
+    }
+
+    /// The Description heading's Edit, under the pointer.
+    private func editButton(_ described: String) -> some View {
+        PRHoverIconButton(
+            systemImage: "pencil", help: "Edit the description",
+            shown: descriptionDraft == nil && (hoveringDescription || hoverForced)
+        ) {
+            descriptionError = nil
+            descriptionDraft = described
+        }
+    }
+
+    /// An entry's reply: open while it is `replyingTo`, its draft its own.
+    private func reply(to entry: ConvoEntry) -> PRReply {
+        let key = entry.replyKey
+        let isOpen = replyingTo == key
+        return PRReply(
+            isOpen: isOpen,
+            text: Binding(get: { replyDrafts[key] ?? "" }, set: { replyDrafts[key] = $0 }),
+            isSending: isOpen && isSendingReply,
+            error: isOpen ? replyError : nil,
+            onOpen: {
+                guard !isSendingReply else { return }
+                replyError = nil
+                replyingTo = key
+            },
+            onCancel: {
+                replyDrafts[key] = nil
+                replyError = nil
+                if replyingTo == key { replyingTo = nil }
+            },
+            onSend: { Task { await sendReply(to: entry) } })
     }
 
     private func send() async {
@@ -573,6 +678,35 @@ struct PRConversationPane: View {
             commentError = SliceActionTracker.message(for: error)
         }
         isSending = false
+    }
+
+    private func sendReply(to entry: ConvoEntry) async {
+        let key = entry.replyKey
+        let text = replyDrafts[key] ?? ""
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        isSendingReply = true
+        replyError = nil
+        do {
+            try await store.comment(text: replyBody(to: entry, text: text))
+            replyDrafts[key] = nil
+            if replyingTo == key { replyingTo = nil }
+        } catch {
+            replyError = SliceActionTracker.message(for: error)
+        }
+        isSendingReply = false
+    }
+
+    private func saveDescription() async {
+        guard let draft = descriptionDraft else { return }
+        isSavingDescription = true
+        descriptionError = nil
+        do {
+            try await store.editDescription(draft)
+            descriptionDraft = nil
+        } catch {
+            descriptionError = SliceActionTracker.message(for: error)
+        }
+        isSavingDescription = false
     }
 }
 

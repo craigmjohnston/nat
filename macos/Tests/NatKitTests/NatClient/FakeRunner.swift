@@ -38,6 +38,7 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case prMergeFailure
         case prCommentSuccess
         case prCommentFailure
+        case prEditFailure
         case prReviewersSuccess
         case workshopLaunchSuccess
         case workshopLaunchAlreadyLive
@@ -79,6 +80,10 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
     /// check what a command sent over stdin (`agent-send`'s prompt).
     private(set) var lastArguments: [String]?
     private(set) var lastStandardInput: Data?
+    /// Every call's arguments, in order.
+    private(set) var calls: [[String]] = []
+    /// Every call's standard input, in order.
+    private(set) var standardInputs: [Data?] = []
 
     init(fixture: Fixture = .infoWithAllFields) {
         self.fixture = fixture
@@ -92,6 +97,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
     ) async throws -> (stdout: Data, stderr: Data, exitCode: Int32) {
         lastArguments = arguments
         lastStandardInput = standardInput
+        calls.append(arguments)
+        standardInputs.append(standardInput)
 
         if let error = shouldFailWith {
             throw error
@@ -170,6 +177,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
             return (Data(), Data(), 0)
         case .prCommentFailure:
             return (Data(), "\"Write the UI\" has no pull request recorded: nothing to comment on".data(using: .utf8)!, 1)
+        case .prEditFailure:
+            return (Data(), "\"Write the UI\" has no pull request recorded: nothing to edit".data(using: .utf8)!, 1)
         case .prReviewersSuccess:
             return (Data(#"{"pr":"https://x/pull/7","requested":["hubot"],"candidates":["mona"],"candidates_error":"HTTP 403"}"#.utf8), Data(), 0)
         case .workshopLaunchSuccess:

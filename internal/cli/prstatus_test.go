@@ -570,6 +570,7 @@ func TestWorthReadingPRAndReadinessOf(t *testing.T) {
 }
 
 func (f *fakePRReader) EditReviewers(dir, ref string, add, remove []string) error { return nil }
+func (f *fakePRReader) EditPRBody(dir, ref, body string) error                    { return nil }
 func (f *fakePRReader) Collaborators(dir string) ([]string, error)                { return nil, nil }
 
 // redStatusEnv is a plan with one approved slice whose pull request reads red

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-
-	"github.com/craigmjohnston/nat/internal/actions"
 )
 
 // PRCommenter is what pr-comment needs of the GitHub CLI: one comment posted
@@ -22,7 +20,8 @@ type PRCommenter interface {
 // write on a slice's pull request happens.
 //
 // Only a slice with a pull request recorded has one to comment on, the same
-// refusal pr-view and pr-merge give a slice with none. Nothing is written to
+// refusal pr-view and pr-merge give a slice with none; with --session, the
+// pull request is one of that ad hoc session's instead ([prTarget]). Nothing is written to
 // Notion by this: the comment lands on GitHub alone, exactly where a reviewer
 // leaving it by hand would have put it.
 func prComment(ctx context.Context, args []string, env Env) error {
@@ -30,15 +29,14 @@ func prComment(ctx context.Context, args []string, env Env) error {
 	flags.SetOutput(io.Discard)
 	body := flags.String("body", stdinRef, "the comment text; `-` or absent reads it from stdin")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
+	sessionID := flags.String("session", "",
+		"comment on one of this ad hoc session's pull requests, named by URL or number, instead of a slice's")
 	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(rest) != 1 {
-		return usageErrorf("pr-comment: want exactly one slice, by URL or ID, given %d", len(rest))
-	}
-	id, err := pageID("pr-comment", rest[0])
+	target, err := parsePRTarget("pr-comment", *sessionID, rest)
 	if err != nil {
 		return err
 	}
@@ -52,33 +50,19 @@ func prComment(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("pr-comment: no comment given: pass --body or pipe one in")
 	}
 
-	_, projectID, project, err := env.projectFor(*projectRef)
+	workdir, pr, err := target.resolve(ctx, env, *projectRef, "comment on")
 	if err != nil {
 		return err
 	}
-	st, err := env.storeFor(ctx, projectID, project)
+	url, err := env.NewGH().CommentPR(workdir, pr, text)
 	if err != nil {
-		return err
-	}
-
-	s, _, err := st.Slice(ctx, id)
-	if err != nil {
-		return fmt.Errorf("load the slice: %w", err)
-	}
-	if s.PRURL == "" {
-		return fmt.Errorf("%q has no pull request recorded: nothing to comment on", s.Name)
-	}
-
-	workdir := actions.WorkdirFor(s, project)
-	url, err := env.NewGH().CommentPR(workdir, s.PRURL, text)
-	if err != nil {
-		return fmt.Errorf("comment on the pull request %s: %w", s.PRURL, err)
+		return fmt.Errorf("comment on the pull request %s: %w", pr, err)
 	}
 
 	if *asJSON {
-		return writeJSON(env.Out, prCommentedJSON{PR: s.PRURL, CommentURL: url})
+		return writeJSON(env.Out, prCommentedJSON{PR: pr, CommentURL: url})
 	}
-	_, err = io.WriteString(env.Out, prCommentedMarkdown(s.PRURL, url))
+	_, err = io.WriteString(env.Out, prCommentedMarkdown(pr, url))
 	return err
 }
 

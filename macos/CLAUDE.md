@@ -296,6 +296,22 @@ Stories: `window-pr-checks-controls`, `pr-checks-controls`,
 `pr-checks-row-hovered`, `pr-checks-nothing-run`, `pr-checks-mid-call`,
 `pr-checks-cancelled-then-reran`.
 
+**The PR conversation** (`PRConversationPane`, `PRConversation.swift`):
+every entry's byline ends in a hover-only Reply (`PRHoverIconButton`, the
+checks' icon-button size) that opens a `PRComposerView` inside its box —
+one open at a time, each entry's draft kept by `ConvoEntry.replyKey` until
+sent or cancelled — posting `replyBody` (NatKit, tested: GitHub's Quote
+reply — `@<author>`, the parent quoted, the reply) through
+`PRStore.comment`. The Description heading's hover-only Edit swaps the
+markdown for the composer (Save, Cancel) and saves through
+`PRStore.editDescription` → `nat pr-edit`, then a `pr-view` of its own.
+On an ad hoc session's pull request the store passes its session
+(`--session`), so all three work there too.
+Comments, replies and edits are offered whatever the pull request's state;
+on a merged or closed one, which the batched reading no longer reads,
+`comment` re-reads with a `pr-view` instead of a settle read. Stories:
+`pr-conversation-reply`, `pr-conversation-closed`, `pr-description-editing`.
+
 ## The workshop and its proposal
 
 Every workshop proposes with `nat plan-propose` — an Untitled tab's by its
