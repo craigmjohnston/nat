@@ -62,11 +62,9 @@ struct SliceNavigatorView: View {
         NatKit.branchConflictNotice(
             slice: slice, conflict: prReadingOfProject.branchConflicts[slice.id], hasLiveAgent: agent != nil)
     }
-    /// The PR header's danger icon's tooltip: every notice that applies.
-    private var prWarning: String? {
-        let texts = [notice?.text, conflictNotice?.text].compactMap { $0 }
-        return texts.isEmpty ? nil : texts.joined(separator: "\n")
-    }
+    /// The PR header's danger icon's tooltip: the failing checks' notice. A
+    /// conflict is the header's Conflict badge instead.
+    private var prWarning: String? { notice?.text }
     /// The PR header's success mark's tooltip, where the last reading has the
     /// checks passing and the gate (`prMarks`) trusts it.
     private var prPassing: String? {
@@ -140,11 +138,12 @@ struct SliceNavigatorView: View {
                     // since the section was last open.
                     status: nav.prStatus ?? NavSectionStatus(prStore.badge(sliceID: slice.id)),
                     reworking: reworking(nav, .pr),
+                    conflict: conflictNotice?.text,
                     warning: prWarning, passing: prPassing, onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
                     PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
                 } content: {
-                    prReading
+                    prBody
                 }
             }
         } footer: {
@@ -716,17 +715,6 @@ struct SliceNavigatorView: View {
             await appModel.refresh()
         }
         store.startPolling()
-    }
-
-    private var prReading: some View {
-        VStack(spacing: 0) {
-            // Drawn from the project's reading too, so it shows before the
-            // pull request itself has been read.
-            if let conflictNotice {
-                NavNotice(text: conflictNotice.text, role: .danger)
-            }
-            prBody
-        }
     }
 
     @ViewBuilder

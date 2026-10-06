@@ -187,24 +187,24 @@ resumed), no live agent working, verdict `passing`, not conflicting or
 failing. The PR section header draws the same gate as its outline
 `checkmark.circle` where it has no warning (`NavSectionView.passing`).
 `attention(projectID:)` reads the
-project's own reading. In the navigator, `checksNotice` and `conflictNotice`
-(the conflict the reading's, unless a loaded `PRDetail` of that PR decides —
-`conflict(reading:detail:prURL:)`) share the PR section header's danger icon
-(`NavSectionView`'s `warning`, both texts in its tooltip); the checks text
-says "sent to the agent to fix" when the latest recorded event is the
-nudge's Sent back; the conflict's is also a `NavNotice` atop the PR body, drawn
-before `pr-view` lands, pointing at Send back to agent or naming the live
-agent (both prefill Send back's note). `projectAttention` counts a red pr
-slice once. **A hand-back with no PR**: `PRStatusDoc.branches` (nat's
-own merge test of the branch; absent where it could not test) gives
+project's own reading. In the navigator, `checksNotice` is the PR section
+header's danger icon (`NavSectionView`'s `warning`, its text the tooltip;
+"sent to the agent to fix" when the latest recorded event is the nudge's
+Sent back). A conflict is never a callout in a section body: it is a
+**Conflict** badge in the header (`NavSectionView.conflict`: a small danger
+`Chip` with `MergeIcon` before `NavigatorModel.conflictLabel` — the sidebar
+mark's glyph), its tooltip the notice's text, pointing at Send back to agent
+or naming the live agent (both prefill Send back's note). The PR header's is
+`conflictNotice` (the reading's conflict, unless a loaded `PRDetail` of that
+PR decides — `conflict(reading:detail:prURL:)`; drawn before `pr-view`
+lands), "merge <base> in". `projectAttention` counts a red pr slice once.
+**A hand-back with no PR**: `PRStatusDoc.branches` (nat's own merge test of
+the branch; absent where it could not test) gives
 `PRReading.branchConflicts`, merged into `marks`; `prMarks` draws a slice
-`inReview` with its conflict alone. The Changes header wears a **Conflict**
-badge (`NavSectionView.conflict`: a small danger `Chip` with `MergeIcon`
-before `NavigatorModel.conflictLabel` — the sidebar mark's glyph, never a
-callout in the body), its tooltip `branchConflictNotice`'s text — "rebase it
-on <base>" (`ConflictNotice.hasPullRequest` false), the PR's own notice
-keeps "merge <base> in" — and Send back's prefill says the same;
-a launch then carries nat's rebase passage. Stories:
+`inReview` with its conflict alone, and the Changes header wears the badge,
+its tooltip `branchConflictNotice`'s — "rebase it on <base>"
+(`ConflictNotice.hasPullRequest` false) — and Send back's prefill says the
+same; a launch then carries nat's rebase passage. Stories:
 `window-review-conflicting`, `window-review-conflicting-send-back`,
 `sidebar-checks-failing`,
 `sidebar-pr-marks`, `sidebar-pr-marks-passing`, `window-pr-checks-passing`,

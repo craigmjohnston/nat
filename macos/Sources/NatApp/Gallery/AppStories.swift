@@ -1050,7 +1050,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-conflicting",
-            summary: "An approved slice whose pull request conflicts with main, no agent on it, its PR section open: a danger icon on the PR header, and a notice atop the PR body saying the branch conflicts with main and to send it back to the agent.",
+            summary: "An approved slice whose pull request conflicts with main, no agent on it, its PR section open: a Conflict badge (the merge glyph) on the PR header whose tooltip says the branch conflicts with main and to send it back to the agent; nothing in the PR body.",
             size: window
         ) {
             await slicePane(
@@ -1060,7 +1060,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-conflicting-checks-failing",
-            summary: "The same pull request conflicting and red at once: one danger icon on the PR header whose tooltip carries both notices, the conflict notice atop the PR body over its failed checks.",
+            summary: "The same pull request conflicting and red at once: the PR header wears the Conflict badge and the failing checks' danger icon, each with its own tooltip; the PR body shows its failed checks.",
             size: window
         ) {
             await slicePane(
