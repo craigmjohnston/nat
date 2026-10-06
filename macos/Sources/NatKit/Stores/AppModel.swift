@@ -89,6 +89,14 @@ public final class AppModel {
         didSet { workshopsChanged() }
     }
 
+    /// The tabs whose workshop was running when the app last quit — restored
+    /// with a request (`restoreWorkshops`), which a launch sets and a close
+    /// clears — drawn as launched, "Reconnecting…", until the activity poll's
+    /// first reading says whether the agent is still there
+    /// (`settleReconnectingWorkshops`). Nothing of it is written anywhere:
+    /// the kept request is the whole signal.
+    public private(set) var reconnectingWorkshops: Set<String> = []
+
     /// The composer's typed-but-not-yet-launched request, per project — kept
     /// here rather than as `WorkshopPaneView`'s own `@State` so switching to a
     /// slice and back does not tear the composer down with it (`PaneView`
@@ -251,7 +259,7 @@ public final class AppModel {
     /// running, or launching — where it would otherwise show the starter
     /// card. The pane, and the rail's TODO explainer, both read it.
     public var untitledWorkshopVisible: Bool {
-        activeTabIsUntitled && (planningAgent != nil || workshopLaunching)
+        activeTabIsUntitled && (planningAgent != nil || workshopLaunching || workshopReconnecting)
     }
 
     /// The ID of the currently active project.
@@ -833,9 +841,13 @@ public final class AppModel {
             self.projectTabs = sortedProjects.map { (id: $0.key, name: tabName($0.key, fallback: $0.value.name)) }
             restoreWorkshops()
 
-            // Create activity store (app-wide)
-            let activityStore = activityStoreFactory()
+            // Create activity store (app-wide), and start its poll at once:
+            // its first `nat status` then runs beside the plan read, review
+            // stats and reap below rather than after them, and that reading
+            // is what a workshop restored as reconnecting waits on.
+            let activityStore = makeActivityStore()
             self.activityStore = activityStore
+            activityStore.kick()
             self.reviewStatsStore = ReviewStatsStore(client: clientFactory())
             self.prStatusStore = makePRStatusStore()
             self.sessionStore = SessionStore(client: clientFactory())
@@ -873,13 +885,22 @@ public final class AppModel {
         }
     }
 
+    /// The app-wide activity store, its first reading wired to settle the
+    /// workshops restored as reconnecting.
+    private func makeActivityStore() -> ActivityStore {
+        let store = activityStoreFactory()
+        store.onFirstReading = { [weak self] in self?.settleReconnectingWorkshops() }
+        return store
+    }
+
     /// The board for a launch with no projects: the app-wide stores a first
     /// project would need (`addProject` finds them made), and one Untitled
     /// tab — not another when `start()` runs again with one already open.
     private func startWithUntitledTab() {
         needsOnboarding = false
         if activityStore == nil {
-            activityStore = activityStoreFactory()
+            activityStore = makeActivityStore()
+            activityStore?.kick()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
             prStatusStore = makePRStatusStore()
             sessionStore = SessionStore(client: clientFactory())
@@ -1073,7 +1094,7 @@ public final class AppModel {
         // start() builds these for a config that named projects; a first
         // project on a machine that had none arrives here with neither.
         if activityStore == nil {
-            activityStore = activityStoreFactory()
+            activityStore = makeActivityStore()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
             prStatusStore = makePRStatusStore()
             sessionStore = SessionStore(client: clientFactory())
@@ -1182,6 +1203,7 @@ public final class AppModel {
             planningAgents: planningAgents,
             pinnedWorkshops: workshopPinnedProjects,
             launchingWorkshop: workshopLaunching ? activeProjectID : nil,
+            reconnectingWorkshops: reconnectingWorkshops,
             prMarks: prStatusStore?.marks ?? [:],
             proposedWorkshops: Set(proposals.keys))
     }
@@ -1556,6 +1578,7 @@ public final class AppModel {
         workshopDrafts[projectID] = nil
         workshopPlanFiles[projectID] = nil
         workshopRequests[projectID] = nil
+        reconnectingWorkshops.remove(projectID)
         workshopSelectedProjects.remove(projectID)
     }
 
@@ -1653,7 +1676,45 @@ public final class AppModel {
             workshopDrafts[id] = workshop.draft
             workshopPlanFiles[id] = workshop.planFile
             workshopRequests[id] = workshop.request
+            if workshop.request != nil { reconnectingWorkshops.insert(id) }
         }
+    }
+
+    /// The activity poll's first reading has landed: every workshop drawn
+    /// from the last run's request stops being provisional. One whose
+    /// planning agent the reading holds is simply live; one whose agent is
+    /// gone loses its request, as a closed one does — its row goes, or
+    /// stays the pinned composer where it was pinned.
+    private func settleReconnectingWorkshops() {
+        for tabID in reconnectingWorkshops where planningStatus(forTab: tabID) == nil {
+            workshopRequests[tabID] = nil
+        }
+        reconnectingWorkshops = []
+    }
+
+    /// Whether the workshop on screen is drawn from the last run's request,
+    /// waiting on the first activity reading to confirm its agent.
+    public var workshopReconnecting: Bool {
+        activeProjectID.map(reconnectingWorkshops.contains) ?? false
+    }
+
+    /// A tab's planning agent as the activity poll last saw it: the active
+    /// tab's as `planningAgent` finds it (the legacy bare session included),
+    /// any other's by its own scoped tag — an Untitled tab's by its
+    /// workspace.
+    public func planningStatus(forTab tabID: String) -> AgentStatus? {
+        if tabID == activeProjectID { return planningAgent }
+        return activityStore?.agents[TmuxSession.planTag(projectID: workspaceIDs[tabID] ?? tabID)]
+    }
+
+    /// What ending a tab's workshop session must ask first, or nil where
+    /// it can end at once — `WorkshopEndRules` over the tab's planning
+    /// agent, proposal and Accept.
+    public func workshopEndConfirmation(forTab tabID: String) -> String? {
+        WorkshopEndRules.confirmation(
+            activity: planningStatus(forTab: tabID)?.activity,
+            hasProposal: proposalStates[tabID]?.proposal != nil,
+            accepting: proposalStates[tabID]?.accepting ?? false)
     }
 
     /// Something kept across launches changed: write it once the changes
@@ -1689,6 +1750,7 @@ public final class AppModel {
         workshopPlanFiles[tabID] = nil
         workshopPinnedProjects.remove(tabID)
         workshopRequests[tabID] = nil
+        reconnectingWorkshops.remove(tabID)
         // Discarded rather than removed, so a reading still in flight for
         // this tab finds it and is dropped as stale.
         proposalStates[tabID]?.discard()
@@ -1786,7 +1848,9 @@ public final class AppModel {
     /// Whether the workshop on screen has been launched — its agent live, or
     /// its launch under way: what takes the brief editor down and puts the
     /// terminal up in its place.
-    public var workshopLaunched: Bool { planningAgent != nil || workshopLaunching }
+    /// A workshop restored as reconnecting counts as launched, so the pane
+    /// keeps its launched layout rather than flashing the composer.
+    public var workshopLaunched: Bool { planningAgent != nil || workshopLaunching || workshopReconnecting }
 
     /// The workshop pane's tabs as they stand.
     public var workshopTabs: [WorkshopTab] {
@@ -1992,7 +2056,7 @@ public final class AppModel {
                 selectedContainerIDs[activeID] = nil
                 // Opened with nothing running: pinned to Active until it is
                 // launched or dismissed, so clicking away keeps its row.
-                if planningAgent == nil { workshopPinnedProjects.insert(activeID) }
+                if planningAgent == nil, !workshopReconnecting { workshopPinnedProjects.insert(activeID) }
             } else {
                 workshopSelectedProjects.remove(activeID)
             }
@@ -2335,6 +2399,7 @@ public final class AppModel {
         workshopDrafts[projectID] = nil
         workshopPlanFiles[projectID] = nil
         workshopRequests[projectID] = nil
+        reconnectingWorkshops.remove(projectID)
         workshopPinnedProjects.remove(projectID)
         workshopSelected = false
         return nil

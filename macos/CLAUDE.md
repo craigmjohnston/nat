@@ -315,7 +315,21 @@ plan files, launched requests and the open Untitled tabs (with their
 workspace ids) are kept across relaunches in `workshops.json`
 (`WorkshopCaching`: `DiskWorkshopCache` only in `NatApp`, in memory
 everywhere else), restored once config is read, written debounced and on
-quit (`flushWorkshops`). Stories: `workshop-*` (`workshop-proposal-scrolled` the Plan tab scrolled, `workshop-proposal-folded` boxes folded), `window-workshop*`,
+quit (`flushWorkshops`). A restored workshop with a request was running at
+quit: until the activity poll's first reading (`ActivityStore.hasRead`,
+`onFirstReading`) it is drawn as launched from that request alone
+(`AppModel.reconnectingWorkshops`) — its Active row a launching one captioned
+`Reconnecting…` (`SidebarActiveRow.reconnecting`, `buildWorkshopEntry`'s
+`isReconnecting`), `workshopLaunched` true, the pane a quiet "Reconnecting to
+the planning agent" note, attaching nothing — then live where the reading
+holds its agent, its request cleared where it does not; a failed reading
+settles nothing. `start` kicks the activity poll as soon as the store exists,
+before the plan loads, so that reading is not queued behind it. End session
+— the Brief's, the workshop row's ✕ and menu, an Untitled tab's close — asks
+only where `WorkshopEndRules.confirmation` gives a message (agent working or
+unreadable, or a proposal up or an Accept in flight), else ends at once
+(`AppModel.workshopEndConfirmation(forTab:)`). Stories:
+`window-workshop-reconnecting`, `sidebar-workshop-reconnecting`, `workshop-*` (`workshop-proposal-scrolled` the Plan tab scrolled, `workshop-proposal-folded` boxes folded), `window-workshop*`,
 `untitled-*`, `window-untitled-proposal`, `window-plan-accepted`.
 
 ## The Notion mirror nudge

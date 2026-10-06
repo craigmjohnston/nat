@@ -349,6 +349,41 @@ final class ActivityStoreTests: XCTestCase {
         XCTAssertEqual(client.callCount, 2)
     }
 
+    // MARK: - The first reading
+
+    @MainActor
+    func testHasReadTurnsTrueOnTheFirstReadingEvenAnEmptyOne() async throws {
+        let client = MockActivityClient(response: .agents([]))
+        let store = ActivityStore(client: client)
+        var calls = 0
+        store.onFirstReading = { calls += 1 }
+        XCTAssertFalse(store.hasRead)
+
+        store.kick()
+        try await waitUntil { store.hasRead }
+        store.kick()
+        try await waitUntil { client.callCount == 2 }
+
+        XCTAssertTrue(store.hasRead)
+        XCTAssertEqual(calls, 1, "told once, on the first reading alone")
+    }
+
+    @MainActor
+    func testAFailedReadingIsNoReading() async throws {
+        let client = MockActivityClient(response: .failure(TestError()))
+        let store = ActivityStore(client: client)
+        var told = false
+        store.onFirstReading = { told = true }
+
+        store.kick()
+        defer { store.stop() }
+        try await waitUntil { client.callCount == 1 }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertFalse(store.hasRead)
+        XCTAssertFalse(told)
+    }
+
     @MainActor
     func testStopClearsPolling() async throws {
         // A store whose agent is still live would poll again after 2 seconds;
