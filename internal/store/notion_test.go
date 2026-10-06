@@ -526,6 +526,27 @@ func TestEditSliceRewritesThePropertiesThenTheBody(t *testing.T) {
 	}
 }
 
+func TestSetSliceTitleWritesOnlyTheTitle(t *testing.T) {
+	api := &fakeAPI{}
+	if err := Over(api).SetSliceTitle(context.Background(), "s5", "New title"); err != nil {
+		t.Fatalf("SetSliceTitle() error = %v", err)
+	}
+	if !reflect.DeepEqual(api.calls, []string{"UpdatePageProperties"}) {
+		t.Errorf("calls = %v, want the one property write", api.calls)
+	}
+	if got := api.updates[0]; len(got) != 1 || len(got[notion.PropName].Title) != 1 ||
+		got[notion.PropName].Title[0].Text.Content != "New title" {
+		t.Errorf("update = %+v, want the title alone", got)
+	}
+	failing := &fakeAPI{updatePage: func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+		return nil, errBoom
+	}}
+	if err := Over(failing).SetSliceTitle(context.Background(), "s5", "T"); !errors.Is(err, errBoom) ||
+		!strings.Contains(err.Error(), "rename the slice") {
+		t.Errorf("err = %v, want the failure, said as the rename", err)
+	}
+}
+
 // A brief cleared to nothing leaves the page empty rather than appending an
 // empty block.
 func TestSetSliceBriefAppendsNothingForAnEmptyBrief(t *testing.T) {

@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/craigmjohnston/nat/internal/agent"
 )
 
 // The skills are named one by one in the embed directive, so what the binary
@@ -491,6 +493,38 @@ func TestNextSliceSkillCarriesTheResumePassage(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the next-slice skill does not say %q", want)
+		}
+	}
+}
+
+// Every skill that has an agent name slices carries the title cap, in the
+// words the prompts use and with the number domain holds.
+func TestEverySkillCarriesTheTitleCap(t *testing.T) {
+	for _, skill := range []string{"queue-work", "queue-project", "next-slice"} {
+		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
+		if err != nil {
+			t.Fatalf("read the %s skill: %v", skill, err)
+		}
+		if !strings.Contains(strings.Join(strings.Fields(string(body)), " "), agent.SliceTitleRule) {
+			t.Errorf("the %s skill does not carry the title cap: %q", skill, agent.SliceTitleRule)
+		}
+	}
+}
+
+// /queue-work says what an accepted proposal is to the next revision, as the
+// gnat workshop prompt does.
+func TestQueueWorkCarriesTheAcceptedProposalPassage(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "queue-work/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the skill: %v", err)
+	}
+	text := strings.Join(strings.Fields(string(body)), " ")
+	for _, want := range []string{"While a proposal is unaccepted",
+		"a later revision changes them only through `edit`, `move` and `remove` by title, never by creating them again",
+		"Re-read the plan with `nat info --project <project>` before every revision",
+		`"title": "Its new title"`, "No two slices may answer to one title."} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the queue-work skill does not say %q", want)
 		}
 	}
 }

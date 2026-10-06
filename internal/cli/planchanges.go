@@ -18,10 +18,14 @@ type planMove struct {
 	Milestone string `json:"milestone"`
 }
 
-// planEdit replaces the brief of a slice the project already has, as `nat
-// slice-edit` does: the whole body, not an append.
+// planEdit retitles a slice the project already has, replaces its brief, or
+// both, as `nat slice-edit` does: Title is the new title, Description the
+// whole new body, not an append. Each is optional, but not both. Title is
+// omitted when empty, so a proposal written before it existed round-trips
+// unchanged; Description is not, since the app reads it as always present.
 type planEdit struct {
 	Slice       string `json:"slice"`
+	Title       string `json:"title,omitempty"`
 	Description string `json:"description"`
 }
 
@@ -36,7 +40,9 @@ func (p plan) changesAnything() bool {
 // nothing left to look up.
 type resolvedEdit struct {
 	slice domain.Slice
-	brief string
+	// title is the new title, brief the new brief; either is empty where the
+	// edit leaves it alone.
+	title, brief string
 }
 
 type resolvedMove struct {
@@ -150,11 +156,15 @@ func resolveChanges(p plan, newMilestones map[string]int, existing []domain.Mile
 			return planChanges{}, nil, nil, fmt.Errorf("%s names %q, which the list already edits", what, s.Name)
 		}
 		edited[key] = true
-		brief := strings.TrimSpace(e.Description)
-		if brief == "" {
-			return planChanges{}, nil, nil, fmt.Errorf("%s (%q) has no description", what, s.Name)
+		title, brief := strings.TrimSpace(e.Title), strings.TrimSpace(e.Description)
+		if title == "" && brief == "" {
+			return planChanges{}, nil, nil, fmt.Errorf("%s (%q) has neither a title nor a description: "+
+				"give it a new title, a new brief, or both", what, s.Name)
 		}
-		changes.edits = append(changes.edits, resolvedEdit{slice: s, brief: brief})
+		if err := domain.CheckSliceTitle(title); err != nil {
+			return planChanges{}, nil, nil, fmt.Errorf("%s (%q): %w", what, s.Name, err)
+		}
+		changes.edits = append(changes.edits, resolvedEdit{slice: s, title: title, brief: brief})
 	}
 
 	// The board as the removals leave it.
@@ -222,7 +232,9 @@ func notRemoved(removed map[string]int, key, what string, s domain.Slice) error 
 // already on the board, for its output.
 type appliedEdit struct {
 	Slice domain.Slice
-	Brief string
+	// Title is the new title and Brief the new brief, each empty where the
+	// edit left it alone.
+	Title, Brief string
 }
 
 type appliedMove struct {
@@ -235,14 +247,22 @@ type appliedRemoval struct {
 	Dependents []domain.Slice
 }
 
-// applyEdits replaces each edited slice's brief.
+// applyEdits retitles each edited slice and replaces its brief, whichever of
+// the two the edit gives.
 func applyEdits(ctx context.Context, st store.Store, edits []resolvedEdit, applied *appliedPlan) error {
 	for _, e := range edits {
-		if err := st.SetSliceBrief(ctx, e.slice.ID, e.brief); err != nil {
-			return fmt.Errorf("edit %q: %w", e.slice.Name, err)
+		if e.title != "" {
+			if err := st.SetSliceTitle(ctx, e.slice.ID, e.title); err != nil {
+				return fmt.Errorf("edit %q: %w", e.slice.Name, err)
+			}
 		}
-		logging.Action("plan slice edited", "slice", e.slice.ID)
-		applied.Edited = append(applied.Edited, appliedEdit{Slice: e.slice, Brief: e.brief})
+		if e.brief != "" {
+			if err := st.SetSliceBrief(ctx, e.slice.ID, e.brief); err != nil {
+				return fmt.Errorf("edit %q: %w", e.slice.Name, err)
+			}
+		}
+		logging.Action("plan slice edited", "slice", e.slice.ID, "retitled", e.title != "")
+		applied.Edited = append(applied.Edited, appliedEdit{Slice: e.slice, Title: e.title, Brief: e.brief})
 	}
 	return nil
 }
@@ -314,7 +334,7 @@ type namedSliceRef struct {
 func (a appliedPlan) changesJSON(doc *planAppliedJSON) {
 	doc.Edited = make([]sliceEditedJSON, 0, len(a.Edited))
 	for _, e := range a.Edited {
-		doc.Edited = append(doc.Edited, sliceEditedJSON{ID: e.Slice.ID, Name: e.Slice.Name, URL: e.Slice.URL, Brief: e.Brief})
+		doc.Edited = append(doc.Edited, sliceEditedJSON{ID: e.Slice.ID, Name: e.Slice.Name, URL: e.Slice.URL, Title: e.Title, Brief: e.Brief})
 	}
 	doc.Moved = make([]sliceMovedJSON, 0, len(a.Moved))
 	for _, m := range a.Moved {
@@ -339,7 +359,7 @@ func (a appliedPlan) changesMarkdown(b *strings.Builder) {
 	if len(a.Edited) > 0 {
 		b.WriteString("\n## Edited\n\n")
 		for _, e := range a.Edited {
-			fmt.Fprintf(b, "- %s — brief replaced\n", e.Slice.Name)
+			fmt.Fprintf(b, "- %s — %s\n", e.Slice.Name, editedWhat(e.Title, e.Brief))
 		}
 	}
 	if len(a.Moved) > 0 {
@@ -368,4 +388,87 @@ func (a appliedPlan) changesMarkdown(b *strings.Builder) {
 			fmt.Fprintf(b, "- %s — no slice is filed under it any more\n", name)
 		}
 	}
+}
+
+// editedWhat says what an edit changed: the title, the brief, or both.
+func editedWhat(title, brief string) string {
+	switch {
+	case title == "":
+		return "brief replaced"
+	case brief == "":
+		return fmt.Sprintf("renamed %q", title)
+	}
+	return fmt.Sprintf("renamed %q, brief replaced", title)
+}
+
+// titleHolder is what already answers to a title, for the refusal of a
+// second slice under it: what it is, and what to do instead.
+type titleHolder struct {
+	what, hint string
+}
+
+// distinctHint is the refusal's advice where the title is held by something
+// the plan cannot change into the new slice.
+const distinctHint = "give this one a title of its own"
+
+// checkDuplicateTitles refuses a document that would leave two slices of the
+// project answering to one title — matched trimmed and case-insensitive, as
+// every title match is. Every later edit, move, remove or depends_on naming
+// that title would be refused as ambiguous, so the duplicate is refused at
+// the start instead: a created slice whose title the board already holds,
+// one a retitling edit gives, or another created slice's; and an edit's new
+// title already held. board is the project's slices as the removals leave
+// them, so a document removing a slice may create its replacement under the
+// same title. Slices the plan does not touch that already share a title are
+// not the document's doing and are left alone.
+func checkDuplicateTitles(p plan, board []domain.Slice, edits []resolvedEdit) error {
+	renamed := map[string]bool{}
+	for _, e := range edits {
+		if e.title != "" {
+			renamed[domain.NormaliseID(e.slice.ID)] = true
+		}
+	}
+	held := map[string]titleHolder{}
+	for _, s := range board {
+		key := strings.ToLower(strings.TrimSpace(s.Name))
+		if _, ok := held[key]; ok || renamed[domain.NormaliseID(s.ID)] {
+			continue
+		}
+		hint := distinctHint
+		if s.Status == domain.SliceTodo {
+			hint = "edit it to change its brief, or remove it to replace it"
+		}
+		held[key] = titleHolder{what: "is already on the board as " + withArticle(s.StatusName, s.Status) + " slice", hint: hint}
+	}
+	for i, e := range edits {
+		if e.title == "" {
+			continue
+		}
+		key := strings.ToLower(e.title)
+		if h, ok := held[key]; ok {
+			return fmt.Errorf("edit %d renames %q to %q, which %s: %s", i+1, e.slice.Name, e.title, h.what, distinctHint)
+		}
+		held[key] = titleHolder{what: fmt.Sprintf("is the title edit %d gives %q", i+1, e.slice.Name), hint: distinctHint}
+	}
+	for i, s := range p.Slices {
+		title := strings.TrimSpace(s.Title)
+		key := strings.ToLower(title)
+		if h, ok := held[key]; ok {
+			return fmt.Errorf("slice %d (%q) %s: %s", i+1, title, h.what, h.hint)
+		}
+		held[key] = titleHolder{what: fmt.Sprintf("is already slice %d of the plan", i+1), hint: "give each its own title"}
+	}
+	return nil
+}
+
+// withArticle names a slice's status with its article — "a Todo", "an In
+// progress" — as the project spells it, falling back to the status itself.
+func withArticle(name string, status domain.SliceStatus) string {
+	if name == "" {
+		name = string(status)
+	}
+	if name != "" && strings.ContainsRune("AEIOUaeiou", rune(name[0])) {
+		return "an " + name
+	}
+	return "a " + name
 }

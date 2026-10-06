@@ -994,6 +994,25 @@ func TestEditSliceWritesLocallyThenPushes(t *testing.T) {
 	}
 }
 
+func TestSetSliceTitleWritesLocallyThenPushes(t *testing.T) {
+	api := &fakeAPI{}
+	m, l := mirroredPlan(t, api)
+	ctx := context.Background()
+
+	if err := m.SetSliceTitle(ctx, "writes", "New title"); err != nil {
+		t.Fatalf("SetSliceTitle: %v", err)
+	}
+	if s, _, err := l.Slice(ctx, "writes"); err != nil || s.Name != "New title" {
+		t.Errorf("slice = %+v, %v, want the rename landed locally", s, err)
+	}
+	if len(api.updates) == 0 {
+		t.Error("want the rename pushed to the workspace")
+	}
+	if err := m.SetSliceTitle(ctx, "ghost", "T"); err == nil {
+		t.Error("SetSliceTitle on a slice not in the plan: want an error")
+	}
+}
+
 func TestEditSlicePushFailureLeavesTheFlagSet(t *testing.T) {
 	api := &fakeAPI{updatePage: func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
 		return nil, errBoom

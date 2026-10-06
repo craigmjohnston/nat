@@ -69,6 +69,8 @@ every slice: anything true of one slice alone belongs in that slice's brief.
 - Each slice gets a clear imperative title and a self-contained brief. The
   agent that picks it up reads the brief and the project's conventions and
   nothing else of this conversation.
+- A slice title is at most 64 characters, one change named, with the list of
+  what it covers in the brief.
 - **Write the brief structured, not as one dense paragraph.** Short
   paragraphs separated by blank lines, what and where first; acceptance
   criteria as their own final paragraph or list. Enumerable detail — a

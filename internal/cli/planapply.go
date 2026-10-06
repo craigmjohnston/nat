@@ -275,11 +275,12 @@ func validateAgainstProject(ctx context.Context, st store.Store, sp store.Projec
 	if err != nil {
 		return store.Shape{}, planTargets{}, err
 	}
-	// The project's own slices are only read when the plan names one: they are
-	// what a depends_on title, or a remove, move or edit, may be resolved
-	// against, and a plan that names none has nothing to resolve.
+	// The project's own slices are only read when the plan creates or names
+	// one: they are what a depends_on title, or a remove, move or edit, may be
+	// resolved against, and what a created slice's title must not repeat — a
+	// plan that does neither has nothing to check against them.
 	var filed []domain.Slice
-	if p.dependsOnAnything() || p.changesAnything() {
+	if p.dependsOnAnything() || p.changesAnything() || len(p.Slices) > 0 {
 		existingPlan, err := st.Plan(ctx, sp)
 		if err != nil {
 			return store.Shape{}, planTargets{}, fmt.Errorf("load slices: %w", err)
@@ -331,6 +332,9 @@ func validatePlan(p plan, existing []domain.Milestone, existingSlices []domain.S
 		if strings.TrimSpace(s.Title) == "" {
 			return planTargets{}, fmt.Errorf("slice %d has no title", i+1)
 		}
+		if err := domain.CheckSliceTitle(s.Title); err != nil {
+			return planTargets{}, fmt.Errorf("slice %d: %w", i+1, err)
+		}
 		ref := strings.TrimSpace(s.Milestone)
 		if ref == "" {
 			return planTargets{}, fmt.Errorf("slice %d (%q) names no milestone", i+1, strings.TrimSpace(s.Title))
@@ -350,6 +354,9 @@ func validatePlan(p plan, existing []domain.Milestone, existingSlices []domain.S
 	// no cycle.
 	changes, board, gone, err := resolveChanges(p, seen, existing, existingSlices)
 	if err != nil {
+		return planTargets{}, err
+	}
+	if err := checkDuplicateTitles(p, board, changes.edits); err != nil {
 		return planTargets{}, err
 	}
 	filed, err := resolveDependencies(p, board, gone, targets)
@@ -475,12 +482,11 @@ func resolveDependency(ref string, self planDep, planned map[string][]int, filed
 		return planDep{}, fmt.Errorf("names an empty dependency")
 	}
 	key := strings.ToLower(ref)
-	switch matches := planned[key]; len(matches) {
-	case 1:
+	// A plan creating two slices of one title is refused before any
+	// dependency is resolved ([checkDuplicateTitles]), so a title matches at
+	// most one of them.
+	if matches := planned[key]; len(matches) > 0 {
 		return checkSelf(planDep{newIndex: matches[0]}, self)
-	case 0:
-	default:
-		return planDep{}, fmt.Errorf("%s %q, which the plan creates %d times", what, ref, len(matches))
 	}
 	switch matches := filed[key]; len(matches) {
 	case 1:

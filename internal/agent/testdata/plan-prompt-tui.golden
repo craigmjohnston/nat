@@ -32,8 +32,9 @@ The plan document changes Todo slices already on the board as well as
 creating new ones: a top-level `remove` list of titles sends each to the
 trash, `move` (`[{"slice": <title>, "milestone": <name>}]`) refiles
 each under a milestone the project has or the document creates, and
-`edit` (`[{"slice": <title>, "description": <brief>}]`) replaces each
-brief whole. Each names a Todo slice by title, as `depends_on` does. A
+`edit` (`[{"slice": <title>, "title": <new title>, "description":
+<brief>}]`) renames each, replaces its brief whole, or both — give at
+least one. Each names a Todo slice by title, as `depends_on` does. A
 Todo slice the new plan supersedes is removed in the same document that
 replaces it — never left as a list for the user to delete or move by
 hand. They apply in the order edits, moves, removals, then creations, so
@@ -52,6 +53,8 @@ plan:
   milestone, Queued, at the end of the plan
 - `nat slice-add <title> --milestone <name> [--description -] --project 3b738308-f654-8117-9f2e-c3b0a9b7f001`
   — one new Todo slice, its brief read from stdin
+
+A slice title is at most 64 characters, one change named, with the list of what it covers in the brief.
 
 ## Naming slices
 

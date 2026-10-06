@@ -37,6 +37,8 @@ already in front of you and this read is only for when it later goes stale.
 - Each slice gets: a clear imperative title, a self-contained brief, a
   milestone, and — only when it deviates from the project's default working
   directory — a `repo` override.
+- A slice title is at most 64 characters, one change named, with the list of
+  what it covers in the brief.
 - **Write the brief structured, not as one dense paragraph.** Short
   paragraphs separated by blank lines, what and where first; acceptance
   criteria as their own final paragraph or list. Enumerable detail — a
@@ -73,7 +75,7 @@ already in front of you and this read is only for when it later goes stale.
 - **Clean up what the plan supersedes, in the same document.** Look over the
   `Todo` slices already on the board: one the new plan replaces is removed
   (`remove`), one that belongs under another milestone now is moved (`move`),
-  and one whose brief the plan changes is edited (`edit`) — in the document
+  and one whose title or brief the plan changes is edited (`edit`) — in the document
   that replaces it, never left as a list for the user to delete or move by
   hand. Say which in the proposal. Only `Todo` slices can be changed this way;
   work in progress or `Done` is never the plan's to touch.
@@ -108,9 +110,15 @@ briefs.
    (`nat plan-propose --project <project>`), follow the prompt: propose the
    plan there instead of applying it yourself, as soon as you have a draft
    and again on every revision — the user's Accept in the app is the one
-   approval and what applies it. Steps 3 and 4 below, and the plain-terminal
-   approve-then-apply flow, are for a launch whose prompt says nothing of
-   the kind.
+   approval and what applies it. While a proposal is unaccepted, a revised
+   one replaces whichever is on screen, so send the whole plan each time.
+   Once the user accepts it, its milestones and slices are on the board — you
+   are told when that happens — and a later revision changes them only
+   through `edit`, `move` and `remove` by title, never by creating them
+   again. Re-read the plan with `nat info --project <project>` before every
+   revision, since the board may have moved while you worked. Steps 3 and 4
+   below, and the plain-terminal approve-then-apply flow, are for a launch
+   whose prompt says nothing of the kind.
 3. On approval, write the whole plan in one go by piping this document to
    `nat plan-apply --project <project>`:
 
@@ -131,7 +139,7 @@ briefs.
      ],
      "remove": ["A Todo slice this plan supersedes"],
      "move": [{ "slice": "A Todo slice", "milestone": "M14: Something new" }],
-     "edit": [{ "slice": "A Todo slice", "description": "Its new brief, whole." }]
+     "edit": [{ "slice": "A Todo slice", "title": "Its new title", "description": "Its new brief, whole." }]
    }
    ```
 
@@ -170,8 +178,9 @@ briefs.
    `remove`, `move` and `edit` change slices **already on the board**, each
    named by title as `depends_on` names one: `remove` sends a slice to the
    trash as `nat slice-delete` does, `move` refiles it under a milestone the
-   project has or one the same document creates, and `edit` replaces its brief
-   whole, as `nat slice-edit` does. A superseded `Todo` slice is removed in the
+   project has or one the same document creates, and `edit` gives it a new
+   `title`, replaces its brief (`description`) whole, or both — at least one —
+   as `nat slice-edit --title --description` does. A superseded `Todo` slice is removed in the
    document that replaces it — never left for the user to clean up. Each must
    name a `Todo` slice: one in progress or `Done` refuses the whole document,
    as does a title that matches no slice or more than one. A removed slice may
@@ -183,6 +192,12 @@ briefs.
    title, and a new slice's `depends_on` naming that title means the
    replacement. A milestone a removal empties stays. A task-source project
    refuses `move`.
+
+   No two slices may answer to one title. A created slice whose title (matched
+   trimmed and case-insensitive) is already on the board refuses the whole
+   document — `edit` that slice to change it, or `remove` it to replace it —
+   as do two created slices sharing a title, and an `edit` renaming a slice to
+   a title another already has.
 4. Report the created page URLs, grouped by milestone — `plan-apply` prints
    them.
 

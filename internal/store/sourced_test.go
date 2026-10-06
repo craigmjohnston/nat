@@ -339,6 +339,9 @@ func TestSourcedDelegatesTheRestToTheFile(t *testing.T) {
 	if err := s.SetSliceBrief(ctx, sl.ID, "brief\n\n### PR description\n\nthe PR"); err != nil {
 		t.Error(err)
 	}
+	if err := s.SetSliceTitle(ctx, sl.ID, "Task"); err != nil {
+		t.Error(err)
+	}
 	var _ RepoSetter = s
 	if err := s.SetSliceRepo(ctx, sl.ID, "/src/app"); err != nil {
 		t.Error(err)

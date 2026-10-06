@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/store"
 )
@@ -28,6 +29,10 @@ func acceptEnv(t *testing.T) (Env, *strings.Builder, *config.Config) {
 	sb := &strings.Builder{}
 	env.Out = sb
 	_ = out
+	// No planning agent is live unless a test says so: an accept reads tmux
+	// to tell one, and never the user's own.
+	runner := &agentTestRunner{liveSessions: map[string]string{}}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 	return env, sb, saved
 }
 
@@ -397,11 +402,11 @@ func stampNewerSchema(t *testing.T, path string) {
 	}
 }
 
-// applyPlan itself failing (the slices table dropped under a project
-// already tracked) surfaces for --project exactly as it does for
-// --workspace, and leaves the proposal in place. The proposal names no
-// dependency, so validation itself never reads the slices table — the
-// failure this exercises is applyPlan's own AddSlice, not the earlier read.
+// applyPlan itself failing (every new slice refused under a project already
+// tracked) surfaces for --project exactly as it does for --workspace, and
+// leaves the proposal in place. Validation reads the slices table, which
+// still reads — the failure this exercises is applyPlan's own AddSlice, not
+// the earlier read.
 func TestPlanAcceptWithProjectReportsAFailedApply(t *testing.T) {
 	env, _, _ := acceptEnv(t)
 	id := makeLocalProject(t, env)
@@ -414,10 +419,18 @@ func TestPlanAcceptWithProjectReportsAFailedApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LocalPath: %v", err)
 	}
-	dropTable(t, "slices")(path)
+	db, err := sql.Open("sqlite3", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER no_slices BEFORE INSERT ON slices BEGIN SELECT RAISE(FAIL, 'no'); END`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
 
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil {
-		t.Fatal("want the failed apply surfaced")
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil ||
+		!strings.Contains(err.Error(), "create the slice") {
+		t.Fatalf("err = %v, want the failed apply surfaced", err)
 	}
 	dir, _ := stateDir()
 	if _, err := os.Stat(filepath.Join(dir, "proposals", id+".json")); err != nil {

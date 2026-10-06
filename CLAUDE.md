@@ -193,7 +193,13 @@ to the agent that wrote it.
 (slice, plan and new-project prompts; every embedded skill) carries one
 rule: refer to another slice only by name (+ milestone where ambiguous),
 never by number, index, page ID, URL or another tracker's id. Tests walk
-every template and every skill for it.
+every template and every skill for it. A slice title is at most
+`domain.MaxSliceTitleLen` (64) runes, trimmed — one change named, the list
+of what it covers in the brief: every write that sets a title refuses a
+longer one (`plan-apply`/`-propose`/`-accept`, `slice-add`, `slice-edit
+--title`, `slice-followups`), titles already on the board are never
+re-validated, and the workshop, new-project and slice (follow-ups) prompts
+and the three skills carry `agent.SliceTitleRule`, walked by tests.
 
 **Task log.** A slice's history is read off its body, in order, by
 `store.TaskEvents`: each `Handed back`, `Sent back` (`slice-rework
