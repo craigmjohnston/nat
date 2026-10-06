@@ -52,10 +52,82 @@ public struct ProjectAttention: Equatable, Sendable {
     public static let none = ProjectAttention(count: 0, role: .idle)
 }
 
-/// Reads a project's attention off the same three facts the rail is built
-/// from: the plan's slices, the live tmux map, and the PR-readiness reading.
-/// Pure, on the `buildRailModel` pattern — inputs in, a value out, and no
-/// store reached for here.
+
+/// What a thing waiting on the user is waiting for, in order of urgency —
+/// the order the dock menu lists them in, and the one a slice with two such
+/// facts is counted under (the first), since it is one thing to attend to.
+public enum AttentionKind: Int, CaseIterable, Comparable, Sendable {
+    /// An agent has stopped and wants an answer — a slice's, a session's or
+    /// the planning agent's.
+    case waiting
+    /// A branch handed back, the user's turn to read the diff — or an ad hoc
+    /// session gone with a pull request still open.
+    case review
+    /// A pull request's checks read failing with no live agent on its slice.
+    case checksFailed
+    /// A pull request conflicting with its base with no live agent on its
+    /// slice.
+    case conflict
+    /// A pull request whose checks passed, mergeable, no agent working on it.
+    case readyToMerge
+
+    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+
+    /// The dock menu's heading for the kind.
+    public var heading: String {
+        switch self {
+        case .waiting: return "Waiting for input"
+        case .review: return "Handed back for review"
+        case .checksFailed: return "Checks failed"
+        case .conflict: return "Conflicts"
+        case .readyToMerge: return "Ready to merge"
+        }
+    }
+}
+
+/// What an attention item is about — what choosing it selects.
+public enum AttentionSubject: Hashable, Sendable {
+    case slice(String)
+    /// An ad hoc session, by its id.
+    case session(String)
+    /// The project's planning agent, which is nobody's slice.
+    case workshop
+}
+
+/// One thing waiting on the user: one per slice (or session, or planning
+/// agent), never one per fact.
+public struct AttentionItem: Hashable, Sendable {
+    public let kind: AttentionKind
+    public let subject: AttentionSubject
+    /// What the item is called — the slice's name, "Workshop", or a
+    /// session's "Ad hoc session" and its label.
+    public let name: String
+    public let projectID: String
+
+    public init(kind: AttentionKind, subject: AttentionSubject, name: String, projectID: String) {
+        self.kind = kind
+        self.subject = subject
+        self.name = name
+        self.projectID = projectID
+    }
+
+    /// What makes an item the same item across two readings: where it is and
+    /// what it waits for. A slice moving from one kind to another is a new
+    /// arrival — something new wants the user — and a renamed one is not.
+    public struct Identity: Hashable, Sendable {
+        public let projectID: String
+        public let subject: AttentionSubject
+        public let kind: AttentionKind
+    }
+
+    public var identity: Identity { Identity(projectID: projectID, subject: subject, kind: kind) }
+}
+
+/// Everything in a project waiting on the user, read off the same facts the
+/// rail is built from: the plan's slices, the live tmux map, the project's
+/// `pr-status` reading, the planning agent and the active project's ad hoc
+/// sessions. Pure, on the `buildRailModel` pattern. Ordered by kind, then by
+/// plan order, then sessions, then the planning agent.
 ///
 /// `liveAgents` may be the whole activity map; only the entries naming a
 /// slice of this project that the rail's ACTIVE section would draw are read
@@ -64,78 +136,168 @@ public struct ProjectAttention: Equatable, Sendable {
 /// has no slice to be keyed by and is passed separately, nil where the map
 /// attributes none to this project.
 ///
-/// What counts towards the pill is a thing needing the user *now*: an agent
-/// waiting for input, a slice handed back for review, a pull request ready to
-/// merge, and one whose checks are failing (at the PR stage). Counted per slice rather than per fact, so a handed-back
-/// slice whose agent is also waiting is one thing to attend to and not two;
-/// a waiting planning agent is one more, being nobody's slice.
+/// One item per slice, under its most urgent fact:
+/// - **waiting** — its agent waiting for input;
+/// - **review** — handed back, no pull request yet (stage `review`);
+/// - **checksFailed** — at the PR stage, read failing, and **no live agent**:
+///   with one, `pr-status` has already sent the failure to it in the same
+///   reading (`actions.NoticeFailingChecks`), so it is never the user's —
+///   not even for the one plan read before `resumed` lands;
+/// - **conflict** — at the PR stage, conflicting, and no live agent (the
+///   conflict notice names the live agent rather than the user);
+/// - **readyToMerge** — the sidebar's own passing-checks gate
+///   (`prMarks(_:for:agent:)`): the PR stage, checks read passing, neither
+///   conflicting nor failing, no agent working.
 ///
-/// A pull request merely awaiting its review is not counted and not drawn:
-/// the slice it belongs to is already counted while it is handed back, and
-/// once approved what the review owes is somebody else's turn.
-/// `sessions` is the active project's own ad hoc sessions, read the same way
-/// `RailModel`'s session rows are: a live agent counts a session as working
-/// or waiting, and a gone one with a pull request still open counts it once
-/// as review — mirroring `sessionIsActive`/`sessionNeedsReview` exactly, so
-/// the dot and the rail's session rows can never disagree either.
-public func projectAttention(
+/// A resumed slice is working, so it counts for nothing but a waiting agent;
+/// a Done slice for nothing at all. A pull request merely awaiting its review
+/// with checks pending is not counted: nothing in it is the user's yet.
+///
+/// Sessions are read as `RailModel`'s session rows are: a waiting agent is
+/// waiting, a gone one with a pull request still open review
+/// (`sessionNeedsReview`).
+public func attentionItems(
+    projectID: String = "",
     slices: [Slice],
     liveAgents: [String: AgentActivity],
     planningAgent: AgentActivity? = nil,
-    prReadiness: [String: String] = [:],
+    prReading: PRReading = .empty,
     sessions: [Session] = []
-) -> ProjectAttention {
+) -> [AttentionItem] {
     // Only a slice the ACTIVE section would draw may contribute an agent:
     // a tmux session can outlive the slice it was launched on — an idle
     // Claude Code left in the pane of a Done slice whose pull request has
     // merged — and the rail refuses exactly that. One rule for both, so the
-    // dot and the section can never disagree about what is in flight.
+    // count and the section can never disagree about what is in flight.
     let inFlight = inFlightSliceIDs(slices: slices)
-    let agents = liveAgents.filter { inFlight.contains($0.key) }
-    let waiting = agents.filter { $0.value == .waiting }.keys
-    let planningWaiting = planningAgent == .waiting
+    let marks = prReading.marks
 
-    // The sessions with a live agent, and which of those are waiting — kept
-    // apart from `agents` above since a session's tag is never one of
-    // `inFlightSliceIDs`'s own slice IDs.
+    var items: [AttentionItem] = []
+    func add(_ kind: AttentionKind?, _ subject: AttentionSubject, _ name: String) {
+        if let kind { items.append(AttentionItem(kind: kind, subject: subject, name: name, projectID: projectID)) }
+    }
+
+    for slice in slices {
+        let agent = inFlight.contains(slice.id) ? liveAgents[slice.id] : nil
+        add(attentionKind(slice, agent: agent, marks: marks[slice.id] ?? .none), .slice(slice.id), slice.name)
+    }
+    for session in sessions {
+        let kind: AttentionKind? = liveAgents[session.tag] == .waiting ? .waiting
+            : sessionNeedsReview(session, liveAgents: liveAgents) ? .review : nil
+        add(kind, .session(session.id), "Ad hoc session \(session.label)")
+    }
+    if planningAgent == .waiting { add(.waiting, .workshop, "Workshop") }
+
+    // A stable sort: plan order kept within each kind.
+    return items.enumerated()
+        .sorted { ($0.element.kind, $0.offset) < ($1.element.kind, $1.offset) }
+        .map(\.element)
+}
+
+/// The one kind a slice is counted under, or nil where it waits on nobody.
+private func attentionKind(_ slice: Slice, agent: AgentActivity?, marks: PRMarks) -> AttentionKind? {
+    if agent == .waiting { return .waiting }
+    switch stage(for: slice, agent: nil) {
+    case .review:
+        return .review
+    case .pr:
+        // A live agent on the slice has the pull request's trouble already —
+        // nat sent it the failure, the conflict notice names it — so none of
+        // it is the user's.
+        guard agent == nil else { break }
+        let gated = prMarks(marks, for: slice, agent: agent)
+        if gated.failingChecks != nil { return .checksFailed }
+        if gated.conflict != nil { return .conflict }
+        if gated.checksPassing { return .readyToMerge }
+    case .todo, .working, .done:
+        break
+    }
+    return nil
+}
+
+/// A project's attention: how many things wait on the user — exactly
+/// `attentionItems`' count, so the pill and the dock can never disagree —
+/// and which state its dot takes.
+public func projectAttention(
+    slices: [Slice],
+    liveAgents: [String: AgentActivity],
+    planningAgent: AgentActivity? = nil,
+    prReading: PRReading = .empty,
+    sessions: [Session] = []
+) -> ProjectAttention {
+    let items = attentionItems(
+        slices: slices, liveAgents: liveAgents, planningAgent: planningAgent,
+        prReading: prReading, sessions: sessions)
+
+    let inFlight = inFlightSliceIDs(slices: slices)
     let sessionTags = Set(sessions.map(\.tag))
-    let sessionAgents = liveAgents.filter { sessionTags.contains($0.key) }
-    let sessionWaiting = sessionAgents.filter { $0.value == .waiting }.keys
-    let sessionsNeedingReview = sessions.filter { sessionNeedsReview($0, liveAgents: liveAgents) }.map(\.tag)
-
-    // The slices with something for the user to do about them. Ready to
-    // merge is gated on In progress for the reason `isReviewSlice`'s own
-    // pull-request half is: a Done slice does not count merely because its
-    // pull request still reads open — Notion's status is read straight, and
-    // a Done slice marked so under the old rule is the un-done rule's to
-    // catch, not this count's. `handedBack` needs no such gate, being
-    // already status-gated at the source (`domain.Slice.HandedBack`).
-    var pending = Set(
-        slices
-            .filter {
-                let stage = stage(for: $0, agent: nil)
-                let reading = prReadiness[$0.id]
-                return stage == .review || (stage == .pr && reading == PRStatusSlice.readyToMerge)
-                    || (stage == .pr && reading == PRStatusSlice.checksFailing)
-            }
-            .map(\.id)
-    )
-    pending.formUnion(waiting)
-    pending.formUnion(sessionWaiting)
-    pending.formUnion(sessionsNeedingReview)
-
-    let count = pending.count + (planningWaiting ? 1 : 0)
+    let anyAgent = liveAgents.keys.contains { inFlight.contains($0) || sessionTags.contains($0) }
 
     let role: ProjectAttentionRole
-    if planningWaiting || !waiting.isEmpty || !sessionWaiting.isEmpty {
+    if items.contains(where: { $0.kind == .waiting }) {
         role = .waiting
-    } else if !pending.isEmpty {
+    } else if !items.isEmpty {
         role = .review
-    } else if !agents.isEmpty || !sessionAgents.isEmpty || planningAgent != nil {
+    } else if anyAgent || planningAgent != nil {
         role = .working
     } else {
         role = .idle
     }
+    return ProjectAttention(count: items.count, role: role)
+}
 
-    return ProjectAttention(count: count, role: role)
+/// What changed between two readings of everything waiting on the user.
+public enum AttentionChange {
+    /// The items in `new` that were not in `old`, by identity — so a reading
+    /// that only reorders arrives nothing, and one item leaving as another
+    /// comes still arrives the newcomer.
+    public static func arrivals(from old: [AttentionItem], to new: [AttentionItem]) -> [AttentionItem] {
+        let seen = Set(old.map(\.identity))
+        return new.filter { !seen.contains($0.identity) }
+    }
+}
+
+/// One of the dock menu's groups: its disabled heading, then one row per item.
+public struct DockMenuSection: Equatable, Sendable {
+    public let heading: String
+    public let rows: [DockMenuRow]
+}
+
+/// One of the dock menu's items: its name, cut to `dockMenuNameLimit`, the
+/// project's tag, and what choosing it selects.
+public struct DockMenuRow: Equatable, Sendable {
+    public let name: String
+    /// The project's tag as the Active rows carry it — empty where it has
+    /// none.
+    public let tag: String
+    public let item: AttentionItem
+
+    /// The row's title: "<tag> · <name>", the name alone with no tag.
+    public var title: String { tag.isEmpty ? name : "\(tag) · \(name)" }
+}
+
+/// The longest a dock menu row's name runs before it is cut with an
+/// ellipsis — a slice's name can be a sentence, and the menu is as wide as
+/// its widest row.
+public let dockMenuNameLimit = 48
+
+/// `name` cut to `limit` characters, ending in "…" where anything was cut.
+func truncated(_ name: String, to limit: Int) -> String {
+    guard name.count > limit else { return name }
+    let cut = name.prefix(limit - 1).trimmingCharacters(in: .whitespaces)
+    return cut + "…"
+}
+
+/// The dock menu's groups, by kind in order of urgency, each row its item's
+/// name (cut to `dockMenuNameLimit`) and its project's tag as the Active rows
+/// carry it (`tags`, by project id). No section for a kind nothing is
+/// waiting on.
+public func dockMenuSections(_ items: [AttentionItem], tags: [String: String]) -> [DockMenuSection] {
+    AttentionKind.allCases.compactMap { kind in
+        let rows = items.filter { $0.kind == kind }.map { item in
+            DockMenuRow(
+                name: truncated(item.name, to: dockMenuNameLimit), tag: tags[item.projectID] ?? "", item: item)
+        }
+        return rows.isEmpty ? nil : DockMenuSection(heading: kind.heading, rows: rows)
+    }
 }

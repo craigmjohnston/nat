@@ -46,8 +46,38 @@ final class AppModelPRMarksTests: XCTestCase {
         XCTAssertEqual(treeMarks(model, red), redMarks)
         XCTAssertEqual(activeMarks(model, conflicting), conflictMarks)
         XCTAssertEqual(treeMarks(model, conflicting), conflictMarks)
-        // Its tab counts the red pull request beside its handed-back branch.
-        XCTAssertEqual(model.attention(projectID: Fixtures.secondProjectID).count, 2)
+        // Its tab counts the red and the conflicting pull requests beside its
+        // handed-back branch — the dock's share of that project exactly.
+        XCTAssertEqual(model.attention(projectID: Fixtures.secondProjectID).count, 3)
+        let second = model.dockAttention.filter { $0.projectID == Fixtures.secondProjectID }
+        XCTAssertEqual(second.map(\.kind), [.review, .checksFailed, .conflict])
+        XCTAssertEqual(second.count, model.attention(projectID: Fixtures.secondProjectID).count)
+        XCTAssertEqual(
+            model.dockAttention.count,
+            model.projectTabs.map { model.attention(projectID: $0.id).count }.reduce(0, +))
+        XCTAssertEqual(
+            model.dockMenu.map(\.heading),
+            Array(Set(model.dockAttention.map(\.kind))).sorted().map(\.heading))
+    }
+
+    /// Choosing a dock menu row selects its slice, activating its project.
+    func testSelectingAnAttentionItemSelectsItsSlice() async {
+        let model = await started(client())
+        let item = AttentionItem(kind: .checksFailed, subject: .slice(red), name: "red", projectID: Fixtures.secondProjectID)
+
+        await model.select(item)
+
+        XCTAssertEqual(model.activeProjectID, Fixtures.secondProjectID)
+        XCTAssertEqual(model.selectedSliceID, red)
+
+        // The planning agent's selects its workshop; a session's, the session.
+        await model.select(AttentionItem(
+            kind: .waiting, subject: .workshop, name: "Workshop", projectID: Fixtures.projectID))
+        XCTAssertEqual(model.activeProjectID, Fixtures.projectID)
+        XCTAssertTrue(model.workshopSelected)
+        await model.select(AttentionItem(
+            kind: .waiting, subject: .session(Fixtures.liveSessionID), name: "s", projectID: Fixtures.projectID))
+        XCTAssertEqual(model.selectedSessionID, Fixtures.liveSessionID)
     }
 
     /// Switching away and back, and a reading that fails, clear nothing; a

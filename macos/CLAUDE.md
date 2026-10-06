@@ -197,7 +197,8 @@ mark's glyph), its tooltip the notice's text, pointing at Send back to agent
 or naming the live agent (both prefill Send back's note). The PR header's is
 `conflictNotice` (the reading's conflict, unless a loaded `PRDetail` of that
 PR decides — `conflict(reading:detail:prURL:)`; drawn before `pr-view`
-lands), "merge <base> in". `projectAttention` counts a red pr slice once.
+lands), "merge <base> in". `projectAttention` counts a red pr slice once, and only
+with no live agent on it (see **The dock**).
 **A hand-back with no PR**: `PRStatusDoc.branches` (nat's own merge test of
 the branch; absent where it could not test) gives
 `PRReading.branchConflicts`, merged into `marks`; `prMarks` draws a slice
@@ -307,6 +308,24 @@ sidebar's foot draws `MirrorNudgeCardView` while `mirrorNudgeShown` (armed **and
 `mirrorActiveProject` → `nat project-mirror`, which changes the project's ID, so
 `projectMirrored` hands the tab over in place. A refusal shows in the sheet and
 changes nothing. Stories: `window-plan-accepted`, `notion-page-picker`.
+
+## The dock
+
+`attentionItems` (`ProjectAttention.swift`) is everything waiting on the
+user in a project — one `AttentionItem` per slice (or session, or planning
+agent), under its most urgent `AttentionKind`: waiting, review, checks
+failed, conflict, ready to merge (the sidebar's `checksPassing` gate). A
+pull request's failing checks or conflict never count while a live agent is
+on the slice — nat has already sent it the failure — so nothing that clears
+on its own ever shows. `projectAttention`'s count is its count.
+`AppModel.dockAttention` is every open project's items (computed, observed
+through the same stores; no poll). `DockAttention` (NatApp) badges
+`NSApp.dockTile` with the count, builds the dock menu on demand
+(`AppDelegate.applicationDockMenu`, `dockMenuSections`: a heading per kind,
+"<tag> <name>" rows that select through `AppModel.select(_:)`) and bounces
+once (`.informationalRequest`, never while active) when
+`AttentionChange.arrivals` finds an item by identity the last reading did
+not have. No story can render the dock.
 
 ## Closed tabs stay closed
 

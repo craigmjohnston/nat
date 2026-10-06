@@ -137,7 +137,7 @@ final class WorkflowStageTests: XCTestCase {
         let resumed = slice(status: "In progress", branch: nil, handedBack: false, pr: "https://pr/1", resumed: true)
         XCTAssertEqual(
             projectAttention(
-                slices: [resumed], liveAgents: [:], prReadiness: ["s-1": PRStatusSlice.readyToMerge]
+                slices: [resumed], liveAgents: [:], prReading: prReading(["s-1": PRStatusSlice.readyToMerge])
             ).count,
             0
         )
@@ -151,11 +151,11 @@ final class WorkflowStageTests: XCTestCase {
         let approved = slice(status: "In progress", branch: nil, handedBack: false, pr: "https://pr/1")
         let resumed = slice(status: "In progress", branch: nil, handedBack: false, pr: "https://pr/1", resumed: true)
         let done = slice(status: "Done", branch: nil, handedBack: false, pr: "https://pr/1")
-        XCTAssertEqual(projectAttention(slices: [approved], liveAgents: [:], prReadiness: red).count, 1)
-        XCTAssertEqual(projectAttention(slices: [approved], liveAgents: [:], prReadiness: red).role, .review)
-        XCTAssertEqual(projectAttention(slices: [approved], liveAgents: ["s-1": .waiting], prReadiness: red).count, 1)
-        XCTAssertEqual(projectAttention(slices: [resumed], liveAgents: [:], prReadiness: red).count, 0)
-        XCTAssertEqual(projectAttention(slices: [done], liveAgents: [:], prReadiness: red).count, 0)
+        XCTAssertEqual(projectAttention(slices: [approved], liveAgents: [:], prReading: prReading(red)).count, 1)
+        XCTAssertEqual(projectAttention(slices: [approved], liveAgents: [:], prReading: prReading(red)).role, .review)
+        XCTAssertEqual(projectAttention(slices: [approved], liveAgents: ["s-1": .waiting], prReading: prReading(red)).count, 1)
+        XCTAssertEqual(projectAttention(slices: [resumed], liveAgents: [:], prReading: prReading(red)).count, 0)
+        XCTAssertEqual(projectAttention(slices: [done], liveAgents: [:], prReading: prReading(red)).count, 0)
     }
 
     /// An In progress slice with a PR and no live agent is an ordinary

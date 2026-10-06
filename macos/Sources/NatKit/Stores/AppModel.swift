@@ -2082,26 +2082,65 @@ public final class AppModel {
     /// What a project's tab says needs attention — the count its pill draws
     /// and the state its dot takes, as one reading so the two cannot
     /// disagree. Nothing at all for a project whose plan has not landed:
-    /// there are no slices to read anything off yet.
+    /// there are no slices to read anything off yet. Its count is the
+    /// project's share of `dockAttention`, read off the same inputs.
+    public func attention(projectID: String) -> ProjectAttention {
+        guard let inputs = attentionInputs(projectID: projectID) else { return .none }
+        return projectAttention(
+            slices: inputs.slices, liveAgents: inputs.liveAgents, planningAgent: inputs.planning,
+            prReading: inputs.prReading, sessions: inputs.sessions)
+    }
+
+    /// Everything waiting on the user across every open project, in tab
+    /// order — what the dock badges, lists in its menu and bounces for.
+    /// Computed off the same stores the pills are (each plan read, activity
+    /// re-read and `pr-status` reading is observed through them), so it is
+    /// never stale and needs no poll of its own.
+    public var dockAttention: [AttentionItem] {
+        projectTabs.flatMap { tab -> [AttentionItem] in
+            guard let inputs = attentionInputs(projectID: tab.id) else { return [] }
+            return attentionItems(
+                projectID: tab.id, slices: inputs.slices, liveAgents: inputs.liveAgents,
+                planningAgent: inputs.planning, prReading: inputs.prReading, sessions: inputs.sessions)
+        }
+    }
+
+    /// The dock menu's groups over `dockAttention`, each row carrying its
+    /// project's tag as the Active rows do.
+    public var dockMenu: [DockMenuSection] {
+        dockMenuSections(dockAttention, tags: sidebarTags(sidebarInputs))
+    }
+
+    /// Selects what a dock menu row names: its slice or session, or the
+    /// planning agent's workshop — its project activated first.
+    public func select(_ item: AttentionItem) async {
+        switch item.subject {
+        case .slice(let id): await selectSlice(id, inProject: item.projectID)
+        case .session(let id): await selectSession(id, inProject: item.projectID)
+        case .workshop: await selectWorkshop(inProject: item.projectID)
+        }
+    }
+
+    /// One project's attention inputs, nil where its plan has not landed.
     ///
-    /// The PR-readiness map is the project's own last `pr-status` reading
+    /// The PR reading is the project's own last `pr-status` reading
     /// (`prStatusStore`) — absent, never wrong, for one not yet read, exactly
     /// as the rail does with no reading taken. The planning agent is the one the activity map
     /// attributes to this project by its own scoped tag; the bare legacy
     /// sentinel belongs to no project in particular and is nobody's tab.
-    public func attention(projectID: String) -> ProjectAttention {
-        guard let projectInfo = stores[projectID]?.state.projectInfo else { return .none }
-
+    /// Sessions are read for the active project only, the one
+    /// `sessionStore` holds.
+    private func attentionInputs(projectID: String) -> (
+        slices: [Slice], liveAgents: [String: AgentActivity], planning: AgentActivity?,
+        prReading: PRReading, sessions: [Session]
+    )? {
+        guard let projectInfo = stores[projectID]?.state.projectInfo else { return nil }
         let agents = activityStore?.agents ?? [:]
-        let liveAgents = agents.mapValues { AgentActivity($0.activity) }
-        let planning = agents[TmuxSession.planTag(projectID: projectID)]
-            .map { AgentActivity($0.activity) }
-
-        return projectAttention(
+        return (
             slices: projectInfo.slices,
-            liveAgents: liveAgents,
-            planningAgent: planning,
-            prReadiness: prStatusStore?.reading(projectID: projectID).readiness ?? [:],
+            liveAgents: agents.mapValues { AgentActivity($0.activity) },
+            planning: agents[TmuxSession.planTag(projectID: projectID)].map { AgentActivity($0.activity) },
+            prReading: prStatusStore?.reading(projectID: projectID) ?? .empty,
             sessions: projectID == activeProjectID ? (sessionStore?.sessions ?? []) : []
         )
     }
