@@ -8,6 +8,13 @@ import NatKit
 /// `container-show`, `slice-show` and `source-list` report it. The shapes
 /// follow `docs/design/task-sources/README.md` field for field.
 extension Fixtures {
+    /// The Shortcut plugin's icon as its `describe` sends it — the SVG mark
+    /// (`plugins/shortcut`'s `iconSVG`), the symbol its fallback — for the
+    /// stories that draw a Shortcut ("SC") source.
+    public static let shortcutIcon = SourceIcon(
+        symbol: "rectangle.on.rectangle.angled",
+        svg: #"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M18.2765 8.46875H39.8392L30.0769 19.183L39.652 28.7301L29.7873 39.5561L8.15918 39.5506L17.9624 28.7915L8.42517 19.2828L18.2765 8.46875ZM19.7228 30.5467L13.8141 37.0315L26.2301 37.0346L19.7228 30.5467ZM29.2139 36.498L21.3993 28.7067L28.4005 21.0229L36.2151 28.8147L29.2139 36.498ZM26.6401 19.2677L19.6388 26.9516L11.8619 19.1979L18.8627 11.5129L26.6401 19.2677ZM28.3166 17.4277L34.183 10.9893H21.8593L28.3166 17.4277Z"/></svg>"#)
+
     /// Sorts ahead of the other fixture projects, so a board started over
     /// `sourceConfig` opens on Work — the shell's own start activates the
     /// first project, and a story's selection there has to survive it.

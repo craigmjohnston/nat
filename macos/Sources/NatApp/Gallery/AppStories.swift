@@ -92,7 +92,7 @@ enum AppStories {
                 ProjectBadgeView(tag: String(color.rawValue.prefix(3)).uppercased(), color: color)
             }
             ProjectBadgeView(tag: "SCR", color: nil)
-            ProjectBadgeView(tag: "DM", color: nil, icon: SourceIcon(symbol: Fixtures.sourceInfo().iconSymbol))
+            ProjectBadgeView(tag: "SC", color: nil, icon: Fixtures.shortcutIcon)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.fill(.header))
@@ -1924,8 +1924,7 @@ enum AppStories {
             summary: "Every project's colour as its badge: each Active row reads badge, slash, state dot, "
                 + "title, and each PROJECTS row folder, name, then its badge at the row's trailing edge. The "
                 + "source fold's and Scratch's projects take no colour: their Active rows' badges are the quiet "
-                + "grey chip, the source's led by its plugin's icon; the source heading carries that badge "
-                + "right-aligned before its filter and menu, Scratch's none.",
+                + "grey chip, the source's led by its plugin's icon, and their headings carry none.",
             size: sidebar
         ) {
             await projectColoursSidebar()
@@ -2431,7 +2430,7 @@ enum AppStories {
                 tabs: [.terminal, .changes], selected: .terminal,
                 crumbs: TitlebarCrumbs(parent: "Billing export", parentKind: .container, title: "Add the CSV column"),
                 identity: TitlebarIdentity(tag: "SC", state: .working, live: true, title: "Add the CSV column"),
-                projectColor: nil, projectIcon: SourceIcon(symbol: "rectangle.stack"))
+                projectColor: nil, projectIcon: Fixtures.shortcutIcon)
         },
 
         Story(
@@ -2444,7 +2443,7 @@ enum AppStories {
             band(
                 tabs: [], selected: nil,
                 crumbs: TitlebarCrumbs(title: "Billing export"),
-                identity: .container(title: "Billing export", tag: "SC", icon: SourceIcon(symbol: "rectangle.stack")),
+                identity: .container(title: "Billing export", tag: "SC", icon: Fixtures.shortcutIcon),
                 projectColor: nil)
         },
 

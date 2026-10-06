@@ -548,10 +548,6 @@ struct SidebarView: View {
                 Text("\(project.needsYou)").monoXS().ink(.hot)
             }
             Spacer(minLength: 0)
-            // The project's badge, right-aligned as a project row's is.
-            if !project.tag.isEmpty {
-                ProjectBadgeView(tag: project.tag, color: nil, name: project.name, icon: source?.icon)
-            }
             if let filter = source?.menu.filterAction {
                 filterButton(filter, projectID: project.id, group: nil, size: 12)
             }

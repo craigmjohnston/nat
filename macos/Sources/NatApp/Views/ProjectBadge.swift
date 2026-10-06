@@ -47,7 +47,7 @@ struct BadgeCapsule: View {
     var body: some View {
         HStack(spacing: 3) {
             if let icon {
-                SourceIconView(icon: icon, size: 10)
+                SourceIconView(icon: icon, size: 12)
             }
             Text(text)
                 .font(Typo.mono(size: Typo.scaled(10.5), weight: .medium))

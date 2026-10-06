@@ -543,11 +543,10 @@ container's identity (`SourceIdentityLabel`); the breadcrumb's project crumb
 (`TitlebarBreadcrumb.projectColor`/`projectName`/`projectIcon`); each
 PROJECTS row at its trailing edge, before the hover-only menu and `+` slots,
 so it never moves and the rows' badges line up (`SidebarProject.tag`/`.color`;
-never an Untitled row), and a source fold's heading likewise, before its
-filter and menu; both tree pickers' project rows (`CrumbTreePicker`,
+never an Untitled row); both tree pickers' project rows (`CrumbTreePicker`,
 `RunTreePicker` — `RunProject.tag`/`.color`/`.icon`), 6pt before the name,
-after the folder; and the project settings sheet's Colour row. The Scratch
-fold heading carries none. Stories: `sidebar-project-colours` (`-light`),
+after the folder; and the project settings sheet's Colour row. Fold
+headings (Scratch, a source) carry none. Stories: `sidebar-project-colours` (`-light`),
 `titlebar-band-project-colour`, `project-settings-colour-chosen`.
 
 The gnat hi-fi design (Claude Design project `e81457f6-…`, `gnat.html` with
