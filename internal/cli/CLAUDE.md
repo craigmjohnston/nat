@@ -360,7 +360,11 @@ PR actions: `slice-approve` (`actions.OpenPR` + `actions.RecordPR`, the
 approve key's two-step write, headless), `pr-comment` (`gh pr comment
 --body-file -`, `--body` or stdin), `pr-edit` (`gh pr edit --body-file -`:
 the description replaced, `--body` or stdin — pr-comment's shape and
-refusals, nothing written to Notion; `--json` → `{pr}`), `pr-reviewers` (a read is `ViewPR` for
+refusals, nothing written to Notion; `--json` → `{pr}`) — both also take
+`--session <id> <PR URL|number>` (`prtarget.go`: the session by
+`lookupSession`, the lookup `pr-view --session` shares, gh in its directory;
+refused unless the last reading kept that pull request for the session,
+`sessionHeldPR`), `pr-reviewers` (a read is `ViewPR` for
 `requested` and `candidates` — the repo's collaborators bar the author and
 the requested, a failed collaborator listing `candidates_error`, never
 "nobody"; `--add`/`--remove` run `gh pr edit` and answer with the edit's own

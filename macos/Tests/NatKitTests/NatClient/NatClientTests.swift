@@ -765,10 +765,24 @@ final class NatClientTests: XCTestCase {
         let fakeRunner = FakeRunner(fixture: .prCommentSuccess)
         let client = NatClient(commandRunner: fakeRunner)
 
-        try await client.prEdit(projectID: "proj-123", sliceRef: "slice-1", body: "A new description 🎉")
+        try await client.prEdit(projectID: "proj-123", sliceRef: "slice-1", body: "A new description 🎉", sessionID: nil)
 
         XCTAssertEqual(fakeRunner.lastArguments, ["pr-edit", "slice-1", "--project", "proj-123", "--body", "-"])
         XCTAssertEqual(fakeRunner.lastStandardInput, Data("A new description 🎉".utf8))
+    }
+
+    func testPRCommentAndEditNameASessionsPullRequest() async throws {
+        let fakeRunner = FakeRunner(fixture: .prCommentSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+        let url = "https://x/pull/7"
+
+        try await client.prComment(projectID: "proj-123", sliceRef: url, body: "Hi.", sessionID: "s1")
+        XCTAssertEqual(fakeRunner.lastArguments,
+                       ["pr-comment", url, "--session", "s1", "--project", "proj-123", "--body", "-"])
+        try await client.prEdit(projectID: "proj-123", sliceRef: url, body: "Body.", sessionID: "s1")
+        XCTAssertEqual(fakeRunner.lastArguments,
+                       ["pr-edit", url, "--session", "s1", "--project", "proj-123", "--body", "-"])
+        XCTAssertEqual(fakeRunner.lastStandardInput, Data("Body.".utf8))
     }
 
     func testPRReviewersReadsAndEdits() async throws {

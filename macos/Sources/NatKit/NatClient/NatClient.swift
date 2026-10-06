@@ -547,25 +547,41 @@ public final class NatClient: Sendable {
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
-    ///   - sliceRef: The slice's URL or Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID — or, with
+    ///     `sessionID`, the URL of that ad hoc session's pull request
     ///   - body: The comment's markdown body
-    /// - Throws: NatError if the slice has no pull request recorded, or gh refuses
-    public func prComment(projectID: String, sliceRef: String, body: String) async throws {
+    ///   - sessionID: The ad hoc session whose pull request it is (`--session`)
+    /// - Throws: NatError if the slice has no pull request recorded, the
+    ///   session holds no such pull request, or gh refuses
+    public func prComment(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
         _ = try await runNatRaw(
-            arguments: ["pr-comment", sliceRef, "--project", projectID, "--body", "-"],
+            arguments: ["pr-comment", sliceRef] + Self.sessionArguments(sessionID)
+                + ["--project", projectID, "--body", "-"],
             standardInput: body.data(using: .utf8)
         )
     }
 
-    /// Replace the description of a slice's pull request — `nat pr-edit`,
-    /// the body over stdin (`--body -`) exactly as `prComment`'s is.
+    public func prComment(projectID: String, sliceRef: String, body: String) async throws {
+        try await prComment(projectID: projectID, sliceRef: sliceRef, body: body, sessionID: nil)
+    }
+
+    /// Replace the description of a slice's pull request, or with `sessionID`
+    /// an ad hoc session's — `nat pr-edit`, the body over stdin (`--body -`)
+    /// exactly as `prComment`'s is.
     ///
-    /// - Throws: NatError if the slice has no pull request recorded, or gh refuses
-    public func prEdit(projectID: String, sliceRef: String, body: String) async throws {
+    /// - Throws: NatError if the slice has no pull request recorded, the
+    ///   session holds no such pull request, or gh refuses
+    public func prEdit(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
         _ = try await runNatRaw(
-            arguments: ["pr-edit", sliceRef, "--project", projectID, "--body", "-"],
+            arguments: ["pr-edit", sliceRef] + Self.sessionArguments(sessionID)
+                + ["--project", projectID, "--body", "-"],
             standardInput: body.data(using: .utf8)
         )
+    }
+
+    /// `--session <id>` where a pull request is an ad hoc session's.
+    private static func sessionArguments(_ sessionID: String?) -> [String] {
+        sessionID.map { ["--session", $0] } ?? []
     }
 
     /// Who is asked to review a slice's pull request and who else could be —

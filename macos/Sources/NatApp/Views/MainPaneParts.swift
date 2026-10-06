@@ -587,7 +587,7 @@ struct PRConversationPane: View {
                     Text("No comments yet.").font(.system(size: PRConversationMetrics.textSize)).ink(.secondary)
                 }
                 ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
-                    PRConversationEntryView(entry: entry, reply: store.isSlicePR ? reply(to: entry) : nil)
+                    PRConversationEntryView(entry: entry, reply: reply(to: entry))
                 }
                 PRComposerView(
                     placeholder: "Comment on the pull request\u{2026}",
@@ -608,9 +608,7 @@ struct PRConversationPane: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 6) {
                 NavHeading(text: "Description")
-                if store.isSlicePR {
-                    editButton(described)
-                }
+                editButton(described)
                 Spacer(minLength: 0)
             }
             if let draft = descriptionDraft {

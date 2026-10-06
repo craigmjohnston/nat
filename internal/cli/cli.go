@@ -601,10 +601,10 @@ usage:
                       print one pull request in full: its description, checks,
                       reviews, comments and change stats, read through gh in
                       the slice's repo
-  nat pr-comment <slice> [--body TEXT|-] [--json] --project ID
+  nat pr-comment (<slice> | --session ID <PR>) [--body TEXT|-] [--json] --project ID
                       post a comment on the slice's recorded pull request;
                       --body - or absent reads it from stdin
-  nat pr-edit <slice> [--body TEXT|-] [--json] --project ID
+  nat pr-edit (<slice> | --session ID <PR>) [--body TEXT|-] [--json] --project ID
                       replace the description of the slice's recorded pull
                       request; --body - or absent reads it from stdin
   nat pr-reviewers <slice> [--add LOGIN]... [--remove LOGIN]... [--json] --project ID

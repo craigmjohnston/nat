@@ -25,7 +25,8 @@ public protocol NatClientProtocol: Sendable {
     func prStatus(projectIDs: [String], detail: String?) async throws -> GitHubReading
     func prMerge(projectID: String, sliceRef: String) async throws -> Void
     func prComment(projectID: String, sliceRef: String, body: String) async throws -> Void
-    func prEdit(projectID: String, sliceRef: String, body: String) async throws -> Void
+    func prComment(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws -> Void
+    func prEdit(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws -> Void
     func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers
     func sliceChecksRerun(projectID: String, sliceRef: String, mode: ChecksRerunMode) async throws -> ChecksActionResult
     func sliceChecksCancel(projectID: String, sliceRef: String, checks: [String]) async throws -> ChecksActionResult
@@ -94,9 +95,20 @@ extension NatClientProtocol {
         throw NatError.commandFailed("pr-reviewers: not supported by this client")
     }
 
+    /// A comment on a slice's pull request (`sessionID` nil) is every
+    /// conformer's own `prComment`; on an ad hoc session's, only `NatClient`
+    /// and the fixture client implement it, the same reasoning as
+    /// `workspaceLaunch`.
+    public func prComment(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
+        guard sessionID == nil else {
+            throw NatError.commandFailed("pr-comment --session: not supported by this client")
+        }
+        try await prComment(projectID: projectID, sliceRef: sliceRef, body: body)
+    }
+
     /// Editing a pull request's description: only `NatClient` and the
     /// fixture client implement this, the same reasoning as `workspaceLaunch`.
-    public func prEdit(projectID: String, sliceRef: String, body: String) async throws {
+    public func prEdit(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
         throw NatError.commandFailed("pr-edit: not supported by this client")
     }
 

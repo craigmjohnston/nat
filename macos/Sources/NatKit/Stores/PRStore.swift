@@ -192,7 +192,7 @@ public final class PRStore {
         guard let projectID, let sliceRef else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        try await client.prComment(projectID: projectID, sliceRef: sliceRef, body: trimmed)
+        try await client.prComment(projectID: projectID, sliceRef: sliceRef, body: trimmed, sessionID: sessionID)
         await reread()
     }
 
@@ -205,7 +205,7 @@ public final class PRStore {
         guard let projectID, let sliceRef else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        try await client.prEdit(projectID: projectID, sliceRef: sliceRef, body: trimmed)
+        try await client.prEdit(projectID: projectID, sliceRef: sliceRef, body: trimmed, sessionID: sessionID)
         await load()
     }
 
@@ -220,11 +220,6 @@ public final class PRStore {
             await load()
         }
     }
-
-    /// Whether the pull request on show is a slice's — what `pr-comment` and
-    /// `pr-edit` name it by. An ad hoc session's has no slice, so the PR view
-    /// offers no Reply or Edit on one.
-    public var isSlicePR: Bool { sliceRef != nil && sessionID == nil }
 
     /// Who is asked to review the pull request on show and who else could
     /// be — `nat pr-reviewers`, a read for the reviewer picker. Nil with

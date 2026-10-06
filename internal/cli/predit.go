@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-
-	"github.com/craigmjohnston/nat/internal/actions"
 )
 
 // PRBodyEditor is what pr-edit needs of the GitHub CLI: the body of a pull
@@ -22,7 +20,8 @@ type PRBodyEditor interface {
 // the body under its title, as gnat's PR section edits it in place.
 //
 // It is pr-comment line for line: only a slice with a pull request recorded
-// has one to edit, and nothing is written to Notion — the slice's own
+// has one to edit, --session names one of an ad hoc session's instead
+// ([prTarget]), and nothing is written to Notion — the slice's own
 // `PR description` section is what the pull request was opened with, and stays
 // the record of that.
 func prEdit(ctx context.Context, args []string, env Env) error {
@@ -30,15 +29,14 @@ func prEdit(ctx context.Context, args []string, env Env) error {
 	flags.SetOutput(io.Discard)
 	body := flags.String("body", stdinRef, "the new description; `-` or absent reads it from stdin")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
+	sessionID := flags.String("session", "",
+		"edit one of this ad hoc session's pull requests, named by URL or number, instead of a slice's")
 	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(rest) != 1 {
-		return usageErrorf("pr-edit: want exactly one slice, by URL or ID, given %d", len(rest))
-	}
-	id, err := pageID("pr-edit", rest[0])
+	target, err := parsePRTarget("pr-edit", *sessionID, rest)
 	if err != nil {
 		return err
 	}
@@ -52,32 +50,18 @@ func prEdit(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("pr-edit: no description given: pass --body or pipe one in")
 	}
 
-	_, projectID, project, err := env.projectFor(*projectRef)
+	workdir, pr, err := target.resolve(ctx, env, *projectRef, "edit")
 	if err != nil {
 		return err
 	}
-	st, err := env.storeFor(ctx, projectID, project)
-	if err != nil {
-		return err
-	}
-
-	s, _, err := st.Slice(ctx, id)
-	if err != nil {
-		return fmt.Errorf("load the slice: %w", err)
-	}
-	if s.PRURL == "" {
-		return fmt.Errorf("%q has no pull request recorded: nothing to edit", s.Name)
-	}
-
-	workdir := actions.WorkdirFor(s, project)
-	if err := env.NewGH().EditPRBody(workdir, s.PRURL, text); err != nil {
-		return fmt.Errorf("edit the pull request %s: %w", s.PRURL, err)
+	if err := env.NewGH().EditPRBody(workdir, pr, text); err != nil {
+		return fmt.Errorf("edit the pull request %s: %w", pr, err)
 	}
 
 	if *asJSON {
-		return writeJSON(env.Out, prEditedJSON{PR: s.PRURL})
+		return writeJSON(env.Out, prEditedJSON{PR: pr})
 	}
-	_, err = fmt.Fprintf(env.Out, "# Description edited\n\n- PR: %s\n", s.PRURL)
+	_, err = fmt.Fprintf(env.Out, "# Description edited\n\n- PR: %s\n", pr)
 	return err
 }
 

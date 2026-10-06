@@ -755,16 +755,23 @@ final class PRStoreTests: XCTestCase {
 
     // MARK: - Edit description
 
-    /// Only a slice's pull request is one pr-comment and pr-edit can name.
+    /// A session's pull request has no slice: comments and edits name it
+    /// by URL with the session (`--session`).
     @MainActor
-    func testIsSlicePROnlyForASlicesPullRequest() async {
-        let client = MockPRClient(response: .success(openPR()))
-        let store = PRStore(client: client)
-        XCTAssertFalse(store.isSlicePR, "nothing fetched")
-        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
-        XCTAssertTrue(store.isSlicePR)
-        await store.fetch(projectID: "proj-1", sliceRef: "https://x/pull/7", sessionID: "s1")
-        XCTAssertFalse(store.isSlicePR, "a session's pull request has no slice")
+    func testASessionsPullRequestTakesCommentsAndEditsBySession() async throws {
+        let url = "https://github.test/craig/nat/pull/7"
+        let runner = FakeRunner(fixture: .prViewFull)
+        let store = PRStore(client: NatClient(commandRunner: runner))
+        await store.fetch(projectID: "proj-1", sliceRef: url, sessionID: "s1")
+
+        try await store.comment(text: "Reply.")
+        try await store.editDescription("New body.")
+
+        let writes = runner.calls.filter { ["pr-comment", "pr-edit"].contains($0.first) }
+        XCTAssertEqual(writes, [
+            ["pr-comment", url, "--session", "s1", "--project", "proj-1", "--body", "-"],
+            ["pr-edit", url, "--session", "s1", "--project", "proj-1", "--body", "-"],
+        ])
     }
 
     @MainActor

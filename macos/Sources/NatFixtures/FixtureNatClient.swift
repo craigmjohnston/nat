@@ -493,7 +493,11 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await record("pr-comment \(sliceRef)")
     }
 
-    public func prEdit(projectID: String, sliceRef: String, body: String) async throws {
+    public func prComment(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
+        try await record("pr-comment \(sliceRef)")
+    }
+
+    public func prEdit(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
         try await record("pr-edit \(sliceRef)")
     }
 
