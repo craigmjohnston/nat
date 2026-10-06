@@ -7,6 +7,8 @@ import NatKit
 struct NatApp: App {
     @State private var appModel: AppModel
     @StateObject private var updaterViewModel = UpdaterViewModel()
+    /// Only for the dock menu (`DockAttention`).
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     /// The chosen theme, as the settings window writes it. Reading it here
     /// is what makes the switch live: the scene re-renders when the stored
@@ -109,6 +111,8 @@ struct NatApp: App {
         // outranks the global one AppKit otherwise reads the style from.
         UserDefaults.standard.set("Always", forKey: "AppleShowScrollBars")
         Self.setDockIcon()
+        // The dock's badge, menu and bounce follow the model from here on.
+        DockAttention.shared.start(model)
     }
 
     /// The gnat on the dock for a bare executable, which has no Info.plist

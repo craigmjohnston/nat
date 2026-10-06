@@ -1,6 +1,20 @@
 import XCTest
 @testable import NatKit
 
+/// A `pr-status` reading of each slice at the given readiness word, its
+/// checks' verdict the one that word implies — passing for ready to merge,
+/// failing for checks failing, pending otherwise — and `conflicting` the
+/// slices named.
+func prReading(_ readiness: [String: String], conflicting: Set<String> = []) -> PRReading {
+    PRReading(PRStatusDoc(slices: readiness.map { id, word in
+        let verdict = word == PRStatusSlice.readyToMerge ? PRStatusSlice.checksPassing
+            : word == PRStatusSlice.checksFailing ? "failing" : "pending"
+        return PRStatusSlice(
+            sliceID: id, name: id, pr: "https://pr/\(id)", readiness: word,
+            checks: PRStatusChecks(verdict: verdict), conflicting: conflicting.contains(id), base: "main")
+    }))
+}
+
 final class ProjectAttentionTests: XCTestCase {
     private func slice(
         _ id: String,
@@ -42,7 +56,7 @@ final class ProjectAttentionTests: XCTestCase {
         let attention = projectAttention(
             slices: [slice("s-1", pr: "https://pr/1")],
             liveAgents: [:],
-            prReadiness: ["s-1": PRStatusSlice.readyToMerge]
+            prReading: prReading(["s-1": PRStatusSlice.readyToMerge])
         )
 
         XCTAssertEqual(attention.role, .review)
@@ -53,7 +67,7 @@ final class ProjectAttentionTests: XCTestCase {
         let attention = projectAttention(
             slices: [slice("s-1", status: "Done", pr: "https://pr/1")],
             liveAgents: [:],
-            prReadiness: ["s-1": PRStatusSlice.awaitingReview]
+            prReading: prReading(["s-1": PRStatusSlice.awaitingReview])
         )
 
         XCTAssertEqual(attention.role, .idle)
@@ -65,7 +79,7 @@ final class ProjectAttentionTests: XCTestCase {
             slices: [slice("s-1", handedBack: true), slice("s-2"), slice("s-3")],
             liveAgents: ["s-2": .waiting, "s-3": .working],
             planningAgent: nil,
-            prReadiness: ["s-1": PRStatusSlice.readyToMerge]
+            prReading: prReading(["s-1": PRStatusSlice.readyToMerge])
         )
 
         XCTAssertEqual(attention.role, .waiting)
@@ -144,7 +158,7 @@ final class ProjectAttentionTests: XCTestCase {
             ],
             liveAgents: ["s-2": .waiting, "s-4": .working],
             planningAgent: .waiting,
-            prReadiness: ["s-3": PRStatusSlice.readyToMerge]
+            prReading: prReading(["s-3": PRStatusSlice.readyToMerge])
         )
 
         // Handed back, a waiting agent, a mergeable pull request and the
@@ -191,7 +205,7 @@ final class ProjectAttentionTests: XCTestCase {
         let attention = projectAttention(
             slices: [slice("s-1", status: "Done", pr: "https://pr/1")],
             liveAgents: ["s-1": .waiting],
-            prReadiness: ["s-1": PRStatusSlice.awaitingReview]
+            prReading: prReading(["s-1": PRStatusSlice.awaitingReview])
         )
 
         XCTAssertEqual(attention.role, .idle)
@@ -331,5 +345,208 @@ final class ProjectAttentionTests: XCTestCase {
 
         XCTAssertEqual(attention.role, .idle)
         XCTAssertNil(attention.badge)
+    }
+
+    // MARK: - Attention items
+
+    private func items(
+        _ slices: [Slice], agents: [String: AgentActivity] = [:], planning: AgentActivity? = nil,
+        reading: PRReading = .empty, sessions: [Session] = []
+    ) -> [AttentionItem] {
+        attentionItems(
+            projectID: "p", slices: slices, liveAgents: agents, planningAgent: planning,
+            prReading: reading, sessions: sessions)
+    }
+
+    private func kinds(_ items: [AttentionItem]) -> [AttentionKind] { items.map(\.kind) }
+
+    func testEveryKind_inOrderOfUrgency_withPlanOrderWithinAKind() {
+        let reading = prReading(
+            [
+                "ready": PRStatusSlice.awaitingReview, "red": PRStatusSlice.checksFailing,
+                "clash": PRStatusSlice.awaitingReview, "red-too": PRStatusSlice.checksFailing
+            ],
+            conflicting: ["clash"])
+        // The ready one's checks read passing although nobody approved it:
+        // the sidebar's tick is the gate, not GitHub's review.
+        let passing = PRReading(PRStatusDoc(
+            slices: reading.doc.slices.map {
+                $0.sliceID == "ready"
+                    ? PRStatusSlice(sliceID: "ready", name: "ready", pr: $0.pr, readiness: $0.readiness,
+                                    checks: PRStatusChecks(verdict: PRStatusSlice.checksPassing))
+                    : $0
+            }))
+        let result = items(
+            [
+                slice("ready", pr: "https://pr/ready"),
+                slice("red", pr: "https://pr/red"),
+                slice("handed", handedBack: true),
+                slice("clash", pr: "https://pr/clash"),
+                slice("asking"),
+                slice("red-too", pr: "https://pr/red-too")
+            ],
+            agents: ["asking": .waiting],
+            planning: .waiting,
+            reading: passing)
+
+        XCTAssertEqual(kinds(result), [.waiting, .waiting, .review, .checksFailed, .checksFailed, .conflict, .readyToMerge])
+        XCTAssertEqual(result.map(\.subject), [
+            .slice("asking"), .workshop, .slice("handed"), .slice("red"), .slice("red-too"), .slice("clash"),
+            .slice("ready")
+        ])
+        XCTAssertEqual(result.map(\.name).first, "asking")
+        XCTAssertEqual(result[1].name, "Workshop")
+        XCTAssertTrue(result.allSatisfy { $0.projectID == "p" })
+    }
+
+    func testHandedBackSliceWhoseAgentWaits_isOneWaitingItem() {
+        let result = items([slice("s-1", handedBack: true)], agents: ["s-1": .waiting])
+
+        XCTAssertEqual(kinds(result), [.waiting])
+    }
+
+    func testFailingChecksWithALiveAgent_neverCount() {
+        let red = prReading(["s-1": PRStatusSlice.checksFailing])
+        // Before the nudge lands: still at the PR stage, its agent working.
+        XCTAssertEqual(items([slice("s-1", pr: "https://pr/1")], agents: ["s-1": .working], reading: red), [])
+        // After: resumed, working again.
+        let resumed = Slice(
+            id: "s-1", name: "s-1", status: "In progress", milestoneID: "m-1", assignee: "user",
+            pr: "https://pr/1", url: "", blocked: false, handedBack: false, resumed: true)
+        XCTAssertEqual(items([resumed], agents: ["s-1": .working], reading: red), [])
+        XCTAssertEqual(items([resumed], reading: red), [])
+        // Its agent waiting is the agent's question, not the checks.
+        XCTAssertEqual(kinds(items([slice("s-1", pr: "https://pr/1")], agents: ["s-1": .waiting], reading: red)), [.waiting])
+        // With no agent at all it is the user's.
+        XCTAssertEqual(kinds(items([slice("s-1", pr: "https://pr/1")], reading: red)), [.checksFailed])
+    }
+
+    func testConflictWithALiveAgent_neverCounts() {
+        let clash = prReading(["s-1": PRStatusSlice.awaitingReview], conflicting: ["s-1"])
+
+        XCTAssertEqual(items([slice("s-1", pr: "https://pr/1")], agents: ["s-1": .working], reading: clash), [])
+        XCTAssertEqual(kinds(items([slice("s-1", pr: "https://pr/1")], reading: clash)), [.conflict])
+    }
+
+    func testReadyToMerge_isTheSidebarsPassingGate() {
+        let green = prReading(["s-1": PRStatusSlice.readyToMerge])
+        let pr = slice("s-1", pr: "https://pr/1")
+
+        XCTAssertEqual(kinds(items([pr], reading: green)), [.readyToMerge])
+        XCTAssertEqual(items([pr], agents: ["s-1": .working], reading: green), [], "an agent working on it")
+        XCTAssertEqual(
+            kinds(items([pr], reading: prReading(["s-1": PRStatusSlice.readyToMerge], conflicting: ["s-1"]))),
+            [.conflict], "a conflicting pull request is a conflict, never ready")
+        XCTAssertEqual(items([pr], reading: prReading(["s-1": PRStatusSlice.awaitingReview])), [], "checks pending")
+        XCTAssertEqual(items([pr]), [], "nothing read")
+    }
+
+    func testDoneSlice_countsForNothing() {
+        let done = slice("s-1", status: "Done", pr: "https://pr/1")
+        let red = prReading(["s-1": PRStatusSlice.checksFailing], conflicting: ["s-1"])
+
+        XCTAssertEqual(items([done], agents: ["s-1": .waiting], reading: red), [])
+    }
+
+    func testSessions_waitingAndReview() {
+        let waiting = Session(id: "1", tag: "session:p:1", live: true, startedAt: Date(), dir: "/tmp/one", branch: "")
+        let open = Session(
+            id: "2", tag: "session:p:2", live: false, startedAt: Date(), dir: "/tmp", branch: "session/2",
+            prs: [SessionPR(number: 1, title: "x", url: "https://x", state: "OPEN")])
+        let working = Session(id: "3", tag: "session:p:3", live: true, startedAt: Date(), dir: "/tmp", branch: "b")
+        let result = items(
+            [], agents: ["session:p:1": .waiting, "session:p:3": .working], sessions: [open, waiting, working])
+
+        XCTAssertEqual(kinds(result), [.waiting, .review])
+        XCTAssertEqual(result.map(\.subject), [.session("1"), .session("2")])
+        XCTAssertEqual(result.map(\.name), ["Ad hoc session one", "Ad hoc session session/2"])
+    }
+
+    func testThePillCountsTheItems() {
+        let slices = [slice("s-1", handedBack: true), slice("s-2", pr: "https://pr/2"), slice("s-3", pr: "https://pr/3")]
+        let red = prReading(["s-2": PRStatusSlice.checksFailing, "s-3": PRStatusSlice.checksFailing])
+        let agents: [String: AgentActivity] = ["s-1": .waiting, "s-2": .working]
+
+        let attention = projectAttention(slices: slices, liveAgents: agents, planningAgent: .waiting, prReading: red)
+        XCTAssertEqual(
+            attention.count,
+            items(slices, agents: agents, planning: .waiting, reading: red).count)
+        // The handed-back one (waiting), the planning agent and s-3's red
+        // checks — s-2's are its live agent's.
+        XCTAssertEqual(attention.count, 3)
+    }
+
+    /// A working agent on a red pull request used to count on the pill; it
+    /// is the agent's now, and the dot says working.
+    func testRedPullRequestWithAWorkingAgent_readsWorking() {
+        let attention = projectAttention(
+            slices: [slice("s-1", pr: "https://pr/1")], liveAgents: ["s-1": .working],
+            prReading: prReading(["s-1": PRStatusSlice.checksFailing]))
+
+        XCTAssertEqual(attention, ProjectAttention(count: 0, role: .working))
+    }
+
+    // MARK: - Arrivals
+
+    private func item(_ id: String, _ kind: AttentionKind = .review, project: String = "p") -> AttentionItem {
+        AttentionItem(kind: kind, subject: .slice(id), name: id, projectID: project)
+    }
+
+    func testArrivals_areTheNewItems() {
+        XCTAssertEqual(AttentionChange.arrivals(from: [item("a")], to: [item("a"), item("b")]), [item("b")])
+        XCTAssertEqual(AttentionChange.arrivals(from: [], to: [item("a")]), [item("a")])
+    }
+
+    func testDepartures_arriveNothing() {
+        XCTAssertEqual(AttentionChange.arrivals(from: [item("a"), item("b")], to: [item("a")]), [])
+        XCTAssertEqual(AttentionChange.arrivals(from: [item("a")], to: []), [])
+    }
+
+    func testASwap_arrivesTheNewcomer() {
+        XCTAssertEqual(AttentionChange.arrivals(from: [item("a")], to: [item("b")]), [item("b")])
+    }
+
+    func testAReorderOrARename_arrivesNothing() {
+        XCTAssertEqual(AttentionChange.arrivals(from: [item("a"), item("b")], to: [item("b"), item("a")]), [])
+        let renamed = AttentionItem(kind: .review, subject: .slice("a"), name: "A, renamed", projectID: "p")
+        XCTAssertEqual(AttentionChange.arrivals(from: [item("a")], to: [renamed]), [])
+    }
+
+    func testANewKindOrProject_isAnArrival() {
+        XCTAssertEqual(AttentionChange.arrivals(from: [item("a")], to: [item("a", .readyToMerge)]), [item("a", .readyToMerge)])
+        let workshop = AttentionItem(kind: .waiting, subject: .workshop, name: "Workshop", projectID: "q")
+        let elsewhere = AttentionItem(kind: .waiting, subject: .workshop, name: "Workshop", projectID: "r")
+        XCTAssertEqual(AttentionChange.arrivals(from: [workshop], to: [workshop, elsewhere]), [elsewhere])
+    }
+
+    // MARK: - The dock menu
+
+    func testDockMenuSections_groupByKindWithTaggedRows() {
+        let sections = dockMenuSections(
+            [item("one", .waiting, project: "p"), item("two", .waiting, project: "q"), item("three", .readyToMerge)],
+            tags: ["p": "NAT", "q": ""])
+
+        XCTAssertEqual(sections.map(\.heading), ["Waiting for input", "Ready to merge"])
+        XCTAssertEqual(sections.map { $0.rows.map(\.title) }, [["NAT · one", "two"], ["NAT · three"]])
+        XCTAssertEqual(sections[0].rows[0].tag, "NAT")
+        XCTAssertEqual(sections[0].rows[1].item, item("two", .waiting, project: "q"))
+        XCTAssertEqual(dockMenuSections([], tags: [:]), [])
+    }
+
+    func testALongName_isCutWithAnEllipsis() {
+        let long = String(repeating: "word ", count: 20)
+        let row = dockMenuSections([item(long, .review)], tags: ["p": "NAT"])[0].rows[0]
+
+        XCTAssertEqual(row.name.count, dockMenuNameLimit)
+        XCTAssertEqual(row.name, String(long.prefix(dockMenuNameLimit - 1)) + "…")
+        XCTAssertEqual(row.title, "NAT · " + row.name)
+        XCTAssertEqual(truncated(String(repeating: "x", count: dockMenuNameLimit), to: dockMenuNameLimit).count, dockMenuNameLimit)
+        XCTAssertEqual(truncated("ab cd", to: 4), "ab…", "no space left before the ellipsis")
+    }
+
+    func testEveryKindHasItsHeading() {
+        XCTAssertEqual(
+            AttentionKind.allCases.map(\.heading),
+            ["Waiting for input", "Handed back for review", "Checks failed", "Conflicts", "Ready to merge"])
     }
 }
