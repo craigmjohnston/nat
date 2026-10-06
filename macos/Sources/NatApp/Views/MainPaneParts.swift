@@ -261,9 +261,17 @@ struct TitlebarBreadcrumb<Picker: View>: View {
         .fixedSize()
     }
 
+    /// The project's badge — or, for a source's task or container, its card
+    /// mark: the card's badge led by the source's icon, else the icon alone.
+    @ViewBuilder
     private var projectBadge: some View {
-        ProjectBadgeView(tag: tag, color: projectColor, name: projectName ?? crumbs.project)
-            .frame(height: CrumbLine.height)
+        if let icon = identity?.cardIcon {
+            CardMarkView(badge: identity?.cardBadge, icon: icon, ink: .tertiary)
+                .frame(height: CrumbLine.height)
+        } else {
+            ProjectBadgeView(tag: tag, color: projectColor, name: projectName ?? crumbs.project)
+                .frame(height: CrumbLine.height)
+        }
     }
 
     /// The milestone or container crumb, then its slash; the name alone
@@ -365,11 +373,12 @@ struct TitlebarIdentityLabel: View {
             Group {
                 if let identity, let icon = identity.icon {
                     SourceIdentityLabel(
-                        icon: icon, tag: identity.tag, title: identity.title, size: GnatMetrics.titlebarText,
-                        projectName: projectName, iconInk: .tertiary, titleInk: .tertiary)
+                        cardBadge: identity.cardBadge, cardIcon: identity.cardIcon, title: identity.title,
+                        size: GnatMetrics.titlebarText, iconInk: .tertiary, titleInk: .tertiary)
                 } else if let identity {
                     ActiveIdentityLabel(
-                        tag: identity.tag, color: projectColor, projectName: projectName, state: identity.state,
+                        tag: identity.tag, color: projectColor, projectName: projectName,
+                        cardBadge: identity.cardBadge, cardIcon: identity.cardIcon, state: identity.state,
                         live: identity.live, title: identity.title, symbol: identity.symbol,
                         size: GnatMetrics.titlebarText, titleInk: .tertiary)
                 } else {

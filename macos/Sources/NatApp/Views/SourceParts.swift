@@ -57,42 +57,64 @@ struct SourceIconView: View {
 struct SourceBadgeView: View {
     @Environment(\.ground) private var ground
     let badge: SourceBadge
+    /// The source's icon, leading the word — a card's badge drawn outside
+    /// the source's own section; the capsule widens to hold it.
+    var icon: SourceIcon?
 
     /// Every badge's one width — `BadgeCapsule.width`.
     static var width: CGFloat { BadgeCapsule.width }
 
     var body: some View {
         let colors = DesignTokens.wireBadge(badge.color, on: ground)
-        BadgeCapsule(text: badge.text, ink: colors?.ink, wash: colors?.wash)
+        BadgeCapsule(text: badge.text, ink: colors?.ink, wash: colors?.wash, icon: icon)
             .help(badge.title ?? badge.text)
     }
 }
 
-/// A source container named as the titlebar names it — `ActiveIdentityLabel`'s
-/// shape: its source's badge and a slash, then its source's icon in the
-/// dot's place and its title.
-struct SourceIdentityLabel: View {
+/// What names a source's task or container outside the source's own section,
+/// in a project badge's place — a source project takes no badge: its card's
+/// badge (a Shortcut card's project) led by the source's icon, else the icon
+/// alone.
+struct CardMarkView: View {
+    let badge: SourceBadge?
     let icon: SourceIcon
-    let tag: String
+    var ink: InkRole = .secondary
+
+    var body: some View {
+        if let badge {
+            SourceBadgeView(badge: badge, icon: icon)
+        } else {
+            SourceIconView(icon: icon, size: 12)
+                .ink(ink)
+                .frame(height: BadgeCapsule.height)
+        }
+    }
+}
+
+/// A source container named as the titlebar names it — `ActiveIdentityLabel`'s
+/// shape: its card mark and a slash, then the card glyph in the dot's place
+/// and its title. No card mark where `cardIcon` is nil (the last crumb,
+/// after a crumb already drawing it).
+struct SourceIdentityLabel: View {
+    let cardBadge: SourceBadge?
+    let cardIcon: SourceIcon?
     let title: String
     var size: CGFloat = GnatMetrics.body
-    /// The project's full name, the badge's tooltip.
-    var projectName: String?
-    /// The icon's and the title's inks — the titlebar's quieter crumb passes
+    /// The glyph's and the title's inks — the titlebar's quieter crumb passes
     /// `.tertiary` for both; the badge keeps its own.
     var iconInk: InkRole = .secondary
     var titleInk: InkRole = .primary
 
     var body: some View {
         HStack(spacing: 6) {
-            if !tag.isEmpty {
-                // A source project takes no colour: the quiet chip.
-                ProjectBadgeView(tag: tag, color: nil, name: projectName)
+            if let cardIcon {
+                CardMarkView(badge: cardBadge, icon: cardIcon, ink: iconInk)
                 CrumbSlash()
             }
-            SourceIconView(icon: icon, size: 12)
+            Image(systemName: SourceGlyph.container)
+                .font(.system(size: 10))
                 .ink(iconInk)
-                .frame(width: 12)
+                .frame(width: 13)
             Text(title)
                 .ink(titleInk)
                 .lineLimit(1)
@@ -101,15 +123,18 @@ struct SourceIdentityLabel: View {
     }
 }
 
-/// One fact's value: its words, led by a small dot in the plugin's colour
-/// where the fact carries one.
+/// One fact's value: its words, led by the fact's badge where it carries one
+/// (as the sidebar draws a card's, with no source icon), else by a small dot
+/// in the plugin's colour where it carries that.
 struct SourceFactValue: View {
     @Environment(\.ground) private var ground
     let fact: SourceFact
 
     var body: some View {
         HStack(spacing: 5) {
-            if let color = fact.color.flatMap({ DesignTokens.wireTint($0, on: ground) }) {
+            if let badge = fact.badge {
+                SourceBadgeView(badge: badge)
+            } else if let color = fact.color.flatMap({ DesignTokens.wireTint($0, on: ground) }) {
                 Circle().fill(color).frame(width: 7, height: 7)
             }
             Text(fact.value).ink(.primary).lineLimit(1)

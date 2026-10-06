@@ -69,7 +69,7 @@ final class TitlebarIdentityTests: XCTestCase {
 
     func testAContainersLastCrumbKeepsItsIconWhenItsTagIsDropped() {
         let icon = SourceIcon(symbol: "rectangle.stack")
-        let crumb = TitlebarIdentity.container(title: "Billing", tag: "SC", icon: icon)
+        let crumb = TitlebarIdentity.container(title: "Billing", icon: icon, badge: SourceBadge(text: "MOB", color: "#e5732a"))
             .lastCrumb(afterProjectCrumb: true)
         XCTAssertEqual(crumb, TitlebarIdentity(tag: "", state: .todo, live: false, title: "Billing", icon: icon))
     }

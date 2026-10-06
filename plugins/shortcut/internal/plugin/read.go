@@ -275,7 +275,13 @@ func (r *refs) facts(st shortcut.Story, now time.Time) []source.Fact {
 	}
 	project := source.Fact{Label: "project", Value: "—"}
 	if p, ok := r.project(st.ProjectID); ok {
-		project = source.Fact{Label: "project", Value: projectCode(p) + " · " + p.Name, Color: hexOr(p.Color, neutral)}
+		// The card's own badge, then the name; Color stays for a reader
+		// that draws no badge.
+		color := hexOr(p.Color, neutral)
+		project = source.Fact{
+			Label: "project", Value: p.Name, Color: color,
+			Badge: &source.Badge{Text: projectCode(p), Color: color, Title: p.Name},
+		}
 	}
 	state, _, _ := r.state(st.WorkflowStateID)
 	epic, _ := r.epic(st.EpicID)

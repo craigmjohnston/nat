@@ -212,8 +212,7 @@ struct WindowShellView: View {
         if let containerID = appModel.selectedContainerID {
             let source = appModel.source(ofProject: appModel.activeProjectID ?? "")
             return appModel.titlebarIdentity(for: .container(
-                id: containerID, title: crumbs.title, tag: source?.tag ?? "",
-                icon: source?.icon ?? SourceIcon(symbol: "")))
+                id: containerID, title: crumbs.title, icon: source?.icon ?? SourceIcon(symbol: "")))
         }
         return nil
     }
@@ -290,9 +289,9 @@ struct WindowShellView: View {
     }
 
     /// Where the selection sits, read left to right: a slice's project and
-    /// milestone, a source task's container (and no project — a source's
-    /// trail is card, then task), a workshop's or session's project — then
-    /// the selection itself.
+    /// milestone, a source task's card mark (in the project crumb's place)
+    /// and container, a workshop's or session's project — then the
+    /// selection itself.
     private var crumbs: TitlebarCrumbs {
         if appModel.activeTabIsUntitled && !appModel.untitledWorkshopVisible {
             return TitlebarCrumbs(title: projectName)
@@ -305,18 +304,21 @@ struct WindowShellView: View {
                 parent: projectName, parentKind: .project, title: "\(sessionRowTitle) · \(session.label)")
         }
         if let slice = selectedSlice {
-            // A source task reads `<container> / <task>`: its container
-            // stands where a project and milestone would.
+            // A source task reads `<card mark> / <container> / <task>`: the
+            // card's badge (or the source's icon) in the project crumb's
+            // place, its container where a milestone would be.
             if let containerID = sliceContainerID {
                 let title = appModel.containerTitle(containerID, inProject: appModel.activeProjectID ?? "")
-                return TitlebarCrumbs(parent: title, parentKind: .container, title: slice.name)
+                return TitlebarCrumbs(project: projectName, parent: title, parentKind: .container, title: slice.name)
             }
             return TitlebarCrumbs(project: projectName, parent: milestoneName(of: slice), title: slice.name)
         }
         if let containerID = appModel.selectedContainerID {
-            // A container alone: no project crumb before it, as a source
-            // task's trail starts at its container.
-            return TitlebarCrumbs(title: appModel.containerTitle(containerID, inProject: appModel.activeProjectID ?? ""))
+            // A container: its card mark in the project crumb's place, then
+            // the container.
+            return TitlebarCrumbs(
+                project: projectName,
+                title: appModel.containerTitle(containerID, inProject: appModel.activeProjectID ?? ""))
         }
         // Nothing selected: no breadcrumb at all.
         return .none

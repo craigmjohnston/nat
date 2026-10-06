@@ -338,7 +338,7 @@ final class SidebarModelTests: XCTestCase {
     }
 
     /// Every project row carries its badge's word — the tag its Active rows
-    /// carry, a source project's its plugin's — and an Untitled row none.
+    /// carry — and an Untitled row and a source project none.
     func testEveryProjectRowCarriesItsTag() {
         let model = buildSidebarModel(
             projects: [
@@ -349,7 +349,7 @@ final class SidebarModelTests: XCTestCase {
             liveAgents: [:])
 
         XCTAssertEqual(model.projects.map(\.tag), ["PAN", ""])
-        XCTAssertEqual(model.sources.map(\.tag), ["DM"])
+        XCTAssertEqual(model.sources.map(\.tag), [""], "a source project takes no badge")
         XCTAssertEqual(model.active.first { $0.projectID == "p" }?.projectTag, "PAN")
         XCTAssertEqual(model.projects[0].hidingDone().tag, "PAN", "hiding done work keeps the tag")
     }

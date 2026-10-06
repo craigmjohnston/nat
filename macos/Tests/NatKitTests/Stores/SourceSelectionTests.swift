@@ -45,7 +45,10 @@ final class SourceSelectionTests: XCTestCase {
         XCTAssertNil(appModel.selectedContainer)
         XCTAssertNil(appModel.source(ofProject: Fixtures.projectID))
         XCTAssertEqual(appModel.source(ofProject: work)?.tag, "DM")
-        XCTAssertEqual(appModel.titlebarIdentity(for: .slice(id: Fixtures.sourceTodoTaskID, name: "x", state: .todo)).tag, "DM")
+        let task = appModel.titlebarIdentity(for: .slice(id: Fixtures.sourceTodoTaskID, name: "x", state: .todo))
+        XCTAssertEqual(task.tag, "", "a source project takes no tag")
+        XCTAssertEqual(task.cardBadge, Fixtures.sourceMobileApp, "its card's badge instead")
+        XCTAssertEqual(task.cardIcon, Fixtures.sourceInfo().icon)
     }
 
     func testTheContainerStoreKeepsItsStaleReadingOnAFailedRead() async {

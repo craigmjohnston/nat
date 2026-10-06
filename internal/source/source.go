@@ -168,11 +168,15 @@ type ContainerDetail struct {
 	TaskNote    string    `json:"task_note,omitempty"`
 }
 
-// Fact is one label/value line of a container's facts list.
+// Fact is one label/value line of a container's facts list. Badge, where
+// set, is drawn before the value in place of Color's dot — a fact naming
+// what one of the container's badges stands for (a Shortcut card's
+// project), drawn as that badge.
 type Fact struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
 	Color string `json:"color,omitempty"`
+	Badge *Badge `json:"badge,omitempty"`
 }
 
 // The kinds of [Section]: which of its fields it is drawn from.

@@ -378,6 +378,9 @@ func facts(fs []source.Fact) string {
 		if f.Color != "" {
 			l += " (" + f.Color + ")"
 		}
+		if f.Badge != nil {
+			l += " [" + f.Badge.Text + " " + f.Badge.Color + " " + f.Badge.Title + "]"
+		}
 		lines = append(lines, l)
 	}
 	return strings.Join(lines, "\n")
@@ -405,7 +408,7 @@ func TestContainer(t *testing.T) {
 	want := strings.Join([]string{
 		"id=sc-4821",
 		"team=NA · Native App (#2c3e7a)",
-		"project=MOB · Mobile App (#e5732a)",
+		"project=Mobile App (#e5732a) [MOB #e5732a Mobile App]",
 		"state=In Development",
 		"type=feature",
 		"epic=Native app parity",
@@ -467,7 +470,7 @@ func TestContainerSparse(t *testing.T) {
 	st.PullRequests = []shortcut.PullRequest{{ID: 5, Number: 5, Closed: true}}
 	d := detail(t, h.call("container", `"id":"4811"`))
 	want := strings.Join([]string{
-		"id=sc-4811", "team=—", "project=WE · Web (#8e8e93)", "state=Ready for Dev", "type=bug", "epic=Native app parity", "labels=—",
+		"id=sc-4811", "team=—", "project=Web (#8e8e93) [WE #8e8e93 Web]", "state=Ready for Dev", "type=bug", "epic=Native app parity", "labels=—",
 		"owner=unassigned", "requester=—", "created=16 Sep", "updated=6d ago", "iteration=—",
 	}, "\n")
 	if got := facts(d.Facts); got != want {

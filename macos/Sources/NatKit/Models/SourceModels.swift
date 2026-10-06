@@ -373,13 +373,17 @@ public struct SourceFact: Codable, Equatable, Sendable {
     public let value: String
     /// `#rrggbb`, tinting the value's leading dot.
     public let color: String?
+    /// Drawn before the value in the dot's place — a fact naming what one of
+    /// the container's badges stands for (a Shortcut card's project).
+    public let badge: SourceBadge?
 
-    enum CodingKeys: String, CodingKey { case label, value, color }
+    enum CodingKeys: String, CodingKey { case label, value, color, badge }
 
-    public init(label: String, value: String, color: String? = nil) {
+    public init(label: String, value: String, color: String? = nil, badge: SourceBadge? = nil) {
         self.label = label
         self.value = value
         self.color = color
+        self.badge = badge
     }
 
     public init(from decoder: Decoder) throws {
@@ -387,6 +391,7 @@ public struct SourceFact: Codable, Equatable, Sendable {
         label = c.lenientString(.label)
         value = c.lenientString(.value)
         color = c.optionalString(.color)
+        badge = (try? c.decodeIfPresent(SourceBadge.self, forKey: .badge)) ?? nil
     }
 }
 
@@ -725,5 +730,31 @@ public struct SourceActionResult: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         message = c.optionalString(.message)
+    }
+}
+
+extension SourceInfo {
+    /// The plugin's icon — `icon_svg`, else its SF Symbol.
+    public var icon: SourceIcon { SourceIcon(symbol: iconSymbol, svg: iconSVG) }
+
+    /// The container with `id` wherever the tree first lists it, at any
+    /// depth; nil for one it does not list (a lazy group still folded).
+    public func container(withID id: String) -> SourceContainer? {
+        func find(_ groups: [SourceGroup]) -> SourceContainer? {
+            for group in groups {
+                if let found = group.containers.first(where: { $0.id == id }) ?? find(group.children) {
+                    return found
+                }
+            }
+            return nil
+        }
+        return find(groups)
+    }
+
+    /// The first badge of the container with `id` — a Shortcut card's
+    /// project — what names that card outside the source's own section.
+    /// Nil for a container with none, or one the tree does not list.
+    public func badge(ofContainer id: String) -> SourceBadge? {
+        container(withID: id)?.badges.first
     }
 }

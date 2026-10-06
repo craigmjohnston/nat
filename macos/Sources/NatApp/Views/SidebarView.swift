@@ -175,7 +175,7 @@ struct SidebarView: View {
                 if model.active.isEmpty {
                     GnatNote(text: EmptyActiveNote.text.lowercased(), height: GnatMetrics.sidebarRowHeight)
                 } else {
-                    ForEach(model.active) { activeRow($0) }
+                    ForEach(model.activeEntries) { activeEntry($0) }
                 }
             }
 
@@ -883,15 +883,52 @@ struct SidebarView: View {
     /// Whether the last Active row is the selected one — what takes the line
     /// under Active away.
     private func activeEndsInSelection(_ model: SidebarModel) -> Bool {
-        guard isOpen("active"), let last = model.active.last else { return false }
+        guard isOpen("active"), let last = model.activeEntries.last?.rows.last else { return false }
         return isSelected(last)
     }
 
-    private func activeRow(_ row: SidebarActiveRow) -> some View {
+    /// One top-level item of Active: a row, or a source card — its badge
+    /// and a slash, then its title — with its active tasks nested under it,
+    /// each its dot and title alone.
+    @ViewBuilder
+    private func activeEntry(_ entry: SidebarActiveEntry) -> some View {
+        switch entry {
+        case .row(let row):
+            activeRow(row)
+        case .card(let card, let rows):
+            activeCardRow(card)
+            ForEach(rows) { activeRow($0, nested: true) }
+        }
+    }
+
+    private func activeCardRow(_ card: SidebarActiveCard) -> some View {
+        let selected = appModel.activeProjectID == card.projectID && appModel.selectedContainerID == card.id
+        return HStack(spacing: 6) {
+            if let badge = card.badge {
+                CardMarkView(badge: badge, icon: card.icon)
+                CrumbSlash()
+            }
+            Text(card.title)
+                .ink(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: GnatMetrics.body))
+        .padding(.leading, 18)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+        .gnatRow(selected: selected)
+        .contentShape(Rectangle())
+        .onTapGesture { Task { await appModel.selectContainer(card.id, inProject: card.projectID) } }
+    }
+
+    /// An Active row; `nested`, a source task's under its card — indented a
+    /// glyph column, with no badge, the card above naming it.
+    private func activeRow(_ row: SidebarActiveRow, nested: Bool = false) -> some View {
         HStack(spacing: 6) {
             ActiveIdentityLabel(
-                tag: row.projectTag, color: row.color, projectName: row.projectName, state: row.state, live: row.live,
-                title: row.title, symbol: row.symbol)
+                tag: nested ? "" : row.projectTag, color: row.color, projectName: row.projectName,
+                state: row.state, live: row.live, title: row.title, symbol: row.symbol)
             Spacer(minLength: 0)
             // The pull request was last read failing its checks, or
             // conflicting: its marks, each named under the pointer.
@@ -917,7 +954,7 @@ struct SidebarView: View {
                 .help(row.live ? "End the workshop session\u{2026}" : "Close the workshop")
             }
         }
-        .padding(.leading, 18)
+        .padding(.leading, nested ? 18 + GnatMetrics.treeGlyphColumn + 6 : 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
         .gnatRow(selected: isSelected(row))
@@ -1050,27 +1087,27 @@ struct SidebarView: View {
                 }
             }
             .frame(width: GnatMetrics.treeFolderColumn)
-            // The name, then the project's badge 6pt after it — never on an
-            // Untitled row.
-            HStack(spacing: 6) {
-                Group {
-                    switch project.kind {
-                    case .untitled:
-                        Text(project.name).italic()
-                    case .scratch:
-                        Label(project.name, systemImage: DesignTokens.scratchSymbol).labelStyle(.titleAndIcon)
-                    case .project:
-                        Text(project.name)
-                    }
-                }
-                .font(.system(size: GnatMetrics.body))
-                .ink(pinned ? .tertiary : .secondary)
-                .lineLimit(1)
-                if project.kind != .untitled && !project.tag.isEmpty {
-                    ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
+            Group {
+                switch project.kind {
+                case .untitled:
+                    Text(project.name).italic()
+                case .scratch:
+                    Label(project.name, systemImage: DesignTokens.scratchSymbol).labelStyle(.titleAndIcon)
+                case .project:
+                    Text(project.name)
                 }
             }
+            .font(.system(size: GnatMetrics.body))
+            .ink(pinned ? .tertiary : .secondary)
+            .lineLimit(1)
             Spacer(minLength: 0)
+            // The project's badge at the row's trailing edge, before the
+            // hover-only slots, so it stays put as they come and go and a
+            // column of project rows lines its badges up — never on an
+            // Untitled row.
+            if project.kind != .untitled && !project.tag.isEmpty {
+                ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
+            }
             if projectMenuHasItems(project) {
                 // The right-click menu as a button, only under the pointer
                 // (unlike the `+`), its slot always kept.

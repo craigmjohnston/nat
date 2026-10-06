@@ -526,20 +526,26 @@ where `assignsProjectColors`, which only `NatApp` sets (tests run the real
 project's tag (`sidebarTags` — a source project's its plugin's) on
 `BadgeCapsule`, the one capsule a source container's `SourceBadgeView` is
 drawn on too, so the two are one shape and size by construction (mono face,
-16pt high, `BadgeCapsule.width`, the word centred and shrinking to fit, 4pt
-corners); its ink and wash `DesignTokens.projectBadge` (`chipInk` and the
+16pt high, `BadgeCapsule.width`, the word centred and shrinking to fit,
+`BadgeCapsule.cornerRadius` 2.5pt corners); its ink and wash `DesignTokens.projectBadge` (`chipInk` and the
 chip wash of `projectTint`, as `wireBadge` is built), the quiet secondary
 chip with no colour (scratch, source, not yet coloured); its tooltip the
-project's full name. Where: every Active row (`ActiveIdentityLabel`: badge,
+project's full name. A source project takes none (see **Task sources**: a
+card's badge, led by the source's icon — `BadgeCapsule.icon`, the capsule
+widening to hold both — stands in outside its section; inside, container
+badges keep the one width). Where: every Active row (`ActiveIdentityLabel`: badge,
 `CrumbSlash`, state dot or wand, title; `SidebarActiveRow.color`), which is
 also the titlebar's minimal stage and last crumb (`TitlebarIdentityLabel`;
 no tag — `lastCrumb` after a project crumb — no badge and no slash) and a
 container's identity (`SourceIdentityLabel`); the breadcrumb's project crumb
 — the badge alone, then its slash, still opening the picker
-(`TitlebarBreadcrumb.projectColor`/`projectName`); each PROJECTS row 6pt
-after its name (`SidebarProject.tag`/`.color`; never an Untitled row); and
-the project settings sheet's Colour row. Fold headings (Scratch, a source)
-carry none. Stories: `sidebar-project-colours` (`-light`),
+(`TitlebarBreadcrumb.projectColor`/`projectName`); each
+PROJECTS row at its trailing edge, before the hover-only menu and `+` slots,
+so it never moves and the rows' badges line up (`SidebarProject.tag`/`.color`;
+never an Untitled row); both tree pickers' project rows (`CrumbTreePicker`,
+`RunTreePicker` — `RunProject.tag`/`.color`), 6pt before the name,
+after the folder; and the project settings sheet's Colour row. Fold
+headings (Scratch, a source) carry none. Stories: `sidebar-project-colours` (`-light`),
 `titlebar-band-project-colour`, `project-settings-colour-chosen`.
 
 The gnat hi-fi design (Claude Design project `e81457f6-…`, `gnat.html` with
@@ -796,7 +802,16 @@ field read once more through `AppModel.rereadSource` — `destructive` is
 confirmed), then re-read the plan. Every section but Active, folded, pins to
 the sidebar's foot under the open ones (`SidebarView.foldSlots`); open ones
 take at most their natural height and share the room only when short of it.
-Active rows and the titlebar carry the plugin's `tag` (`sidebarTags`). A
+A source project takes **no badge** anywhere (its `SidebarProject.tag`,
+its Active rows' `projectTag` and `RunProject.tag` are empty). Outside its
+section a task or container is named by its **card mark** (`CardMarkView`):
+the card's first badge (a Shortcut card's project, `SourceInfo.badge(ofContainer:)`)
+led by the source's icon, else the icon alone. In Active the card is the
+top-level row (`SidebarModel.activeEntries`, `SidebarActiveCard`: its badge
+and a slash where it has one, then its title — a click selects it),
+its in-flight tasks nested under it with no badge; every other row is as it
+was. The titlebar reads the same (`TitlebarIdentity.cardBadge`/`cardIcon`,
+`titlebarIdentity(…, plan:)`). A
 container is a third selection kind (`selectedContainerID`, exclusive with
 slice, session and workshop); `ContainerStore` caches `container-show` per
 project and, like the PR screen, keeps a stale reading on a failed re-read.
@@ -804,10 +819,14 @@ project and, like the PR screen, keeps a stale reading on a failed re-read.
 facts and tasks, then comments/links; unknown kinds skipped) and
 `ContainerFocus` what is open and what `ContainerPane` shows. A task under a
 container shows the container and its `facts` in place of the milestone,
-the PR section its `task_note`, and the breadcrumb `<container> / <task>` —
-no project or group (segment) crumb, a selected container its own crumb
-alone; `CrumbTree`'s middle column for a source project is its containers
-(each once, in fold order), no group column. Stories:
+the PR section its `task_note`, and the breadcrumb `<card mark> /
+<container> / <task>` — the card mark in the project crumb's place, no group
+(segment) crumb; a selected container `<card mark> / <container>`, its own
+crumb the card glyph and title (`SourceIdentityLabel`); `CrumbTree`'s middle column for a source project is its containers
+(each once, in fold order), no group column, and the source project's own
+row there leads with its source's icon in the folder's place. A fact with a
+`badge` (the Shortcut plugin's `project`) draws that badge, with no icon,
+before its value in the dot's place (`SourceFactValue`). Stories:
 `crumb-tree-picker-source`, `titlebar-band-source-task`,
 `titlebar-band-container`.
 `DesignTokens.wireTint`/`wireBadge` are the one place a plugin's `#rrggbb`

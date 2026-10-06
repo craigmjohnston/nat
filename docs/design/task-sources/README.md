@@ -200,7 +200,7 @@ Sidebar   { groups: [Group], menu?: [Action] }
 Group     { id, label, count?, lazy?, menu?: [Action], children?: [Group], containers?: [Container] }
 Container { id, title, external_url?, badges?: [Badge], meta?, menu?: [Action] }
 Badge     { text, color, title? }
-Fact      { label, value, color? }
+Fact      { label, value, color?, badge?: Badge }
 Section   { id, title, kind: "prose" | "comments" | "links", body?, comments?: [Comment],
             links?: [Link], composer?: Action }
 Comment   { by, when, text }
@@ -431,7 +431,8 @@ Response:
   "external_url": "https://app.shortcut.com/acme/story/4821",
   "facts": [
     { "label": "id", "value": "sc-4821" },
-    { "label": "project", "value": "NA · Native App", "color": "#4f6bd8" },
+    { "label": "project", "value": "Mobile App", "color": "#e5732a",
+      "badge": { "text": "MOB", "color": "#e5732a", "title": "Mobile App" } },
     { "label": "state", "value": "In Development" },
     { "label": "type", "value": "feature" },
     { "label": "estimate", "value": "3" },
@@ -462,7 +463,11 @@ Response:
 
 - `facts` draw in order as a label/value list (the navigator's facts card,
   and a task's Brief facts in place of `milestone`). `color` tints a
-  value's leading dot.
+  value's leading dot. `badge`, where given, is drawn before the value in
+  the dot's place, as a container's badge is drawn — for a fact naming
+  what one of the container's badges stands for (the Shortcut plugin's
+  `project`, the card's project badge then its name); keep `color` too for
+  a reader that draws no badge.
 - `sections` draw in order, one per `kind`:
   - `prose` — `body`, Markdown. The **first** `prose` section is also what
     the agent prompt quotes as the container's story.

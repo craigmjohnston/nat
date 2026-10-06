@@ -185,7 +185,14 @@ struct RunTreePicker: View {
                             color: DesignTokens.ink(.tertiary, on: .header),
                             backColor: DesignTokens.ink(.tertiary, on: .header))
                             .frame(width: 16)
-                        Text(project.name)
+                        // The project's badge 6pt before its name, the
+                        // folder keeping its column.
+                        HStack(spacing: 6) {
+                            if !project.tag.isEmpty {
+                                ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
+                            }
+                            Text(project.name)
+                        }
                     } action: {
                         openID = project.id
                     }

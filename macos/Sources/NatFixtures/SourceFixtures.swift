@@ -8,6 +8,13 @@ import NatKit
 /// `container-show`, `slice-show` and `source-list` report it. The shapes
 /// follow `docs/design/task-sources/README.md` field for field.
 extension Fixtures {
+    /// The Shortcut plugin's icon as its `describe` sends it — the SVG mark
+    /// (`plugins/shortcut`'s `iconSVG`), the symbol its fallback — for the
+    /// stories that draw a Shortcut ("SC") source.
+    public static let shortcutIcon = SourceIcon(
+        symbol: "rectangle.on.rectangle.angled",
+        svg: #"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M18.2765 8.46875H39.8392L30.0769 19.183L39.652 28.7301L29.7873 39.5561L8.15918 39.5506L17.9624 28.7915L8.42517 19.2828L18.2765 8.46875ZM19.7228 30.5467L13.8141 37.0315L26.2301 37.0346L19.7228 30.5467ZM29.2139 36.498L21.3993 28.7067L28.4005 21.0229L36.2151 28.8147L29.2139 36.498ZM26.6401 19.2677L19.6388 26.9516L11.8619 19.1979L18.8627 11.5129L26.6401 19.2677ZM28.3166 17.4277L34.183 10.9893H21.8593L28.3166 17.4277Z"/></svg>"#)
+
     /// Sorts ahead of the other fixture projects, so a board started over
     /// `sourceConfig` opens on Work — the shell's own start activates the
     /// first project, and a story's selection there has to survive it.
@@ -42,7 +49,7 @@ extension Fixtures {
 
     // A card's one badge is its Shortcut-style project, as the plugin sends
     // it; a card with no project has none (never its team's).
-    static let sourceMobileApp = SourceBadge(text: "MOB", color: "#e5732a", title: "Mobile App")
+    public static let sourceMobileApp = SourceBadge(text: "MOB", color: "#e5732a", title: "Mobile App")
     static let sourceWeb = SourceBadge(text: "WE", color: "#8e8e93", title: "Web")
 
     // The workspace's choices a filter offers, as the Shortcut plugin sends
@@ -169,7 +176,8 @@ extension Fixtures {
     public static func sourceInfo(expand: [String] = [], epicsLoading: Bool = false) -> SourceInfo {
         SourceInfo(
             name: "demo", title: "Demo source", tag: "DM",
-            iconSymbol: "rectangle.on.rectangle.angled",
+            // Drawn with the Shortcut mark, as the plugin it stands for is.
+            iconSymbol: "rectangle.on.rectangle.angled", iconSVG: shortcutIcon.svg,
             containerNoun: "card", taskNoun: "task",
             menu: [
                 SourceAction(id: "refresh", label: "Refresh"),
@@ -243,7 +251,7 @@ extension Fixtures {
 
     static let sourceCardFacts: [SourceFact] = [
         SourceFact(label: "id", value: "dm-4821"),
-        SourceFact(label: "project", value: "NA · Native App", color: "#4f6bd8"),
+        SourceFact(label: "project", value: "Mobile App", color: "#e5732a", badge: sourceMobileApp),
         SourceFact(label: "state", value: "In Development"),
         SourceFact(label: "type", value: "feature"),
         SourceFact(label: "epic", value: "Native app parity"),
