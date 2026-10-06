@@ -37,6 +37,12 @@ func (f *fakePRViewer) ViewPR(dir, ref string) (gh.PR, error) {
 // read in no repository at all.
 const batchRead = "(batch)"
 
+// PollPRs is ReadPRs: the screen's poll never goes through it.
+func (f *fakePRViewer) PollPRs(q gh.BatchQuery) (gh.Batch, error) { return f.ReadPRs(q) }
+
+// Outlook keeps no budget: the poll alone.
+func (f *fakePRViewer) Outlook(poll time.Duration) gh.Outlook { return gh.Outlook{PollAfter: poll} }
+
 // ReadPRs answers the batched reading's detail with the same pull request —
 // what the screen's poll reads through — recorded under batchRead.
 func (f *fakePRViewer) ReadPRs(q gh.BatchQuery) (gh.Batch, error) {
@@ -479,6 +485,10 @@ func TestReadDetailRefusals(t *testing.T) {
 type noDetail struct{}
 
 func (noDetail) ReadPRs(gh.BatchQuery) (gh.Batch, error) { return gh.Batch{}, nil }
+
+func (noDetail) PollPRs(gh.BatchQuery) (gh.Batch, error) { return gh.Batch{}, nil }
+
+func (noDetail) Outlook(poll time.Duration) gh.Outlook { return gh.Outlook{PollAfter: poll} }
 
 func TestPRBackgroundResultDropped(t *testing.T) {
 	app, _ := pollingApp(t)

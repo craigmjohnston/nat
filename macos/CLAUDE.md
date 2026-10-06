@@ -189,22 +189,34 @@ slice's or session's navigator shows it, and open), and hands each part on
 (`AppModel.deliver`): every project's doc to `PRStatusStore.apply`, the
 detail to `PRStore.applyDetail`, and the active project's session rows a
 fresh `session-list` (which asks GitHub nothing — it reads the pull requests
-the reading kept on disk). It reads on the **tick** (`poll_seconds`, default
-30; `readsGitHubOnATick`, which only `NatApp` sets — tests and stories have
-none) and once at launch (`readSoon`), and on a **settle read**
+the reading kept on disk). It reads on the **tick** — sleeping for the last reading's
+`poll_after_seconds` (nat's throttle and refusal pause), else `poll_seconds`,
+default 30; `readsGitHubOnATick`, which only `NatApp` sets — tests and stories
+have none — and once at launch (`readSoon`), and on a **settle read**
 (`scheduleSettle`, `AppModel.scheduleGitHubReading`) 5 seconds after an action
 that changed GitHub — approve (`DiffReview.approve`,
 `settlePendingApprovals`), merge, comment, reviewers, re-run and cancel
-checks (`PRStore`'s `settle`), the manual refresh (`refreshByHand`, the
-shell's ⌘R) — since GitHub reads mergeability UNKNOWN for a few seconds
+checks (`PRStore`'s `settle`; each through `AppModel.githubActionRan`, which
+counts it), the manual refresh (`refreshByHand`, the shell's ⌘R) — each
+`pr-status --settle`, past the throttle and the pause (a plan loading at
+launch asks with `afterAction: false`, which does not) — since GitHub reads mergeability UNKNOWN for a few seconds
 after `gh pr create` and starts checks later still; actions inside the
 window fold into the one pending read, and the tick restarts from it. A
 background plan landing at launch asks for one too. **Never two reads in
 flight**: a tick finding one running leaves it to finish; a settle read
 waits for it, then reads. **The nudge path refreshes the plan only**
 (`refresh(.replica)`, `refreshBackgroundProjects`, `updateReviewStats` — no
-`pr-status`, no `session-list`). `rateLimit` is kept on the store for the
-throttle and status bar; nothing draws it yet. `idle()` is how a fixture or
+`pr-status`, no `session-list`). `rateLimit` is the last reading's budget:
+the status bar draws `GitHubBudgetReadout` from it — nothing while healthy,
+`GitHub · 412 left` throttled (projection and reset its tooltip), `GitHub
+limit · resets 13:46` paused, in the warning tint (stories
+`status-bar-github-healthy`, `-throttled`, `-paused`). The store also keeps
+gnat's own spend since launch (`sessionPoints` — every reading's `cost` plus
+one per action — `sessionReadings`, `sessionActions`) and `launchedAt` (off
+`AppModel`'s `now`): Settings ▸ About's **Diagnostics** foldout
+(`DiagnosticsFoldout`, a stock `DisclosureGroup` folded on every opening, its
+rows formatted by `DiagnosticsFormat`) reads all of it (story
+`settings-about-diagnostics`). `idle()` is how a fixture or
 test waits for the readings to settle. Tests: `GitHubReadingStoreTests`,
 `AppModelGitHubReadingTests` (a nudge reads nothing; a tick is one
 `pr-status` whatever the tab count; actions inside the window are one read;

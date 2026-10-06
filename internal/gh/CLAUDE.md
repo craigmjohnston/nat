@@ -110,7 +110,7 @@ formula overstates these about a hundredfold; don't reason from it. Polling
 was ~2,200 reads an hour from gnat with four tabs open; one document per
 tick is 120.
 
-- **The document**: `rateLimit { limit remaining resetAt }`, then an aliased
+- **The document**: `rateLimit { limit remaining resetAt cost }`, then an aliased
   `rN: repository(owner:, name:)` per repository (in the order first named),
   holding an aliased field per thing asked — `pN: pullRequest(number:) {
   ...status }`, `hN: pullRequests(first: 10, headRefName:, orderBy: CREATED_AT
@@ -141,6 +141,28 @@ tick is 120.
   a number that is no pull request) leaves that node null — that node alone
   unread, logged — so one dead link on one slice never blinds the reading of
   every other. Absent always means unread: never "closed", never "merged".
+- **The budget** (`budget.go`, `Budget`): `gh-budget.json` in nat's state
+  directory (beside `github-reading.json`), shared by every nat process —
+  the last two readings (`limit`, `remaining`, `resetAt`, read time) and a
+  refusal's stop. `New()` keeps it (`WithBudget(DefaultBudget())`);
+  `NewWithRunner` keeps none, so a test's fake runner never touches it.
+  `WithBudget` wraps the runner (`budgetRunner`): a call whose stderr says
+  `API rate limit already exceeded` / `API rate limit exceeded` /
+  `exceeded a secondary rate limit` (or a document's `RATE_LIMITED` error,
+  `documentRefusal`) records a stop until the last reading's reset, else five
+  minutes on, and fails as `*LimitError` ("GitHub's API limit is spent until
+  13:46; try again then"); any call that succeeds clears the stop. `ReadPRs`
+  records each reading's rate limit and sums `rateLimit { cost }` into
+  `Batch.Cost`. `PollPRs` is the polling read: before the stop's retry time it
+  runs no gh and returns an empty batch, logged once per stop (`Logged` in
+  the file). `Outlook(poll)` is the policy, all in `outlookOf`: projection
+  `remaining − rate × (reset − now)` (rate off the last two readings of the
+  same hour), reserve a fifth of `limit`; poll at `poll` while the projection
+  holds the reserve, else `(reset − now) / (remaining − reserve)` capped at
+  five minutes and floored at `poll` (the cap where already under the
+  reserve); `Throttled` while that is longer than `poll`; a live stop is
+  `PausedUntil` and its wait. No `gh api rate_limit` read — its `graphql`
+  block reported another window than the one GraphQL enforces.
 - What is worth asking is the caller's: `actions.PRsWorthAsking` (every In
   progress slice with a PR; a Done one only while its worktree exists) and a
   session's five most recent branches (`internal/cli`'s `sessionBranches`).

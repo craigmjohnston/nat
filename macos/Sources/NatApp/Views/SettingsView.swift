@@ -88,16 +88,21 @@ struct SettingsView: View {
 
     @State private var selectedTab: SettingsTab
 
+    /// About's Diagnostics drawn open — a story's; the window opens it folded.
+    private let diagnosticsExpanded: Bool
+
     /// - Parameters:
     ///   - initialTab: Which section the window opens on — General for the
     ///     window itself, and whichever section a story wants to show.
     ///   - plugins: The Sources section's model, already driven — a story's,
     ///     to draw what a Save came to; the window makes its own.
+    ///   - diagnosticsExpanded: About's Diagnostics drawn open, for a story.
     init(
         appModel: AppModel, client: NatClientProtocol = NatClient(), updater: UpdaterViewModel? = nil,
-        initialTab: SettingsTab = .general, plugins: PluginsModel? = nil
+        initialTab: SettingsTab = .general, plugins: PluginsModel? = nil, diagnosticsExpanded: Bool = false
     ) {
         self.appModel = appModel
+        self.diagnosticsExpanded = diagnosticsExpanded
         self.client = client
         self.updater = updater
         _selectedTab = State(initialValue: initialTab)
@@ -471,6 +476,9 @@ struct SettingsView: View {
             .padding(.top, 12)
             Link("github.com/craigmjohnston/nat", destination: SettingsLayout.repositoryURL)
                 .padding(.top, 8)
+            DiagnosticsFoldout(store: appModel.githubReadingStore, initiallyExpanded: diagnosticsExpanded)
+                .frame(maxWidth: SettingsLayout.diagnosticsWidth)
+                .padding(.top, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(SettingsLayout.detailInsets)
@@ -767,6 +775,9 @@ struct SettingsView: View {
 /// the detail pane's generous insets.
 enum SettingsLayout {
     static let windowSize = CGSize(width: 760, height: 560)
+    /// About's Diagnostics foldout: wide enough for a label and its value on
+    /// one line, centred under the rest of the section.
+    static let diagnosticsWidth: CGFloat = 540
     static let sidebarWidth: CGFloat = 200
     static let tileSize: CGFloat = 32
     static let tileCornerRadius: CGFloat = 8
@@ -1101,4 +1112,58 @@ private extension View {
 
 #Preview {
     SettingsView(appModel: AppModel())
+}
+
+/// About's Diagnostics: a stock `DisclosureGroup`, folded on every opening of
+/// the window (its state is the view's own, never kept), whose body is a
+/// recessed well with a hairline border holding one row per line — GitHub's
+/// budget as the last reading left it, gnat's own spend this session (the two
+/// side by side tell whether it is gnat burning the token), and how long the
+/// app has been open, ticking once a minute. All of it is what the GitHub
+/// reading's store already keeps; nothing here asks nat anything.
+struct DiagnosticsFoldout: View {
+    let store: GitHubReadingStore?
+    /// Open from the start — a gallery story's seam; the window always opens
+    /// it folded.
+    var initiallyExpanded = false
+    @State private var expanded: Bool?
+    @Environment(\.clock) private var clock
+
+    private var isExpanded: Binding<Bool> {
+        Binding(get: { expanded ?? initiallyExpanded }, set: { expanded = $0 })
+    }
+
+    var body: some View {
+        DisclosureGroup("Diagnostics", isExpanded: isExpanded) {
+            TimelineView(.everyMinute) { _ in
+                let now = clock()
+                VStack(alignment: .leading, spacing: 6) {
+                    row("GitHub budget", DiagnosticsFormat.budget(store?.rateLimit, now: now))
+                    row("gnat\u{2019}s usage this session", DiagnosticsFormat.usage(
+                        points: store?.sessionPoints ?? 0, readings: store?.sessionReadings ?? 0,
+                        actions: store?.sessionActions ?? 0))
+                    row("Session length", store.map { DiagnosticsFormat.sessionLength(from: $0.launchedAt, to: now) } ?? "\u{2014}")
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .surface(.rowAlt, radius: 6)
+                .overlay(RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(DesignTokens.rule(.separator, on: .rowAlt), lineWidth: 0.5))
+                .padding(.top, 6)
+            }
+        }
+    }
+
+    private func row(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(label)
+                .ink(.secondary)
+            Spacer(minLength: 12)
+            Text(value)
+                // The app's mono face at the section's body size.
+                .font(Typo.mono(size: NSFont.systemFontSize))
+                .textSelection(.enabled)
+                .lineLimit(1)
+        }
+    }
 }

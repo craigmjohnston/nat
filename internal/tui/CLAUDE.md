@@ -95,10 +95,14 @@ directly; check each file, don't assume every one routes through `actions`.
   while the wizard, a form, a row prompt, or another load is in flight (would
   clobber what the user's mid-edit); **not** suspended by an open agent
   terminal — the plan behind the split stays live.
-- `prstate.go`'s reading is one `PRReader.ReadPRs` for every pull request
+- `prstate.go`'s reading is one `PRReader.PollPRs` (heeding GitHub's
+  budget stop) for every pull request
   `actions.PRsWorthAsking` names (the Done slices' worktrees listed off the
   event loop, through `newWorktrees`); merged or closed settles a slice, an
-  In progress one reading MERGED is `SettleMerged` off the reading.
+  In progress one reading MERGED is `SettleMerged` off the reading. Where the
+  budget's `Outlook` after a reading stretched polling past `poll_seconds`
+  (or paused it), `App.prNotBefore` holds every plan landing before then off
+  reading (`prNow` is the test clock).
 - `prstate.go` hands every slice a reading finds `PRChecksFailing` to
   `actions.NoticeFailingChecks` (the same call `nat pr-status` makes): a
   live agent is sent `agent.ChecksPrompt` and a `Sent back` filed, else a

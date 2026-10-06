@@ -42,34 +42,64 @@ public struct GitHubReading: Equatable, Sendable {
     }
 }
 
-/// GitHub's GraphQL budget as the reading's document left it: the hour's
-/// points, what is left of them, and when the hour resets. Kept for the
-/// throttle and the status bar; nothing draws it yet.
+/// GitHub's GraphQL budget as the reading's document left it — the hour's
+/// points, what is left of them, and when the hour resets — and nat's policy
+/// for the next polling read (`internal/gh`'s budget): what it projects is
+/// left at the reset, whether polling is stretched (`throttled`) or stopped
+/// on a refusal until `pausedUntil`, the interval nat wants before the next
+/// reading (`pollAfterSeconds`, which the read loop sleeps for) and the
+/// points this reading spent (`cost`). The policy fields are absent from an
+/// older nat, and read as nothing to say.
 public struct GitHubRateLimit: Codable, Equatable, Sendable {
     public let limit: Int
     public let remaining: Int
     public let resetAt: Date
+    public let projectedRemainingAtReset: Int?
+    public let throttled: Bool
+    public let pausedUntil: Date?
+    public let pollAfterSeconds: Int?
+    public let cost: Int
 
     enum CodingKeys: String, CodingKey {
-        case limit, remaining
+        case limit, remaining, throttled, cost
         case resetAt = "reset_at"
+        case projectedRemainingAtReset = "projected_remaining_at_reset"
+        case pausedUntil = "paused_until"
+        case pollAfterSeconds = "poll_after_seconds"
     }
 
-    public init(limit: Int, remaining: Int, resetAt: Date) {
+    public init(
+        limit: Int, remaining: Int, resetAt: Date, projectedRemainingAtReset: Int? = nil, throttled: Bool = false,
+        pausedUntil: Date? = nil, pollAfterSeconds: Int? = nil, cost: Int = 0
+    ) {
         self.limit = limit
         self.remaining = remaining
         self.resetAt = resetAt
+        self.projectedRemainingAtReset = projectedRemainingAtReset
+        self.throttled = throttled
+        self.pausedUntil = pausedUntil
+        self.pollAfterSeconds = pollAfterSeconds
+        self.cost = cost
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         limit = try c.decode(Int.self, forKey: .limit)
         remaining = try c.decode(Int.self, forKey: .remaining)
-        let raw = try c.decode(String.self, forKey: .resetAt)
+        resetAt = try Self.time(c, .resetAt)
+        projectedRemainingAtReset = try c.decodeIfPresent(Int.self, forKey: .projectedRemainingAtReset)
+        throttled = try c.decodeIfPresent(Bool.self, forKey: .throttled) ?? false
+        pausedUntil = c.contains(.pausedUntil) ? try Self.time(c, .pausedUntil) : nil
+        pollAfterSeconds = try c.decodeIfPresent(Int.self, forKey: .pollAfterSeconds)
+        cost = try c.decodeIfPresent(Int.self, forKey: .cost) ?? 0
+    }
+
+    /// A Go time under key, refused where it will not parse.
+    private static func time(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) throws -> Date {
+        let raw = try c.decode(String.self, forKey: key)
         guard let at = PRDetail.parseGoTime(raw) else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .resetAt, in: c, debugDescription: "unreadable reset_at: \(raw)")
+            throw DecodingError.dataCorruptedError(forKey: key, in: c, debugDescription: "unreadable \(key.stringValue): \(raw)")
         }
-        resetAt = at
+        return at
     }
 }

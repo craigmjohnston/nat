@@ -505,13 +505,16 @@ public final class NatClient: Sendable {
     /// - Parameters:
     ///   - projectIDs: Every project to read, by Notion page ID — one or more
     ///   - detail: A pull request URL to read in full, or nil
+    ///   - settle: Whether this is the read after an action (`--settle`),
+    ///     which runs whatever nat's throttle or refusal pause say
     /// - Returns: Each project's reading by ID, the rate limit and the detail
     /// - Throws: NatError if nat itself fails (a pull request GitHub could not
     ///   answer for is not an error — its slice simply reads "unread")
-    public func prStatus(projectIDs: [String], detail: String? = nil) async throws -> GitHubReading {
+    public func prStatus(projectIDs: [String], detail: String? = nil, settle: Bool = false) async throws -> GitHubReading {
         var arguments = ["pr-status", "--json"]
         for id in projectIDs { arguments += ["--project", id] }
         if let detail { arguments += ["--detail", detail] }
+        if settle { arguments.append("--settle") }
         let output = try await runNat(arguments: arguments)
         do {
             return try GitHubReading.decode(Data(output.utf8), projectIDs: projectIDs)

@@ -29,6 +29,12 @@ func (noActions) ReadPRs(gh.BatchQuery) (gh.Batch, error) {
 	return gh.Batch{PRs: map[gh.PRRef]gh.PR{}, Heads: map[gh.HeadRef][]gh.HeadPR{}}, nil
 }
 
+// PollPRs reads nothing, as ReadPRs does.
+func (n noActions) PollPRs(q gh.BatchQuery) (gh.Batch, error) { return n.ReadPRs(q) }
+
+// Outlook is the configured poll alone: no budget kept.
+func (noActions) Outlook(poll time.Duration) gh.Outlook { return gh.Outlook{PollAfter: poll} }
+
 // noSleep stands in for the poll's wait, counting the waits.
 func noSleep(t *testing.T) *int {
 	t.Helper()

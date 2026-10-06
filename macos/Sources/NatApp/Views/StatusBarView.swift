@@ -4,7 +4,9 @@ import NatKit
 /// The window's status bar: the gnat mark and how many agents are running,
 /// then each Claude usage window, set apart by faint dividers at the leading
 /// edge, all in the system sans at `xs` and the one quiet `.tertiary` ink
-/// (bar the warning tint where a reading runs high); at the trailing edge
+/// (bar the warning tint where a reading runs high); then, only while nat
+/// throttles or has paused polling, GitHub's budget (`GitHubBudgetReadout`,
+/// off the last reading); at the trailing edge
 /// (`trailing`), the selection's live agent's model, effort and context in
 /// the same (`AgentModelHeading`) — a slice's, a session's, the planning
 /// agent's — or nothing. Where the selection sits is the titlebar band's
@@ -32,6 +34,11 @@ struct StatusBarView<Trailing: View>: View {
             ForEach(Array(usage.windows.enumerated()), id: \.offset) { _, window in
                 StatusBarDivider()
                 UsageWindowText(window: window)
+            }
+            let budget = GitHubBudgetReadout(appModel.githubReadingStore?.rateLimit)
+            if let text = budget.text(now: clock()) {
+                StatusBarDivider()
+                GitHubBudgetText(text: text, tooltip: budget.tooltip(now: clock()), warning: budget.stateWord == "paused")
             }
             Spacer(minLength: 16)
             trailing()
@@ -71,6 +78,21 @@ private struct UsageWindowText: View {
     var body: some View {
         Text(window.text)
             .foregroundStyle(window.warning ? DesignTokens.hotInk(on: ground) : DesignTokens.ink(.tertiary, on: ground))
+    }
+}
+
+/// GitHub's budget clause: the readout's words, its tooltip, in the warning
+/// tint while polling is paused.
+private struct GitHubBudgetText: View {
+    let text: String
+    let tooltip: String?
+    let warning: Bool
+    @Environment(\.ground) private var ground
+
+    var body: some View {
+        Text(text)
+            .foregroundStyle(warning ? DesignTokens.hotInk(on: ground) : DesignTokens.ink(.tertiary, on: ground))
+            .help(tooltip ?? "")
     }
 }
 

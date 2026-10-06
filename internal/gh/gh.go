@@ -120,13 +120,27 @@ func firstLine(stderr string) string {
 // CLI opens pull requests through the gh binary.
 type CLI struct {
 	runner Runner
+	budget *Budget
 }
 
-// New returns a CLI driving the real gh on PATH.
-func New() CLI { return CLI{runner: ExecRunner{}} }
+// New returns a CLI driving the real gh on PATH, keeping the budget in nat's
+// state directory ([DefaultBudget]).
+func New() CLI { return NewWithRunner(ExecRunner{}).WithBudget(DefaultBudget()) }
 
-// NewWithRunner returns a CLI that executes through r.
+// NewWithRunner returns a CLI that executes through r, keeping no budget.
 func NewWithRunner(r Runner) CLI { return CLI{runner: r} }
+
+// WithBudget is c keeping b: every call it runs tells b whether GitHub
+// refused it on the limit or answered, every reading's rate limit is
+// recorded, and [CLI.PollPRs] heeds b's stop. A nil b keeps none.
+func (c CLI) WithBudget(b *Budget) CLI {
+	if b == nil {
+		return c
+	}
+	c.budget = b
+	c.runner = budgetRunner{inner: c.runner, budget: b}
+	return c
+}
 
 // CreatePR opens a pull request for an already pushed branch of the repository
 // at dir, and returns its URL.

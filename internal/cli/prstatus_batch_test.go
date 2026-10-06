@@ -64,7 +64,7 @@ func TestPRStatusReadsEveryProjectInOneDocument(t *testing.T) {
 		t.Fatalf("ran %d documents, want one", len(runner.docs))
 	}
 	want := `query {
-  rateLimit { limit remaining resetAt }
+  rateLimit { limit remaining resetAt cost }
   r0: repository(owner: "craig", name: "nat") {
     d: pullRequest(number: 1) { ...status ...detail }
     p1: pullRequest(number: 1) { ...status }
@@ -118,7 +118,8 @@ func TestPRStatusMarkdownOfSeveralProjects(t *testing.T) {
 	for _, line := range []string{
 		"# nat\n\n# Pull requests\n\n- Nat work — ready to merge — ",
 		"# brewery\n\n# Pull requests\n\n- Brewery work — unread — ",
-		"GitHub budget: 12 of 5000 points left, resets at 2026-10-06T13:00:00Z\n",
+		"GitHub budget: 12 of 5000 points left, resets at 2026-10-06T13:00:00Z; 12 projected at the reset; " +
+			"this reading cost 0; next reading in 30s\n",
 		"Nat work",
 	} {
 		if !strings.Contains(out.String(), line) {

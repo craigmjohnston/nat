@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/agent"
@@ -32,6 +33,11 @@ type fakePRReader struct {
 	err     error
 	queries []gh.BatchQuery
 	calls   int
+	// polls counts the reads that came through PollPRs; outlook answers
+	// Outlook.
+	polls   int
+	outlook *gh.Outlook
+	cost    int
 
 	// viewed records every ViewPR — which nothing pr-status does may make.
 	viewed []string
@@ -45,10 +51,24 @@ type fakePRReader struct {
 	comments string
 }
 
+// PollPRs is the fake's ReadPRs, counted as a poll.
+func (f *fakePRReader) PollPRs(q gh.BatchQuery) (gh.Batch, error) {
+	f.polls++
+	return f.ReadPRs(q)
+}
+
+// Outlook is outlook where the test set one, else the poll alone.
+func (f *fakePRReader) Outlook(poll time.Duration) gh.Outlook {
+	if f.outlook != nil {
+		return *f.outlook
+	}
+	return gh.Outlook{PollAfter: poll}
+}
+
 func (f *fakePRReader) ReadPRs(q gh.BatchQuery) (gh.Batch, error) {
 	f.calls++
 	f.queries = append(f.queries, q)
-	batch := gh.Batch{PRs: map[gh.PRRef]gh.PR{}, Heads: map[gh.HeadRef][]gh.HeadPR{}, RateLimit: f.rate}
+	batch := gh.Batch{PRs: map[gh.PRRef]gh.PR{}, Heads: map[gh.HeadRef][]gh.HeadPR{}, RateLimit: f.rate, Cost: f.cost}
 	if f.err != nil {
 		return gh.Batch{}, f.err
 	}
@@ -699,6 +719,10 @@ type realReading struct {
 
 func (r realReading) ReadPRs(q gh.BatchQuery) (gh.Batch, error) { return r.cli.ReadPRs(q) }
 
+func (r realReading) PollPRs(q gh.BatchQuery) (gh.Batch, error) { return r.cli.PollPRs(q) }
+
+func (r realReading) Outlook(poll time.Duration) gh.Outlook { return r.cli.Outlook(poll) }
+
 // TestPRStatusJSONConflicting pins the per-slice conflicting fact, exactly as
 // printed, from GitHub's own answer: CONFLICTING or a DIRTY merge state is a
 // conflict, MERGEABLE and UNKNOWN are not, and a slice the reading did not ask
@@ -745,7 +769,8 @@ func TestPRStatusJSONConflicting(t *testing.T) {
 		entry("s3", "Clean", "3", "ready to merge", "false") + `,` +
 		entry("s4", "Unknown", "4", "awaiting review", "false") + `,` +
 		`{"slice_id":"s5","name":"Landed","pr":"` + pr + `5","readiness":"unread","conflicting":false}` +
-		`],"branches":[],"sessions":[],"rate_limit":{"limit":5000,"remaining":4990,"reset_at":"2026-10-06T13:00:00Z"}}`
+		`],"branches":[],"sessions":[],"rate_limit":{"limit":5000,"remaining":4990,"reset_at":"2026-10-06T13:00:00Z",` +
+		`"projected_remaining_at_reset":4990,"throttled":false,"poll_after_seconds":30,"cost":0}}`
 	if compact.String() != want {
 		t.Errorf("json =\n%s\nwant\n%s", compact.String(), want)
 	}

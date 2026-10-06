@@ -316,6 +316,10 @@ type App struct {
 	prSettled    map[string]bool
 	worktreeGone map[string]bool
 	prReading    bool
+	// prNotBefore is when GitHub's budget next allows a reading, where its
+	// last outlook stretched or paused polling past the plan's own tick — zero
+	// while every tick may read. See [App.refreshPRStates].
+	prNotBefore time.Time
 	// viewer is the agent terminal beside the board, or nil when the board has
 	// the window to itself. Exactly one is on show at a time: it is a split, not
 	// a stack of panes.

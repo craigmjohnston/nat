@@ -77,6 +77,8 @@ final class AppModelGitHubReadingTests: XCTestCase {
 
         await model.githubReadingStore?.idle()
         XCTAssertEqual(client.prStatusRuns.count, before + 1)
+        XCTAssertEqual(client.prStatusKinds.last, "settle", "the read after an action runs past the pause")
+        XCTAssertEqual(model.githubReadingStore?.sessionActions, 1, "the merge is gnat's one action; refreshes are not")
     }
 
     /// An open PR tab's pull request rides the reading as its detail: after

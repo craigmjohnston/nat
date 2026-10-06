@@ -25,6 +25,15 @@ type PRBatchReader interface {
 	ReadPRs(q gh.BatchQuery) (gh.Batch, error)
 }
 
+// PRPoller is the polling half of the batched reading, which keeps GitHub's
+// budget ([gh.Budget]): PollPRs reads nothing while a refusal's stop holds,
+// and Outlook is the budget's policy for the next polling read — what
+// pr-status reports under rate_limit.
+type PRPoller interface {
+	PollPRs(q gh.BatchQuery) (gh.Batch, error)
+	Outlook(poll time.Duration) gh.Outlook
+}
+
 // prStatus prints the board's own PR-readiness reading, headlessly, for every
 // project named — `--project` repeats — from one batched GitHub reading: one
 // GraphQL document (per [gh.CLI.ReadPRs]'s chunk) naming every pull request
@@ -52,6 +61,12 @@ type PRBatchReader interface {
 // What the reading found that a later command wants without asking GitHub
 // again — each pull request's base, each session's pull requests — is kept on
 // disk ([lastReading]).
+//
+// It is a polling read ([gh.CLI.PollPRs]): while GitHub's refusal stop holds
+// it runs no gh and reads everything unread. `--settle` is the read that
+// follows an action — gnat's settle read — which is an action's read and
+// always runs. Either way rate_limit carries the budget's policy for the next
+// polling read ([gh.Outlook]).
 func prStatus(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("pr-status", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -59,6 +74,7 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 	var projectRefs stringList
 	flags.Var(&projectRefs, "project", "a project to read, by page `ID` (required; repeatable, one reading for all)")
 	detailURL := flags.String("detail", "", "also read this pull request in full, by `URL`, as pr-view prints it")
+	settle := flags.Bool("settle", false, "read after an action: run gh even while polling is paused or throttled")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
@@ -91,7 +107,12 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 		}
 	}
 
-	batch := readBatch(env, runs, detail)
+	ghClient := env.NewGH()
+	batch, asked := readBatch(ghClient, runs, detail, *settle)
+	var budget *budgetReport
+	if asked {
+		budget = &budgetReport{outlook: ghClient.Outlook(runs[0].poll), cost: batch.Cost}
+	}
 
 	kept := env.loadLastReading()
 	tmux := env.NewTmux()
@@ -111,9 +132,9 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 	}
 
 	if asJSON := *asJSON; asJSON {
-		return writeJSON(env.Out, prStatusOutput(runs, batch))
+		return writeJSON(env.Out, prStatusOutput(runs, batch, budget))
 	}
-	_, err = io.WriteString(env.Out, prStatusText(runs, batch))
+	_, err = io.WriteString(env.Out, prStatusText(runs, batch, budget))
 	return err
 }
 
@@ -136,12 +157,16 @@ type projectReading struct {
 
 	readings []prReading
 	branches []branchReading
+
+	// poll is the configured interval between polling readings, which the
+	// budget stretches.
+	poll time.Duration
 }
 
 // openProjectReading resolves one --project and reads its plan, its
 // worktrees and its sessions' branches: everything a reading of it asks.
 func openProjectReading(ctx context.Context, env Env, ref string) (*projectReading, error) {
-	_, projectID, project, err := env.projectFor(ref)
+	cfg, projectID, project, err := env.projectFor(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +179,7 @@ func openProjectReading(ctx context.Context, env Env, ref string) (*projectReadi
 		return nil, fmt.Errorf("load slices: %w", err)
 	}
 	run := &projectReading{id: projectID, project: project, st: st, slices: plan.Project.Slices,
-		worktrees: actions.ListedOnce(env.NewWorktrees()), refs: map[string]gh.PRRef{}}
+		worktrees: actions.ListedOnce(env.NewWorktrees()), refs: map[string]gh.PRRef{}, poll: cfg.PollInterval()}
 	for _, s := range actions.PRsWorthAsking(run.worktrees, project, run.slices) {
 		ref, ok := gh.ParsePRURL(s.PRURL)
 		if !ok {
@@ -179,9 +204,10 @@ func openProjectReading(ctx context.Context, env Env, ref string) (*projectReadi
 
 // readBatch is the one reading every project of the run shares: each pull
 // request asked about once, however many projects name it, every session's
-// branches, and the detail. Nothing to ask is no reading at all — no gh, and
-// no rate limit to report.
-func readBatch(env Env, runs []*projectReading, detail *gh.PRRef) gh.Batch {
+// branches, and the detail — a polling read, or with settle an action's. It
+// reports whether anything was asked: nothing to ask is no reading at all —
+// no gh, and no rate limit to report.
+func readBatch(reader GH, runs []*projectReading, detail *gh.PRRef, settle bool) (gh.Batch, bool) {
 	var q gh.BatchQuery
 	q.Detail = detail
 	asked := map[gh.PRRef]bool{}
@@ -203,16 +229,20 @@ func readBatch(env Env, runs []*projectReading, detail *gh.PRRef) gh.Batch {
 		}
 	}
 	if len(q.PRs) == 0 && len(q.Heads) == 0 && q.Detail == nil {
-		return gh.Batch{PRs: map[gh.PRRef]gh.PR{}, Heads: map[gh.HeadRef][]gh.HeadPR{}}
+		return gh.Batch{PRs: map[gh.PRRef]gh.PR{}, Heads: map[gh.HeadRef][]gh.HeadPR{}}, false
 	}
-	batch, err := env.NewGH().ReadPRs(q)
+	read := reader.PollPRs
+	if settle {
+		read = reader.ReadPRs
+	}
+	batch, err := read(q)
 	if err != nil {
 		// gh has logged each failed document; this is the decision taken
 		// about it. What a failed document asked is absent from the batch,
 		// and an absent pull request concludes nothing below.
 		logging.Action("read the pull requests in part", "error", err)
 	}
-	return batch
+	return batch, true
 }
 
 // settle is what the reading does to one project: the readings, the merges
@@ -515,11 +545,73 @@ type prStatusMultiDoc struct {
 }
 
 // rateLimitJSON is GitHub's GraphQL budget as the reading's document left it
-// — absent where no document was read.
+// — else, a reading the budget's stop skipped, as the last one did — and the
+// budget's policy for the next polling read: what it projects is left at the
+// reset, whether polling is stretched (Throttled) or stopped (PausedUntil),
+// the interval nat wants next, and what this reading spent. Absent where
+// nothing was asked, since then no gh runs at all.
 type rateLimitJSON struct {
-	Limit     int       `json:"limit"`
-	Remaining int       `json:"remaining"`
-	ResetAt   time.Time `json:"reset_at"`
+	Limit            int        `json:"limit"`
+	Remaining        int        `json:"remaining"`
+	ResetAt          time.Time  `json:"reset_at"`
+	Projected        int        `json:"projected_remaining_at_reset"`
+	Throttled        bool       `json:"throttled"`
+	PausedUntil      *time.Time `json:"paused_until,omitempty"`
+	PollAfterSeconds int        `json:"poll_after_seconds"`
+	Cost             int        `json:"cost"`
+}
+
+// budgetReport is what a reading that asked something says of the budget:
+// the policy after it, and the points it spent.
+type budgetReport struct {
+	outlook gh.Outlook
+	cost    int
+}
+
+// rateLimitOf is the run's rate_limit block: the reading's own rate limit
+// where it read one, else the last the budget kept; nil where nothing was
+// asked, or nothing was ever read and no stop holds.
+func rateLimitOf(batch gh.Batch, budget *budgetReport) *rateLimitJSON {
+	if budget == nil {
+		return nil
+	}
+	o := budget.outlook
+	rl := &rateLimitJSON{Projected: o.Projected, Throttled: o.Throttled,
+		PollAfterSeconds: int(o.PollAfter / time.Second), Cost: budget.cost}
+	switch {
+	case batch.RateLimit != nil:
+		rl.Limit, rl.Remaining, rl.ResetAt = batch.RateLimit.Limit, batch.RateLimit.Remaining, batch.RateLimit.ResetAt
+		if o.Reading == nil {
+			// No budget kept: nothing to project from but this reading.
+			rl.Projected = rl.Remaining
+		}
+	case o.Reading != nil:
+		rl.Limit, rl.Remaining, rl.ResetAt = o.Reading.Limit, o.Reading.Remaining, o.Reading.ResetAt
+	case o.PausedUntil.IsZero():
+		return nil
+	}
+	if !o.PausedUntil.IsZero() {
+		at := o.PausedUntil
+		rl.PausedUntil = &at
+	}
+	return rl
+}
+
+// budgetLine is the rate_limit block in words, for the markdown.
+func budgetLine(rl *rateLimitJSON) string {
+	if rl == nil {
+		return ""
+	}
+	line := fmt.Sprintf("\nGitHub budget: %d of %d points left, resets at %s; %d projected at the reset; "+
+		"this reading cost %d", rl.Remaining, rl.Limit, rl.ResetAt.Format(time.RFC3339), rl.Projected, rl.Cost)
+	switch {
+	case rl.PausedUntil != nil:
+		line += fmt.Sprintf("; GitHub refused on its limit: polling paused until %s",
+			rl.PausedUntil.Format(time.RFC3339))
+	case rl.Throttled:
+		line += "; throttled to keep the reserve"
+	}
+	return line + fmt.Sprintf("; next reading in %ds\n", rl.PollAfterSeconds)
 }
 
 // sessionPRsJSON is one ad hoc session's pull requests as the reading found
@@ -532,12 +624,8 @@ type sessionPRsJSON struct {
 
 // prStatusOutput is the run's JSON: one project's doc as it stands, or every
 // project's keyed by ID.
-func prStatusOutput(runs []*projectReading, batch gh.Batch) any {
-	var rl *rateLimitJSON
-	if batch.RateLimit != nil {
-		rl = &rateLimitJSON{Limit: batch.RateLimit.Limit, Remaining: batch.RateLimit.Remaining,
-			ResetAt: batch.RateLimit.ResetAt}
-	}
+func prStatusOutput(runs []*projectReading, batch gh.Batch, budget *budgetReport) any {
+	rl := rateLimitOf(batch, budget)
 	var detail *prDoc
 	if batch.Detail != nil {
 		d := prJSON(*batch.Detail)
@@ -565,7 +653,7 @@ func prStatusOutput(runs []*projectReading, batch gh.Batch) any {
 // prStatusText is the run's markdown: each project's pull requests and
 // conflicted hand-backs — under the project's name where there are several —
 // then the budget line and the detail.
-func prStatusText(runs []*projectReading, batch gh.Batch) string {
+func prStatusText(runs []*projectReading, batch gh.Batch, budget *budgetReport) string {
 	out := ""
 	for _, run := range runs {
 		if len(runs) > 1 {
@@ -576,10 +664,7 @@ func prStatusText(runs []*projectReading, batch gh.Batch) string {
 			out += "\n"
 		}
 	}
-	if rl := batch.RateLimit; rl != nil {
-		out += fmt.Sprintf("\nGitHub budget: %d of %d points left, resets at %s\n",
-			rl.Remaining, rl.Limit, rl.ResetAt.Format(time.RFC3339))
-	}
+	out += budgetLine(rateLimitOf(batch, budget))
 	if batch.Detail != nil {
 		out += "\n" + prMarkdown(*batch.Detail)
 	}

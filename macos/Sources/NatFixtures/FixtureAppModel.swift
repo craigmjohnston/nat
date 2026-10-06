@@ -49,7 +49,8 @@ extension Fixtures {
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
         planCache: PlanCaching = NullPlanCache(),
         seenMemory: SeenMemory = .inMemory(),
-        githubSettleDelay: Duration = .zero
+        githubSettleDelay: Duration = .zero,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) -> AppModel {
         AppModel(
             configReader: FixtureConfigReader(config: config),
@@ -76,6 +77,9 @@ extension Fixtures {
             // which is a state the board really has.
             activityStoreFactory: { ActivityStore(client: client) },
             usageStoreFactory: { UsageStore(client: client, cache: NullUsageCache()) },
+            // The live clock unless a story pins it — what the GitHub
+            // reading's launch time, and so Diagnostics' session length, read.
+            now: now,
             // Pinned by the tab, so an Untitled tab's planning session has
             // the same name every run and two tabs still differ.
             newWorkspaceID: { tabID in
@@ -126,11 +130,12 @@ extension Fixtures {
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
         planCache: PlanCaching = NullPlanCache(),
         seenMemory: SeenMemory = .inMemory(),
-        githubSettleDelay: Duration = .zero
+        githubSettleDelay: Duration = .zero,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) async -> AppModel {
         let model = appModel(
             client: client, config: config, toolsReady: toolsReady, workshopCache: workshopCache, planCache: planCache,
-            seenMemory: seenMemory, githubSettleDelay: githubSettleDelay)
+            seenMemory: seenMemory, githubSettleDelay: githubSettleDelay, now: now)
         await start(model)
         return model
     }

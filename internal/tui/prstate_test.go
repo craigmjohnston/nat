@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -53,6 +54,22 @@ type fakePRReader struct {
 	ended map[string]string
 	err   error
 	asked [][]string
+	// outlook answers Outlook where set, else the poll alone; polls counts
+	// the readings that came through PollPRs.
+	outlook *gh.Outlook
+	polls   int
+}
+
+func (f *fakePRReader) PollPRs(q gh.BatchQuery) (gh.Batch, error) {
+	f.polls++
+	return f.ReadPRs(q)
+}
+
+func (f *fakePRReader) Outlook(poll time.Duration) gh.Outlook {
+	if f.outlook != nil {
+		return *f.outlook
+	}
+	return gh.Outlook{PollAfter: poll}
 }
 
 var _ PRReader = (*fakePRReader)(nil)
@@ -600,6 +617,37 @@ func TestPRStateReadingRunsOneAtATime(t *testing.T) {
 	}
 	if _, third := app.Update(projectLoadedMsg{project: p}); third == nil {
 		t.Error("the next plan to land took no reading")
+	}
+}
+
+// The board's reading is a polling one, and GitHub's budget sets its cadence:
+// an outlook stretched past the plan's tick holds every plan landing before
+// then off reading, and one back at the tick lets the next plan read.
+func TestPRStateReadingHeedsTheBudget(t *testing.T) {
+	now := time.Date(2026, 10, 6, 13, 0, 0, 0, time.UTC)
+	old := prNow
+	prNow = func() time.Time { return now }
+	t.Cleanup(func() { prNow = old })
+	app, reader := prStateApp(t)
+	reader.outlook = &gh.Outlook{Throttled: true, PollAfter: 2 * time.Minute}
+	p := prStatePlan()
+
+	runPRRead(t, app, landPlan(t, app, p))
+	if reader.polls != 1 {
+		t.Fatalf("the reading came through PollPRs %d times, want once", reader.polls)
+	}
+	now = now.Add(time.Minute)
+	app.Update(projectLoadedMsg{project: p})
+	if app.prReading {
+		t.Error("a plan inside the stretched interval started a reading")
+	}
+	now = now.Add(time.Minute)
+	reader.outlook = nil
+	_, cmd := app.Update(projectLoadedMsg{project: p})
+	runPRRead(t, app, cmd)
+	if reader.polls != 2 || !app.prNotBefore.IsZero() {
+		t.Errorf("past the interval: %d polls, not before %v; want a second reading and the tick back",
+			reader.polls, app.prNotBefore)
 	}
 }
 
