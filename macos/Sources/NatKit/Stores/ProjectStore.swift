@@ -25,6 +25,7 @@ public protocol NatClientProtocol: Sendable {
     func prStatus(projectIDs: [String], detail: String?) async throws -> GitHubReading
     func prMerge(projectID: String, sliceRef: String) async throws -> Void
     func prComment(projectID: String, sliceRef: String, body: String) async throws -> Void
+    func prEdit(projectID: String, sliceRef: String, body: String) async throws -> Void
     func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers
     func sliceChecksRerun(projectID: String, sliceRef: String, mode: ChecksRerunMode) async throws -> ChecksActionResult
     func sliceChecksCancel(projectID: String, sliceRef: String, checks: [String]) async throws -> ChecksActionResult
@@ -91,6 +92,12 @@ extension NatClientProtocol {
     /// the same reasoning as `workspaceLaunch`.
     public func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers {
         throw NatError.commandFailed("pr-reviewers: not supported by this client")
+    }
+
+    /// Editing a pull request's description: only `NatClient` and the
+    /// fixture client implement this, the same reasoning as `workspaceLaunch`.
+    public func prEdit(projectID: String, sliceRef: String, body: String) async throws {
+        throw NatError.commandFailed("pr-edit: not supported by this client")
     }
 
     /// Re-running and cancelling checks: only `NatClient` and the fixture

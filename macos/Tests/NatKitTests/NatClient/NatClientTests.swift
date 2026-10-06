@@ -761,6 +761,16 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(fakeRunner.lastStandardInput, "Looks good.".data(using: .utf8))
     }
 
+    func testPREditPostsTheBodyOverStdin() async throws {
+        let fakeRunner = FakeRunner(fixture: .prCommentSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.prEdit(projectID: "proj-123", sliceRef: "slice-1", body: "A new description 🎉")
+
+        XCTAssertEqual(fakeRunner.lastArguments, ["pr-edit", "slice-1", "--project", "proj-123", "--body", "-"])
+        XCTAssertEqual(fakeRunner.lastStandardInput, Data("A new description 🎉".utf8))
+    }
+
     func testPRReviewersReadsAndEdits() async throws {
         let fakeRunner = FakeRunner(fixture: .prReviewersSuccess)
         let client = NatClient(commandRunner: fakeRunner)

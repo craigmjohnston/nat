@@ -58,7 +58,8 @@ func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
 // GH is everything the pull request commands need of the GitHub CLI:
 // [actions.PRCreator] for slice-approve, [PRViewer] for pr-view, [PRMerger]
 // for pr-merge, [PRBatchReader] for pr-status and every command that reads a
-// pull request's state, [PRCommenter] for pr-comment and
+// pull request's state, [PRCommenter] for pr-comment, [PRBodyEditor] for
+// pr-edit and
 // [PRReviewerEditor] for pr-reviewers, [RunLogReader] and [JobReader] for
 // slice-checks --log, [RunController] for slice-checks-rerun and
 // slice-checks-cancel, and [actions.PRReviewReader] for a launch's review snapshot. One gh.CLI
@@ -71,6 +72,7 @@ type GH interface {
 	PRMerger
 	PRBatchReader
 	PRCommenter
+	PRBodyEditor
 	PRReviewerEditor
 	RunLogReader
 	JobReader
@@ -602,6 +604,9 @@ usage:
   nat pr-comment <slice> [--body TEXT|-] [--json] --project ID
                       post a comment on the slice's recorded pull request;
                       --body - or absent reads it from stdin
+  nat pr-edit <slice> [--body TEXT|-] [--json] --project ID
+                      replace the description of the slice's recorded pull
+                      request; --body - or absent reads it from stdin
   nat pr-reviewers <slice> [--add LOGIN]... [--remove LOGIN]... [--json] --project ID
                       who is asked to review the slice's pull request, and who
                       else could be; --add/--remove ask or withdraw instead,
@@ -786,6 +791,8 @@ func Run(ctx context.Context, args []string, env Env) error {
 		return prView(ctx, args[1:], env)
 	case "pr-comment":
 		return prComment(ctx, args[1:], env)
+	case "pr-edit":
+		return prEdit(ctx, args[1:], env)
 	case "pr-reviewers":
 		return prReviewers(ctx, args[1:], env)
 	case "pr-merge":

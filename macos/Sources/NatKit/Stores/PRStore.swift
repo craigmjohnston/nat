@@ -193,7 +193,32 @@ public final class PRStore {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         try await client.prComment(projectID: projectID, sliceRef: sliceRef, body: trimmed)
-        settle()
+        await reread()
+    }
+
+    /// Replace the description of the pull request on show (`nat pr-edit`),
+    /// then read it again at once (`pr-view`), so the description the editor
+    /// gives way to is the one just saved rather than the one a settle read
+    /// would bring five seconds later. A refusal from gh propagates for the
+    /// editor to show, nothing read; blank text is a no-op.
+    public func editDescription(_ text: String) async throws {
+        guard let projectID, let sliceRef else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        try await client.prEdit(projectID: projectID, sliceRef: sliceRef, body: trimmed)
+        await load()
+    }
+
+    /// After a write to the pull request: the settle read while it is open,
+    /// and a `pr-view` of its own once it is merged or closed — the batched
+    /// reading reads a settled pull request no more (`shouldRead`), so a
+    /// comment left on one would otherwise never be seen.
+    private func reread() async {
+        if shouldRead {
+            settle()
+        } else {
+            await load()
+        }
     }
 
     /// Who is asked to review the pull request on show and who else could

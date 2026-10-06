@@ -557,6 +557,17 @@ public final class NatClient: Sendable {
         )
     }
 
+    /// Replace the description of a slice's pull request — `nat pr-edit`,
+    /// the body over stdin (`--body -`) exactly as `prComment`'s is.
+    ///
+    /// - Throws: NatError if the slice has no pull request recorded, or gh refuses
+    public func prEdit(projectID: String, sliceRef: String, body: String) async throws {
+        _ = try await runNatRaw(
+            arguments: ["pr-edit", sliceRef, "--project", projectID, "--body", "-"],
+            standardInput: body.data(using: .utf8)
+        )
+    }
+
     /// Who is asked to review a slice's pull request and who else could be —
     /// `nat pr-reviewers`, asking (`add`) and withdrawing (`remove`) first
     /// when either is given. The answer is read back from GitHub after the

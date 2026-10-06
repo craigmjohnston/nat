@@ -36,6 +36,8 @@ human has read the diff.
   gh's own stdin via `StdinRunner`, never `--body` as an argument: a review
   comment quoting diff lines has no length bound and a shell's argument list
   does.
+- `EditPRBody(dir, ref, body)` — `gh pr edit <ref> --body-file -`, the
+  body on stdin as `CommentPR`'s is, for `pr-edit`.
 - `ReadPRs(BatchQuery)` — **the** polling read: one `gh api graphql -f
   query=<document>` for every pull request (by number), every branch (by
   name — an ad hoc session's) and at most one pull request in full detail

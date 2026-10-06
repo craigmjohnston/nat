@@ -949,6 +949,35 @@ func TestCompleteSliceRecordsAPRDescription(t *testing.T) {
 	}
 }
 
+// Claude Code's attribution footer and session link never reach the page, so
+// the task log card and the pull request opened from it both go without.
+func TestCompleteSliceStripsTheAgentAttribution(t *testing.T) {
+	api := completableAPI()
+	env, _ := completeEnv(t, api)
+	env.In = strings.NewReader("Render the board\n\nDraws the plan.\n\n" +
+		"🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n" +
+		"https://claude.ai/code/session_01ABC\n")
+
+	err := Run(context.Background(), []string{
+		"complete-slice", sliceID, "--branch", "slice/render-the-board",
+		"--summary", "Wrote the renderer.", "--pr-description", "-", "--project", "project-1",
+	}, env)
+	if err != nil {
+		t.Fatalf("complete-slice: %v", err)
+	}
+
+	want := []string{
+		"heading_3: Handed back", "paragraph: At <stamp>",
+		"paragraph: Wrote the renderer.",
+		"heading_3: " + notion.PRDescriptionHeading,
+		"paragraph: Render the board",
+		"paragraph: Draws the plan.",
+	}
+	if got := blockTexts(t, api.appends[0].children); !equalLines(got, want) {
+		t.Errorf("blocks = %v, want %v", got, want)
+	}
+}
+
 // A description too long for an argument is piped in, the way a summary is —
 // and since there is one stdin, the summary has to be the flag then.
 func TestCompleteSliceReadsThePRDescriptionFromStdin(t *testing.T) {

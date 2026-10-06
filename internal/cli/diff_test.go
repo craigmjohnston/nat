@@ -704,6 +704,7 @@ func TestSliceDiffRefusesCommitsAndCommitTogether(t *testing.T) {
 }
 
 func (f *fakePRBase) EditReviewers(dir, ref string, add, remove []string) error { return nil }
+func (f *fakePRBase) EditPRBody(dir, ref, body string) error                    { return nil }
 func (f *fakePRBase) Collaborators(dir string) ([]string, error)                { return nil, nil }
 
 func (f *fakePRBase) FailedLog(dir string, ref gh.ActionsRef) (string, error) { return "", nil }

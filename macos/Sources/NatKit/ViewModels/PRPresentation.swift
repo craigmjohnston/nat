@@ -282,6 +282,39 @@ public func conversation(comments: [PRCommentEntry], reviews: [PRReview]) -> [Co
     return entries.sorted { $0.at < $1.at }
 }
 
+extension ConvoEntry {
+    /// What a reply draft is kept under: the entry's author, kind and moment,
+    /// which a later reading of the same pull request still gives it — its
+    /// place in the conversation would not, once anything is said before it.
+    public var replyKey: String {
+        "\(isReview ? "review" : "comment")|\(author)|\(at.timeIntervalSince1970)"
+    }
+}
+
+/// The comment a reply to `entry` posts. GitHub's pull request conversation
+/// has no threads, so a reply is a new comment written as GitHub's own Quote
+/// reply writes one: `@<author>` on the first line where the author is a real
+/// login (not `someone`), the parent's body quoted line by line under it — a
+/// blank line quoted as `>` alone — then a blank line and the reply. A
+/// verdict with no words has no quote block.
+public func replyBody(to entry: ConvoEntry, text: String) -> String {
+    var head: [String] = []
+    if entry.author != convoAuthor("") {
+        head.append("@\(entry.author)")
+    }
+    // GitHub keeps a body typed in its own editor with CRLF line ends.
+    let parent = entry.body.replacingOccurrences(of: "\r\n", with: "\n")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    if !parent.isEmpty {
+        head += parent.components(separatedBy: "\n").map { line in
+            line.trimmingCharacters(in: .whitespaces).isEmpty ? ">" : "> \(line)"
+        }
+    }
+    let reply = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !head.isEmpty else { return reply }
+    return head.joined(separator: "\n") + "\n\n" + reply
+}
+
 /// The count beside the conversation heading, in the two kinds GitHub keeps
 /// them in — "2 comments · 1 review" — naming only the kind there is any of.
 public func convoSummary(_ entries: [ConvoEntry]) -> String {

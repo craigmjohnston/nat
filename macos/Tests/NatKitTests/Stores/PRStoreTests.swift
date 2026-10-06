@@ -735,6 +735,73 @@ final class PRStoreTests: XCTestCase {
         XCTAssertEqual(client.commentCalls.count, 0)
     }
 
+    /// The batched reading reads a settled pull request no more, so a
+    /// comment on a closed or merged one is read back by a pr-view of its own.
+    @MainActor
+    func testCommentOnASettledPullRequestRereadsItself() async {
+        for state in [PRLifecycleState.merged, PRLifecycleState.closed] {
+            let client = MockPRClient(response: .success(mergedPR(state: state)))
+            let settles = Settles()
+            let store = PRStore(client: client, settle: { settles.count += 1 })
+            await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+            try? await store.comment(text: "Late note.")
+
+            XCTAssertEqual(client.commentCalls.count, 1, state)
+            XCTAssertEqual(client.viewCallCount, 2, "\(state): a pr-view of its own")
+            XCTAssertEqual(settles.count, 0, "\(state): no settle read would read it")
+        }
+    }
+
+    // MARK: - Edit description
+
+    @MainActor
+    func testEditDescriptionPostsThenRereads() async throws {
+        let runner = FakeRunner(fixture: .prViewFull)
+        let settles = Settles()
+        let store = PRStore(client: NatClient(commandRunner: runner), settle: { settles.count += 1 })
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        try await store.editDescription("  A new description.  ")
+
+        XCTAssertEqual(runner.calls.map(\.first), ["pr-view", "pr-edit", "pr-view"],
+                       "the edit, then a pr-view of its own so the editor gives way to what was saved")
+        XCTAssertEqual(runner.calls[1], ["pr-edit", "slice-1", "--project", "proj-1", "--body", "-"])
+        XCTAssertEqual(runner.standardInputs[1], Data("A new description.".utf8), "the body trimmed")
+        XCTAssertNotNil(store.loadState.pr)
+        XCTAssertEqual(settles.count, 0)
+    }
+
+    @MainActor
+    func testEditDescriptionPropagatesFailureWithoutRereading() async {
+        let runner = FakeRunner(fixture: .prEditFailure)
+        let store = PRStore(client: NatClient(commandRunner: runner))
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+
+        do {
+            try await store.editDescription("A new description.")
+            XCTFail("expected the edit to throw")
+        } catch let error as NatError {
+            guard case .commandFailed(let message) = error else { return XCTFail("\(error)") }
+            XCTAssertEqual(message, "\"Write the UI\" has no pull request recorded: nothing to edit")
+        } catch {
+            XCTFail("\(error)")
+        }
+        XCTAssertEqual(runner.calls.map(\.first), ["pr-view", "pr-edit"])
+    }
+
+    @MainActor
+    func testEditDescriptionWithBlankTextOrNothingFetchedIsANoOp() async throws {
+        let runner = FakeRunner(fixture: .prViewFull)
+        let store = PRStore(client: NatClient(commandRunner: runner))
+        try await store.editDescription("A description.")
+        XCTAssertTrue(runner.calls.isEmpty, "nothing fetched, nothing to edit")
+
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        try await store.editDescription("  \n ")
+        XCTAssertEqual(runner.calls.map(\.first), ["pr-view"])
+    }
+
     // MARK: - Re-running and cancelling checks
 
     @MainActor

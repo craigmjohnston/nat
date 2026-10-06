@@ -493,6 +493,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await record("pr-comment \(sliceRef)")
     }
 
+    public func prEdit(projectID: String, sliceRef: String, body: String) async throws {
+        try await record("pr-edit \(sliceRef)")
+    }
+
     /// The fixture repository's collaborators, the pull request's own
     /// requests edited by whatever was asked — answered, not remembered.
     public func prReviewers(
