@@ -365,6 +365,13 @@ public enum DesignTokens {
         derived { $0.ink(of: $0.systemPink, on: ground.surface(in: $0)) }
     }
 
+    /// A project's colour drawn on a ground — its puck, a settings swatch. A
+    /// mark rather than text, so it is shaded only as far as a mark needs to
+    /// be told from its ground.
+    public static func projectInk(_ color: ProjectColor, on ground: Ground) -> Color {
+        derived { $0.ink(of: $0.projectTint(color), on: ground.surface(in: $0), clearing: 3) }
+    }
+
     /// A hue washed into a ground at the weight its role calls for.
     public static func wash(_ role: WashRole, tone: ChipTint, on ground: Ground) -> Color {
         derived { $0.wash(role, of: tone.tint(in: $0), on: ground) }

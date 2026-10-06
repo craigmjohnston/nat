@@ -360,8 +360,11 @@ struct SidebarView: View {
 
     // MARK: - Headings
 
+    /// `puck`: the colour of the project the heading stands for — the
+    /// Scratch fold's — drawn in its leading padding; nil for every other.
     private func head<Trailing: View>(
-        _ key: String, label: String, count: Int, openByDefault: Bool = true, @ViewBuilder trailing: () -> Trailing
+        _ key: String, label: String, count: Int, openByDefault: Bool = true, puck: ProjectColor? = nil,
+        @ViewBuilder trailing: () -> Trailing
     ) -> some View {
         let open = isOpen(key, byDefault: openByDefault)
         return HStack(spacing: 6) {
@@ -382,6 +385,7 @@ struct SidebarView: View {
         // below, so a folded heading sits centred between its rule and the
         // next line.
         .frame(height: GnatMetrics.sectionHeadHeight)
+        .projectPuck(puck, inset: 10, ground: .header)
         .contentShape(Rectangle())
         .onTapGesture { toggle(key, open: open) }
     }
@@ -570,6 +574,7 @@ struct SidebarView: View {
         }
         .padding(.horizontal, 10)
         .frame(height: GnatMetrics.sectionHeadHeight)
+        .projectPuck(project.color, inset: 10, ground: .header)
         .contentShape(Rectangle())
         .onTapGesture { toggle(key, open: open) }
         .contextMenu { sourceProjectMenu(project) }
@@ -919,6 +924,8 @@ struct SidebarView: View {
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
+        // Left of the state dot, in the leading padding already there.
+        .projectPuck(row.color, inset: 18, ground: .header)
         .gnatRow(selected: isSelected(row))
         .transformEnvironment(\.hoverForced) { if row.targetID == hoveredActiveRow { $0 = true } }
         .contentShape(Rectangle())
@@ -1086,6 +1093,8 @@ struct SidebarView: View {
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
+        // Left of the folder glyph, in the leading padding already there.
+        .projectPuck(project.color, inset: 18, ground: .header)
         .gnatRow(selected: project.kind == .untitled && isActive, washed: pinned)
         .contentShape(Rectangle())
         .onHover { inside in
@@ -1152,7 +1161,7 @@ struct SidebarView: View {
     /// height it needs, sharing the room where there is not enough.
     @ViewBuilder
     private func scratchFold(_ scratch: SidebarProject, fold: FoldSlot) -> some View {
-        head("scratch", label: "Scratch", count: 0, openByDefault: false) { addMenu(scratch) }
+        head("scratch", label: "Scratch", count: 0, openByDefault: false, puck: scratch.color) { addMenu(scratch) }
             .contextMenu { addItems(scratch) }
         if fold.open {
             ScrollView {

@@ -339,6 +339,11 @@ public struct Palette: Equatable, Sendable {
     /// the one thing about a theme that anything outside it needs to know.
     public let isDark: Bool
 
+    /// The project colours this palette has no outcome hue for, or whose
+    /// outcome hue would draw two of them alike: a hue of its own for each.
+    /// Every other project colour is its namesake outcome hue (`projectTint`).
+    public let projectHues: [ProjectColor: Tint]
+
     public init(
         windowBg: Surface,
         chromeBg: Surface,
@@ -384,7 +389,8 @@ public struct Palette: Equatable, Sendable {
         systemPink: Tint,
         systemTeal: Tint,
         systemGray: Tint,
-        isDark: Bool
+        isDark: Bool,
+        projectHues: [ProjectColor: Tint] = [:]
     ) {
         self.windowBg = windowBg
         self.chromeBg = chromeBg
@@ -431,6 +437,7 @@ public struct Palette: Equatable, Sendable {
         self.systemTeal = systemTeal
         self.systemGray = systemGray
         self.isDark = isDark
+        self.projectHues = projectHues
     }
 
     /// Iceberg (cocopon/iceberg.vim): a cold, desaturated indigo with grey
@@ -490,7 +497,10 @@ public struct Palette: Equatable, Sendable {
         systemPink: Tint("a093c7"),
         systemTeal: Tint("89b8c2"),
         systemGray: Tint("a3a6b7"),
-        isDark: true
+        isDark: true,
+        // Its yellow is its orange, and its pink a violet (purple's): a
+        // yellow and a pink of its own; the rest are its outcome hues.
+        projectHues: [.yellow: Tint("d8c27e"), .purple: Tint("a093c7"), .pink: Tint("d495b8")]
     )
 
     /// Slate ink: a blue-grey slate ground under Kanagawa's (rebelot/
@@ -548,7 +558,9 @@ public struct Palette: Equatable, Sendable {
         systemPink: Tint("957fb8"),
         systemTeal: Tint("7aa89f"),
         systemGray: Tint("a8a594"),
-        isDark: true
+        isDark: true,
+        // Its pink is a violet, purple's; the rest are its outcome hues.
+        projectHues: [.purple: Tint("957fb8"), .pink: Tint("d27e99")]
     )
 
     /// The light theme: the design's `.win.light` block, role for role onto
@@ -604,7 +616,9 @@ public struct Palette: Equatable, Sendable {
         systemPink: Tint("ea76cb"),
         systemTeal: Tint("179299"),
         systemGray: Tint("55566d"),        // --ink-2
-        isDark: false
+        isDark: false,
+        // Its pink is a pink, so purple is its mauve; the rest are its outcome hues.
+        projectHues: [.purple: Tint("8839ef")]
     )
     /// One Light (Atom): a neutral off-white with soft charcoal ink and a
     /// clear blue accent. It names no orange of its own, so `hot` is its
@@ -661,7 +675,9 @@ public struct Palette: Equatable, Sendable {
         systemPink: Tint("a626a4"),
         systemTeal: Tint("0184bc"),
         systemGray: Tint("696c77"),
-        isDark: false
+        isDark: false,
+        // Its pink is a violet, purple's; the rest are its outcome hues.
+        projectHues: [.purple: Tint("a626a4"), .pink: Tint("d74a96")]
     )
 
     /// Tokyo Night Day (folke/tokyonight.nvim): lavender-grey paper and
@@ -720,7 +736,9 @@ public struct Palette: Equatable, Sendable {
         systemPink: Tint("9854f1"),
         systemTeal: Tint("007197"),
         systemGray: Tint("6172b0"),
-        isDark: false
+        isDark: false,
+        // Its pink is a violet, purple's; the rest are its outcome hues.
+        projectHues: [.purple: Tint("9854f1"), .pink: Tint("c94f9e")]
     )
 }
 
@@ -819,6 +837,21 @@ extension Palette {
         case .muted: mutedShare
         }
         return tint.wash(on: ground.surface(in: self), share)
+    }
+
+    /// A project colour in this palette: its own hue where `projectHues`
+    /// gives one, else the outcome hue of that name.
+    public func projectTint(_ color: ProjectColor) -> Tint {
+        if let hue = projectHues[color] { return hue }
+        return switch color {
+        case .red: systemRed
+        case .orange: systemOrange
+        case .yellow: systemYellow
+        case .green: systemGreen
+        case .teal: systemTeal
+        case .blue: systemBlue
+        case .purple, .pink: systemPink
+        }
     }
 
     /// The sweep passing over a loading skeleton block — the one wash whose

@@ -354,7 +354,7 @@ extension Fixtures {
     public static var sourceConfig: NatProjectConfig {
         var projects = twoProjectConfig.projects
         projects[sourceProjectID] = ProjectConfig(
-            name: sourceProject.name, workingDir: sourceRepo, backend: .source, source: "demo")
+            name: sourceProject.name, workingDir: sourceRepo, backend: .source, source: "demo", color: .pink)
         return NatProjectConfig(
             projects: projects, agentSplitPercent: 45, pollSeconds: 3600,
             workshopAgent: AgentModel(model: "sonnet", effort: nil),

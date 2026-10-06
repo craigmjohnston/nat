@@ -69,6 +69,20 @@ enum AppStories {
 
     /// The sidebar alone over the Work source project — Projects folded
     /// unless `folded` says otherwise — the first card selected.
+    /// Four projects, each its own colour — two tracked, the Work source
+    /// project and Scratch, every fold open — with Active rows across them.
+    private static func projectColoursSidebar() async -> some View {
+        var projects = Fixtures.sourceConfig.projects
+        projects[Fixtures.scratchProjectID] = Fixtures.scratchConfig.projects[Fixtures.scratchProjectID]
+        let config = NatProjectConfig(
+            projects: projects, agentSplitPercent: 45, pollSeconds: 3600,
+            assigneeUserName: "Craig Johnston", scratchProject: Fixtures.scratchProjectID)
+        let appModel = await Fixtures.startedAppModel(config: config)
+        appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+        return SidebarView(appModel: appModel, folded: ["scratch": false, "p:\(Fixtures.secondProjectID)": true])
+            .environment(\.pulsesPaused, true)
+    }
+
     private static func sourceSidebar(
         client: FixtureNatClient = FixtureNatClient(), folded: [String: Bool] = ["work": true],
         hoveredContainer: String? = nil, hoveredGroup: String? = nil
@@ -387,7 +401,8 @@ enum AppStories {
     private static func band(
         tabs: [MainPaneTab], selected: MainPaneMode?, crumbs: TitlebarCrumbs, state: SliceDisplayState = .working,
         identity: TitlebarIdentity? = nil, hoveredTab: MainPaneTab? = nil, runs: Bool = false,
-        runBusy: Bool = false, runHovered: Bool = false
+        runBusy: Bool = false, runHovered: Bool = false,
+        projectColor: ProjectColor? = Fixtures.config.projects[Fixtures.projectID]?.color
     ) -> some View {
         TitlebarBand(
             navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs.map(\.titlebarTab),
@@ -402,6 +417,7 @@ enum AppStories {
             TitlebarBreadcrumb(
                 crumbs: crumbs,
                 identity: identity ?? TitlebarIdentity(tag: "GNA", state: state, live: true, title: crumbs.title),
+                projectColor: projectColor,
                 openPicker: .constant(nil)
             ) { _ in EmptyView() }
         }
@@ -1851,6 +1867,25 @@ enum AppStories {
         },
 
         Story(
+            name: "sidebar-project-colours",
+            summary: "Every project's colour as its puck: a thin capsule in each Active row's leading padding, "
+                + "left of the state dot, and in each PROJECTS row's, left of the folder glyph \u{2014} the "
+                + "source fold's and Scratch's headings too \u{2014} nothing else in any row moved.",
+            size: sidebar
+        ) {
+            await projectColoursSidebar()
+        },
+
+        Story(
+            name: "sidebar-project-colours-light",
+            summary: "As sidebar-project-colours, in the light theme: each puck in the light palette's hue.",
+            size: sidebar,
+            colorScheme: .light
+        ) {
+            await projectColoursSidebar()
+        },
+
+        Story(
             name: "sidebar-slice-hover",
             summary: "The loaded sidebar with one slice row of the tree under the pointer: the hover wash, "
                 + "square and edge to edge, a step lighter than the selected row's, and its three-dot "
@@ -2271,6 +2306,18 @@ enum AppStories {
             size: CGSize(width: 620, height: GnatMetrics.titlebarHeight)
         ) {
             band(tabs: [.terminal, .changes, .pr], selected: .diff, crumbs: sliceCrumbs(fitBandTitle))
+        },
+
+        Story(
+            name: "titlebar-band-project-colour",
+            summary: "The band over a slice of a pink project: the project\u{2019}s puck at the far left, in the "
+                + "navigator\u{2019}s inset before the project crumb\u{2019}s folder, the PROJECTS row\u{2019}s gap "
+                + "between them; the crumbs where they always are.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes, .pr], selected: .terminal, crumbs: sliceCrumbs("Draw the box"),
+                projectColor: .pink)
         },
 
         Story(
@@ -2779,9 +2826,10 @@ enum AppStories {
         Story(
             name: "project-settings",
             summary: "A project's settings sheet (the project menu's Project settings\u{2026}): titled with the "
-                + "project's name, one grouped form holding only its working directory \u{2014} the field "
-                + "and Choose\u{2026} beside it \u{2014} then Cancel and Save.",
-            size: CGSize(width: 520, height: 200),
+                + "project's name, one grouped form holding its working directory \u{2014} the field "
+                + "and Choose\u{2026} beside it \u{2014} and its Colour, a swatch per colour with the "
+                + "project's own ringed and its puck after them, then Cancel and Save.",
+            size: CGSize(width: 520, height: 260),
             colorScheme: .light
         ) {
             ProjectSettingsView(
@@ -2793,7 +2841,7 @@ enum AppStories {
             name: "project-settings-refused",
             summary: "The project settings sheet after a Save nat refused: the edited path kept in the "
                 + "field and nat's message under it, nothing written.",
-            size: CGSize(width: 520, height: 220),
+            size: CGSize(width: 520, height: 280),
             colorScheme: .light
         ) {
             let appModel = await Fixtures.startedAppModel()
@@ -2804,6 +2852,22 @@ enum AppStories {
             model.edited.workingDir = "/Users/craig/nowhere"
             _ = await model.save()
             return ProjectSettingsView(projectName: "notion-agent-tracker", model: model)
+        },
+
+        Story(
+            name: "project-settings-colour-chosen",
+            summary: "The project settings sheet, dark, with another colour picked than the one its entry "
+                + "holds: purple ringed in the accent and the puck beside the swatches in it, written by Save.",
+            size: CGSize(width: 520, height: 260)
+        ) {
+            let appModel = await Fixtures.startedAppModel()
+            let model = ProjectSettingsModel(
+                projectID: Fixtures.projectID, config: appModel.config, client: FixtureNatClient(), reload: {})
+            model.edited.color = .purple
+            // A real sheet stands on the window's own ground; a render has
+            // none, so the story gives it the system's, dark.
+            return ProjectSettingsView(projectName: "notion-agent-tracker", model: model)
+                .background(.background)
         },
 
         Story(

@@ -87,19 +87,23 @@ public struct ProjectEntry: Codable, Equatable, Sendable {
     public let name: String
     public let slicesDSID: String
     public let workingDir: String
+    /// The colour nat's save gave the entry, where it reports one.
+    public let color: ProjectColor?
 
     enum CodingKeys: String, CodingKey {
         case id
         case name
         case slicesDSID = "slices_ds_id"
         case workingDir = "working_dir"
+        case color
     }
 
-    public init(id: String, name: String, slicesDSID: String = "", workingDir: String = "") {
+    public init(id: String, name: String, slicesDSID: String = "", workingDir: String = "", color: ProjectColor? = nil) {
         self.id = id
         self.name = name
         self.slicesDSID = slicesDSID
         self.workingDir = workingDir
+        self.color = color
     }
 
     public init(from decoder: Decoder) throws {
@@ -108,6 +112,7 @@ public struct ProjectEntry: Codable, Equatable, Sendable {
         name = try container.decode(String.self, forKey: .name)
         slicesDSID = try container.decodeIfPresent(String.self, forKey: .slicesDSID) ?? ""
         workingDir = try container.decodeIfPresent(String.self, forKey: .workingDir) ?? ""
+        color = ProjectColor(word: try? container.decodeIfPresent(String.self, forKey: .color))
     }
 }
 
@@ -130,6 +135,10 @@ public struct CreatedProject: Codable, Equatable, Sendable {
     /// --source`); nil for any other project.
     public let source: String?
 
+    /// The colour nat's save gave the project, so its tab draws its puck with
+    /// no second read; nil from an older `nat`.
+    public let color: ProjectColor?
+
     enum CodingKeys: String, CodingKey {
         case id
         case name
@@ -139,6 +148,7 @@ public struct CreatedProject: Codable, Equatable, Sendable {
         case workingDir = "working_dir"
         case assignee
         case source
+        case color
     }
 
     public init(
@@ -149,7 +159,8 @@ public struct CreatedProject: Codable, Equatable, Sendable {
         slicesDSID: String = "",
         workingDir: String = "",
         assignee: Bool = false,
-        source: String? = nil
+        source: String? = nil,
+        color: ProjectColor? = nil
     ) {
         self.id = id
         self.name = name
@@ -159,6 +170,7 @@ public struct CreatedProject: Codable, Equatable, Sendable {
         self.workingDir = workingDir
         self.assignee = assignee
         self.source = source
+        self.color = color
     }
 
     public init(from decoder: Decoder) throws {
@@ -171,5 +183,6 @@ public struct CreatedProject: Codable, Equatable, Sendable {
         workingDir = try container.decodeIfPresent(String.self, forKey: .workingDir) ?? ""
         assignee = try container.decodeIfPresent(Bool.self, forKey: .assignee) ?? false
         source = try container.decodeIfPresent(String.self, forKey: .source)
+        color = ProjectColor(word: try? container.decodeIfPresent(String.self, forKey: .color))
     }
 }

@@ -158,6 +158,10 @@ struct TitlebarCrumbs: Equatable {
 struct TitlebarBreadcrumb<Picker: View>: View {
     let crumbs: TitlebarCrumbs
     let identity: TitlebarIdentity?
+    /// The project's colour: its puck, at the far left in the band's inset
+    /// (`GnatMetrics.breadcrumbInset`) — never in the row, so `measurements`
+    /// do not count it and it stays at every `BreadcrumbFit` stage.
+    var projectColor: ProjectColor?
     @Binding var openPicker: CrumbPickerOrigin?
     @ViewBuilder var picker: (CrumbPickerOrigin) -> Picker
 
@@ -204,6 +208,15 @@ struct TitlebarBreadcrumb<Picker: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { widths[.available] = $0 }
         .background(alignment: .leading) { measurements.hidden() }
+        // Left of the project crumb's folder glyph, with the PROJECTS row's
+        // gap, in the inset before the row; none with no breadcrumb.
+        .overlay(alignment: .leading) {
+            if let projectColor, !crumbs.title.isEmpty {
+                ProjectPuck(color: projectColor, ground: .header)
+                    .offset(x: -(ProjectPuck.gap + ProjectPuck.width))
+                    .allowsHitTesting(false)
+            }
+        }
         .contentTransition(.interpolate)
         .font(.system(size: GnatMetrics.titlebarText))
         .lineLimit(1)

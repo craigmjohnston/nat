@@ -84,7 +84,8 @@ struct NatApp: App {
         let model = AppModel(
             readsGitHubOnATick: true,
             mirrorNudgeMemory: MirrorNudgeMemory(), seenMemory: SeenMemory(),
-            closedTabMemory: ClosedTabMemory(), workshopCache: DiskWorkshopCache(), makesSourceProjects: true)
+            closedTabMemory: ClosedTabMemory(), workshopCache: DiskWorkshopCache(), makesSourceProjects: true,
+            assignsProjectColors: true)
         _appModel = State(initialValue: model)
         // A workshop brief is written once typing pauses; quitting (an
         // update's relaunch included) writes whatever the pause had not yet.

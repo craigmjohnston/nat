@@ -36,6 +36,16 @@ final class SourceSidebarTests: XCTestCase {
         XCTAssertTrue(model.sources[0].milestones.isEmpty)
     }
 
+    /// The fold's heading wears the project's puck, and its tasks' Active
+    /// rows carry the same colour.
+    func testASourceFoldCarriesItsProjectsColour() {
+        let model = model([SidebarProjectInput(
+            id: Fixtures.sourceProjectID, name: "Work", plan: Fixtures.sourceProjectInfo(), color: .pink)])
+        XCTAssertEqual(model.sources.map(\.color), [.pink])
+        XCTAssertFalse(model.active.isEmpty)
+        XCTAssertTrue(model.active.allSatisfy { $0.color == .pink })
+    }
+
     func testConfigFilesAProjectUnderItsFoldBeforeItsPlanLands() {
         let model = model([input(nil, isSource: true)])
         XCTAssertEqual(model.sources.map(\.id), [Fixtures.sourceProjectID])

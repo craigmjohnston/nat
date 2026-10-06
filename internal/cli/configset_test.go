@@ -308,3 +308,66 @@ func TestConfigSetProjectRunsRefusals(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigSetProjectColor(t *testing.T) {
+	env, saved := savingEnv(testConfig(t))
+	var out strings.Builder
+	env.Out = &out
+
+	if err := Run(context.Background(), []string{"config-set", "project.project-1.color", "teal"}, env); err != nil {
+		t.Fatalf("config-set: %v", err)
+	}
+	if got := saved.Projects["project-1"].Color; got != "teal" {
+		t.Errorf("color = %q, want teal", got)
+	}
+	if got := saved.Projects["project-1"].Name; got != "nat" {
+		t.Errorf("name = %q, want it untouched", got)
+	}
+	if want := "# Config updated\n\n- project.project-1.color: teal\n"; out.String() != want {
+		t.Errorf("output = %q, want %q", out.String(), want)
+	}
+}
+
+// auto clears the colour, and the save that follows — which is what assigns
+// one — decides the name the report says.
+func TestConfigSetProjectColorAuto(t *testing.T) {
+	cfg := testConfig(t)
+	p := cfg.Projects["project-1"]
+	p.Color = "pink"
+	cfg.Projects["project-1"] = p
+	env, _ := testEnv(cfg, &fakeAPI{})
+	var cleared string
+	env.Save = func(c config.Config) error {
+		cleared = c.Projects["project-1"].Color
+		c.AssignColors()
+		return nil
+	}
+	var out strings.Builder
+	env.Out = &out
+
+	if err := Run(context.Background(), []string{"config-set", "project.project-1.color", "auto"}, env); err != nil {
+		t.Fatalf("config-set: %v", err)
+	}
+	if cleared != "" {
+		t.Errorf("handed to save with color %q, want it cleared", cleared)
+	}
+	if want := "# Config updated\n\n- project.project-1.color: red\n"; out.String() != want {
+		t.Errorf("output = %q, want %q", out.String(), want)
+	}
+}
+
+func TestConfigSetProjectColorRefusals(t *testing.T) {
+	for _, value := range []string{"", "magenta", "Red", "#ff0000"} {
+		env, _ := savingEnv(testConfig(t))
+		err := Run(context.Background(), []string{"config-set", "project.project-1.color", value}, env)
+		var usage *UsageError
+		if !errors.As(err, &usage) || !strings.Contains(err.Error(), "red, orange, yellow, green, teal, blue, purple, pink") {
+			t.Errorf("%q: err = %v, want a usage error naming the palette", value, err)
+		}
+	}
+	env, _ := savingEnv(testConfig(t))
+	err := Run(context.Background(), []string{"config-set", "project.nope.color", "red"}, env)
+	if err == nil || !strings.Contains(err.Error(), "no project nope") {
+		t.Errorf("err = %v, want the unknown project named", err)
+	}
+}
