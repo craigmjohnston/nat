@@ -445,10 +445,11 @@ struct WorkshopNavigatorView: View {
             ForEach(proposal.edits, id: \.name) { edit in
                 let open = appModel.expandedProposalEdits.contains(edit.name)
                 // A rename alone has no brief to unfold.
-                ProposalChangeLine(title: edit.name, disclosure: edit.brief.isEmpty ? nil : open)
+                // Named as it will be once accepted; the name it has now under it.
+                ProposalChangeLine(title: edit.title ?? edit.name, disclosure: edit.brief.isEmpty ? nil : open)
                     .onTapGesture { if !edit.brief.isEmpty { appModel.toggleProposalEdit(edit.name) } }
-                if let title = edit.title {
-                    Text(ProposalText.renamedTo(title))
+                if edit.title != nil {
+                    Text(ProposalText.renamedFrom(edit.name))
                         .monoXS().ink(.tertiary).lineLimit(1)
                         .padding(.leading, 38)
                         .padding(.trailing, 10)

@@ -256,9 +256,10 @@ public enum ProposalText {
         "→ \(milestone)"
     }
 
-    /// The new title a retitled task is drawn with.
-    public static func renamedTo(_ title: String) -> String {
-        "Renamed to \(title)"
+    /// The title a retitled task had, drawn under the name it will have once
+    /// the proposal is accepted.
+    public static func renamedFrom(_ title: String) -> String {
+        "Renamed from \(title)"
     }
 
     /// The same caption on a project's own workshop, which has its name.

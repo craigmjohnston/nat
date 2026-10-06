@@ -1508,7 +1508,7 @@ enum AppStories {
 
         Story(
             name: "workshop-proposal-superseding",
-            summary: "A project's proposal that supersedes work already planned: under the created work, Changes to tasks already planned — a struck-through removal, a move naming its destination, an edit unfolded to its new brief, a rename alone with its new title and no disclosure; the warning that Accept removes a task sits above the tree. Taller than the window so the whole Plan section shows.",
+            summary: "A project's proposal that supersedes work already planned: under the created work, Changes to tasks already planned — a struck-through removal, a move naming its destination, an edit unfolded to its new brief, a rename alone named as it will be, renamed from its old title, with no disclosure; the warning that Accept removes a task sits above the tree. Taller than the window so the whole Plan section shows.",
             size: CGSize(width: window.width, height: 1240)
         ) {
             await projectProposalShell(

@@ -115,7 +115,7 @@ final class PlanProposalModelTests: XCTestCase {
             .init(name: "C", title: "D", brief: "New."),
             .init(name: "E", brief: "Newer."),
         ])
-        XCTAssertEqual(ProposalText.renamedTo("B"), "Renamed to B")
+        XCTAssertEqual(ProposalText.renamedFrom("A"), "Renamed from A")
     }
 
     func testAProposalWithoutTheListsChangesNothingOnTheBoard() throws {
