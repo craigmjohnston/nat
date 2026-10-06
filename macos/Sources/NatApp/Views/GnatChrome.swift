@@ -119,7 +119,7 @@ struct StateDot: View {
         case .working:
             let dot = Circle().fill(DesignTokens.accent).frame(width: size, height: size)
             if live && !pulsesPaused {
-                dot.modifier(PulseModifier())
+                dot.pulsing()
             } else {
                 dot
             }
@@ -144,7 +144,7 @@ struct StateSymbol: View {
             .font(.system(size: 10, weight: .medium))
             .foregroundStyle(ink)
         if live && !pulsesPaused && state == .working {
-            glyph.modifier(PulseModifier())
+            glyph.pulsing()
         } else {
             glyph
         }
@@ -156,36 +156,6 @@ struct StateSymbol: View {
         case .waiting, .review, .pr: DesignTokens.hot
         case .todo, .blocked, .done: DesignTokens.ink(.tertiary, on: ground)
         }
-    }
-}
-
-/// The design's pulse: down to a third and back, slowly, forever — 0.9s each
-/// way, eased in and out.
-///
-/// Drawn off the clock (`TimelineView`), not as a `repeatForever` animation:
-/// a repeating animation started as the view appears rides the transaction
-/// any move of the view's frame lands in, so a dot its parent re-lays — the
-/// breadcrumb's, as its measured widths arrive — slid back and forth between
-/// the two places forever. Here nothing is animated at all; each frame's
-/// opacity is computed, so the dot's place is only ever its layout's.
-struct PulseModifier: ViewModifier {
-    /// One way of the pulse, in seconds.
-    static let halfPeriod = 0.9
-    static let floor = 0.35
-
-    func body(content: Content) -> some View {
-        TimelineView(.animation) { context in
-            content.opacity(Self.opacity(at: context.date.timeIntervalSinceReferenceDate))
-        }
-    }
-
-    /// Full at the start of each cycle, down to `floor` half a period on, and
-    /// back — a cosine ease, the shape `easeInOut` draws.
-    static func opacity(at seconds: Double) -> Double {
-        let phase = seconds.truncatingRemainder(dividingBy: 2 * halfPeriod) / halfPeriod  // 0...2
-        let down = phase <= 1 ? phase : 2 - phase  // 0...1...0
-        let eased = (1 - cos(down * .pi)) / 2
-        return 1 - (1 - floor) * eased
     }
 }
 

@@ -44,7 +44,14 @@ let package = Package(
         ),
         .testTarget(
             name: "NatKitTests",
-            dependencies: ["NatKit", "NatFixtures"],
+            dependencies: [
+                "NatKit", "NatFixtures",
+                // Only so `ChildReaperTests` can drive SwiftTerm's own
+                // `LocalProcess` — the attach client's terminate-without-reap
+                // is SwiftTerm's behaviour, so the test reproduces it there
+                // rather than against a stand-in.
+                .product(name: "SwiftTerm", package: "SwiftTerm")
+            ],
             path: "Tests/NatKitTests"
         ),
         .executableTarget(

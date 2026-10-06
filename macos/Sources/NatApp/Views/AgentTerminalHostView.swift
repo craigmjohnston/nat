@@ -220,8 +220,21 @@ public struct AgentTerminalHostView: NSViewRepresentable {
         /// Ends this attach's client without touching the tmux session it
         /// was attached to — exactly what tabbing away from the terminal
         /// wants, and what a later reattach recreates the process over.
+        ///
+        /// SwiftTerm's `terminate()` cancels the exit monitor that is its
+        /// only reap, so the client is reaped here (`ChildReaper`) — but only
+        /// while it is still live by the lifecycle: once `processTerminated`
+        /// has arrived SwiftTerm has reaped it, and its pid, stale on the
+        /// process, may by now be some other child's.
         func detach() {
-            view?.terminate()
+            guard let view else { return }
+            let live = switch lifecycle.state {
+            case .attaching, .attached: true
+            case .idle, .exited: false
+            }
+            let pid = view.process.shellPid
+            view.terminate()
+            if live { ChildReaper.reap(pid) }
         }
 
         public func processTerminated(source: TerminalView, exitCode: Int32?) {
