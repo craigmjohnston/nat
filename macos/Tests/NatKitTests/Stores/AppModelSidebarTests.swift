@@ -74,7 +74,15 @@ final class AppModelSidebarTests: XCTestCase {
     func testAnOvertakenActivationLeavesTheNewSelectionAlone() async {
         let model = await startedTwoProjectModel()
         let first = Task { await model.selectSlice(secondSliceID, inProject: Fixtures.secondProjectID) }
-        await Task.yield()
+        // Until the first click has switched projects, on the clock, not a
+        // count of yields: a busy CI runner can start the task late, and a
+        // first click that runs after the second is no overtaking at all.
+        // Yields, not sleeps, so its activation is still under way.
+        let deadline = ContinuousClock.now + .seconds(10)
+        while model.activeProjectID != Fixtures.secondProjectID, ContinuousClock.now < deadline {
+            await Task.yield()
+        }
+        XCTAssertEqual(model.activeProjectID, Fixtures.secondProjectID, "the first click has landed")
         await model.selectSlice(Fixtures.mergeBoxSliceID, inProject: Fixtures.projectID)
         await first.value
         XCTAssertEqual(model.activeProjectID, Fixtures.projectID)
