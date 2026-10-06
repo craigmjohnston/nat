@@ -91,8 +91,20 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// Every project `pr-status` was asked for, in order — a test of the
     /// reading's own cadence counts here.
     private let prStatusRecorded = Recorder()
-    /// The projects `pr-status` has read, in order.
+    /// The projects `pr-status` has read, in order, one entry a project.
     public var prStatusReads: [String] { prStatusRecorded.all() }
+    /// Every `pr-status` run, its projects joined with commas and any
+    /// `--detail` after a space — one entry a run.
+    private let prStatusRunRecorded = Recorder()
+    public var prStatusRuns: [String] { prStatusRunRecorded.all() }
+    /// Every `pr-view` of a slice's pull request, by slice ref.
+    private let prViewRecorded = Recorder()
+    public var prViewReads: [String] { prViewRecorded.all() }
+    /// Every `session-list`, by project.
+    private let sessionListRecorded = Recorder()
+    public var sessionListReads: [String] { sessionListRecorded.all() }
+    /// The rate limit `pr-status` reads — none unless a test says.
+    private let rateLimit = Box<GitHubRateLimit?>(nil)
     /// Set while `pr-status` reads are held mid-call.
     private let prStatusHeld = Box(false)
 
@@ -368,17 +380,33 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
-        try await answer(pr)
+        prViewRecorded.append(sliceRef)
+        return try await answer(pr)
     }
 
-    public func prStatus(projectID: String) async throws -> PRStatusDoc {
-        prStatusRecorded.append(projectID)
+    /// Every project named reads its own doc — `prStatusByProject`'s, else
+    /// the fixture's — and `detail` reads the fixture's pull request. A
+    /// project set to fail fails the whole run, as one failed document does.
+    public func prStatus(projectIDs: [String], detail: String?) async throws -> GitHubReading {
+        for id in projectIDs { prStatusRecorded.append(id) }
+        prStatusRunRecorded.append(projectIDs.joined(separator: ",") + (detail.map { " " + $0 } ?? ""))
         while prStatusHeld.get() { try await Task.sleep(for: .milliseconds(1)) }
-        if let doc = prStatusByProject.get()[projectID] {
-            guard let doc else { throw NatError.commandFailed("gh could not be read") }
-            return try await answer(doc)
+        var projects: [String: PRStatusDoc] = [:]
+        for id in projectIDs {
+            if let doc = prStatusByProject.get()[id] {
+                guard let doc else { throw NatError.commandFailed("gh could not be read") }
+                projects[id] = doc
+            } else {
+                projects[id] = prStatusDoc
+            }
         }
-        return try await answer(prStatusDoc)
+        return try await answer(GitHubReading(
+            projects: projects, rateLimit: rateLimit.get(), detail: detail == nil ? nil : pr))
+    }
+
+    /// Say what rate limit `pr-status` reads from here on.
+    public func setRateLimit(_ limit: GitHubRateLimit?) {
+        rateLimit.set(limit)
     }
 
     /// Say what `pr-status` reads for one project from here on — nil, a
@@ -677,7 +705,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func sessionList(projectID: String) async throws -> [Session] {
-        try await answer(sessionsList)
+        sessionListRecorded.append(projectID)
+        return try await answer(sessionsList)
     }
 
     public func sessionStatus(projectID: String, sessionID: String, discard: Bool) async throws -> SessionStatusDoc {

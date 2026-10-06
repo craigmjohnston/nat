@@ -1,49 +1,17 @@
 package gh
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 	"testing"
+	"time"
 )
 
-// TestOpenPRsRunsGh pins the invocation: gh, in the slice's repository, asked
-// for the open pull requests alone and for the four fields alone, with a limit
-// past gh's own default.
-func TestOpenPRsRunsGh(t *testing.T) {
-	runner := &fakeRunner{out: `[{"url":"https://github.test/craig/nat/pull/7",` +
-		`"reviewDecision":"APPROVED","mergeable":"MERGEABLE"}]`}
-	open, err := NewWithRunner(runner).OpenPRs("/repos/nat")
-	if err != nil {
-		t.Fatalf("OpenPRs() = %v, want a listing", err)
-	}
-	status, listed := open["https://github.test/craig/nat/pull/7"]
-	if !listed {
-		t.Fatalf("OpenPRs() = %+v, want the pull request keyed by its URL", open)
-	}
-	if !status.Approved || !status.Mergeable {
-		t.Errorf("OpenPRs() = %+v, want it approved and mergeable", status)
-	}
-	if runner.dir != "/repos/nat" {
-		t.Errorf("ran in %q, want the slice's repository", runner.dir)
-	}
-	if runner.name != Binary {
-		t.Errorf("ran %q, want %q", runner.name, Binary)
-	}
-	want := []string{"pr", "list", "--state", "open", "--json",
-		"url,reviewDecision,mergeable,mergeStateStatus,baseRefName,statusCheckRollup",
-		"--limit", "100"}
-	if !reflect.DeepEqual(runner.args, want) {
-		t.Errorf("args = %v, want %v", runner.args, want)
-	}
-}
-
-// TestOpenPRsReadings walks what GitHub answers with: only the two affirmative
+// TestStatusOfReadings walks what GitHub answers with: only the two affirmative
 // words count, and every other value it uses — an unreviewed pull request,
 // changes asked for, a conflicting merge, a mergeability GitHub is still
 // working out — is read as the fact not being true.
-func TestOpenPRsReadings(t *testing.T) {
+func TestStatusOfReadings(t *testing.T) {
 	const url = "https://github.test/pr/7"
 	tests := []struct {
 		name          string
@@ -70,25 +38,20 @@ func TestOpenPRsReadings(t *testing.T) {
 			if tt.fields != "" {
 				body += "," + tt.fields
 			}
-			runner := &fakeRunner{out: "[{" + body + "}]"}
-			open, err := NewWithRunner(runner).OpenPRs("/repos/nat")
-			if err != nil {
-				t.Fatalf("OpenPRs() = %v, want a listing", err)
-			}
-			status := open[url]
+			status := statusOf(t, body)
 			if status.Approved != tt.wantApproved || status.Mergeable != tt.wantMergeable {
-				t.Errorf("OpenPRs() = %+v, want approved=%v mergeable=%v",
+				t.Errorf("StatusOf() = %+v, want approved=%v mergeable=%v",
 					status, tt.wantApproved, tt.wantMergeable)
 			}
 		})
 	}
 }
 
-// TestOpenPRsConflicting walks GitHub's mergeability words, in the shape gh
+// TestStatusOfConflicting walks GitHub's mergeability words, in the shape gh
 // pr list prints them, into the one fact: only CONFLICTING, or a DIRTY merge
 // state, is a conflict — a mergeability GitHub is still working out is not,
 // and neither is one it never said.
-func TestOpenPRsConflicting(t *testing.T) {
+func TestStatusOfConflicting(t *testing.T) {
 	const url = "https://github.test/pr/7"
 	tests := []struct {
 		name   string
@@ -105,24 +68,20 @@ func TestOpenPRsConflicting(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runner := &fakeRunner{out: `[{"url":"` + url + `","baseRefName":" main "` + tt.fields + `}]`}
-			open, err := NewWithRunner(runner).OpenPRs("/repos/nat")
-			if err != nil {
-				t.Fatalf("OpenPRs() = %v, want a listing", err)
-			}
-			if got := open[url]; got.Conflicting != tt.want || got.Base != "main" {
-				t.Errorf("OpenPRs() = %+v, want conflicting=%v base=main", got, tt.want)
+			got := statusOf(t, `"url":"`+url+`","baseRefName":" main "`+tt.fields)
+			if got.Conflicting != tt.want || got.Base != "main" {
+				t.Errorf("StatusOf() = %+v, want conflicting=%v base=main", got, tt.want)
 			}
 		})
 	}
 }
 
-// TestOpenPRsChecksVerdict walks the rollup into its one verdict: no checks is
+// TestStatusOfChecksVerdict walks the rollup into its one verdict: no checks is
 // no verdict, any failure fails the lot, anything unfinished or unknown is
 // pending, and finished-without-failing — skipped and cancelled included — is
 // passing. Both shapes a check arrives in are read, a CheckRun by its
 // conclusion once it has completed and by its status until then.
-func TestOpenPRsChecksVerdict(t *testing.T) {
+func TestStatusOfChecksVerdict(t *testing.T) {
 	const url = "https://github.test/pr/7"
 	const (
 		run       = `{"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"%s"}`
@@ -155,47 +114,39 @@ func TestOpenPRsChecksVerdict(t *testing.T) {
 			if tt.rollup != "" {
 				body += `,"statusCheckRollup":` + tt.rollup
 			}
-			open, err := NewWithRunner(&fakeRunner{out: "[{" + body + "}]"}).OpenPRs("/repos/nat")
-			if err != nil {
-				t.Fatalf("OpenPRs() = %v, want a listing", err)
-			}
-			if got := open[url].Checks; got != tt.want {
+			if got := statusOf(t, body).Checks; got != tt.want {
 				t.Errorf("Checks = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-// TestOpenPRsFailingChecks names every failed check with its run URL, in
+// TestStatusOfFailingChecks names every failed check with its run URL, in
 // GitHub's name order, whatever else is pending beside them — a run's
 // detailsUrl, a status context's targetUrl — and nothing for a pull request
 // that is not red. A run goes by its workflow and its job's own name — the
 // last segment of a reusable workflow's caller-job path.
-func TestOpenPRsFailingChecks(t *testing.T) {
-	const out = `[{"url":"https://github.test/pr/1","statusCheckRollup":[` +
+func TestStatusOfFailingChecks(t *testing.T) {
+	const red = `"url":"https://github.test/pr/1","statusCheckRollup":[` +
 		`{"__typename":"CheckRun","name":"lint","workflowName":"CI","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.test/runs/1"},` +
 		`{"__typename":"CheckRun","name":"checks / Gate","workflowName":"Pull request","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.test/runs/2"},` +
 		`{"__typename":"CheckRun","name":"test","status":"IN_PROGRESS"},` +
 		`{"__typename":"CheckRun","name":"bare","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.test/runs/3"},` +
 		`{"__typename":"StatusContext","context":"deploy","state":"ERROR","targetUrl":"https://ci.test/9"},` +
-		`{"__typename":"CheckRun","name":"vet","status":"COMPLETED","conclusion":"SUCCESS"}]},` +
-		`{"url":"https://github.test/pr/2","statusCheckRollup":[` +
-		`{"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"SUCCESS"}]}]`
-	open, err := NewWithRunner(&fakeRunner{out: out}).OpenPRs("/repos/nat")
-	if err != nil {
-		t.Fatalf("OpenPRs() = %v, want a listing", err)
-	}
-	red := open["https://github.test/pr/1"]
+		`{"__typename":"CheckRun","name":"vet","status":"COMPLETED","conclusion":"SUCCESS"}]`
+	const green = `"url":"https://github.test/pr/2","statusCheckRollup":[` +
+		`{"__typename":"CheckRun","name":"test","status":"COMPLETED","conclusion":"SUCCESS"}]`
+	got := statusOf(t, red)
 	want := []Check{
 		{Name: "bare", State: "FAILURE", URL: "https://github.test/runs/3"},
 		{Name: "CI / lint", State: "FAILURE", URL: "https://github.test/runs/1"},
 		{Name: "deploy", State: "ERROR", URL: "https://ci.test/9"},
 		{Name: "Pull request / Gate", State: "FAILURE", URL: "https://github.test/runs/2"},
 	}
-	if red.Checks != ChecksFailing || !reflect.DeepEqual(red.Failing, want) {
-		t.Errorf("red PR = %v %+v, want failing %+v", red.Checks, red.Failing, want)
+	if got.Checks != ChecksFailing || !reflect.DeepEqual(got.Failing, want) {
+		t.Errorf("red PR = %v %+v, want failing %+v", got.Checks, got.Failing, want)
 	}
-	if green := open["https://github.test/pr/2"]; green.Failing != nil {
+	if green := statusOf(t, green); green.Failing != nil {
 		t.Errorf("green PR Failing = %+v, want none", green.Failing)
 	}
 }
@@ -228,30 +179,24 @@ func TestChecksVerdictString(t *testing.T) {
 	}
 }
 
-// A pull request that is not open is simply not in the listing, which is the
-// whole fact the board reads off it: an empty listing names nothing, and no
-// pull request is taken for open on the strength of nothing.
-func TestOpenPRsListsOnlyWhatIsOpen(t *testing.T) {
-	runner := &fakeRunner{out: "[]\n"}
-	open, err := NewWithRunner(runner).OpenPRs("/repos/nat")
+// statusOf is StatusOf over the pull request a `gh pr view --json` answer of
+// body's fields decodes to — the rollup in the shape gh prints it.
+func statusOf(t *testing.T, body string) PRStatus {
+	t.Helper()
+	pr, err := NewWithRunner(&fakeRunner{out: "{" + body + "}"}).ViewPR("/repos/nat", "7")
 	if err != nil {
-		t.Fatalf("OpenPRs() = %v, want a listing", err)
+		t.Fatalf("ViewPR() = %v", err)
 	}
-	if len(open) != 0 {
-		t.Errorf("OpenPRs() = %+v, want nothing named", open)
-	}
+	return StatusOf(pr)
 }
 
-// The listing is keyed the way a URL off a Notion page is looked up, so a link
-// copied from a review page or typed with a trailing slash still finds it.
-func TestOpenPRsKeysNormalisedURLs(t *testing.T) {
-	runner := &fakeRunner{out: `[{"url":"https://github.test/Craig/Nat/pull/7/","mergeable":"MERGEABLE"}]`}
-	open, err := NewWithRunner(runner).OpenPRs("/repos/nat")
-	if err != nil {
-		t.Fatalf("OpenPRs() = %v, want a listing", err)
-	}
-	if _, listed := open[NormaliseURL("https://github.test/craig/nat/pull/7?w=1")]; !listed {
-		t.Errorf("OpenPRs() = %+v, want the URL keyed as it is looked up", open)
+// TestStatusOfCarriesStateAndMergeTime passes GitHub's lifecycle word and the
+// merge's time through as read.
+func TestStatusOfCarriesStateAndMergeTime(t *testing.T) {
+	at := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	got := StatusOf(PR{State: PRStateMerged, MergedAt: at})
+	if got.State != PRStateMerged || !got.MergedAt.Equal(at) {
+		t.Errorf("StatusOf() = %+v, want MERGED at %v", got, at)
 	}
 }
 
@@ -270,31 +215,5 @@ func TestNormaliseURL(t *testing.T) {
 		if got := NormaliseURL(url); got != want {
 			t.Errorf("NormaliseURL(%q) = %q, want %q", url, got, want)
 		}
-	}
-}
-
-// TestOpenPRsFailure passes gh's own refusal straight back — an unauthenticated
-// gh, or a directory that is no repository — since the caller's answer to it is
-// to conclude nothing at all.
-func TestOpenPRsFailure(t *testing.T) {
-	refusal := &ExitError{Code: 1, Stderr: "gh: Not Found (HTTP 404)\n"}
-	runner := &fakeRunner{err: refusal}
-	open, err := NewWithRunner(runner).OpenPRs("/repos/nat")
-	if !errors.Is(err, error(refusal)) {
-		t.Errorf("OpenPRs() = %v, want gh's own refusal", err)
-	}
-	if open != nil {
-		t.Errorf("OpenPRs() = %+v, want nothing read", open)
-	}
-}
-
-// TestOpenPRsUnreadableJSON covers a gh that exited zero and printed something
-// that is not the JSON it was asked for: there is no listing in it, so it is a
-// failure here rather than a repository read as having nothing open.
-func TestOpenPRsUnreadableJSON(t *testing.T) {
-	runner := &fakeRunner{out: "not JSON at all\n"}
-	_, err := NewWithRunner(runner).OpenPRs("/repos/nat")
-	if err == nil || !strings.Contains(err.Error(), "no readable JSON") {
-		t.Errorf("OpenPRs() = %v, want it to report the unreadable output", err)
 	}
 }

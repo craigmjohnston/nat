@@ -9,7 +9,8 @@ human has read the diff.
 
 - Every call takes a working directory (`dir`) — the slice's repo — because
   `Runner` is a subprocess, not `agent.Runner`; this package has no business
-  borrowing tmux's type.
+  borrowing tmux's type. `ReadPRs` alone runs in none (`""`): its document
+  names every repository itself.
 - A `gh` that ran and refused comes back as `*ExitError`, whose `Error()` is
   the **first non-empty line of gh's stderr** (`firstLine`) — gh follows its
   message with usage text, and the message is the one line worth a toast.
@@ -35,19 +36,21 @@ human has read the diff.
   gh's own stdin via `StdinRunner`, never `--body` as an argument: a review
   comment quoting diff lines has no length bound and a shell's argument list
   does.
-- `OpenPRs(dir)` — one `gh pr list --state open --json
-  url,reviewDecision,mergeable,statusCheckRollup --limit 100` per repo, keyed
-  by URL. Only `APPROVED` and `MERGEABLE` count as true; every other GitHub
-  word (`REVIEW_REQUIRED`, `CHANGES_REQUESTED`, `CONFLICTING`, `UNKNOWN`, a
-  no-review-required repo's empty decision) is "not true." The rollup becomes
-  one `ChecksVerdict` (`checksVerdictOf`, over `Check.Outcome` — the one
-  table of check words, which the TUI PR screen and `actions.MergeRefusal`
-  read too): any failure → failing, else any unfinished or unknown state →
-  pending, else passing; no checks → `ChecksNone` (no verdict). The board folds failing into `domain.PRChecksFailing`.
-  **Limit 100 is past gh's default of 30** — a repo with more open PRs than
-  that has its oldest silently missing, which reads exactly like a PR that
-  closed. Not listed = not open; a failed listing is logged
-  and returned as an error, never treated as "nothing open."
+- `ReadPRs(BatchQuery)` — **the** polling read: one `gh api graphql -f
+  query=<document>` for every pull request (by number), every branch (by
+  name — an ad hoc session's) and at most one pull request in full detail
+  (`--detail`, the PR tab on screen) a reading asks about, across every
+  repository and every project. See **The batched reading** below.
+- `StatusOf(PR)` — a reading's `PRStatus`: only `APPROVED` and `MERGEABLE`
+  count as true; every other GitHub word (`REVIEW_REQUIRED`,
+  `CHANGES_REQUESTED`, `CONFLICTING`, `UNKNOWN`, a no-review-required repo's
+  empty decision) is "not true." The checks become one `ChecksVerdict`
+  (`Verdict`, over `Check.Outcome` — the one table of check words, which the
+  TUI PR screen and `actions.MergeRefusal` read too): any failure → failing,
+  else any unfinished or unknown state → pending, else passing; no checks →
+  `ChecksNone` (no verdict). The board folds failing into
+  `domain.PRChecksFailing`. `State` (OPEN/MERGED/CLOSED) and `MergedAt` ride
+  along: what settles a merge nat did not witness, with no view of its own.
 - `ViewPR(dir, ref)` — `gh pr view <ref> --json ...` for the full-detail
   screen. GitHub's own vocabulary is kept as-is (`State`, `ReviewDecision`,
   `Mergeable`, `MergeStateStatus`) rather than translated, except a check —
@@ -87,4 +90,55 @@ human has read the diff.
   and exit code only (`logRunCall`), never gh's words.
 - `NormaliseURL(url)` — strips query/fragment, trailing slash, lowercases
   owner/repo — so a URL pasted from a review comment matches the canonical
-  one gh prints.
+  one gh prints. `ParsePRURL` reads owner, repository and number off that
+  shape (anything else names no pull request, and is left unread);
+  `ParseRemote` a repository off a git remote URL (https, ssh, scp-like).
+
+## The batched reading (`batch.go`)
+
+GitHub's GraphQL budget is 5,000 points an hour, shared with every agent's
+`gh` and Claude Code's own, and spent on **call volume**: every read nat
+makes costs 1 or 2 points, measured with GraphQL's `rateLimit { cost }`
+(October 2026) — `gh pr list` with the check rollup **2**, `gh pr view`
+**1**, `gh pr list --head` **1**, and one document naming ten pull requests
+by number across two repositories, each with review decision,
+mergeability, base and a 30-context rollup, **1** — and the full PR-tab
+detail added to such a document, still **1**. GitHub's published page-size
+formula overstates these about a hundredfold; don't reason from it. Polling
+was ~2,200 reads an hour from gnat with four tabs open; one document per
+tick is 120.
+
+- **The document**: `rateLimit { limit remaining resetAt }`, then an aliased
+  `rN: repository(owner:, name:)` per repository (in the order first named),
+  holding an aliased field per thing asked — `pN: pullRequest(number:) {
+  ...status }`, `hN: pullRequests(first: 10, headRefName:, orderBy: CREATED_AT
+  DESC) { nodes { number title url state mergedAt } }`, `d: pullRequest(number:)
+  { ...status ...detail }`. `status` is `number url state isDraft mergedAt
+  reviewDecision mergeable mergeStateStatus baseRefName` and `lastCommit:
+  commits(last: 1)` → `statusCheckRollup { state contexts(first: 30) }`
+  (CheckRun: name, status, conclusion, detailsUrl,
+  checkSuite.workflowRun.workflow.name; StatusContext: context, state,
+  targetUrl); `detail` is the rest of what `pr-view` prints — title, body,
+  author, head ref and oid, additions, deletions, changed files,
+  `allCommits: commits { totalCount }` (a count, never the commits),
+  `reviews(last: 100)`, `comments(last: 100)` (the newest are the ones a
+  reader waits on) and `reviewRequests(first: 100)` (User login, Team slug).
+  **A fragment goes in only where it is spread** — GraphQL refuses an unused
+  one. Strings are JSON-quoted (`gqlString`), which GraphQL accepts.
+- Decoded through `gqlPR.pr()` into the same `prView` → `PR` path `ViewPR`
+  takes, so check naming (`checksOf`), review requests and the rest are
+  undone in one place. `Batch.PRs` by `PRRef`, `Batch.Heads` by `HeadRef`,
+  `Batch.Detail`, `Batch.RateLimit` (the last document's).
+- **Chunked at 25** things per document (`batchChunk`), the detail first.
+- **Failure concludes nothing, per node where it can be**: gh exits non-zero
+  on an answer with `errors` and still prints it, so the answer is read
+  first. An error with no `path` (a budget refusal, a document GitHub would
+  not run), an answer that is no JSON, or one with no `data` fails the whole
+  document — everything it asked is absent, logged, and the error returned
+  (joined across documents). An error **with** a path (a renamed repository,
+  a number that is no pull request) leaves that node null — that node alone
+  unread, logged — so one dead link on one slice never blinds the reading of
+  every other. Absent always means unread: never "closed", never "merged".
+- What is worth asking is the caller's: `actions.PRsWorthAsking` (every In
+  progress slice with a PR; a Done one only while its worktree exists) and a
+  session's five most recent branches (`internal/cli`'s `sessionBranches`).

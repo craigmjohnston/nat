@@ -20,15 +20,18 @@ type PRReviewerEditor interface {
 	Collaborators(dir string) ([]string, error)
 }
 
-// prReviewers reads, and with --add/--remove edits, who is asked to review
+// prReviewers reads, or with --add/--remove edits, who is asked to review
 // the pull request recorded on a slice — assigning a reviewer without
-// leaving nat. It answers with who is requested once any edit has landed,
-// read back from GitHub rather than assumed, and who else could be: the
-// repository's collaborators bar the author and those already requested.
+// leaving nat. A read answers with who is requested and who else could be:
+// the repository's collaborators bar the author and those already requested.
+// An edit answers with the edit's own result — who it asked and who it
+// stopped asking, which gh accepted — and reads nothing back: the next
+// reading of the pull request (gnat's settle read, pr-view) says who is
+// requested now, and a read here would spend a GitHub call to say it sooner.
 //
 // A collaborator listing that fails concludes nothing — it is reported as
 // candidates_error beside an empty list, never as "nobody could review",
-// and never fails a read or an edit that otherwise worked.
+// and never fails a read that otherwise worked.
 func prReviewers(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("pr-reviewers", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -71,6 +74,12 @@ func prReviewers(ctx context.Context, args []string, env Env) error {
 		if err := client.EditReviewers(workdir, s.PRURL, add, remove); err != nil {
 			return fmt.Errorf("edit the reviewers of %s: %w", s.PRURL, err)
 		}
+		edit := prReviewersEditJSON{PR: s.PRURL, Added: nonNil(add), Removed: nonNil(remove)}
+		if *asJSON {
+			return writeJSON(env.Out, edit)
+		}
+		_, err = io.WriteString(env.Out, prReviewersEditMarkdown(edit))
+		return err
 	}
 	pr, err := client.ViewPR(workdir, s.PRURL)
 	if err != nil {
@@ -123,6 +132,24 @@ type prReviewersJSON struct {
 	Requested       []string `json:"requested"`
 	Candidates      []string `json:"candidates"`
 	CandidatesError string   `json:"candidates_error,omitempty"`
+}
+
+// prReviewersEditJSON is the structured form of an edit: who it asked to
+// review and who it stopped asking.
+type prReviewersEditJSON struct {
+	PR      string   `json:"pr"`
+	Added   []string `json:"added"`
+	Removed []string `json:"removed"`
+}
+
+// prReviewersEditMarkdown reports what an edit did.
+func prReviewersEditMarkdown(edit prReviewersEditJSON) string {
+	var b strings.Builder
+	b.WriteString("# Reviewers\n\n")
+	fmt.Fprintf(&b, "- PR: %s\n", edit.PR)
+	fmt.Fprintf(&b, "- Asked: %s\n", noneIfEmpty(edit.Added))
+	fmt.Fprintf(&b, "- No longer asked: %s\n", noneIfEmpty(edit.Removed))
+	return b.String()
 }
 
 // prReviewersMarkdown reports who is requested and who else could be.

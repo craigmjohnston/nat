@@ -49,7 +49,7 @@ extension Fixtures {
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
         planCache: PlanCaching = NullPlanCache(),
         seenMemory: SeenMemory = .inMemory(),
-        prStatusFastInterval: Duration? = nil
+        githubSettleDelay: Duration = .zero
     ) -> AppModel {
         AppModel(
             configReader: FixtureConfigReader(config: config),
@@ -58,8 +58,9 @@ extension Fixtures {
             // fires under one; the fixtures do not change, so a poll would
             // only be work nobody reads.
             pollIntervalSeconds: 3600,
-            // No pull-request loop unless a test asks for one.
-            prStatusFastInterval: prStatusFastInterval,
+            // No GitHub tick: readings are taken at start and when an action
+            // asks — and a settle read waits nothing unless a test says so.
+            githubSettleDelay: githubSettleDelay,
             pathsProvider: { Fixtures.paths },
             workshopLauncher: { projectID, model, effort, request in
                 try await client.workshopLaunch(
@@ -107,10 +108,12 @@ extension Fixtures {
     }
 
     /// Starts a fixture app on the fixture paths — the project activated, its
-    /// plan loaded, its review stats and PR readiness taken.
+    /// plan loaded, its review stats taken, and its first GitHub reading
+    /// handed on.
     @MainActor
     public static func start(_ model: AppModel) async {
         await model.start(configPath: paths.config, nudgePath: paths.nudge)
+        await model.githubReadingStore?.idle()
     }
 
     /// The app over the fixtures, already loaded — what a test wants, and
@@ -123,11 +126,11 @@ extension Fixtures {
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
         planCache: PlanCaching = NullPlanCache(),
         seenMemory: SeenMemory = .inMemory(),
-        prStatusFastInterval: Duration? = nil
+        githubSettleDelay: Duration = .zero
     ) async -> AppModel {
         let model = appModel(
             client: client, config: config, toolsReady: toolsReady, workshopCache: workshopCache, planCache: planCache,
-            seenMemory: seenMemory, prStatusFastInterval: prStatusFastInterval)
+            seenMemory: seenMemory, githubSettleDelay: githubSettleDelay)
         await start(model)
         return model
     }

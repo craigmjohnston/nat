@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -42,23 +43,57 @@ func syncPage(id, name, status, milestone string) notion.Page {
 	return p
 }
 
-// fakePRReader stands in for the GitHub CLI, recording which repositories it
-// was asked to list and answering with whatever the test wants GitHub to have
-// open in each.
+// fakePRReader stands in for the GitHub CLI's batched reading, recording the
+// pull requests each reading asked about and answering with whatever the test
+// wants GitHub to have said: open ones by URL as their status, ended ones by
+// URL as MERGED or CLOSED. A pull request in neither is one the reading did
+// not find — unread.
 type fakePRReader struct {
-	open  map[string]map[string]gh.PRStatus
+	open  map[string]gh.PRStatus
+	ended map[string]string
 	err   error
-	asked []string
+	asked [][]string
 }
 
 var _ PRReader = (*fakePRReader)(nil)
 
-func (f *fakePRReader) OpenPRs(dir string) (map[string]gh.PRStatus, error) {
-	f.asked = append(f.asked, dir)
-	if f.err != nil {
-		return nil, f.err
+func (f *fakePRReader) ReadPRs(q gh.BatchQuery) (gh.Batch, error) {
+	var urls []string
+	batch := gh.Batch{PRs: map[gh.PRRef]gh.PR{}}
+	for _, ref := range q.PRs {
+		url := fmt.Sprintf("https://github.test/%s/%s/pull/%d", ref.Owner, ref.Repo, ref.Number)
+		urls = append(urls, url)
+		if status, ok := f.open[url]; ok {
+			batch.PRs[ref] = openPROf(status)
+		} else if state, ok := f.ended[url]; ok {
+			batch.PRs[ref] = gh.PR{State: state}
+		}
 	}
-	return f.open[dir], nil
+	f.asked = append(f.asked, urls)
+	if f.err != nil {
+		return gh.Batch{}, f.err
+	}
+	return batch, nil
+}
+
+// openPROf is an open pull request GitHub would read as status.
+func openPROf(status gh.PRStatus) gh.PR {
+	pr := gh.PR{State: "OPEN", Checks: status.Failing}
+	if status.Approved {
+		pr.ReviewDecision = "APPROVED"
+	}
+	if status.Mergeable {
+		pr.Mergeable = "MERGEABLE"
+	}
+	switch {
+	case status.Checks == gh.ChecksFailing && len(status.Failing) == 0:
+		pr.Checks = []gh.Check{{Name: "test", State: "FAILURE"}}
+	case status.Checks == gh.ChecksPending:
+		pr.Checks = []gh.Check{{Name: "test", State: "IN_PROGRESS"}}
+	case status.Checks == gh.ChecksPassing:
+		pr.Checks = []gh.Check{{Name: "test", State: "SUCCESS"}}
+	}
+	return pr
 }
 
 // prStatePlan is a plan with a pull request in each state worth reading, plus
@@ -70,20 +105,20 @@ func prStatePlan() domain.Project {
 		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect),
 		[]domain.Slice{
 			{ID: approvedPR, Name: "Approved", Status: domain.SliceClaimed, StatusName: "In progress",
-				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/1"},
+				MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/1"},
 			{ID: unreviewedPR, Name: "Unreviewed", Status: domain.SliceClaimed, StatusName: "In progress",
-				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/2"},
+				MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/2"},
 			{ID: ownRepoPR, Name: "Own repo", Status: domain.SliceClaimed, StatusName: "In progress",
-				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/3", Repo: otherRepo},
+				MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/3", Repo: otherRepo},
 			{ID: "hb", Name: "Handed back", Status: domain.SliceClaimed, StatusName: "In progress",
 				MilestoneID: "M1: Review", Branch: "slice/handed-back"},
 			{ID: "td", Name: "Not started", Status: domain.SliceTodo, MilestoneID: "M1: Review"},
 			{ID: "tp", Name: "Round again", Status: domain.SliceTodo, MilestoneID: "M1: Review",
-				PRURL: "https://github.test/pr/6"},
+				PRURL: "https://github.test/o/r/pull/6"},
 			{ID: donePR, Name: "Awaiting merge", Status: domain.SliceDone, StatusName: "Done",
-				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/4"},
+				MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/4"},
 			{ID: mergedPR, Name: "Landed", Status: domain.SliceDone, StatusName: "Done",
-				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/5"},
+				MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/5"},
 		})
 }
 
@@ -100,10 +135,11 @@ func sliceByID(t *testing.T, p domain.Project, id string) domain.Slice {
 	return domain.Slice{}
 }
 
-// prStateApp returns an app showing that plan with a fake gh behind it. GitHub
-// has four of the plan's five pull requests open — the first approved and
-// mergeable, the rest still waiting — and the fifth, the one on the Landed
-// slice, is not open at all.
+// prStateApp returns an app showing that plan with a fake gh behind it, and a
+// worktree still there for each Done slice, so the reading asks about them.
+// GitHub has four of the plan's five pull requests open — the first approved
+// and mergeable, the rest still waiting — and the fifth, the one on the
+// Landed slice, has merged.
 func prStateApp(t *testing.T) (*App, *fakePRReader) {
 	cfg := testConfig(t)
 	project := cfg.Projects[testProjectID]
@@ -111,17 +147,18 @@ func prStateApp(t *testing.T) (*App, *fakePRReader) {
 	cfg.Projects[testProjectID] = project
 
 	app := NewApp(cfg, &fakeNotion{})
-	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
-		natRepo: {
-			"https://github.test/pr/1": {Approved: true, Mergeable: true},
-			"https://github.test/pr/2": {Mergeable: true},
-			"https://github.test/pr/4": {Mergeable: true},
+	reader := &fakePRReader{
+		open: map[string]gh.PRStatus{
+			"https://github.test/o/r/pull/1": {Approved: true, Mergeable: true},
+			"https://github.test/o/r/pull/2": {Mergeable: true},
+			"https://github.test/o/r/pull/4": {Mergeable: true},
+			"https://github.test/o/r/pull/3": {Approved: true, Mergeable: true},
 		},
-		otherRepo: {
-			"https://github.test/pr/3": {Approved: true, Mergeable: true},
-		},
-	}}
+		ended: map[string]string{"https://github.test/o/r/pull/5": gh.PRStateMerged},
+	}
 	app.prReader = reader
+	trees := approveWorktrees(t)
+	trees.existing = map[string]string{"slice/awaiting-merge": "/worktrees/awaiting-merge", "slice/landed": "/worktrees/landed"}
 	return app, reader
 }
 
@@ -160,7 +197,7 @@ func activeSection(a *App) string { return strings.Join(a.board.ActiveLines(), "
 
 // TestPRStatesReadOnEveryPlanThatLands is the whole flow: a plan landing is
 // what takes the reading — the board has no timer of its own for it — and it is
-// one listing per repository the plan spans rather than one reading per slice.
+// one batched reading for every pull request, whatever repositories they are in.
 func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
 	app, reader := prStateApp(t)
 	p := prStatePlan()
@@ -168,11 +205,12 @@ func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
 	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 
-	// The project's default repository, then the one slice's own override —
-	// once each, however many of the plan's pull requests are in them.
-	want := []string{natRepo, otherRepo}
+	// Every pull request in one reading, the slice in its own repository
+	// included — but not the Todo slice's, a round already gone.
+	want := [][]string{{"https://github.test/o/r/pull/1", "https://github.test/o/r/pull/2",
+		"https://github.test/o/r/pull/3", "https://github.test/o/r/pull/4", "https://github.test/o/r/pull/5"}}
 	if !reflect.DeepEqual(reader.asked, want) {
-		t.Errorf("gh listed %v, want %v", reader.asked, want)
+		t.Errorf("gh read %v, want %v", reader.asked, want)
 	}
 
 	// An approved and mergeable pull request is a review that is over; one
@@ -196,9 +234,9 @@ func TestPRStatesReadOnEveryPlanThatLands(t *testing.T) {
 // says ready to merge while CI is red. Checks still running change nothing.
 func TestFailingChecksShowOnTheActivePanel(t *testing.T) {
 	app, reader := prStateApp(t)
-	reader.open[natRepo]["https://github.test/pr/1"] = gh.PRStatus{
+	reader.open["https://github.test/o/r/pull/1"] = gh.PRStatus{
 		Approved: true, Mergeable: true, Checks: gh.ChecksFailing}
-	reader.open[otherRepo]["https://github.test/pr/3"] = gh.PRStatus{
+	reader.open["https://github.test/o/r/pull/3"] = gh.PRStatus{
 		Approved: true, Mergeable: true, Checks: gh.ChecksPending}
 	p := prStatePlan()
 
@@ -212,7 +250,7 @@ func TestFailingChecksShowOnTheActivePanel(t *testing.T) {
 	}
 	// Off the section, so the entry is drawn without the selection's fill.
 	app.board.SelectRow(len(app.board.rows) - 1)
-	failing := app.board.styles.StateChecksFailing.Render(domain.SliceStateChecksFailing.String())
+	failing := app.board.styles.StateChecksFailing.Render(domain.SliceStateChecksFailing.String() + ": test")
 	if section := activeSection(app); !strings.Contains(section, failing) {
 		t.Errorf("the section does not name the failing checks in the danger colour:\n%s", section)
 	}
@@ -239,7 +277,7 @@ func TestADoneSliceWithAnOpenPRIsReopenedToInProgress(t *testing.T) {
 			return &notion.Page{ID: id}, nil
 		}
 		pg := syncPage(donePR, "Awaiting merge", notion.SliceInProgress, "M1: Review")
-		pg.Properties[notion.PropPR] = notion.PropertyValue{URL: "https://github.test/pr/4"}
+		pg.Properties[notion.PropPR] = notion.PropertyValue{URL: "https://github.test/o/r/pull/4"}
 		return &pg, nil
 	}
 
@@ -268,9 +306,9 @@ func TestADoneSliceWithAnOpenPRIsReopenedToInProgress(t *testing.T) {
 	}
 }
 
-// And drops out the moment that pull request has landed — which is the listing
-// not naming it — never to be asked about again, since a merged pull request
-// does not unmerge.
+// And drops out the moment that pull request has landed — which is the
+// reading saying merged — never to be asked about again, since a merged pull
+// request does not unmerge.
 func TestADoneSliceDropsOutOnceItsPRHasLanded(t *testing.T) {
 	app, reader := prStateApp(t)
 	p := prStatePlan()
@@ -288,9 +326,9 @@ func TestADoneSliceDropsOutOnceItsPRHasLanded(t *testing.T) {
 		t.Error("the merged pull request was not remembered as settled")
 	}
 
-	// The next plan to land asks about the repositories again, but no longer
-	// about that slice: its answer cannot change.
-	reader.open[natRepo]["https://github.test/pr/5"] = gh.PRStatus{}
+	// The next plan to land asks about the rest again, but no longer about
+	// that slice: its answer cannot change.
+	reader.open["https://github.test/o/r/pull/5"] = gh.PRStatus{}
 	cmd = landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 	if got := app.board.state(sliceByID(t, p, mergedPR)); got != domain.SliceStateNone {
@@ -299,29 +337,30 @@ func TestADoneSliceDropsOutOnceItsPRHasLanded(t *testing.T) {
 }
 
 // mergedElsewherePlan is one in-progress slice whose recorded pull request
-// the listing no longer names: the state a merge made on GitHub itself leaves
-// behind, with nat not running to witness it.
+// is no longer open: the state a merge made on GitHub itself leaves behind,
+// with nat not running to witness it.
 func mergedElsewherePlan() domain.Project {
 	return domain.NewProject(testProjectID, "tracker",
 		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect),
 		[]domain.Slice{{ID: "gone", Name: "Merged on GitHub", Status: domain.SliceClaimed,
-			StatusName: "In progress", MilestoneID: "M1: Review", PRURL: "https://github.test/pr/9"}})
+			StatusName: "In progress", MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/9"}})
 }
 
-// An in-progress slice whose pull request turns out to have merged is marked
-// Done by the reading itself: nothing else witnessed the merge, and Done
-// means exactly what the merge made true.
+// An in-progress slice whose pull request reads merged is marked Done by the
+// reading itself — off the batch, with no view of the pull request: nothing
+// else witnessed the merge, and Done means exactly what the merge made true.
 func TestTheReadingMarksAMergedInProgressSliceDone(t *testing.T) {
-	app, _ := prStateApp(t)
-	viewer := &fakePRViewer{pr: gh.PR{State: gh.PRStateMerged}}
+	app, reader := prStateApp(t)
+	reader.ended["https://github.test/o/r/pull/9"] = gh.PRStateMerged
+	viewer := &fakePRViewer{}
 	app.prViewer = viewer
 	client := app.client.(*fakeNotion)
 
 	cmd := landPlan(t, app, mergedElsewherePlan())
 	runPRRead(t, app, cmd)
 
-	if len(viewer.made) != 1 || viewer.made[0] != (viewCall{natRepo, "https://github.test/pr/9"}) {
-		t.Fatalf("viewed %v, want the absent pull request asked about in its repo", viewer.made)
+	if len(viewer.made) != 0 {
+		t.Fatalf("viewed %v, want no pull request viewed", viewer.made)
 	}
 	var wroteDone bool
 	for _, w := range client.updated {
@@ -343,8 +382,8 @@ func TestTheReadingMarksAMergedInProgressSliceDone(t *testing.T) {
 // A pull request closed unmerged is work going round again: nothing is
 // written, and the slice still settles — its answer cannot change.
 func TestTheReadingLeavesAClosedInProgressSliceAlone(t *testing.T) {
-	app, _ := prStateApp(t)
-	app.prViewer = &fakePRViewer{pr: gh.PR{State: gh.PRStateClosed}}
+	app, reader := prStateApp(t)
+	reader.ended["https://github.test/o/r/pull/9"] = gh.PRStateClosed
 	client := app.client.(*fakeNotion)
 
 	cmd := landPlan(t, app, mergedElsewherePlan())
@@ -360,12 +399,11 @@ func TestTheReadingLeavesAClosedInProgressSliceAlone(t *testing.T) {
 	}
 }
 
-// A reading that fails settles nothing: nothing may be concluded from it, so
-// the next pass asks again rather than watching an answer nobody has.
+// A pull request the reading did not find settles nothing: nothing may be
+// concluded from it, so the next pass asks again rather than watching an
+// answer nobody has.
 func TestAFailedSettleReadingIsAskedAgain(t *testing.T) {
-	app, _ := prStateApp(t)
-	viewer := &fakePRViewer{err: errors.New("gh is not signed in")}
-	app.prViewer = viewer
+	app, reader := prStateApp(t)
 	client := app.client.(*fakeNotion)
 	p := mergedElsewherePlan()
 
@@ -382,8 +420,8 @@ func TestAFailedSettleReadingIsAskedAgain(t *testing.T) {
 	// The next plan to land asks about the pull request again.
 	cmd = landPlan(t, app, p)
 	runPRRead(t, app, cmd)
-	if len(viewer.made) != 2 {
-		t.Errorf("gh was asked for %d readings, want the failed one retried", len(viewer.made))
+	if len(reader.asked) != 2 {
+		t.Errorf("gh was asked for %d readings, want the failed one retried", len(reader.asked))
 	}
 }
 
@@ -394,12 +432,12 @@ func TestNothingLeftToAskTakesNoReading(t *testing.T) {
 	p := domain.NewProject(testProjectID, "tracker",
 		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect),
 		[]domain.Slice{{ID: mergedPR, Name: "Landed", Status: domain.SliceDone, StatusName: "Done",
-			MilestoneID: "M1: Review", PRURL: "https://github.test/pr/5"}})
+			MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/5"}})
 
 	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
 	if len(reader.asked) != 1 {
-		t.Fatalf("gh listed %v, want the one repository read once", reader.asked)
+		t.Fatalf("gh read %v, want the one reading", reader.asked)
 	}
 	if cmd := app.refreshPRStates(); cmd != nil {
 		t.Error("refreshPRStates() = a command, want nothing left to ask about")
@@ -408,7 +446,7 @@ func TestNothingLeftToAskTakesNoReading(t *testing.T) {
 
 // A gh that fails changes nothing: the slices keep the states they had, the
 // board is not put into an error and nothing is toasted — the failure is in the
-// log and nowhere else. Above all it settles nothing, since a listing that
+// log and nowhere else. Above all it settles nothing, since a reading that
 // never happened says nothing about what has landed.
 func TestPRStateFailureLeavesTheBoardAsItWas(t *testing.T) {
 	app, reader := prStateApp(t)
@@ -430,8 +468,8 @@ func TestPRStateFailureLeavesTheBoardAsItWas(t *testing.T) {
 	if app.err != nil || app.toast != "" {
 		t.Errorf("err = %v, toast = %q, want the failure kept to the log", app.err, app.toast)
 	}
-	if !reflect.DeepEqual(reader.asked, []string{natRepo, otherRepo}) {
-		t.Errorf("gh listed %v, want every repository asked about regardless", reader.asked)
+	if len(reader.asked) != 1 || len(reader.asked[0]) != 5 {
+		t.Errorf("gh read %v, want every pull request asked about regardless", reader.asked)
 	}
 }
 
@@ -537,7 +575,7 @@ func TestPRStatesNotRead(t *testing.T) {
 				t.Errorf("refreshPRStates() = a command, want no reading taken")
 			}
 			if len(reader.asked) != 0 {
-				t.Errorf("gh listed %v, want nothing asked", reader.asked)
+				t.Errorf("gh read %v, want nothing asked", reader.asked)
 			}
 		})
 	}
@@ -564,7 +602,6 @@ func TestPRStateReadingRunsOneAtATime(t *testing.T) {
 		t.Error("the next plan to land took no reading")
 	}
 }
-
 
 // worthReading is which slices have a pull request anything might still be
 // waiting on.
@@ -625,7 +662,7 @@ func TestDefaultPRReader(t *testing.T) {
 // pull request GitHub reads with a failing check, run by an Actions job.
 func checksNudgeApp(t *testing.T) (*App, *fakePRReader, *fakeLauncher, *fakeNotion) {
 	app, reader := prStateApp(t)
-	reader.open[natRepo]["https://github.test/pr/1"] = gh.PRStatus{
+	reader.open["https://github.test/o/r/pull/1"] = gh.PRStatus{
 		Approved: true, Mergeable: true, Checks: gh.ChecksFailing,
 		Failing: []gh.Check{{Name: "test", State: "FAILURE", URL: "https://github.test/actions/runs/9/job/1"}}}
 	live := map[string]string{approvedPR: "nat-ap"}
@@ -713,4 +750,38 @@ func TestActivePanelNamesTheFailingChecks(t *testing.T) {
 	b.SetPRState(map[string]domain.PRReadiness{approvedPR: domain.PRChecksFailing})
 	b.SetFailingChecks(map[string][]string{approvedPR: {"test", "lint"}})
 	golden(t, "board-active-checks-failing", strings.Join(b.renderActive(0), "\n"))
+}
+
+// A merge whose Done cannot be written settles nothing: the next pass reads it
+// again rather than taking an unrecorded merge for a recorded one.
+func TestAMergeThatCannotBeMarkedDoneIsAskedAgain(t *testing.T) {
+	app, reader := prStateApp(t)
+	reader.ended["https://github.test/o/r/pull/9"] = gh.PRStateMerged
+	// The plan file holds no such slice, and the workspace cannot be read for
+	// it, so the Done write's own read of the slice fails.
+	seedLocalPlan(t, testProjectID, domain.NewProject(testProjectID, "tracker",
+		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect), nil))
+	app.client.(*fakeNotion).getPage = func(string) (*notion.Page, error) { return nil, errors.New("notion is down") }
+
+	_, cmd := app.Update(projectLoadedMsg{project: mergedElsewherePlan()})
+	runPRRead(t, app, cmd)
+
+	if app.prSettled["gone"] {
+		t.Error("a merge that could not be marked Done was remembered as settled")
+	}
+}
+
+// A PR URL that names no pull request is not asked about at all.
+func TestAnUnparseablePRURLIsNotAsked(t *testing.T) {
+	app, reader := prStateApp(t)
+	p := domain.NewProject(testProjectID, "tracker",
+		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect),
+		[]domain.Slice{{ID: "odd", Name: "Odd link", Status: domain.SliceClaimed, StatusName: "In progress",
+			MilestoneID: "M1: Review", PRURL: "https://example.test/not-a-pr"}})
+
+	runPRRead(t, app, landPlan(t, app, p))
+
+	if len(reader.asked) != 0 {
+		t.Errorf("gh read %v, want nothing asked", reader.asked)
+	}
 }

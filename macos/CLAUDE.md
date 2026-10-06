@@ -178,23 +178,46 @@ Each section header takes `NavSectionStatus.of` its items (New over
 Updated; `SeenBadgeChip`, New in Merged's green, Updated in the accent).
 Stories: `window-resumed-badges`, `window-pr-updated`, `window-visuals-new`.
 
-**Failing checks.** `PRStatusStore` holds `pr-status`'s reading **per project, for every open
-project** (`PRReading`: readiness, failing checks, conflicts) — the active
-one's taken with its plan (`updateReviewStats`), each background one's after
-its plan lands (`loadBackgroundProject`, `refreshBackgroundProjects`), all
-skipped where no slice has a PR or stands in review (`inReview`). A project's reading is replaced only by a
-newer reading of it (a failed one leaves it standing; switching projects
-touches nothing), written beside its plan in the read cache
-(`PlanCaching.writePRStatus`, `<id>.pr-status.json`) and restored before the
-first fresh read (`restore`). Given a `Cadence` (`NatApp` passes
-`prStatusFastInterval: 10 s`; tests and stories none), the store also reads
-every open project on its own loop, whatever is on screen: each reading, by
-whoever asked, schedules the next — **fast** while an open PR's checks are
-`pending` or a live agent sits on a slice with an open PR, else **slow**,
-the plan poll's cadence — one sleeping task per project, skipped where the
-plan has nothing to read (`shouldRead`), stopped by `forget` (a closed tab)
-and `stop`; a second `update` joins the one under way, and a reading equal
-to the last publishes nothing. `PRStatusStore.marks` (by slice id) puts
+**One read of GitHub.** GitHub's GraphQL budget (5,000 points an hour,
+shared with every agent's `gh`) is spent on call volume, so the app reads
+GitHub in exactly one place: `GitHubReadingStore` (`AppModel.githubReadingStore`)
+runs `nat pr-status --project …` **once for every open tab** with pull
+request work (`hasPullRequestWork`: a PR, or a slice `inReview`; the active
+tab always, for its sessions' branches), with `--detail <url>` for the pull
+request on a visible PR tab (`PRStore.detailURL`: `setVisible` while the
+slice's or session's navigator shows it, and open), and hands each part on
+(`AppModel.deliver`): every project's doc to `PRStatusStore.apply`, the
+detail to `PRStore.applyDetail`, and the active project's session rows a
+fresh `session-list` (which asks GitHub nothing — it reads the pull requests
+the reading kept on disk). It reads on the **tick** (`poll_seconds`, default
+30; `readsGitHubOnATick`, which only `NatApp` sets — tests and stories have
+none) and once at launch (`readSoon`), and on a **settle read**
+(`scheduleSettle`, `AppModel.scheduleGitHubReading`) 5 seconds after an action
+that changed GitHub — approve (`DiffReview.approve`,
+`settlePendingApprovals`), merge, comment, reviewers, re-run and cancel
+checks (`PRStore`'s `settle`), the manual refresh (`refreshByHand`, the
+shell's ⌘R) — since GitHub reads mergeability UNKNOWN for a few seconds
+after `gh pr create` and starts checks later still; actions inside the
+window fold into the one pending read, and the tick restarts from it. A
+background plan landing at launch asks for one too. **Never two reads in
+flight**: a tick finding one running leaves it to finish; a settle read
+waits for it, then reads. **The nudge path refreshes the plan only**
+(`refresh(.replica)`, `refreshBackgroundProjects`, `updateReviewStats` — no
+`pr-status`, no `session-list`). `rateLimit` is kept on the store for the
+throttle and status bar; nothing draws it yet. `idle()` is how a fixture or
+test waits for the readings to settle. Tests: `GitHubReadingStoreTests`,
+`AppModelGitHubReadingTests` (a nudge reads nothing; a tick is one
+`pr-status` whatever the tab count; actions inside the window are one read;
+an open PR tab makes no `pr-view` after its first load).
+
+**Failing checks.** `PRStatusStore` holds that reading **per project, for every open
+project** (`PRReading`: readiness, failing checks, conflicts), with no read
+of its own. A project's reading is replaced only by a
+newer reading of it (a failed one never arrives, so the last stands;
+switching projects touches nothing), written beside its plan in the read
+cache (`PlanCaching.writePRStatus`, `<id>.pr-status.json`) and restored
+before the first fresh read (`restore`); a reading equal to the last
+publishes nothing, and `forget` drops a closed tab's. `PRStatusStore.marks` (by slice id) puts
 `PRMarks` on **both** sidebar row kinds — `SidebarActiveRow.marks` and
 `SidebarSliceRow.marks`, pr stage only (`atPullRequest`) — drawn by
 `PRMarksView`: the checks' `xmark.octagon.fill` and the conflict's own
@@ -261,7 +284,7 @@ buttons are absent where no check is `rerunnable`, and so are all of them on a
 session's PR (`checksStore` nil). A row is washed full bleed under the pointer
 (`gnatRow`, padded out by NavProse's 12 and back). `PRStore.rerunChecks`/
 `cancelChecks` run one call at a time (`checksActionSource`: its button a
-spinner, every other disabled), then re-read the PR and show nat's report
+spinner, every other disabled), then ask for the settle read and show nat's report
 (`checksActionNotice`: "Cancelled …, then re-ran …") or its refusal as the
 body's `NavNotice` (`checksNotice`, cleared on another slice). No confirmation.
 Stories: `window-pr-checks-controls`, `pr-checks-controls`,

@@ -23,11 +23,14 @@ type PRMerger interface {
 // work is on main, and the merge is the one event that makes it true, so the
 // status write rides it rather than the approve.
 //
-// The refusal is the merge box's own: the pull request is read again first,
-// and a review not yet approved, a check still failing or a branch conflicting
-// with its base refuses in the same words the board would show, before gh is
-// ever asked to attempt the merge. A pull request already merged or closed has
-// nothing left to merge, whatever the verdicts say.
+// The refusal is the merge box's own: the pull request is read again first —
+// one batched reading of it alone ([readOnePR]), the review decision, the
+// checks and GitHub's merge state, never the conversation — and a review not
+// yet approved, a check still failing or a branch conflicting with its base
+// refuses in the same words the board would show, before gh is ever asked to
+// attempt the merge. A pull request already merged or closed has nothing
+// left to merge, whatever the verdicts say. gh pr merge refuses an
+// unmergeable pull request itself besides.
 func prMerge(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("pr-merge", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -64,7 +67,7 @@ func prMerge(ctx context.Context, args []string, env Env) error {
 
 	workdir := actions.WorkdirFor(s, project)
 	ghClient := env.NewGH()
-	pr, err := ghClient.ViewPR(workdir, s.PRURL)
+	pr, err := readOnePR(ghClient, s.PRURL)
 	if err != nil {
 		return fmt.Errorf("read the pull request %s: %w", s.PRURL, err)
 	}

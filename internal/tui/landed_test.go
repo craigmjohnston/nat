@@ -32,26 +32,26 @@ func landedPlan() domain.Project {
 		domain.MilestonesFromOptions([]string{"M1: Review"}, notion.TypeSelect),
 		[]domain.Slice{
 			{ID: landedMerged, Name: "Landed work", Status: domain.SliceDone, StatusName: "Done",
-				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/landed",
+				MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/101",
 				Branch: "slice/landed-work"},
 			{ID: landedDerived, Name: "No branch recorded", Status: domain.SliceDone, StatusName: "Done",
-				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/derived"},
+				MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/102"},
 			{ID: landedOwnRepo, Name: "Own repo", Status: domain.SliceDone, StatusName: "Done",
-				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/own",
+				MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/103",
 				Branch: "slice/own-repo", Repo: otherRepo},
 			{ID: landedOpen, Name: "Still open", Status: domain.SliceDone, StatusName: "Done",
-				MilestoneID: "M1: Review", PRURL: "https://github.test/pr/open",
+				MilestoneID: "M1: Review", PRURL: "https://github.test/o/r/pull/104",
 				Branch: "slice/still-open"},
 			{ID: landedClosed, Name: "Went round again", Status: domain.SliceClaimed,
 				StatusName: "In progress", MilestoneID: "M1: Review",
-				PRURL: "https://github.test/pr/closed", Branch: "slice/went-round-again"},
+				PRURL: "https://github.test/o/r/pull/105", Branch: "slice/went-round-again"},
 		})
 }
 
 // landedApp is an app showing that plan with a fake gh and a fake git behind
-// it. GitHub has exactly one of the plan's pull requests open, so every other
-// one reads as settled, and git has a worktree for every branch until a test
-// says otherwise.
+// it. GitHub has exactly one of the plan's pull requests open, one closed and
+// the rest merged, so every other one reads as settled, and git has a
+// worktree for every branch until a test says otherwise.
 func landedApp(t *testing.T) (*App, *fakePRReader, *fakeWorktrees) {
 	t.Helper()
 	cfg := testConfig(t)
@@ -60,9 +60,15 @@ func landedApp(t *testing.T) (*App, *fakePRReader, *fakeWorktrees) {
 	cfg.Projects[testProjectID] = project
 
 	app := NewApp(cfg, &fakeNotion{})
-	reader := &fakePRReader{open: map[string]map[string]gh.PRStatus{
-		natRepo: {"https://github.test/pr/open": {Mergeable: true}},
-	}}
+	reader := &fakePRReader{
+		open: map[string]gh.PRStatus{"https://github.test/o/r/pull/104": {Mergeable: true}},
+		ended: map[string]string{
+			"https://github.test/o/r/pull/101": gh.PRStateMerged,
+			"https://github.test/o/r/pull/102": gh.PRStateMerged,
+			"https://github.test/o/r/pull/103": gh.PRStateMerged,
+			"https://github.test/o/r/pull/105": gh.PRStateClosed,
+		},
+	}
 	app.prReader = reader
 
 	trees := approveWorktrees(t)
@@ -173,29 +179,23 @@ func TestARefusedRemovalIsRetriedOnTheNextLoad(t *testing.T) {
 	}
 }
 
-// A branch git names no worktree for is not a failure to retry: it is a slice
-// whose worktree has already gone — or one that never had one — so nothing is
-// removed and nothing is asked about it again.
+// A Done slice git names no worktree for has nothing left for a reading to
+// settle: its pull request is not asked about at all, nothing is removed, and
+// git is asked about no branch — only the in-progress slice's pull request is
+// read.
 func TestNoWorktreeToRemovePassesQuietly(t *testing.T) {
-	app, _, trees := landedApp(t)
+	app, reader, trees := landedApp(t)
 	trees.existing = nil
 	p := landedPlan()
 
 	cmd := landPlan(t, app, p)
 	runPRRead(t, app, cmd)
-	looks := len(trees.looks)
 
-	if len(trees.removes) != 0 {
-		t.Errorf("git was asked to remove %v, want nothing", trees.removes)
+	if len(trees.removes) != 0 || len(trees.looks) != 0 {
+		t.Errorf("git was asked about %v and to remove %v, want nothing", trees.looks, trees.removes)
 	}
-	if looks == 0 {
-		t.Fatal("git was asked about no branch at all")
-	}
-
-	cmd = landPlan(t, app, p)
-	runPRRead(t, app, cmd)
-	if len(trees.looks) != looks {
-		t.Errorf("git was asked about %v, want the settled branches left out", trees.looks)
+	if want := [][]string{{"https://github.test/o/r/pull/105"}}; !reflect.DeepEqual(reader.asked, want) {
+		t.Errorf("gh read %v, want %v", reader.asked, want)
 	}
 }
 

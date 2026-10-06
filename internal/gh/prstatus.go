@@ -1,11 +1,8 @@
 package gh
 
 import (
-	"encoding/json"
-	"fmt"
 	"strings"
-
-	"github.com/craigmjohnston/nat/internal/logging"
+	"time"
 )
 
 // GitHub's own words for the two facts that decide whether a pull request is
@@ -24,17 +21,7 @@ const (
 	stateMergeable   = "MERGEABLE"
 	stateConflicting = "CONFLICTING"
 	mergeStateDirty  = "DIRTY"
-	prListFields     = "url,reviewDecision,mergeable,mergeStateStatus,baseRefName,statusCheckRollup"
 )
-
-// prListLimit is how many open pull requests one listing will carry. gh's own
-// default is thirty, which a busy repository passes without saying so, and the
-// fields asked for are small enough that a hundred costs nothing worth
-// counting — the check rollup included, which is a handful of short entries per
-// pull request. A repository with more open than that has its oldest left out of
-// the answer, which reads here as a pull request that is no longer open — the
-// same thing an unread one reads as, and the quiet direction to be wrong in.
-const prListLimit = "100"
 
 // PRStatus is what gh says about a pull request that bears on whether it is
 // still waiting to be reviewed: whether a review has approved it, whether
@@ -49,6 +36,9 @@ const prListLimit = "100"
 // Failing is every check the rollup has failed, in the order gh listed them —
 // empty unless Checks is [ChecksFailing]. Its run URLs are what tells one red
 // reading from the next: a re-push that fails again fails in a new run.
+//
+// State is GitHub's word for where the pull request is — OPEN, MERGED or
+// CLOSED — and MergedAt when it merged, zero for one that has not.
 type PRStatus struct {
 	Approved    bool
 	Mergeable   bool
@@ -56,6 +46,25 @@ type PRStatus struct {
 	Base        string
 	Checks      ChecksVerdict
 	Failing     []Check
+	State       string
+	MergedAt    time.Time
+}
+
+// StatusOf is what a pull request's reading says about whether it is still
+// waiting on anyone. Only APPROVED and MERGEABLE count as true; every other
+// GitHub word is "not true".
+func StatusOf(pr PR) PRStatus {
+	checks, failing := Verdict(pr.Checks)
+	return PRStatus{
+		Approved:    pr.ReviewDecision == reviewApproved,
+		Mergeable:   pr.Mergeable == stateMergeable,
+		Conflicting: conflicting(pr.Mergeable, pr.MergeStateStatus),
+		Base:        strings.TrimSpace(pr.BaseRefName),
+		Checks:      checks,
+		Failing:     failing,
+		State:       pr.State,
+		MergedAt:    pr.MergedAt,
+	}
 }
 
 // ChecksVerdict is a pull request's whole status check rollup said as one word.
@@ -140,12 +149,6 @@ func (c Check) Outcome() CheckOutcome {
 	return checkOutcomes[strings.ToUpper(strings.TrimSpace(c.State))]
 }
 
-// checksVerdictOf rolls a pull request's rollup into one verdict — see
-// [Verdict], which it is for the entries as [Check]s.
-func checksVerdictOf(rollup []ghRoll) (ChecksVerdict, []Check) {
-	return Verdict(checksOf(rollup))
-}
-
 // Verdict rolls a pull request's checks into one verdict: any failure fails
 // the lot, then any check unfinished leaves it pending. The checks that failed
 // come back with it, every one of them, in the order they were given. It is
@@ -169,55 +172,6 @@ func Verdict(checks []Check) (ChecksVerdict, []Check) {
 		}
 	}
 	return verdict, failing
-}
-
-// OpenPRs is every pull request the repository at dir currently has open, keyed
-// by its URL as [NormaliseURL] writes it.
-//
-// It is one listing per repository rather than one view per pull request,
-// because the board takes this reading on its own poll and for every slice that
-// has a pull request recorded — a mature plan's worth of Done slices included,
-// since a slice's pull request being open is what keeps it in the board's
-// Active section. A gh per slice would grow with the plan forever; a listing
-// does not grow at all.
-//
-// Being in the answer is itself the fact the caller is after: a pull request
-// that has merged or been closed is simply not listed, which is how the board
-// tells work that has landed from work that is still out. That inference rests
-// on the listing having been read at all — a gh that fails is logged and
-// returned as itself, and nothing may be concluded from the nothing it said.
-func (c CLI) OpenPRs(dir string) (map[string]PRStatus, error) {
-	out, err := c.runner.Run(dir, Binary,
-		"pr", "list", "--state", "open", "--json", prListFields, "--limit", prListLimit)
-	if err != nil {
-		logging.Error("could not list the open pull requests of a repository", "dir", dir, "error", err)
-		return nil, err
-	}
-	var list []struct {
-		URL              string   `json:"url"`
-		ReviewDecision   string   `json:"reviewDecision"`
-		Mergeable        string   `json:"mergeable"`
-		MergeStateStatus string   `json:"mergeStateStatus"`
-		BaseRefName      string   `json:"baseRefName"`
-		Rollup           []ghRoll `json:"statusCheckRollup"`
-	}
-	if err := json.Unmarshal([]byte(out), &list); err != nil {
-		logging.Error("could not read what gh said about a repository's pull requests", "dir", dir, "error", err)
-		return nil, fmt.Errorf("%s pr list printed no readable JSON: %w", Binary, err)
-	}
-	open := make(map[string]PRStatus, len(list))
-	for _, pr := range list {
-		checks, failing := checksVerdictOf(pr.Rollup)
-		open[NormaliseURL(pr.URL)] = PRStatus{
-			Approved:    pr.ReviewDecision == reviewApproved,
-			Mergeable:   pr.Mergeable == stateMergeable,
-			Conflicting: conflicting(pr.Mergeable, pr.MergeStateStatus),
-			Base:        strings.TrimSpace(pr.BaseRefName),
-			Checks:      checks,
-			Failing:     failing,
-		}
-	}
-	return open, nil
 }
 
 // conflicting reports whether GitHub positively said a pull request's branch

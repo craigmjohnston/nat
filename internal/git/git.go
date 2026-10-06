@@ -352,6 +352,18 @@ func (c CLI) ReflogBranches(dir string) ([]string, error) {
 	return branches, nil
 }
 
+// RemoteURL is the URL dir's origin remote is fetched from, as git config
+// holds it — https, ssh or scp-like — which names the GitHub repository an ad
+// hoc session's branches open their pull requests in.
+func (c CLI) RemoteURL(dir string) (string, error) {
+	out, err := c.runner.Run(dir, Binary, "remote", "get-url", "origin")
+	if err != nil {
+		logging.Action("could not read the repository's origin", "dir", dir, "error", err)
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // Fetch brings origin's refs up to date, so [CLI.Base] names a tip that is
 // current rather than whatever the checkout last happened to hear about. It is
 // what a worktree is cut after: a branch based on a stale origin/main starts

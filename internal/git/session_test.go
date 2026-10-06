@@ -91,3 +91,17 @@ func TestDiffWorkingTreeFromFailure(t *testing.T) {
 		t.Fatal("DiffWorkingTreeFrom: want the failure surfaced")
 	}
 }
+
+// TestRemoteURL reads origin's URL off git, trimmed, and passes a refusal —
+// no origin — back as itself.
+func TestRemoteURL(t *testing.T) {
+	runner := &fakeRunner{outs: []string{"git@github.com:craig/nat.git\n"}}
+	got, err := NewWithRunner(runner).RemoteURL("/repo")
+	if err != nil || got != "git@github.com:craig/nat.git" {
+		t.Errorf("RemoteURL = %q, %v, want origin's URL", got, err)
+	}
+	refused := &fakeRunner{errs: []error{&ExitError{Code: 2}}}
+	if _, err := NewWithRunner(refused).RemoteURL("/repo"); err == nil {
+		t.Error("RemoteURL with no origin: want the refusal")
+	}
+}

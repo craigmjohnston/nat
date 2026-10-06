@@ -15,18 +15,13 @@ import (
 	"github.com/craigmjohnston/nat/internal/logging"
 )
 
-// PRHeadLister is what [sessionStatus] and [sessionList] need of gh: every
-// pull request a branch has ever had as its head, open or not — narrower
-// than the rest of [GH], the way every other seam in this package is.
-type PRHeadLister interface {
-	ListPRsForHead(dir, branch string) ([]gh.HeadPR, error)
-}
-
 // sessionStatus reads every branch a session has been on — its worktree's
-// current branch, plus every branch its `git reflog show HEAD` records a
-// checkout to or from — and the pull requests each has opened. A session
-// that made three branches and three pull requests reports all three, not
-// only whichever branch happens to be checked out now.
+// current branch, plus the most recent its `git reflog show HEAD` records a
+// checkout to or from ([sessionBranches]) — and the pull requests each has
+// opened, as the last batched reading (pr-status's, [lastReading]) found
+// them: this command asks GitHub nothing itself. A session that made three
+// branches and three pull requests reports all three, not only whichever
+// branch happens to be checked out now.
 //
 // Once every pull request it knows about has merged — or, with --discard,
 // the session has no live tmux session left and none of them is still open
@@ -72,22 +67,21 @@ func sessionStatus(ctx context.Context, args []string, env Env) error {
 		return noSessionError(id)
 	}
 
-	gitCLI := env.NewGit()
-	branches := sessionBranches(gitCLI, sess)
+	branches := sessionBranches(env.NewGit(), sess)
 
-	ghCLI := env.NewGH()
+	kept := env.loadLastReading().Sessions[sess.ID]
 	statuses := make([]branchStatus, len(branches))
 	allRefreshed := true
 	for i, b := range branches {
-		prs, err := ghCLI.ListPRsForHead(sess.Dir, b)
-		if err != nil {
-			logging.Action("could not read a branch's pull requests; reporting no change",
-				"session", id, "branch", b, "err", err)
+		prs, read := kept[b]
+		if !read {
+			logging.Action("no reading of a branch's pull requests yet; reporting no change",
+				"session", id, "branch", b)
 			statuses[i] = branchStatus{Branch: b, Stale: true}
 			allRefreshed = false
 			continue
 		}
-		statuses[i] = branchStatus{Branch: b, PRs: prs}
+		statuses[i] = branchStatus{Branch: b, PRs: headPRsOf(prs)}
 	}
 
 	live, err := env.NewTmux().LiveSlices()
@@ -112,14 +106,20 @@ func sessionStatus(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// sessionBranches is every branch the session has been on: the worktree's
-// current one, first, and then every branch its reflog records a checkout
-// to or from, deduplicated.
+// maxSessionBranches is how many of a session's branches are read: the
+// current one and the most recent the reflog names. A long-lived session's
+// reflog runs to every branch it ever touched, and each is a selection in
+// every reading; the ones it worked on last are the ones still worth asking.
+const maxSessionBranches = 5
+
+// sessionBranches is the branches the session has been on, at most
+// [maxSessionBranches]: the worktree's current one, first, and then the most
+// recent its reflog records a checkout to or from, deduplicated.
 func sessionBranches(gitCLI GitCLI, sess domain.Session) []string {
 	seen := map[string]bool{}
 	var branches []string
 	add := func(b string) {
-		if b == "" || seen[b] {
+		if b == "" || seen[b] || len(branches) == maxSessionBranches {
 			return
 		}
 		seen[b] = true
@@ -141,6 +141,83 @@ func sessionBranches(gitCLI GitCLI, sess domain.Session) []string {
 		add(sess.Branch)
 	}
 	return branches
+}
+
+// sessionHeads is one session's branches as a reading asks about them: in
+// the repository its origin names, or — where that cannot be read — not at
+// all, every branch then reading stale.
+type sessionHeads struct {
+	id          string
+	owner, repo string
+	known       bool
+	branches    []string
+}
+
+// headsOf is the session's branches ([sessionBranches]) and the GitHub
+// repository its origin names.
+func headsOf(gitCLI GitCLI, sess domain.Session) sessionHeads {
+	h := sessionHeads{id: sess.ID, branches: sessionBranches(gitCLI, sess)}
+	if len(h.branches) == 0 {
+		return h
+	}
+	remote, err := gitCLI.RemoteURL(sess.Dir)
+	if err == nil {
+		h.owner, h.repo, h.known = gh.ParseRemote(remote)
+	}
+	if !h.known {
+		logging.Action("left a session's pull requests unread: no GitHub origin", "session", sess.ID)
+	}
+	return h
+}
+
+// heads is what the reading asks about this session.
+func (h sessionHeads) heads() []gh.HeadRef {
+	if !h.known {
+		return nil
+	}
+	out := make([]gh.HeadRef, len(h.branches))
+	for i, b := range h.branches {
+		out[i] = gh.HeadRef{Owner: h.owner, Repo: h.repo, Branch: b}
+	}
+	return out
+}
+
+// read is every branch the batch read, with its pull requests, for the
+// reading kept on disk.
+func (h sessionHeads) read(batch gh.Batch) map[string][]headPRJSON {
+	out := map[string][]headPRJSON{}
+	for _, ref := range h.heads() {
+		if prs, ok := batch.Heads[ref]; ok {
+			out[ref.Branch] = headPRsJSON(prs)
+		}
+	}
+	return out
+}
+
+// prs is every pull request the batch found for any of the session's
+// branches, stale where any branch went unread.
+func (h sessionHeads) prs(batch gh.Batch) ([]gh.HeadPR, bool) {
+	var prs []gh.HeadPR
+	stale := !h.known && len(h.branches) > 0
+	for _, ref := range h.heads() {
+		got, ok := batch.Heads[ref]
+		if !ok {
+			stale = true
+			continue
+		}
+		prs = append(prs, got...)
+	}
+	return prs, stale
+}
+
+// headPRsOf is pull requests kept on disk as the [gh.HeadPR]s they were read
+// as.
+func headPRsOf(kept []headPRJSON) []gh.HeadPR {
+	out := make([]gh.HeadPR, len(kept))
+	for i, pr := range kept {
+		out[i] = gh.HeadPR{Number: pr.Number, Title: pr.Title, URL: pr.URL, State: pr.State, MergedAt: pr.MergedAt}
+	}
+	return out
 }
 
 // branchStatus is one branch of a session's and the pull requests it has

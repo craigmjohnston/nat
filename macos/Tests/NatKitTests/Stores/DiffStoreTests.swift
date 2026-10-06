@@ -164,7 +164,6 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
         throw DiffTestError()
     }
 
-    func prStatus(projectID: String) async throws -> PRStatusDoc { throw DiffTestError() }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
         throw DiffTestError()
     }

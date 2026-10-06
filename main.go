@@ -121,6 +121,7 @@ func command(tokens config.TokenSource) error {
 		NewPlugins:   cli.DefaultNewPlugins,
 		Out:          stdout,
 		In:           stdin,
+		ReadingPath:  cli.DefaultReadingPath,
 		Nudge:        nudge.Touch,
 	})
 }

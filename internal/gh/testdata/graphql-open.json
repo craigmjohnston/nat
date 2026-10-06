@@ -1,0 +1,28 @@
+{
+  "data": {
+    "rateLimit": { "limit": 5000, "remaining": 4211, "resetAt": "2026-10-06T13:00:00Z" },
+    "r0": {
+      "p0": {
+        "number": 7,
+        "url": "https://github.com/craig/nat/pull/7",
+        "state": "OPEN",
+        "isDraft": false,
+        "mergedAt": null,
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "baseRefName": "main",
+        "lastCommit": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "FAILURE", "contexts": { "nodes": [
+          { "__typename": "CheckRun", "name": "checks / Gate", "status": "COMPLETED", "conclusion": "FAILURE",
+            "detailsUrl": "https://github.com/craig/nat/actions/runs/11/job/21",
+            "checkSuite": { "workflowRun": { "workflow": { "name": "Pull request" } } } },
+          { "__typename": "CheckRun", "name": "lint", "status": "IN_PROGRESS", "conclusion": null,
+            "detailsUrl": "https://github.com/craig/nat/actions/runs/12/job/22",
+            "checkSuite": { "workflowRun": null } },
+          { "__typename": "StatusContext", "context": "deploy/preview", "state": "SUCCESS",
+            "targetUrl": "https://ci.example/9" }
+        ] } } } } ] }
+      }
+    }
+  }
+}

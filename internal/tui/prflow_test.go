@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,22 @@ var _ PRViewer = (*fakePRViewer)(nil)
 func (f *fakePRViewer) ViewPR(dir, ref string) (gh.PR, error) {
 	f.made = append(f.made, viewCall{dir, ref})
 	return f.pr, f.err
+}
+
+// batchRead is the dir a reading through the batch is recorded under: it is
+// read in no repository at all.
+const batchRead = "(batch)"
+
+// ReadPRs answers the batched reading's detail with the same pull request —
+// what the screen's poll reads through — recorded under batchRead.
+func (f *fakePRViewer) ReadPRs(q gh.BatchQuery) (gh.Batch, error) {
+	ref := *q.Detail
+	f.made = append(f.made, viewCall{batchRead, fmt.Sprintf("%s/%s#%d", ref.Owner, ref.Repo, ref.Number)})
+	if f.err != nil {
+		return gh.Batch{}, f.err
+	}
+	pr := f.pr
+	return gh.Batch{Detail: &pr}, nil
 }
 
 // The slices the pull request tests work on: one Done with a pull request
@@ -327,6 +344,7 @@ func pollingApp(t *testing.T) (*App, *fakePRViewer) {
 	cmd := press(app, "V")
 	app.Update(first[prViewLoadedMsg](t, run(cmd)))
 	viewer.made = nil
+	app.prReader = viewer
 	return app, viewer
 }
 
@@ -374,6 +392,9 @@ func TestPRPollTickRereadsAndKeepsScroll(t *testing.T) {
 	if app.prPollBusy {
 		t.Error("read should be finished")
 	}
+	if len(viewer.made) != 1 || viewer.made[0] != (viewCall{batchRead, "craig/nat#12"}) {
+		t.Errorf("reads made %v, want the batch's detail, no view", viewer.made)
+	}
 	if !strings.Contains(app.body(), "Retitled") {
 		t.Error("the new reading should be on screen")
 	}
@@ -409,12 +430,12 @@ func TestPRPollPassedOver(t *testing.T) {
 	// A manual read in flight.
 	app.prview.Start("s", "n", "ref", "dir")
 	app.Update(prPollTickMsg{gen: gen})
-	// No viewer.
+	// No reader.
 	app.prview.SetPR(samplePR())
-	pv := app.prViewer
-	app.prViewer = nil
+	pr := app.prReader
+	app.prReader = nil
 	app.Update(prPollTickMsg{gen: gen})
-	app.prViewer = pv
+	app.prReader = pr
 	if len(viewer.made) != 0 || app.prPollBusy {
 		t.Errorf("reads made %v, want every tick passed over", viewer.made)
 	}
@@ -440,6 +461,24 @@ func TestPRPollStopsWithTheScreenAndGeneration(t *testing.T) {
 		t.Error("the timer should stop once the screen is left")
 	}
 }
+
+// readDetail refuses a URL that names no pull request, and a reading that
+// found none.
+func TestReadDetailRefusals(t *testing.T) {
+	if _, err := readDetail(&fakePRViewer{}, "https://github.test/craig/nat/issues/1"); err == nil ||
+		!strings.Contains(err.Error(), "names no pull request") {
+		t.Errorf("err = %v, want the URL refused", err)
+	}
+	if _, err := readDetail(noDetail{}, "https://github.test/craig/nat/pull/1"); err == nil ||
+		!strings.Contains(err.Error(), "GitHub has no pull request") {
+		t.Errorf("err = %v, want the missing detail refused", err)
+	}
+}
+
+// noDetail is a reading that found nothing.
+type noDetail struct{}
+
+func (noDetail) ReadPRs(gh.BatchQuery) (gh.Batch, error) { return gh.Batch{}, nil }
 
 func TestPRBackgroundResultDropped(t *testing.T) {
 	app, _ := pollingApp(t)

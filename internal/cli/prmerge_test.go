@@ -45,7 +45,9 @@ const alreadyMergedPRJSON = `{
   "url": "https://github.test/craig/nat/pull/7"
 }`
 
-// multiRunner answers ViewPR (pr view) and MergePR (pr merge) with different
+// multiRunner answers the batched reading (api graphql — viewOut as the one
+// pull request's node, its fields gh pr view's own names) and MergePR (pr
+// merge) with different
 // canned responses, the way one gh.CLI answers both calls a merge makes.
 type multiRunner struct {
 	viewOut   string
@@ -53,15 +55,22 @@ type multiRunner struct {
 	mergeErr  error
 	mergeDirs []string
 	mergeArgs [][]string
+	// calls is every gh invocation's first two arguments ("api graphql",
+	// "pr merge"), in order.
+	calls []string
 }
 
 func (r *multiRunner) Run(dir, name string, args ...string) (string, error) {
+	r.calls = append(r.calls, strings.Join(args[:2], " "))
 	if len(args) > 0 && args[0] == "pr" && len(args) > 1 && args[1] == "merge" {
 		r.mergeDirs = append(r.mergeDirs, dir)
 		r.mergeArgs = append(r.mergeArgs, args)
 		return "", r.mergeErr
 	}
-	return r.viewOut, r.viewErr
+	if r.viewErr != nil {
+		return "", r.viewErr
+	}
+	return `{"data":{"r0":{"p0":` + r.viewOut + `}}}`, nil
 }
 
 func TestPRMergeRefusesNoPullRequest(t *testing.T) {
@@ -102,6 +111,10 @@ func TestPRMergeMerges(t *testing.T) {
 	}
 	if len(runner.mergeDirs) != 1 || runner.mergeDirs[0] != "/tmp/nat" {
 		t.Errorf("merge dirs = %v, want the project's working dir once", runner.mergeDirs)
+	}
+	// One batched reading of the pull request, then the merge: no gh pr view.
+	if want := []string{"api graphql", "pr merge"}; strings.Join(runner.calls, ",") != strings.Join(want, ",") {
+		t.Errorf("gh calls = %v, want %v", runner.calls, want)
 	}
 	// The merge is what marks the slice Done: the work is on main now, and
 	// this is the write that says so.
@@ -276,6 +289,31 @@ func TestPRMergeReportsAMergeFailure(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "a branch protection rule blocks this merge") {
 		t.Errorf("err = %v, want gh's own reason", err)
+	}
+}
+
+// A pull request the reading could not find — a URL that names none, or one
+// GitHub could not resolve — is refused before any merge is tried.
+func TestPRMergeRefusesAnUnreadPullRequest(t *testing.T) {
+	for _, tt := range []struct{ url, out, want string }{
+		{"https://github.test/craig/nat/issues/7", "", "names no pull request"},
+		{"https://github.test/craig/nat/pull/7", "null", "GitHub has no pull request at"},
+	} {
+		api := &fakeAPI{pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithPR(testSliceID, "Write the UI", notion.SliceInProgress, tt.url)},
+		}}
+		env, _ := testEnv(testConfig(t), api)
+		runner := &multiRunner{viewOut: tt.out}
+		env.NewGH = func() GH { return gh.NewWithRunner(runner) }
+
+		err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+
+		if err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: err = %v, want %q", tt.url, err, tt.want)
+		}
+		if len(runner.mergeDirs) != 0 {
+			t.Errorf("%s: want gh never asked to merge", tt.url)
+		}
 	}
 }
 

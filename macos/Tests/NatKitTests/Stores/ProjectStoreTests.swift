@@ -95,7 +95,6 @@ final class MockNatClient: NatClientProtocol, @unchecked Sendable {
         throw TestError()
     }
 
-    func prStatus(projectID: String) async throws -> PRStatusDoc { throw TestError() }
     func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
         throw TestError()
     }

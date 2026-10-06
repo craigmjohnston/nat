@@ -178,6 +178,9 @@ final class DiffReview {
         await appModel.sliceActions.run(.approve, sliceID: sliceRef, select: { _ in }) {
             _ = try await store.approve(projectID: projectID, sliceRef: sliceRef)
             await appModel.refresh()
+            // The pull request exists now; what GitHub says about it — its
+            // mergeability, its checks — comes a few seconds after.
+            appModel.scheduleGitHubReading()
         }
     }
 }

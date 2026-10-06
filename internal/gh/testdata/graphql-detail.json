@@ -1,0 +1,45 @@
+{
+  "data": {
+    "rateLimit": { "limit": 5000, "remaining": 4207, "resetAt": "2026-10-06T13:00:00Z" },
+    "r0": {
+      "d": {
+        "number": 7,
+        "url": "https://github.com/craig/nat/pull/7",
+        "state": "OPEN",
+        "isDraft": true,
+        "mergedAt": null,
+        "reviewDecision": "REVIEW_REQUIRED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "BLOCKED",
+        "baseRefName": "main",
+        "lastCommit": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "SUCCESS", "contexts": { "nodes": [
+          { "__typename": "CheckRun", "name": "test", "status": "COMPLETED", "conclusion": "SUCCESS",
+            "detailsUrl": "https://github.com/craig/nat/actions/runs/13/job/23",
+            "checkSuite": { "workflowRun": { "workflow": { "name": "CI" } } } }
+        ] } } } } ] },
+        "title": "Read pull requests in one batch",
+        "body": "One document per tick.",
+        "author": { "login": "craigmjohnston" },
+        "headRefName": "slice/batch",
+        "headRefOid": "abc123",
+        "additions": 120,
+        "deletions": 40,
+        "changedFiles": 6,
+        "allCommits": { "totalCount": 3 },
+        "reviews": { "nodes": [
+          { "author": { "login": "reviewer" }, "state": "COMMENTED", "body": "Looks close.", "submittedAt": "2026-10-06T11:00:00Z" }
+        ] },
+        "comments": { "nodes": [
+          { "author": { "login": "craigmjohnston" }, "body": "Rebased.", "createdAt": "2026-10-06T11:30:00Z",
+            "url": "https://github.com/craig/nat/pull/7#issuecomment-1" },
+          { "author": null, "body": "From a deleted account.", "createdAt": "2026-10-06T11:31:00Z",
+            "url": "https://github.com/craig/nat/pull/7#issuecomment-2" }
+        ] },
+        "reviewRequests": { "nodes": [
+          { "requestedReviewer": { "__typename": "User", "login": "octocat" } },
+          { "requestedReviewer": { "__typename": "Team", "slug": "core", "name": "Core" } }
+        ] }
+      }
+    }
+  }
+}

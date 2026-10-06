@@ -107,22 +107,45 @@ type prBackgroundMsg struct {
 // is left or a later opening has taken over. While it runs the read is passed
 // over — but the timer kept — when the merge prompt is up, a read is already in
 // flight (manual or background), or the screen has nothing loaded to refresh.
+//
+// The re-read is the batched reading's detail ([gh.BatchQuery.Detail]) rather
+// than gh pr view: one point of GitHub's GraphQL budget for the pull request
+// in full, where a view spends one too and the screen re-reads every few
+// seconds while it is up. The opening and the refresh key still view it.
 func (a *App) prPolled(msg prPollTickMsg) tea.Cmd {
 	if msg.gen != a.prPollGen || a.screen != screenPR {
 		return nil
 	}
 	next := prPollTick(a.prPollGen)
-	if a.prPollBusy || a.prview.Prompting() || a.prview.Busy() || a.prViewer == nil || !a.prview.Loadable() {
+	if a.prPollBusy || a.prview.Prompting() || a.prview.Busy() || a.prReader == nil || !a.prview.Loadable() {
 		return next
 	}
-	_, ref, dir := a.prview.Target()
+	_, ref, _ := a.prview.Target()
 	a.prPollBusy = true
-	viewer := a.prViewer
+	reader := a.prReader
 	read := func() tea.Msg {
-		pr, err := viewer.ViewPR(dir, ref)
+		pr, err := readDetail(reader, ref)
 		return prBackgroundMsg{ref: ref, pr: pr, err: err}
 	}
 	return tea.Batch(next, read)
+}
+
+// readDetail is the pull request at url in full, off one batched reading of
+// it alone. A URL that names no pull request, and one the reading did not
+// find, are each a failed read.
+func readDetail(reader PRReader, url string) (gh.PR, error) {
+	ref, ok := gh.ParsePRURL(url)
+	if !ok {
+		return gh.PR{}, fmt.Errorf("%s names no pull request", url)
+	}
+	batch, err := reader.ReadPRs(gh.BatchQuery{Detail: &ref})
+	if err != nil {
+		return gh.PR{}, err
+	}
+	if batch.Detail == nil {
+		return gh.PR{}, fmt.Errorf("GitHub has no pull request at %s", url)
+	}
+	return *batch.Detail, nil
 }
 
 // prBackgroundLoaded lands a timer-driven reading. A failure is logged and the

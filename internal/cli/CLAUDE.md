@@ -314,8 +314,10 @@ A run-only URL or another service's status gets nothing extra.
 `slice-checks-rerun <slice> (--all | --failed | --check NAME...)` and
 `slice-checks-cancel <slice> [--check NAME...]` (`slicechecksrerun.go`) are
 the one way gnat or an agent re-runs or cancels CI. Both: any status with a PR
-recorded, the PR re-read with `ViewPR` and refused unless `OPEN` (a failed
-read refuses — the cost of being wrong is CI spent on a finished review); the
+recorded, the PR re-read through one batched reading of it alone
+(`readOnePR` — its state and checks' run URLs, no `gh pr view`) and refused
+unless `OPEN` (a failed read, or a PR GitHub could not resolve, refuses — the
+cost of being wrong is CI spent on a finished review); the
 checks grouped into Actions runs by owner/repo/run (`loadCITarget`), so a run
 is one gh call whatever number of its checks; a check with no run behind it is
 `skipped` (`--check` naming one is refused, as is a name that is no check,
@@ -324,7 +326,8 @@ listing the names). `rerun`: exactly one mode; `--all` re-runs every run whole,
 each named check's job (`RerunJob`; a run-only URL re-runs the run whole). A
 run still going (any of its checks pending) is **cancelled first, every such
 run before any wait**, then polled (`RunStatus`) to `completed` —
-`rerunPolls`×`rerunPollEvery`, about two minutes, through `checksSleep`; a
+`rerunPolls`×`rerunPollEvery`, about two minutes, through `checksSleep` —
+REST (`gh run view --json status`), a budget apart from GraphQL's; a
 timeout is the error, says what was cancelled and that nothing was re-run —
 and then re-run **whole**, whatever the mode: a cancel stops every job of the
 run, and GitHub's docs don't say "failed jobs" picks cancelled ones up.
@@ -339,21 +342,51 @@ success only.
 `run` (that run's id, omitted otherwise) — how gnat tells which checks stop
 together.
 
+`session-list` and `session-status` ask GitHub nothing: each of a session's
+branches (its five most recent, `sessionBranches`) takes its pull requests
+from the last `pr-status` reading kept on disk (`lastReading.Sessions`), and
+a branch that reading has not read is stale — `prs_stale`, and never a
+session ended on it.
+
 PR actions: `slice-approve` (`actions.OpenPR` + `actions.RecordPR`, the
 approve key's two-step write, headless), `pr-comment` (`gh pr comment
---body-file -`, `--body` or stdin), `pr-reviewers` (`--add`/`--remove`
-run `gh pr edit` first, then the PR is read back for `requested`;
-`candidates` are the repo's collaborators bar the author and the requested,
-and a failed collaborator listing is `candidates_error`, never "nobody"),
-`pr-merge` (re-reads the PR, applies
+--body-file -`, `--body` or stdin), `pr-reviewers` (a read is `ViewPR` for
+`requested` and `candidates` — the repo's collaborators bar the author and
+the requested, a failed collaborator listing `candidates_error`, never
+"nobody"; `--add`/`--remove` run `gh pr edit` and answer with the edit's own
+result, `{pr, added, removed}`, reading nothing back),
+`pr-merge` (re-reads the PR through one batched reading of it alone —
+`readOnePR`, 1 point, no `gh pr view` — applies
 `actions.MergeRefusal` before ever calling `gh pr merge`, marks Done on
 success — the merge landed regardless of whether this last write does, so
 its own failure says so rather than pretending the merge never happened —
 then `actions.RemoveSliceWorktree`),
-`pr-status` (`prReadings` — the headless mirror of the board's
-`refreshPRStates`; a `SettleMerged` Done removes that slice's worktree, and
-`landed` — Done, no PR or one a read listing didn't find open — goes to
-`actions.SweepLanded` with tmux's live slices; neither changes the output;
+`pr-status` (`--project` **repeats**: one batched reading for every project
+named — `openProjectReading` per project, `readBatch` once, each PR asked
+about once however many projects name it — through `PRBatchReader.ReadPRs`;
+see `internal/gh/CLAUDE.md` for the document. One project prints as it
+always did; several key each project's doc by ID under `projects`, with
+`rate_limit` and `detail` once at the top. Worth asking:
+`actions.PRsWorthAsking` — every In progress slice with a PR, a Done one only
+while its worktree exists (`actions.ListedOnce`, so deciding and sweeping
+list each repository once); a Done slice with no worktree, and a PR URL that
+names no pull request, read `unread`. Each not-ended ad hoc session rides
+the reading too (`sessionHeads`: its five most recent branches —
+`maxSessionBranches` — in the repository its origin names, `git remote
+get-url origin`; one with no GitHub origin is asked nothing and reads
+stale), printed under `sessions` `{id, prs, prs_stale}`. `--detail <PR URL>`
+adds that pull request in full under `detail`, `pr-view --json`'s shape.
+Every reading carries `rate_limit {limit, remaining, reset_at}` (markdown:
+a `GitHub budget:` line) — absent where nothing was asked, since then no gh
+runs at all. What the reading found that a later command wants is kept in
+`<state dir>/github-reading.json` (`lastReading`, `Env.ReadingPath`; nil in
+tests keeps none): each PR's base by normalised URL, each session's
+branches' PRs — merged over the last, written atomically.
+`prReadings` — the headless mirror of the board's `refreshPRStates`; an In
+progress slice reading MERGED is `SettleMerged` off the reading itself (no
+view) and loses its worktree, and `landed` — Done, no PR or one the reading
+found merged or closed — goes to `actions.SweepLanded` with tmux's live
+slices; neither changes the output;
 writes `actions.ReopenUnmerged` for any Done-at-approve
 legacy row whose PR still reads open — see root CLAUDE.md's Domain rules on
 `StateOf`; `--json` carries `checks` `{verdict, failing: [{name, url}]}` per
@@ -361,14 +394,14 @@ PR the listing read, and the red ones go to `actions.NoticeFailingChecks`;
 a tmux that can't list live sessions concludes nothing; every entry carries
 `conflicting` — true only where gh positively said so, `mergeable`
 CONFLICTING or merge state DIRTY (`gh.PRStatus.Conflicting`, the merge
-refusal's words), false for UNKNOWN and for a PR the listing never read —
+refusal's words), false for UNKNOWN and for a PR the reading never read —
 and `base` where it read one; not a readiness word, and nothing nudges on
 it. `branches` (`branchReadings`) is every hand-back awaiting review —
 In progress, `Branch` set, no PR — tested by `git.CLI.ConflictsWithBase`
 (a fetch each), `{slice_id, name, branch, base, conflicting}`, `base` being
 `CLI.Base`'s ref (`origin/main`); an unknown reading is left out, never
 conflicting, and the markdown lists only conflicted ones under "Branches
-awaiting review". gnat holds this reading per project, every open one), `slice-status` (reads one page by ID directly, `--project` only
+awaiting review". gnat takes one reading of every open project a tick), `slice-status` (reads one page by ID directly, `--project` only
 for credentials — no plan is read at all, so it is the one read that can
 never show a phantom state from a stale cached plan; built for the macOS
 app's session reaper, see `SessionReaping.swift`).
@@ -497,10 +530,11 @@ sharing its refusals: `--commits` (history since the merge base, no diff)
 and `--commit <sha>` (one commit against its own parent) — mutually
 exclusive, and `--commit`'s JSON reuses the whole-diff shape with `sha^` as
 the base. The base is **not always the repo default**: where the slice has
-a recorded PR, `gh.ViewPR`'s `BaseRefName` is used instead (a PR opened
-against anything but the default branch is measured against what it would
-actually merge into) — a `gh` that cannot answer is logged and the command
-falls back to the default rather than failing the diff over it.
+a recorded PR, the base the last `pr-status` reading kept for it
+(`lastReading.Bases`) is used instead (a PR opened against anything but the
+default branch is measured against what it would actually merge into) — no
+`gh` at all, since this runs on every Changes tab load and tally refresh; a
+PR no reading has reached yet diffs against the default.
 
 A slice with no `Branch` that is In progress and whose task log holds a
 `Handed back` — resumed, or sent back — is read on `actions.AgentBranch`
