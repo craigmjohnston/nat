@@ -27,13 +27,15 @@ type PRCreator interface {
 // written before there was a flag for one — leaves both empty and gh fills the
 // pull request from the commits, as it always did. A read that fails stops
 // the approve rather than falling back, since a pull request opened with the
-// wrong title is not one this can open again.
+// wrong title is not one this can open again. Claude Code's attribution footer
+// is stripped first ([StripAgentAttribution]), so a hand-back filed before
+// complete-slice stripped it still opens a clean pull request.
 func OpenPR(ctx context.Context, st Store, prs PRCreator, s domain.Slice, dir string) (string, error) {
 	description, err := st.PRDescription(ctx, s.ID)
 	if err != nil {
 		return "", fmt.Errorf("read the pull request description: %w", err)
 	}
-	title, body := PRTitleBody(description)
+	title, body := PRTitleBody(StripAgentAttribution(description))
 	return prs.CreatePR(dir, s.Branch, title, body)
 }
 

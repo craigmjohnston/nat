@@ -948,6 +948,7 @@ func TestSessionDiffRefusesWithNoRepository(t *testing.T) {
 }
 
 func (f *fakeSessionGH) EditReviewers(dir, ref string, add, remove []string) error { return nil }
+func (f *fakeSessionGH) EditPRBody(dir, ref, body string) error                    { return nil }
 func (f *fakeSessionGH) Collaborators(dir string) ([]string, error)                { return nil, nil }
 
 func (f *fakeSessionGH) FailedLog(dir string, ref gh.ActionsRef) (string, error) { return "", nil }

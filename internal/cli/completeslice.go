@@ -70,6 +70,9 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	// Claude Code's attribution footer is no part of the pull request, so it
+	// is never filed: the task log card and the pull request both go without.
+	prDescription = actions.StripAgentAttribution(prDescription)
 	in := env.In
 	if *description == "-" {
 		in = nil

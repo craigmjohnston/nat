@@ -6,10 +6,16 @@ import NatKit
 /// byline — an avatar circle with the author's initials, their name, what
 /// they did in saying it, coloured by its tone, since a review's verdict is
 /// the entry's whole point and an avatar cannot carry it, and when — over
-/// the markdown they wrote.
+/// the markdown they wrote. With `reply`, the byline ends in a Reply button
+/// under the pointer, and an open reply's composer sits in the box under the
+/// body.
 struct PRConversationEntryView: View {
     let entry: ConvoEntry
+    /// The entry's reply, nil where it takes none.
+    var reply: PRReply?
     @Environment(\.clock) private var clock
+    @Environment(\.hoverForced) private var hoverForced
+    @State private var hovering = false
 
     static let avatarSize: CGFloat = 20
 
@@ -36,16 +42,32 @@ struct PRConversationEntryView: View {
                 Text(ago(clock().timeIntervalSince(entry.at)))
                     .font(.system(size: Typo.caption, weight: .regular))
                     .ink(.tertiary)
+
+                if let reply {
+                    PRHoverIconButton(
+                        systemImage: "arrowshape.turn.up.left", help: "Reply to \(entry.author)",
+                        shown: hovering || hoverForced || reply.isOpen, action: reply.onOpen)
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, PRConversationMetrics.entryHorizontalPadding)
+            .padding(.vertical, PRConversationMetrics.bylineVerticalPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .surface(.chrome)
 
             if !entry.body.isEmpty {
                 MarkdownView(text: entry.body, size: PRConversationMetrics.textSize, ink: .primary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, PRConversationMetrics.entryHorizontalPadding)
+                    .padding(.vertical, PRConversationMetrics.bodyVerticalPadding)
+                    .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+            }
+
+            if let reply, reply.isOpen {
+                PRComposerView(
+                    placeholder: "Reply to \(entry.author)\u{2026}",
+                    text: reply.text, isSending: reply.isSending, error: reply.error,
+                    onSend: reply.onSend, onCancel: reply.onCancel)
+                    .padding(.horizontal, PRConversationMetrics.entryHorizontalPadding)
+                    .padding(.vertical, PRConversationMetrics.bodyVerticalPadding)
                     .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
             }
         }
@@ -54,6 +76,44 @@ struct PRConversationEntryView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
         }
+        .onHover { hovering = $0 }
+    }
+}
+
+/// An entry's reply as its pane holds it: whether its composer is the one
+/// open, the draft, and what Reply, Cancel and send do.
+struct PRReply {
+    let isOpen: Bool
+    let text: Binding<String>
+    let isSending: Bool
+    let error: String?
+    let onOpen: () -> Void
+    let onCancel: () -> Void
+    let onSend: () -> Void
+}
+
+/// The PR view's hover-only icon button — an entry's Reply, the
+/// description's Edit — at the PR section's icon-button size (the checks'
+/// controls), hidden in place while not shown so nothing beside it shifts.
+struct PRHoverIconButton: View {
+    let systemImage: String
+    let help: String
+    let shown: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10, weight: .semibold))
+                .ink(.secondary)
+                .frame(width: CheckControlSlot<EmptyView>.side, height: CheckControlSlot<EmptyView>.side)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(GnatIconButtonStyle())
+        .opacity(shown ? 1 : 0)
+        .allowsHitTesting(shown)
+        .accessibilityHidden(!shown)
+        .help(help)
     }
 }
 
@@ -88,13 +148,22 @@ enum PRComposerMetrics {
 /// chrome (a rounded field with a toolbar row under it, the send button in
 /// accent) but functional: it posts through `pr-comment` rather than sitting
 /// there as decoration. It sits at the end of the conversation, inside its
-/// scroll; see the call site for why it is not a threaded reply.
+/// scroll, and again inside an entry for a reply and in place of the
+/// description while it is edited.
 struct PRComposerView: View {
     let placeholder: String
     @Binding var text: String
     let isSending: Bool
     let error: String?
     let onSend: () -> Void
+    /// A Cancel beside the send button, where the box can be closed — a
+    /// reply's, the description editor's. Nil: none.
+    var onCancel: (() -> Void)?
+    /// The send button's word, drawn in place of the paper plane — the
+    /// description editor's Save. Nil: the plane.
+    var sendTitle: String?
+    /// How tall the editor grows before it scrolls itself.
+    var editorMaxHeight: CGFloat = PRComposerMetrics.editorMaxHeight
 
     private var canSend: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
@@ -118,13 +187,16 @@ struct PRComposerView: View {
                 // clamped to the editor's floor and ceiling, and the editor
                 // is laid over exactly that.
                 Text(sizingText)
-                    .font(Typo.mono(size: Typo.subhead))
+                    // The editor's own font: a smaller one measures short, and
+                    // a description many lines long scrolls its first lines
+                    // out of the box.
+                    .font(Typo.mono(size: Typo.input))
                     .padding(.horizontal, 5)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(
                         minHeight: PRComposerMetrics.editorMinHeight,
-                        maxHeight: PRComposerMetrics.editorMaxHeight,
+                        maxHeight: editorMaxHeight,
                         alignment: .top
                     )
                     .hidden()
@@ -136,37 +208,25 @@ struct PRComposerView: View {
                 // icons here; neither has anything real to do — gh has no API
                 // for comment attachments — and a control that does nothing is
                 // worse than the mock losing two glyphs, so only the send
-                // button is drawn.
+                // button is drawn (and Cancel, where the box closes).
                 HStack(spacing: 8) {
                     Spacer()
 
-                    Button(action: onSend) {
-                        Group {
-                            if isSending {
-                                // Sized down to the slot rather than laid out
-                                // at the control's own size, which
-                                // `scaleEffect` draws smaller without ever
-                                // shrinking: an unframed spinner here made the
-                                // send button — and the composer under it —
-                                // grow while a comment was posting.
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .scaleEffect(0.55)
-                                    .frame(width: 10, height: 10)
-                            } else {
-                                Image(systemName: "paperplane.fill")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .ink(.onAccent)
-                            }
-                        }
-                        .frame(width: 24, height: PRComposerMetrics.sendRowHeight)
-                        .background(canSend ? DesignTokens.accent : DesignTokens.accentMuted(on: .field))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .hoverBrightens()
+                    if let onCancel {
+                        Button("Cancel", action: onCancel)
+                            .buttonStyle(GnatButtonStyle())
+                            .disabled(isSending)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!canSend)
-                    .help("Send")
+
+                    if let sendTitle {
+                        Button(action: onSend) {
+                            HeaderActionLabel(title: sendTitle, isBusy: isSending)
+                        }
+                        .buttonStyle(GnatButtonStyle(primary: true))
+                        .disabled(!canSend)
+                    } else {
+                        sendButton
+                    }
                 }
                 .padding(.horizontal, 8)
                 .padding(.top, PRComposerMetrics.sendRowTopPadding)
@@ -181,6 +241,37 @@ struct PRComposerView: View {
                     .lineLimit(2)
             }
         }
+    }
+
+    /// The paper plane: the accent square that posts a comment.
+    private var sendButton: some View {
+        Button(action: onSend) {
+            Group {
+                if isSending {
+                    // Sized down to the slot rather than laid out
+                    // at the control's own size, which
+                    // `scaleEffect` draws smaller without ever
+                    // shrinking: an unframed spinner here made the
+                    // send button — and the composer under it —
+                    // grow while a comment was posting.
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.55)
+                        .frame(width: 10, height: 10)
+                } else {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .ink(.onAccent)
+                }
+            }
+            .frame(width: 24, height: PRComposerMetrics.sendRowHeight)
+            .background(canSend ? DesignTokens.accent : DesignTokens.accentMuted(on: .field))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .hoverBrightens()
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSend)
+        .help("Send")
     }
 
     /// The editor itself, with the placeholder under it while it is empty.
