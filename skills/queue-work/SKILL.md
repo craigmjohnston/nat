@@ -190,7 +190,9 @@ briefs.
    order edits, moves, removals, then everything the document creates — so a
    document may remove a slice and create its replacement under the same
    title, and a new slice's `depends_on` naming that title means the
-   replacement. A milestone a removal empties stays. A task-source project
+   replacement. A milestone the moves and removals leave with no slice is
+   removed once the whole document has applied, unless a slice the document
+   creates is filed under it. A task-source project
    refuses `move`.
 
    No two slices may answer to one title. A created slice whose title (matched
