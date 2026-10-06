@@ -587,7 +587,7 @@ struct PRConversationPane: View {
                     Text("No comments yet.").font(.system(size: PRConversationMetrics.textSize)).ink(.secondary)
                 }
                 ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
-                    PRConversationEntryView(entry: entry, reply: reply(to: entry))
+                    PRConversationEntryView(entry: entry, reply: store.isSlicePR ? reply(to: entry) : nil)
                 }
                 PRComposerView(
                     placeholder: "Comment on the pull request\u{2026}",
@@ -608,12 +608,8 @@ struct PRConversationPane: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 6) {
                 NavHeading(text: "Description")
-                PRHoverIconButton(
-                    systemImage: "pencil", help: "Edit the description",
-                    shown: descriptionDraft == nil && (hoveringDescription || hoverForced)
-                ) {
-                    descriptionError = nil
-                    descriptionDraft = described
+                if store.isSlicePR {
+                    editButton(described)
                 }
                 Spacer(minLength: 0)
             }
@@ -639,6 +635,17 @@ struct PRConversationPane: View {
         }
         .contentShape(Rectangle())
         .onHover { hoveringDescription = $0 }
+    }
+
+    /// The Description heading's Edit, under the pointer.
+    private func editButton(_ described: String) -> some View {
+        PRHoverIconButton(
+            systemImage: "pencil", help: "Edit the description",
+            shown: descriptionDraft == nil && (hoveringDescription || hoverForced)
+        ) {
+            descriptionError = nil
+            descriptionDraft = described
+        }
     }
 
     /// An entry's reply: open while it is `replyingTo`, its draft its own.

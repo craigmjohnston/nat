@@ -300,6 +300,8 @@ reply — `@<author>`, the parent quoted, the reply) through
 `PRStore.comment`. The Description heading's hover-only Edit swaps the
 markdown for the composer (Save, Cancel) and saves through
 `PRStore.editDescription` → `nat pr-edit`, then a `pr-view` of its own.
+Reply and Edit are a slice's pull request's alone (`PRStore.isSlicePR`):
+`pr-comment`/`pr-edit` name a slice, which an ad hoc session's has not.
 Comments, replies and edits are offered whatever the pull request's state;
 on a merged or closed one, which the batched reading no longer reads,
 `comment` re-reads with a `pr-view` instead of a settle read. Stories:

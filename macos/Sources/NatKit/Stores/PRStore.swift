@@ -221,6 +221,11 @@ public final class PRStore {
         }
     }
 
+    /// Whether the pull request on show is a slice's — what `pr-comment` and
+    /// `pr-edit` name it by. An ad hoc session's has no slice, so the PR view
+    /// offers no Reply or Edit on one.
+    public var isSlicePR: Bool { sliceRef != nil && sessionID == nil }
+
     /// Who is asked to review the pull request on show and who else could
     /// be — `nat pr-reviewers`, a read for the reviewer picker. Nil with
     /// nothing fetched, or for an ad hoc session's pull request, which has

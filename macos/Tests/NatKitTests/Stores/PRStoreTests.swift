@@ -755,6 +755,18 @@ final class PRStoreTests: XCTestCase {
 
     // MARK: - Edit description
 
+    /// Only a slice's pull request is one pr-comment and pr-edit can name.
+    @MainActor
+    func testIsSlicePROnlyForASlicesPullRequest() async {
+        let client = MockPRClient(response: .success(openPR()))
+        let store = PRStore(client: client)
+        XCTAssertFalse(store.isSlicePR, "nothing fetched")
+        await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
+        XCTAssertTrue(store.isSlicePR)
+        await store.fetch(projectID: "proj-1", sliceRef: "https://x/pull/7", sessionID: "s1")
+        XCTAssertFalse(store.isSlicePR, "a session's pull request has no slice")
+    }
+
     @MainActor
     func testEditDescriptionPostsThenRereads() async throws {
         let runner = FakeRunner(fixture: .prViewFull)
