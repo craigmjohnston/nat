@@ -111,12 +111,22 @@ project with no Branch column holds a PR and no branch legitimately and stays
 `pr`), else a PR → `pr`, else handed back → `review`, else `working`.
 
 **Resuming: Send back to agent.** A handed-back slice — in review, or at its
-open pull request — can go back to its agent for more: the action bar's
-secondary **Send back to agent** (`NavigatorModel.showsSendBack`, enabled
-with a live agent or where `LaunchPlan` can launch one), which opens
-`SendBackEditor` over the bar (drawn in the column, not a popover, so the
-gallery renders it): what to change, prefilled with the PR's own trouble
-where it has any (`sendBackReason`: failing checks, a conflict). Sending is
+open pull request — can go back to its agent for more, two ways; the action
+bar never carries Send back itself. The slice row menu's **Send back to
+agent…** (`NavigatorModel.showsSendBack`, enabled with a live agent or where
+`LaunchPlan` can launch one) selects the slice (`AppModel.requestSendBack`,
+taken once by its navigator, `takeSendBackRequest`) and opens
+`SendBackEditor` over the bar, empty (drawn in the column, not a popover, so
+the gallery renders it). A PR's own trouble is the bar's **Fix**
+(`BarFix`: failing checks awaiting a send-back — no live agent, nat having
+sent them to one already — and any conflict, live agent or not): "Fix
+failing checks", "Resolve conflicts" or "Fix checks and conflicts" takes
+Merge's (or, for a branch conflict in review, Approve's) place as the
+primary and sends at once, `sendBackReason` its note, no editor. The action
+it replaced sits behind a chevron (`NavigatorBarButton.alternatives`, a
+`HeaderSplitButton`) only where it could still go — Approve while
+approvable, Merge never with a conflict and only while `canMerge` (which a
+failing check already refuses). Sending is
 `AppModel.sendBack`, the one-shot `.sendBack` (no stage advance; the view puts
 the terminal up once it has gone): **the record first** — `nat slice-resume
 --note -` (stamped `Resumed`, then the Branch cleared) — then a live agent is
@@ -145,8 +155,8 @@ asks for the hand-back and runs `slice-rework` only where the slice is
 handed back. Stories: `window-resumed`, `window-resumed-notices`,
 `window-task-log-resumed`, `window-resumed-pr-open` (sent back from its
 open PR mid-story: Task and the terminal up, the PR section folded and kept),
-`window-pr-send-back`,
-`window-pr-send-back-prefilled`, `action-bar-send-back-and-merge`.
+`window-pr-send-back`, `window-review-send-back`, `action-bar-merge-no-agent`,
+`action-bar-split-menu`.
 
 **New and Updated.** One rule, one store: `SeenMemory` (UserDefaults
 `seenSnapshots`, per project, slice and `SeenSection`; `.inMemory()` for tests
@@ -210,7 +220,7 @@ Sent back). A conflict is never a callout in a section body: it is a
 **Conflict** badge in the header (`NavSectionView.conflict`: a small danger
 `Chip` with `MergeIcon` before `NavigatorModel.conflictLabel` — the sidebar
 mark's glyph), its tooltip the notice's text, pointing at Send back to agent
-or naming the live agent (both prefill Send back's note). The PR header's is
+or naming the live agent (the bar's Resolve conflicts sends it either way). The PR header's is
 `conflictNotice` (the reading's conflict, unless a loaded `PRDetail` of that
 PR decides — `conflict(reading:detail:prURL:)`; drawn before `pr-view`
 lands), "merge <base> in". `projectAttention` counts a red pr slice once, and only
@@ -220,9 +230,9 @@ the branch; absent where it could not test) gives
 `PRReading.branchConflicts`, merged into `marks`; `prMarks` draws a slice
 `inReview` with its conflict alone, and the Changes header wears the badge,
 its tooltip `branchConflictNotice`'s — "rebase it on <base>"
-(`ConflictNotice.hasPullRequest` false) — and Send back's prefill says the
+(`ConflictNotice.hasPullRequest` false) — and Resolve conflicts' note says the
 same; a launch then carries nat's rebase passage. Stories:
-`window-review-conflicting`, `window-review-conflicting-send-back`,
+`window-review-conflicting`,
 `sidebar-checks-failing`,
 `sidebar-pr-marks`, `sidebar-pr-marks-passing`, `window-pr-checks-passing`,
 `sidebar-pr-marks-running`, `window-pr-checks-running`,
@@ -431,12 +441,15 @@ navigator (`TitlebarBand`) carries the breadcrumb, its tabs and a
 handed-back slice's run button, and nothing else. The live agent's model, effort and context — a slice's, a session's,
 the planning agent's; none for a container — are the status bar's trailing
 item (`AgentModelHeading`, in the bar's own sans, a divider before the context clause, the long form as a tooltip). A
-slice's major actions — Send back to agent, Launch agent / Relaunch agent,
-Approve changes (Approve with comments while comments are pending on the
-diff, opening the same confirmation), Merge PR — live only in the **action
+slice's major actions — Launch agent / Relaunch agent, Approve changes
+(Approve with comments while comments are pending on the diff, opening the
+same confirmation), Merge PR, or the Fix of a PR's trouble in Approve's or
+Merge's place — live only in the **action
 bar** pinned to the slice navigator's foot (`NavigatorActionBar`, a
 `NavigatorColumn` footer: header-band height, chrome, a top rule, no title,
-fold or body; Send back's editor opens over it). `NavigatorModel.bar` decides it: each action only while
+fold or body; Send back's editor opens over it). A split button there or
+in the titlebar is a `HeaderSplitButton`: its divider full height and drawn
+over the chevron's hover wash, as the tabs draw their lines. `NavigatorModel.bar` decides it: each action only while
 relevant (absent, not greyed, otherwise; disabled where relevant but not
 pressable), the primary trailing; with none relevant, the latest live
 section's primary (Merge PR, else Approve changes, else Launch agent)

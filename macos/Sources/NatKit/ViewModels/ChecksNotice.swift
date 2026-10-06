@@ -5,9 +5,9 @@ import Foundation
 /// the failure already sent to it.
 public struct ChecksNotice: Equatable, Sendable {
     public enum Action: Equatable, Sendable {
-        /// No agent is live, and one can be launched: the action bar's Send
-        /// back to agent, prefilled with the failure, resumes the slice and
-        /// launches one.
+        /// No agent is live, and one can be launched: the action bar's Fix
+        /// failing checks (`BarFix`) sends the failure back — resumes the
+        /// slice and launches one.
         case sendBack
         /// The failure was sent to the live agent (the `Sent back` nat files
         /// with its nudge is the latest thing on the record): nothing to press.

@@ -183,10 +183,11 @@ public func conflict(reading: BranchConflict?, detail: PRDetail?, prURL: String)
 /// or ask the live one.
 public struct ConflictNotice: Equatable, Sendable {
     public enum Action: Equatable, Sendable {
-        /// No agent is live, and one can be launched: the action bar's Send
-        /// back to agent resumes the slice and launches one.
+        /// No agent is live, and one can be launched: the action bar's
+        /// Resolve conflicts (`BarFix`) resumes the slice and launches one.
         case sendBack
-        /// An agent is live on the slice: it is the one to resolve them.
+        /// An agent is live on the slice: it is the one to resolve them —
+        /// the bar's Resolve conflicts tells it.
         case liveAgent
         /// Neither: no agent, and no launch open.
         case none

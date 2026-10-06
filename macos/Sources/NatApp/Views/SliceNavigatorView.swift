@@ -8,9 +8,10 @@ import NatKit
 /// (`open`, `main`) — the design's own pairing: a header puts its section's
 /// view up (the Thread the terminal, Changes the diff, PR its conversation),
 /// its chevron only folds. Under them all, pinned to the column's foot, the
-/// action bar holds the slice's major actions — Send back to agent, Launch,
-/// Approve, Merge — as `NavigatorModel.bar` decides them; the headers keep
-/// only secondaries. A resumed slice keeps Changes, Visual changes and PR,
+/// action bar holds the slice's major actions — Launch, Approve, Merge, or
+/// the Fix of a pull request's trouble in Approve's or Merge's place — as
+/// `NavigatorModel.bar` decides them; the headers keep only secondaries. Send
+/// back to agent's editor opens over the bar from the slice row's menu. A resumed slice keeps Changes, Visual changes and PR,
 /// each header wearing Reworking (`NavigatorModel.showsReworking`).
 struct SliceNavigatorView: View {
     @Bindable var appModel: AppModel
@@ -30,6 +31,8 @@ struct SliceNavigatorView: View {
     @State private var showMergeConfirm = false
     /// Send back to agent's note while its editor is open; nil while shut.
     @State private var sendBackDraft: String?
+    /// Whether the bar's split button has its menu open.
+    @State private var barMenuOpen = false
     @Environment(\.sendBackOpen) private var sendBackOpen
 
     private var projectID: String { appModel.projectStore?.projectID ?? "" }
@@ -155,7 +158,9 @@ struct SliceNavigatorView: View {
         }
         .task(id: slice.id) {
             resetLaunchForm()
-            sendBackDraft = sendBackOpen ? sendBackReason(checks: notice, conflict: conflictNotice ?? branchConflictNotice) : nil
+            // A row menu's request opens the editor empty, as a story can.
+            sendBackDraft = appModel.takeSendBackRequest(sliceID: slice.id) || sendBackOpen ? "" : nil
+            barMenuOpen = false
             agentOptions = await AgentOptionsCache.shared.resolve()
         }
         .task(id: "\(slice.id)|\(slice.pr)") {
@@ -164,6 +169,10 @@ struct SliceNavigatorView: View {
             prStore.startPolling()
         }
         .onDisappear { prStore.stopPolling() }
+        // The row menu asking for this slice, already selected.
+        .onChange(of: appModel.sendBackRequest) {
+            if appModel.takeSendBackRequest(sliceID: slice.id) { sendBackDraft = "" }
+        }
         // An open PR section — or its conversation up — is the pull request
         // seen, as it is read now.
         .onChange(of: "\(open.contains(.pr) || main == .pr)|\(prStore.loadState.pr?.headRefOid ?? "")", initial: true) {
@@ -288,15 +297,20 @@ struct SliceNavigatorView: View {
         return nav.bar(
             launchTitle: launchMode(nav).actionTitle, pendingComments: diffStore.pendingCommentCount,
             canApprove: canApprove, approveHelp: "Approving is only available while viewing All commits",
-            canMerge: canMerge, prOpen: state != PRLifecycleState.merged && state != PRLifecycleState.closed)
+            canMerge: canMerge, prOpen: state != PRLifecycleState.merged && state != PRLifecycleState.closed,
+            fix: fix)
     }
+
+    /// The trouble the bar's Fix sends back: the pull request's (or, in
+    /// review, the branch's) own, as its notices read it.
+    private var fix: BarFix? { BarFix(checks: notice, conflict: conflictNotice ?? branchConflictNotice) }
 
     private func kind(_ action: NavigatorBarAction) -> SliceActionKind {
         switch action {
         case .launch: return .launch
         case .approve: return .approve
         case .merge: return .merge
-        case .sendBack: return .sendBack
+        case .fix: return .sendBack
         }
     }
 
@@ -306,10 +320,11 @@ struct SliceNavigatorView: View {
     }
 
     /// The bar at the column's foot: each action the slice has now, the
-    /// primary trailing; "Task completed" alone for a Done slice.
+    /// primary trailing; "Task completed" alone for a Done slice. Over it,
+    /// Send back to agent's editor while open, else a failed Fix's error.
     private func actionBar(_ nav: NavigatorModel) -> some View {
         VStack(spacing: 0) {
-            if let draft = sendBackDraft, bar(nav).button(.sendBack) != nil {
+            if let draft = sendBackDraft, nav.showsSendBack {
                 SendBackEditor(
                     text: Binding(get: { draft }, set: { sendBackDraft = $0 }),
                     hasLiveAgent: nav.hasLiveAgent,
@@ -317,6 +332,8 @@ struct SliceNavigatorView: View {
                     error: appModel.sliceActions.error(.sendBack, sliceID: slice.id),
                     onCancel: { sendBackDraft = nil },
                     onSend: { sendBack(draft) })
+            } else if let error = appModel.sliceActions.error(.sendBack, sliceID: slice.id) {
+                NavNotice(text: error)
             }
             actionButtons(nav)
         }
@@ -332,15 +349,32 @@ struct SliceNavigatorView: View {
                     .padding(.horizontal, 12)
             case .buttons(let buttons):
                 ForEach(buttons, id: \.title) { button in
-                    Button(action: { press(button.action) }) {
-                        HeaderActionLabel(
-                            title: button.title, systemImage: glyph(button.action),
-                            isBusy: appModel.sliceActions.isRunning(kind(button.action), sliceID: slice.id),
-                            glyph: button.action == .merge ? .merge : nil)
+                    if button.alternatives.isEmpty {
+                        Button(action: { press(button.action) }) { label(button) }
+                            .buttonStyle(GnatHeaderButtonStyle(primary: button.primary))
+                            .disabled(!isEnabled(button))
+                            .help(button.help ?? "")
+                    } else {
+                        // Fix, the action it took the place of behind its
+                        // chevron.
+                        HeaderSplitButton(
+                            primary: button.primary, mainDisabled: !isEnabled(button), mainHelp: button.help ?? "",
+                            chevronLabel: "More actions", menuOpen: $barMenuOpen, action: { press(button.action) }
+                        ) {
+                            label(button)
+                        } menu: {
+                            HeaderSplitMenuList(items: button.alternatives.map { alternative in
+                                HeaderSplitMenuList.Item(
+                                    title: alternative.title, systemImage: glyph(alternative.action),
+                                    glyph: alternative.action == .merge ? .merge : nil,
+                                    enabled: isEnabled(alternative), help: alternative.help
+                                ) {
+                                    barMenuOpen = false
+                                    press(alternative.action)
+                                }
+                            })
+                        }
                     }
-                    .buttonStyle(GnatHeaderButtonStyle(primary: button.primary))
-                    .disabled(!isEnabled(button))
-                    .help(button.help ?? "")
                 }
             }
         }
@@ -360,12 +394,19 @@ struct SliceNavigatorView: View {
         }
     }
 
+    private func label(_ button: NavigatorBarButton) -> HeaderActionLabel {
+        HeaderActionLabel(
+            title: button.title, systemImage: glyph(button.action),
+            isBusy: appModel.sliceActions.isRunning(kind(button.action), sliceID: slice.id),
+            glyph: button.action == .merge ? .merge : nil)
+    }
+
     private func glyph(_ action: NavigatorBarAction) -> String? {
         switch action {
         case .launch: return "arrow.right"
         case .approve: return "checkmark"
         case .merge: return nil
-        case .sendBack: return "arrow.uturn.left"
+        case .fix: return "arrow.right"
         }
     }
 
@@ -376,10 +417,8 @@ struct SliceNavigatorView: View {
         // and approves on the agent's next hand-back.
         case .approve: review.showApproveConfirm = true
         case .merge: showMergeConfirm = true
-        // Opens the editor, prefilled with the pull request's own trouble
-        // where it has any; a second press shuts it.
-        case .sendBack:
-            sendBackDraft = sendBackDraft == nil ? sendBackReason(checks: notice, conflict: conflictNotice ?? branchConflictNotice) : nil
+        // Sent at once, the trouble its own reason — no editor.
+        case .fix: if let fix { sendBack(fix.note) }
         }
     }
 
