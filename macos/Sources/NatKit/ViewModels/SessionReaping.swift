@@ -29,13 +29,15 @@ public let agentVisitHold: TimeInterval = 5 * 60
 /// - present, with a status that is not "In progress" — Done or Todo,
 ///   Notion's own word disagreeing with a session still running on it.
 ///
-/// Three guards apply here rather than in the verification that follows,
-/// since none of them is a question `nat slice-status` could answer any
-/// better: an agent mid-turn is somebody working in that session
-/// deliberately, and a kill would take the turn with it; the slice on screen
-/// is never a dangling one, whatever its status says; and a session whose
-/// visit hold is still running was looked at recently enough that killing it
-/// now would surprise whoever just clicked away.
+/// Two guards apply here rather than in the verification that follows,
+/// since neither is a question `nat slice-status` could answer any better:
+/// the slice on screen is never a dangling one, whatever its status says; and
+/// a session whose visit hold is still running was looked at recently enough
+/// that killing it now would surprise whoever just clicked away. The agent's
+/// own activity is no guard: a pane reads as working until its agent says it
+/// is waiting (`nat agent-waiting`), which one that has handed back never
+/// does, so it would keep every finished session alive — the slice's status
+/// is what says its work is over.
 ///
 /// A session tagged as a planning agent rather than a slice
 /// (`TmuxSession.isPlanTag`) is never a candidate: it belongs to no slice for
@@ -61,7 +63,6 @@ public func agentSessionsToReap(
     agents
         .filter { agent in
             guard !TmuxSession.isPlanTag(agent.sliceID) else { return false }
-            guard agent.activity != .working else { return false }
             guard agent.sliceID != selectedSliceID else { return false }
             if let until = heldUntil[agent.sliceID], until > now { return false }
             guard let slice = slicesByID[agent.sliceID] else { return true }

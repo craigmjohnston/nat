@@ -61,13 +61,16 @@ final class SessionReapingTests: XCTestCase {
         XCTAssertEqual(reaped, [])
     }
 
-    func testAnAgentMidTurnIsLeftToFinish() {
+    /// An agent reads as working until it says otherwise (`nat
+    /// agent-waiting`), and one that has handed back and been merged never
+    /// does — the slice's status is what says its work is over, not the pane.
+    func testAnAgentReadingAsWorkingIsACandidateOnceItsSliceIsDone() {
         let reaped = reap(
             agents: [agent("s-1", activity: .working)],
             slicesByID: ["s-1": slice("s-1", status: "Done")]
         )
 
-        XCTAssertEqual(reaped, [])
+        XCTAssertEqual(reaped, ["s-1"])
     }
 
     func testTheSliceOnScreenIsNeverACandidate() {
