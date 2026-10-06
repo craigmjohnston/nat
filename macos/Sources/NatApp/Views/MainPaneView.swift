@@ -31,7 +31,10 @@ struct MainPaneNotice: View {
             Text(text)
                 .font(.system(size: Typo.scaled(13)))
                 .ink(role)
-                .fixedSize(horizontal: false, vertical: true)
+            // Not `fixedSize` vertically: the window's minimum size is read
+            // at the pane's narrowest, where a fixed text wraps a word a line
+            // and grows the window past the screen. The pane below is the
+            // flexible one, so the text still gets its wrapped height here.
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
