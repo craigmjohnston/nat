@@ -12,7 +12,8 @@ import NatKit
 /// height is known before anything draws: nothing is shown until every
 /// image's pixel size is loaded, and every image is given an explicit frame
 /// from it. Keep it that way — an estimated height here is the diff's old
-/// jumping-scroller bug back.
+/// jumping-scroller bug back. The comment box open at a point is laid over
+/// the scroll, not in it, so its measured height is no part of the list's.
 struct VisualsPane: View {
     @Bindable var appModel: AppModel
     let review: VisualReview
@@ -74,6 +75,19 @@ struct VisualsPane: View {
                     }
                 }
                 .thinScrollers()
+                // The comment box open at a point floats over the whole pane,
+                // beside its pin wherever the scrolls have taken it — drawn
+                // over the list, so it adds nothing to the scroll's content.
+                .overlayPreferenceValue(VisualDraftPinKey.self) { anchor in
+                    if let draft = review.draft, draft.point != nil {
+                        GeometryReader { pane in
+                            VisualFloatingBox(pin: anchor.map { pane[$0] }, pane: pane.size) {
+                                VisualCommentBox(review: review, store: store, sliceID: slice.id, draft: draft)
+                            }
+                        }
+                        .id(VisualCommentBox.identity(draft))
+                    }
+                }
                 .onChange(of: review.scrollRequest?.token, initial: true) { _, _ in
                     if let request = review.scrollRequest, request.token > review.handledScrollToken {
                         review.handledScrollToken = request.token
@@ -96,8 +110,6 @@ enum VisualMetrics {
     static let pinSize: CGFloat = 20
     /// The comment box's width.
     static let editorWidth: CGFloat = 320
-    /// What the comment box is allowed below a point before it goes above.
-    static let editorRoom: CGFloat = 150
 
     /// An image's fitted width in a pane `paneWidth` wide.
     static func fitWidth(paneWidth: CGFloat) -> CGFloat {
@@ -284,8 +296,9 @@ struct VisualHeader: View {
 
 /// One image under its header: drawn at its fitted width times its own zoom
 /// inside a sideways scroll of its own, so zooming it past the pane moves it
-/// alone; its pending comments pinned where they were left; the comment box
-/// open on it; and its comments listed under it as cards. A pair draws its
+/// alone; its pending comments pinned where they were left, and the pin of
+/// one being written (its box floated by the pane); the comment box open on
+/// the whole of it; and its comments listed under it as cards. A pair draws its
 /// two images in one frame, the before left of a divider dragged across them
 /// and the after right of it — or, where its before could not be opened, the
 /// after alone.
@@ -318,7 +331,7 @@ struct VisualImageSection: View {
                     placeholder
                 }
                 if let draft = review.draft, draft.visual.index == visual.index, draft.point == nil {
-                    editor(draft)
+                    VisualCommentBox(review: review, store: store, sliceID: slice.id, draft: draft)
                         .padding(.trailing, VisualMetrics.padding)
                 }
             }
@@ -349,7 +362,7 @@ struct VisualImageSection: View {
                     .overlay { Rectangle().strokeBorder(DesignTokens.rule(.border, on: .window), lineWidth: 1) }
                     .contentShape(Rectangle())
                     .onTapGesture(coordinateSpace: .local) { openDraft(at: $0, scale: scale, imageSize: pixelSize) }
-                commentOverlays(scale: scale, width: width, height: height, imageSize: pixelSize)
+                commentOverlays(scale: scale, imageSize: pixelSize)
             }
         }
     }
@@ -399,7 +412,7 @@ struct VisualImageSection: View {
                     .strokeBorder(DesignTokens.rule(.border, on: .window), lineWidth: 1)
                     .frame(width: width, height: height)
                     .allowsHitTesting(false)
-                commentOverlays(scale: scale, width: width, height: height, imageSize: afterSize)
+                commentOverlays(scale: scale, imageSize: afterSize)
                 VisualDivider(height: height)
                     .position(x: split, y: height / 2)
                     .gesture(
@@ -445,10 +458,11 @@ struct VisualImageSection: View {
         review.openDraft(visual, point: point, imageSize: imageSize)
     }
 
-    /// The pending comments' pins, and the comment box open at a point, over
-    /// an image drawn at `scale` in a frame `width` by `height`.
+    /// The pending comments' pins, and the pin of the comment being written
+    /// at a point, over an image drawn at `scale` — that pin's frame
+    /// published to the pane, which floats the comment box beside it.
     @ViewBuilder
-    private func commentOverlays(scale: CGFloat, width: CGFloat, height: CGFloat, imageSize: CGSize) -> some View {
+    private func commentOverlays(scale: CGFloat, imageSize: CGSize) -> some View {
         let pinned = comments.enumerated().compactMap { offset, comment in
             comment.point.map { (ordinal: offset + 1, comment: comment, point: $0) }
         }
@@ -459,14 +473,9 @@ struct VisualImageSection: View {
                 .help(pin.comment.text)
         }
         if let draft = review.draft, draft.visual.index == visual.index, let point = draft.point {
-            let at = CGPoint(x: point.x * scale, y: point.y * scale)
-            VisualPin(ordinal: nil).position(at)
-            editor(draft)
-                .offset(
-                    x: min(max(at.x - VisualMetrics.editorWidth / 2, 0), max(width - VisualMetrics.editorWidth, 0)),
-                    y: at.y + VisualMetrics.editorRoom > height
-                        ? max(at.y - VisualMetrics.editorRoom - VisualMetrics.pinSize, 0)
-                        : at.y + VisualMetrics.pinSize)
+            VisualPin(ordinal: nil)
+                .anchorPreference(key: VisualDraftPinKey.self, value: .bounds) { $0 }
+                .position(x: point.x * scale, y: point.y * scale)
         }
     }
 
@@ -499,25 +508,6 @@ struct VisualImageSection: View {
 
     // MARK: - Comments
 
-    private func editor(_ draft: VisualDraft) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(draft.point.map { "Comment at (\(Int($0.x)), \(Int($0.y)))" } ?? "Comment on the whole image")
-                .monoXS()
-                .ink(.secondary)
-            CommentEditorView(
-                initialText: draft.text,
-                onSave: { review.saveDraft($0, sliceID: slice.id, store: store) },
-                onCancel: { review.draft = nil })
-        }
-        .padding(10)
-        .frame(width: VisualMetrics.editorWidth)
-        .surface(.chrome, radius: 6)
-        .overlay {
-            RoundedRectangle(cornerRadius: 6).strokeBorder(DesignTokens.rule(.border, on: .window), lineWidth: 1)
-        }
-        .id(draft.id?.uuidString ?? "\(draft.visual.index)|\(draft.point.map { "\($0.x),\($0.y)" } ?? "whole")")
-    }
-
     private func card(_ comment: PendingVisualComment, ordinal: Int) -> some View {
         HStack(alignment: .top, spacing: 8) {
             if comment.point != nil {
@@ -534,6 +524,84 @@ struct VisualImageSection: View {
                 meta: comment.placement,
                 onEdit: { review.editComment(comment, visual: visual) },
                 onDelete: { review.deleteComment(comment, sliceID: slice.id, store: store) })
+        }
+    }
+}
+
+/// The comment box: what it comments on, then the editor — at a point,
+/// floated over the pane by `VisualFloatingBox`; on the whole image, at its
+/// section's top trailing corner.
+struct VisualCommentBox: View {
+    let review: VisualReview
+    let store: VisualStore
+    let sliceID: String
+    let draft: VisualDraft
+
+    /// Which comment the box is open on, so its typed text survives the box
+    /// being placed afresh and goes with a box opened on another.
+    static func identity(_ draft: VisualDraft) -> String {
+        draft.id?.uuidString ?? "\(draft.visual.index)|\(draft.point.map { "\($0.x),\($0.y)" } ?? "whole")"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(draft.point.map { "Comment at (\(Int($0.x)), \(Int($0.y)))" } ?? "Comment on the whole image")
+                .monoXS()
+                .ink(.secondary)
+            CommentEditorView(
+                initialText: draft.text,
+                onSave: { review.saveDraft($0, sliceID: sliceID, store: store) },
+                onCancel: { review.draft = nil })
+        }
+        .padding(10)
+        .frame(width: VisualMetrics.editorWidth)
+        .surface(.chrome, radius: 6)
+        .overlay {
+            RoundedRectangle(cornerRadius: 6).strokeBorder(DesignTokens.rule(.border, on: .window), lineWidth: 1)
+        }
+        .id(Self.identity(draft))
+    }
+}
+
+/// The frame of the pin of the comment being written at a point, published
+/// by its image section for the pane to float the comment box beside.
+struct VisualDraftPinKey: PreferenceKey {
+    static let defaultValue: Anchor<CGRect>? = nil
+
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
+    }
+}
+
+/// The comment box laid over a pane `pane` in size where
+/// `VisualEditorPlacement` puts it beside `pin` (in the pane's coordinates) —
+/// at its measured height, hidden until it has one. A pin the list has stopped
+/// drawing (its section scrolled far off) is followed from where it was last
+/// seen, so the box holds at the pane's edge and what is typed is kept. Only
+/// the box takes the pointer: the rest of the pane reaches the images.
+struct VisualFloatingBox<Box: View>: View {
+    let pin: CGRect?
+    let pane: CGSize
+    @ViewBuilder let box: () -> Box
+
+    @State private var lastPin: CGRect?
+    @State private var height: CGFloat?
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if let at = pin ?? lastPin {
+                let origin = VisualEditorPlacement.origin(
+                    pin: at, boxSize: CGSize(width: VisualMetrics.editorWidth, height: height ?? 0),
+                    pane: pane, inset: VisualMetrics.padding)
+                box()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+                    .opacity(height == nil ? 0 : 1)
+                    .offset(x: origin.x, y: origin.y)
+            }
+        }
+        .frame(width: pane.width, height: pane.height, alignment: .topLeading)
+        .onChange(of: pin, initial: true) { _, pin in
+            if let pin { lastPin = pin }
         }
     }
 }

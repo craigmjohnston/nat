@@ -540,12 +540,21 @@ beside zoom. Comment pins stay in the after's pixels; an unavailable before
 draws the after alone, pair controls disabled. `VisualDivider` wears
 `.columnResize`. Send is `agent-send`, then `slice-rework` only where the
 slice is handed back; a failed send keeps the comments. The comment box is
-drawn in the pane, not a `.popover`, so the gallery can render it.
+drawn in the pane, not a `.popover`, so the gallery can render it — at a
+point, it is the pane's one floating overlay: the image section draws only
+its pin and publishes the pin's anchor (`VisualDraftPinKey`), and
+`VisualsPane` resolves it over the whole vertical scroll and floats the box
+where `VisualEditorPlacement` (NatKit, tested) puts it — below the pin, else
+above, never over it, 16pt inside the pane, held at the edge while the pin is
+scrolled away — at its measured height, adding nothing to the scroll's
+content. A comment on the whole image keeps its box at its section's top
+trailing corner.
 `VisualsPane` is the one scrolling pane SwiftUI lays out (pinned headers,
 `ScrollViewReader`) — safe only because nothing draws until every image's
 pixel size is known, befores included, and every image has an explicit frame;
 keep it so. Stories: `window-visuals`, `window-visuals-comments`,
 `window-visuals-new`, `visuals-zoomed`, `visuals-comment-editor`,
+`visuals-comment-editor-image-foot`, `-zoomed-edge`, `-pane-foot`,
 `visuals-pair`, `visuals-pair-highlight`, `visuals-pair-before`,
 `visuals-pair-size-mismatch`.
 
