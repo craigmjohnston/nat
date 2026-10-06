@@ -1082,7 +1082,7 @@ enum AppStories {
 
         Story(
             name: "sidebar-pr-marks-running",
-            summary: "As sidebar-pr-marks, but the approved slice's pull request has its checks still running: its rows in Active and in the tree carry the warning-toned running dot in the checks' slot; gnat's red and conflicting rows are as before.",
+            summary: "As sidebar-pr-marks, but the approved slice's pull request has its checks still running: its rows in Active and in the tree carry the neutral in-progress mark (an ellipsis circle) in the checks' slot; gnat's red and conflicting rows are as before.",
             size: sidebar
         ) {
             let appModel = await prMarksAppModel(prStatus: Fixtures.prStatusChecksRunning)
@@ -1096,11 +1096,11 @@ enum AppStories {
 
         Story(
             name: "window-pr-checks-running",
-            summary: "An approved slice whose pull request's checks are still running, no agent on it, its PR section open: the warning-toned running circle on the PR header where the passing mark would be.",
+            summary: "An approved slice whose pull request's checks are still running, no agent on it, its PR section open: the neutral in-progress mark (an ellipsis circle) on the PR header where the passing mark would be; the running and queued checks lead with the same mark, the skipped one with a slashed circle, faded and struck through.",
             size: window
         ) {
             await slicePane(
-                Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusChecksRunning, pr: Fixtures.prGreen,
+                Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusChecksRunning, pr: Fixtures.prChecksRunning,
                 focus: NavigatorFocus(open: [.pr], main: .pr))
         },
 

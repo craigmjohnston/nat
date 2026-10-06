@@ -114,9 +114,9 @@ struct NavSectionView<Actions: View, Content: View>: View {
                         .help(passing)
                         .accessibilityLabel(passing)
                 } else if let running {
-                    Image(systemName: "circle")
+                    Image(systemName: PRMarks.runningOutlineSymbol)
                         .font(.system(size: 12, weight: .medium))
-                        .ink(.warning)
+                        .ink(.secondary)
                         .help(running)
                         .accessibilityLabel(running)
                 }

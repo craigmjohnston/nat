@@ -121,6 +121,20 @@ final class PRMarksTests: XCTestCase {
         XCTAssertFalse(running.isEmpty)
     }
 
+    func testACheckRowLeadsWithItsOutcomesMark() {
+        XCTAssertEqual(CheckRowMark(.passing), CheckRowMark(.passing))
+        XCTAssertEqual(CheckRowMark(.passing).symbol, "checkmark.circle.fill")
+        XCTAssertEqual(CheckRowMark(.passing).role, .success)
+        XCTAssertEqual(CheckRowMark(.failing).symbol, "xmark.circle.fill")
+        XCTAssertEqual(CheckRowMark(.failing).role, .danger)
+        XCTAssertEqual(CheckRowMark(.pending).symbol, PRMarks.runningSymbol, "the sidebar's running mark")
+        XCTAssertEqual(CheckRowMark(.pending).role, .secondary, "neutral, never a warning")
+        XCTAssertEqual(CheckRowMark(.skipped).symbol, "slash.circle")
+        XCTAssertEqual(CheckRowMark(.skipped).role, .tertiary)
+        XCTAssertEqual(PRMarks.runningSymbol, "ellipsis.circle.fill")
+        XCTAssertEqual(PRMarks.runningOutlineSymbol, "ellipsis.circle")
+    }
+
     func testTheMarksSayWhatTheyMark() {
         XCTAssertEqual(PRMarks(checksPassing: true).passingHelp, "Checks passing")
         XCTAssertNil(PRMarks(failingChecks: []).passingHelp)

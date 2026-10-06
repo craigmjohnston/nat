@@ -195,10 +195,13 @@ success mark (`checkmark.circle.fill`, "Checks passing") where
 `prMarks(_:for:agent:)` keeps `checksPassing`: the `.pr` stage (not
 resumed), no live agent working, verdict `passing`, not conflicting or
 failing — and, under the same gate, the running mark (`checksRunning`,
-verdict `pending`: a static `circle.fill` in the warning tone, "Checks
-running"). The PR section header draws the same gate as its outline
-`checkmark.circle` (or `circle` for running) where it has no warning
-(`NavSectionView.passing`/`running`).
+verdict `pending`: a static, neutral `PRMarks.runningSymbol` —
+`ellipsis.circle.fill` — "Checks running"). The PR section header draws the
+same gate as its outline `checkmark.circle` (or `ellipsis.circle` for
+running) where it has no warning (`NavSectionView.passing`/`running`). The
+Checks block's rows lead with the same marks (`CheckRowMark`): a running or
+queued check the running mark, a skipped one `slash.circle`, its line faded
+and its name struck through.
 `attention(projectID:)` reads the
 project's own reading. In the navigator, `checksNotice` is the PR section
 header's danger icon (`NavSectionView`'s `warning`, its text the tooltip;

@@ -54,6 +54,12 @@ public struct PRMarks: Equatable, Sendable {
         checksPassing ? "Checks passing" : nil
     }
 
+    /// The running mark: GitHub's "in progress" as the check rows' filled
+    /// circles draw it — an ellipsis — in a neutral ink, never a warning.
+    /// The PR header draws its outline form.
+    public static let runningSymbol = "ellipsis.circle.fill"
+    public static let runningOutlineSymbol = "ellipsis.circle"
+
     /// The running mark's tooltip, where there is one.
     public var runningHelp: String? {
         checksRunning ? "Checks running" : nil
@@ -62,6 +68,24 @@ public struct PRMarks: Equatable, Sendable {
     /// The danger mark's tooltip, where there is one.
     public var checksHelp: String? {
         failingChecks.map { $0.isEmpty ? "Checks failing" : "Checks failing: \($0.joined(separator: ", "))" }
+    }
+}
+
+/// The glyph and ink a check row leads with, by outcome — the sidebar's own
+/// marks for passing, failing and running, and a slashed circle for a check
+/// that never ran, whose row is drawn faded and struck through
+/// (`isSkipped`).
+public struct CheckRowMark: Equatable, Sendable {
+    public let symbol: String
+    public let role: InkRole
+
+    public init(_ outcome: CheckOutcome) {
+        switch outcome {
+        case .passing: (symbol, role) = ("checkmark.circle.fill", .success)
+        case .failing: (symbol, role) = ("xmark.circle.fill", .danger)
+        case .pending: (symbol, role) = (PRMarks.runningSymbol, .secondary)
+        case .skipped: (symbol, role) = ("slash.circle", .tertiary)
+        }
     }
 }
 
