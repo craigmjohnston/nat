@@ -15,8 +15,12 @@ final class AppModelGitHubReadingTests: XCTestCase {
             prStatusByProject: [Fixtures.secondProjectID: Fixtures.secondProjectPRStatus])
         let model = await Fixtures.startedAppModel(
             client: client, config: Fixtures.twoProjectConfig, githubSettleDelay: settleDelay)
-        for _ in 0..<500 where model.prStatusStore?.readings[Fixtures.secondProjectID] == nil {
-            await Task.yield()
+        // On the clock, not a count of yields: the background project's
+        // reading lands through its plan load and a settle read, each a hop
+        // a busy CI runner can take its time over.
+        let deadline = ContinuousClock.now + .seconds(10)
+        while model.prStatusStore?.readings[Fixtures.secondProjectID] == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(2))
         }
         await model.githubReadingStore?.idle()
         return (model, client)

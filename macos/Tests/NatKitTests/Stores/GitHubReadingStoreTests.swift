@@ -53,9 +53,11 @@ final class GitHubReadingStoreTests: XCTestCase {
             sleep: { await sleeps.sleep($0) })
     }
 
-    /// Waits for what a task the test cannot await is expected to do.
+    /// Waits for what a task the test cannot await is expected to do — on the
+    /// clock, since a held `pr-status` lets go on a sleep of its own.
     private func waitUntil(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
-        for _ in 0..<2000 where !condition() { await Task.yield() }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while !condition(), ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(2)) }
         XCTAssertTrue(condition(), "timed out", file: file, line: line)
     }
 
