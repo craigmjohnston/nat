@@ -112,11 +112,11 @@ briefs.
    and again on every revision — the user's Accept in the app is the one
    approval and what applies it. While a proposal is unaccepted, a revised
    one replaces whichever is on screen, so send the whole plan each time.
-   Once the user accepts it, its milestones and slices are on the board — you
-   are told when that happens — and a later revision changes them only
-   through `edit`, `move` and `remove` by title, never by creating them
-   again. Re-read the plan with `nat info --project <project>` before every
-   revision, since the board may have moved while you worked. Steps 3 and 4
+   Nothing tells you when the user accepts it: re-read the plan with
+   `nat info --project <project>` before every revision, since the board may
+   have moved while you worked. A slice already on the board under one of
+   your titles is there because the user accepted it — change it only
+   through `edit`, `move` and `remove` by title, never by creating it again. Steps 3 and 4
    below, and the plain-terminal approve-then-apply flow, are for a launch
    whose prompt says nothing of the kind.
 3. On approval, write the whole plan in one go by piping this document to

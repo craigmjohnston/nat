@@ -11,10 +11,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
-	"github.com/craigmjohnston/nat/internal/store"
 )
 
 // planProposal reads back the proposal file plan-propose wrote for a
@@ -319,7 +317,6 @@ func acceptIntoProject(ctx context.Context, env Env, projectRef string, asJSON b
 	logging.Action("plan accepted", "project", projectID,
 		"milestones", len(applied.Milestones), "slices", len(applied.Slices),
 		"edited", len(applied.Edited), "moved", len(applied.Moved), "removed", len(applied.Removed))
-	tellPlanner(env, projectID, applied)
 
 	if asJSON {
 		return writeJSON(env.Out, planAcceptedJSON{
@@ -339,38 +336,6 @@ func acceptIntoProject(ctx context.Context, env Env, projectRef string, asJSON b
 		counts(len(applied.Milestones), len(applied.Slices)), project.Name, projectID,
 		changesClause(len(applied.Edited), len(applied.Moved), len(applied.Removed)))
 	return err
-}
-
-// tellPlanner tells the project's live planning agent, where there is one,
-// that its proposal was accepted and what that put on the board — by the same
-// one send slice-triage and slice-note make after their own writes. The plan
-// is applied whatever happens here: a session that cannot be read or sent to
-// is logged, never the command's failure. Only the project's own planning
-// agent is told, never a legacy one belonging to no project.
-func tellPlanner(env Env, projectID string, applied appliedPlan) {
-	live, err := env.NewTmux().LiveSlices()
-	if err != nil {
-		logging.Error("could not read live sessions after an accept; the planning agent will not be told",
-			"project", projectID, "err", err)
-		return
-	}
-	session := live[agent.PlanTag(projectID)]
-	if session == "" {
-		return
-	}
-	milestones := make([]string, len(applied.Milestones))
-	for i, m := range applied.Milestones {
-		milestones[i] = fmt.Sprintf("%q", m.Name)
-	}
-	slices := make([]string, len(applied.Slices))
-	for i, s := range applied.Slices {
-		slices[i] = store.SliceLabel(s.Slice.Name, s.Milestone.Name)
-	}
-	if err := env.NewTmux().SendPrompt(session, agent.ProposalAcceptedPrompt(projectID, milestones, slices)); err != nil {
-		logging.Error("could not tell the planning agent its proposal was accepted", "project", projectID, "err", err)
-		return
-	}
-	logging.Action("planning agent told of the accept", "project", projectID)
 }
 
 // planAcceptedJSON is plan-accept's structured output: the project as

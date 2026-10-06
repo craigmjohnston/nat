@@ -232,65 +232,20 @@ func TestPlanAcceptWithProjectRefusesADuplicateFiledSince(t *testing.T) {
 	}
 }
 
-// acceptWithPlanner runs plan-accept --project with a tmux whose planning
-// session for the project is live (or not), returning what was sent.
-func acceptWithPlanner(t *testing.T, live bool, sendErr string) (*agentTestRunner, string, error) {
-	t.Helper()
-	env, _, _ := acceptEnv(t)
-	id := makeLocalProject(t, env)
-	proposeToProject(t, env, id, validProposalDoc)
-	runner := &agentTestRunner{liveSessions: map[string]string{}, sendErr: sendErr}
-	if live {
-		runner.liveSessions[agent.PlanTag(id)] = "nat-plan-x"
-	}
-	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
-	err := Run(context.Background(), []string{"plan-accept", "--project", id}, env)
-	return runner, id, err
-}
-
-// A live planning session is told its proposal was accepted, with what the
-// accept filed by name.
-func TestPlanAcceptTellsTheLivePlanningAgent(t *testing.T) {
-	runner, id, err := acceptWithPlanner(t, true, "")
-	if err != nil {
-		t.Fatalf("plan-accept: %v", err)
-	}
-	want := agent.ProposalAcceptedPrompt(id, []string{`"M1: Groundwork"`},
-		[]string{`"Lay the foundation" (M1: Groundwork)`, `"Build on it" (M1: Groundwork)`})
-	if len(runner.sends) != 1 || runner.sends[0].session != "nat-plan-x" || runner.sends[0].prompt != want {
-		t.Errorf("sends = %+v, want one to nat-plan-x of\n%s", runner.sends, want)
-	}
-}
-
-// No live planning session is told nothing; a failed send or an unreadable
-// tmux leaves the accept succeeded.
-func TestPlanAcceptTellsNobodyAndNeverFailsOverTheTelling(t *testing.T) {
-	runner, _, err := acceptWithPlanner(t, false, "")
-	if err != nil || len(runner.sends) != 0 {
-		t.Errorf("no live session: err = %v, sends = %+v, want success and none", err, runner.sends)
-	}
-	if _, _, err := acceptWithPlanner(t, true, "pane gone"); err != nil {
-		t.Errorf("a failed send: err = %v, want the accept to stand", err)
-	}
-
-	env, _, _ := acceptEnv(t)
-	id := makeLocalProject(t, env)
-	proposeToProject(t, env, id, validProposalDoc)
-	broken := &agentTestRunner{liveFatalErr: "tmux broke"}
-	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(broken) }
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err != nil {
-		t.Errorf("an unreadable tmux: err = %v, want the accept to stand", err)
-	}
-}
-
-// A new project's accept has no planning session of a project to tell: it
-// reads no tmux at all.
-func TestPlanAcceptWithWorkspaceTellsNobody(t *testing.T) {
+// An accept tells the planning agent nothing — it re-reads the plan before
+// every revision, and a duplicate title is refused anyway — so neither path
+// reads tmux at all, a live planning session or not.
+func TestPlanAcceptReadsNoTmux(t *testing.T) {
 	env, _, _ := acceptEnv(t)
 	env.NewTmux = func() *agent.Tmux { t.Fatal("tmux was read"); return nil }
+	id := makeLocalProject(t, env)
+	proposeToProject(t, env, id, validProposalDoc)
+	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err != nil {
+		t.Fatalf("plan-accept --project: %v", err)
+	}
 	propose(t, env, "ws-1", "importer", validProposalDoc)
 	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "importer"}, env); err != nil {
-		t.Fatalf("plan-accept: %v", err)
+		t.Fatalf("plan-accept --workspace: %v", err)
 	}
 }
 

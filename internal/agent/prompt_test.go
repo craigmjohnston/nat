@@ -1042,29 +1042,11 @@ func TestGnatPlanPromptCarriesTheAcceptedProposalPassage(t *testing.T) {
 	if !strings.Contains(text, acceptedProposalPassage(testProjectID)) {
 		t.Error("the gnat plan prompt does not carry the accepted-proposal passage")
 	}
-	for _, want := range []string{"While a proposal is unaccepted", "through `edit`, `move` and `remove` by title",
-		"Re-read the plan before every revision", "nat info --project " + testProjectID} {
+	for _, want := range []string{"While a proposal is unaccepted", "Nothing tells you when the user accepts it",
+		"through `edit`, `move` and `remove`\nby title, never by creating it again",
+		"Re-read the plan before\nevery revision", "nat info --project " + testProjectID} {
 		if !strings.Contains(acceptedProposalPassage(testProjectID), want) {
 			t.Errorf("the passage does not say %q", want)
 		}
-	}
-}
-
-func TestProposalAcceptedPrompt(t *testing.T) {
-	got := ProposalAcceptedPrompt(testProjectID, []string{`"M4"`}, []string{`"Frame it" (M4)`, `"Colour it" (M2)`})
-	want := "The user accepted your proposal, and it has been applied to the plan.\n" +
-		"\nNew milestones on the board now: \"M4\".\n" +
-		"\nNew slices on the board now: \"Frame it\" (M4), \"Colour it\" (M2).\n" +
-		"\nThat proposal is no longer on screen to replace. A later revision\n" +
-		"reaches these slices only through the plan document's `edit`, `move`\n" +
-		"and `remove` lists, by title — never by creating them again. Before you\n" +
-		"propose again, re-read the plan:\n\n" +
-		"    nat info --project " + testProjectID + "\n"
-	if got != want {
-		t.Errorf("prompt =\n%s\nwant\n%s", got, want)
-	}
-	// A plan of edits alone created nothing to list.
-	if bare := ProposalAcceptedPrompt(testProjectID, nil, nil); strings.Contains(bare, "New ") {
-		t.Errorf("prompt =\n%s\nwant no empty lists", bare)
 	}
 }

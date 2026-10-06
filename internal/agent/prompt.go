@@ -867,19 +867,20 @@ var SliceTitleRule = fmt.Sprintf("A slice title is at most %d characters, one ch
 // unaccepted proposal and an accepted one each are to its next revision: the
 // first is replaced whole, the second is on the board and is changed only
 // through the document's edit, move and remove lists — and that the plan is
-// re-read before every revision. The agent is told of an accept as it
-// happens ([ProposalAcceptedPrompt]); skills/queue-work/SKILL.md says the
-// same in its own words.
+// re-read before every revision. Nothing tells the agent of an accept: a
+// slice on the board under one of its titles is how it learns of one, and a
+// document creating that title again is refused whole. skills/queue-work/
+// SKILL.md says the same in its own words.
 func acceptedProposalPassage(projectID string) string {
 	var b strings.Builder
 	b.WriteString("While a proposal is unaccepted, a revised one replaces whichever is on\n")
 	b.WriteString("screen, so send the whole plan again each time rather than a diff of it.\n")
-	b.WriteString("Once the user accepts it, its milestones and slices are on the board —\n")
-	b.WriteString("you are told when that happens — and a revision changes them only\n")
-	b.WriteString("through `edit`, `move` and `remove` by title, never by creating them\n")
-	b.WriteString("again. Re-read the plan before every revision, since the board may have\n")
-	b.WriteString("moved while you worked:\n\n")
+	b.WriteString("Nothing tells you when the user accepts it. Re-read the plan before\n")
+	b.WriteString("every revision, since the board may have moved while you worked:\n\n")
 	fmt.Fprintf(&b, "    nat info --project %s\n", projectID)
+	b.WriteString("\nA slice already on the board under one of your titles is there because\n")
+	b.WriteString("the user accepted it: change it only through `edit`, `move` and `remove`\n")
+	b.WriteString("by title, never by creating it again.\n")
 	return b.String()
 }
 

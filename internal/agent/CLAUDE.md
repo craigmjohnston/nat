@@ -184,7 +184,7 @@ running agent's state.
   once its keys have gone, reads the session's panes (`list-panes -s`) and
   runs `SetWaiting(pane, false)` on a tagged pane that is waiting — an agent
   just told something is no longer waiting on the user, and every sender
-  (`agent-send`, triage, notes, plan-accept, the checks nudge) goes through
+  (`agent-send`, triage, notes, the checks nudge) goes through
   it. A pane not waiting is left alone; a failed clear is logged, never the
   send's error. `SendKeys`/`Interrupt` leave it: an interrupt answers nothing. It's a poll with no timer of its own;
   the caller decides cadence.
