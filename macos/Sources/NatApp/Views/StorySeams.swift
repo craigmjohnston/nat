@@ -58,10 +58,9 @@ extension EnvironmentValues {
         set { self[ThreadFoldsOpenKey.self] = newValue }
     }
 
-    /// Whether a slice's Send back to agent starts open, as a press of the
-    /// action bar's button opens it — its reason prefilled where the pull
-    /// request has one. False everywhere but a story: a render has no pointer
-    /// to press it with.
+    /// Whether a slice's Send back to agent starts open, as the slice row
+    /// menu's item opens it — its note empty. False everywhere but a story:
+    /// a render has no pointer to pick it with.
     var sendBackOpen: Bool {
         get { self[SendBackOpenKey.self] }
         set { self[SendBackOpenKey.self] = newValue }

@@ -214,7 +214,7 @@ enum AppStories {
 
     /// The approved slice at its open pull request, the PR section open and
     /// its conversation up, sent back to its live agent once the pane is up —
-    /// `AppModel.sendBack` as the action bar's Send runs it, the plan then
+    /// `AppModel.sendBack` as the editor's Send or the bar's Fix runs it, the plan then
     /// reading the slice resumed.
     private static func resumedFromPullRequest() async -> some View {
         let client = FixtureNatClient(
@@ -594,8 +594,8 @@ enum AppStories {
 
         Story(
             name: "action-bar-merge",
-            summary: "An approved slice with its agent still live from the hand-back: Send back to agent, "
-                + "secondary, then Merge PR, primary; Open in GitHub titled in the PR header.",
+            summary: "An approved slice with its agent still live from the hand-back: Merge PR alone in the bar, "
+                + "primary — Send back to agent is the row menu's; Open in GitHub titled in the PR header.",
             size: window
         ) {
             await slicePane(
@@ -604,12 +604,24 @@ enum AppStories {
         },
 
         Story(
-            name: "action-bar-send-back-and-merge",
-            summary: "An approved slice with no agent: Send back to agent, secondary, then Merge PR, primary, "
-                + "trailing — no Launch, going back to the agent being Send back's.",
+            name: "action-bar-merge-no-agent",
+            summary: "An approved slice with no agent and a clean pull request: Merge PR alone in the bar, primary "
+                + "— no Launch, and no Send back to agent, which the row menu offers.",
             size: window
         ) {
             await slicePane(Fixtures.approveSliceID, agents: [], focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
+            name: "action-bar-split-menu",
+            summary: "The action bar's Fix split button's menu, drawn on its own as a popover's content: the action "
+                + "Fix took the place of — Approve changes — to press instead.",
+            size: CGSize(width: 240, height: 60)
+        ) {
+            HeaderSplitMenuList(items: [
+                HeaderSplitMenuList.Item(title: "Approve changes", systemImage: "checkmark") {},
+            ])
+            .surface(.window)
         },
 
         Story(
@@ -633,7 +645,7 @@ enum AppStories {
         Story(
             name: "action-bar-fallback-merge",
             summary: "An agent live on a slice whose pull request reads merged on GitHub, not yet settled: no "
-                + "Merge or Send back to offer, so the bar shows Merge PR disabled, the pull request no longer open.",
+                + "Merge to offer, so the bar shows Merge PR disabled, the pull request no longer open.",
             size: window
         ) {
             await slicePane(
@@ -659,19 +671,10 @@ enum AppStories {
 
         Story(
             name: "window-review-conflicting",
-            summary: "A handed-back slice with no pull request whose branch nat tested conflicting with origin/main, no agent on it: the conflict mark on its Active and tree rows, and a Conflict badge (the same merge glyph) on the Changes header whose tooltip names origin/main and says to send it back to the agent to rebase.",
+            summary: "A handed-back slice with no pull request whose branch nat tested conflicting with origin/main, no agent on it: the conflict mark on its Active and tree rows, and a Conflict badge (the same merge glyph) on the Changes header whose tooltip names origin/main and says to send it back to the agent to rebase; the bar's primary is Resolve conflicts, a split button with Approve changes behind its chevron.",
             size: window
         ) {
             await slicePane(Fixtures.mergeBoxSliceID, agents: [], prStatus: Fixtures.prStatusBranchConflicting)
-        },
-
-        Story(
-            name: "window-review-conflicting-send-back",
-            summary: "The same conflicted hand-back with Send back to agent open: its note prefilled with the conflict and the rebase onto origin/main.",
-            size: window
-        ) {
-            await slicePane(
-                Fixtures.mergeBoxSliceID, agents: [], prStatus: Fixtures.prStatusBranchConflicting, sendBackOpen: true)
         },
 
         Story(
@@ -991,7 +994,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-send-back",
-            summary: "An approved slice with no agent, Send back to agent pressed: its editor over the action bar, the field empty — the pull request has no trouble to prefill — saying an agent will be launched.",
+            summary: "An approved slice with no agent, the row menu's Send back to agent… picked: its editor over the action bar, the field empty for the user's own note, saying an agent will be launched; the bar under it still Merge PR alone.",
             size: window
         ) {
             await slicePane(
@@ -1000,19 +1003,23 @@ enum AppStories {
         },
 
         Story(
-            name: "window-pr-send-back-prefilled",
-            summary: "The same, its pull request's checks failing and its agent live: Send back to agent opens prefilled with the failing check, saying the agent is told at once.",
+            name: "window-review-send-back",
+            summary: "A handed-back slice in review with its agent live, the row menu's Send back to agent… picked: the editor over the bar, empty, saying the agent is told at once; Approve changes under it.",
             size: window
         ) {
             await slicePane(
-                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses, prStatus: Fixtures.prStatusChecksFailing,
-                pr: Fixtures.prFailingChecks, details: Fixtures.checksFailedSliceDetails,
-                focus: NavigatorFocus(open: [.pr], main: .pr), sendBackOpen: true)
+                Fixtures.mergeBoxSliceID,
+                agents: Fixtures.agentStatuses + [
+                    AgentStatus(
+                        sliceID: Fixtures.mergeBoxSliceID,
+                        session: TmuxSession.name(forSlicePageID: Fixtures.mergeBoxSliceID), activity: .waiting),
+                ],
+                sendBackOpen: true)
         },
 
         Story(
             name: "window-pr-checks-failing",
-            summary: "An approved slice whose pull request reads checks failing, no agent on it, its PR section open: a danger icon on the PR header whose tooltip names the check; no notice in the PR body, and the action bar offers Send back to agent.",
+            summary: "An approved slice whose pull request reads checks failing, no agent on it, its PR section open: a danger icon on the PR header whose tooltip names the check; no notice in the PR body, and the bar's primary is Fix failing checks in Merge's place — no split, GitHub refusing a merge over a failing check.",
             size: window
         ) {
             await slicePane(
@@ -1182,7 +1189,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-conflicting",
-            summary: "An approved slice whose pull request conflicts with main, no agent on it, its PR section open: a Conflict badge (the merge glyph) on the PR header whose tooltip says the branch conflicts with main and to send it back to the agent; nothing in the PR body.",
+            summary: "An approved slice whose pull request conflicts with main, no agent on it, its PR section open: a Conflict badge (the merge glyph) on the PR header whose tooltip says the branch conflicts with main and to send it back to the agent; nothing in the PR body; the bar's primary is Resolve conflicts in Merge's place, no split — GitHub refuses a conflicting merge.",
             size: window
         ) {
             await slicePane(
@@ -1192,7 +1199,7 @@ enum AppStories {
 
         Story(
             name: "window-pr-conflicting-checks-failing",
-            summary: "The same pull request conflicting and red at once: the PR header wears the Conflict badge and the failing checks' danger icon, each with its own tooltip; the PR body shows its failed checks.",
+            summary: "The same pull request conflicting and red at once: the PR header wears the Conflict badge and the failing checks' danger icon, each with its own tooltip; the PR body shows its failed checks; the bar's one button reads Fix checks and conflicts.",
             size: window
         ) {
             await slicePane(
@@ -2158,7 +2165,8 @@ enum AppStories {
         Story(
             name: "titlebar-band-run-hover",
             summary: "The run button under the pointer: the row wash behind its main part and its chevron, "
-                + "each the band\u{2019}s full height.",
+                + "each the band\u{2019}s full height, the divider between them full height too and drawn over "
+                + "the wash, as the tabs\u{2019} lines are.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(

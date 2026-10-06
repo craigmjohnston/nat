@@ -249,11 +249,13 @@ public struct NavigatorModel: Equatable, Sendable {
         }
     }
 
-    /// Whether the action bar offers Send back to agent: a slice handed back
-    /// — in review, or at its open pull request — that the user wants more
-    /// of. It resumes the slice (`nat slice-resume`) and tells the agent, or
-    /// launches one where none is live. Not on a resumed slice: it is
-    /// already back with the agent, whose terminal is the place to say more.
+    /// Whether Send back to agent is offered — the slice row's menu, opening
+    /// its editor over the action bar: a slice handed back — in review, or at
+    /// its pull request — that the user wants more of. It resumes the slice
+    /// (`nat slice-resume`) and tells the agent, or launches one where none
+    /// is live. Not on a resumed slice: it is already back with the agent,
+    /// whose terminal is the place to say more. The bar itself never carries
+    /// it; its Fix (`BarFix`) is the same send-back for a PR's own trouble.
     public var showsSendBack: Bool { state == .review || state == .pr }
 
     /// Whether the action bar offers Approve (and Changes Send): only a
@@ -296,23 +298,28 @@ public struct NavigatorModel: Equatable, Sendable {
     }
 
     /// The action bar at the navigator's foot: the slice's major actions,
-    /// each drawn only while relevant — Send back to agent where
-    /// `showsSendBack` (and, at the pull request, while it is open), Launch
-    /// where `showsLaunch`, Approve where `showsReviewActions`, Merge where
-    /// `showsMerge` and the pull request is not read as merged or closed — in
-    /// that order, so the primary trails. With none relevant, the latest live
-    /// section's primary drawn disabled with why — a resumed slice's being
-    /// Launch, the agent at it again; a Done slice, no button at all.
+    /// each drawn only while relevant — Launch where `showsLaunch`, Approve
+    /// where `showsReviewActions`, Merge where `showsMerge` and the pull
+    /// request is not read as merged or closed — in that order, so the
+    /// primary trails. With none relevant, the latest live section's primary
+    /// drawn disabled with why — a resumed slice's being Launch, the agent at
+    /// it again; a Done slice, no button at all.
+    ///
+    /// Where the slice has trouble to fix (`fix`), Fix takes Approve's or
+    /// Merge's place as the primary, the action it replaces offered behind
+    /// it (`alternatives`, a split button) only where that could still go:
+    /// Approve while approving is available, Merge only with no conflict —
+    /// GitHub refuses that merge — and while GitHub would take it.
     ///
     /// What only the view can read comes in: the launch's words (a relaunch
     /// is read off the Task log), the comments pending on the diff, whether
     /// approving is available (`canApprove`) and why not (`approveHelp`),
-    /// whether GitHub would take the merge (`canMerge`) and whether the pull
+    /// whether GitHub would take the merge (`canMerge`), whether the pull
     /// request is still open (`prOpen`, true while unread — a failed read
-    /// concludes nothing).
+    /// concludes nothing) and the trouble its notices read (`fix`).
     public func bar(
         launchTitle: String, pendingComments: Int = 0, canApprove: Bool = false, approveHelp: String? = nil,
-        canMerge: Bool = false, prOpen: Bool = true
+        canMerge: Bool = false, prOpen: Bool = true, fix: BarFix? = nil
     ) -> NavigatorBar {
         guard state != .done else { return .completed }
         let approveTitle = pendingComments > 0 ? "Approve with comments" : "Approve changes"
@@ -322,14 +329,20 @@ public struct NavigatorModel: Equatable, Sendable {
             action: .approve, title: approveTitle, enabled: canApprove, primary: true,
             help: canApprove ? nil : approveHelp)
         let merge = NavigatorBarButton(action: .merge, title: "Merge PR", enabled: canMerge, primary: true)
-        let sendBack = NavigatorBarButton(
-            action: .sendBack, title: NavigatorBarButton.sendBackTitle, enabled: canSendBack, primary: false,
-            help: canSendBack ? nil : "No agent is live, and none can be launched")
+        let fixing = fix.map { fix in
+            NavigatorBarButton(
+                action: .fix, title: fix.title, enabled: canSendBack, primary: true,
+                help: canSendBack ? nil : "No agent is live, and none can be launched")
+        }
         var buttons: [NavigatorBarButton] = []
-        if showsSendBack && (state == .review || prOpen) { buttons.append(sendBack) }
         if showsLaunch { buttons.append(launch) }
-        if showsReviewActions { buttons.append(approve) }
-        if showsMerge && prOpen { buttons.append(merge) }
+        if showsReviewActions {
+            buttons.append(fixing.map { $0.offering(canApprove ? [approve] : []) } ?? approve)
+        }
+        if showsMerge && prOpen {
+            let mergeCanGo = fix?.conflict == nil && canMerge
+            buttons.append(fixing.map { $0.offering(mergeCanGo ? [merge] : []) } ?? merge)
+        }
         if !buttons.isEmpty { return .buttons(buttons) }
         // Nothing to press: the latest section's own primary, greyed — a
         // resumed slice's the launch, since its PR and Changes are the work
@@ -354,19 +367,20 @@ public enum NavigatorBar: Equatable, Sendable {
 
     public static let completedText = "Task completed"
 
-    /// The bar's button for an action, where the bar has one.
+    /// The bar's button for an action, where the bar has one — on its face
+    /// or behind a split button's chevron.
     public func button(_ action: NavigatorBarAction) -> NavigatorBarButton? {
         guard case .buttons(let buttons) = self else { return nil }
-        return buttons.first { $0.action == action }
+        return (buttons + buttons.flatMap(\.alternatives)).first { $0.action == action }
     }
 }
 
 /// The slice's major actions, as the action bar names them.
 public enum NavigatorBarAction: Equatable, Sendable {
     case launch, approve, merge
-    /// Send back to agent: resume the slice with a note saying why, then
-    /// tell the live agent, or launch one (`AppModel.sendBack`).
-    case sendBack
+    /// Fix the pull request's trouble (`BarFix`): Send back to agent with
+    /// the trouble as its note, sent at once (`AppModel.sendBack`).
+    case fix
 }
 
 /// One button of the action bar.
@@ -379,13 +393,20 @@ public struct NavigatorBarButton: Equatable, Sendable {
     public let primary: Bool
     /// The tooltip: why a greyed button is greyed, where that is known.
     public let help: String?
+    /// What its split button's chevron offers instead — the action Fix took
+    /// the place of; empty, and the button is a plain one.
+    public let alternatives: [NavigatorBarButton]
 
-    public init(action: NavigatorBarAction, title: String, enabled: Bool, primary: Bool, help: String? = nil) {
+    public init(
+        action: NavigatorBarAction, title: String, enabled: Bool, primary: Bool, help: String? = nil,
+        alternatives: [NavigatorBarButton] = []
+    ) {
         self.action = action
         self.title = title
         self.enabled = enabled
         self.primary = primary
         self.help = help
+        self.alternatives = alternatives
     }
 
     public static let sendBackTitle = "Send back to agent"
@@ -393,6 +414,12 @@ public struct NavigatorBarButton: Equatable, Sendable {
     /// The button drawn as the bar's stand-in: greyed, primary, saying why.
     func fallback(_ why: String) -> NavigatorBarButton {
         NavigatorBarButton(action: action, title: title, enabled: false, primary: true, help: why)
+    }
+
+    /// The same button, offering `alternatives` behind its chevron.
+    func offering(_ alternatives: [NavigatorBarButton]) -> NavigatorBarButton {
+        NavigatorBarButton(
+            action: action, title: title, enabled: enabled, primary: primary, help: help, alternatives: alternatives)
     }
 }
 

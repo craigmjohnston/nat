@@ -1341,6 +1341,27 @@ public final class AppModel {
         await select(inProject: projectID) { $0.selectedSliceID = sliceID }
     }
 
+    /// The slice whose Send back to agent a row menu asked for, until its
+    /// navigator takes the request (`takeSendBackRequest`) and opens the
+    /// editor, its note empty.
+    public private(set) var sendBackRequest: String?
+
+    /// A slice row menu's Send back to agent…: the slice selected, and its
+    /// navigator asked to open the editor — set before the selection, so a
+    /// navigator built for it finds the request waiting.
+    public func requestSendBack(sliceID: String, inProject projectID: String) async {
+        sendBackRequest = sliceID
+        await selectSlice(sliceID, inProject: projectID)
+    }
+
+    /// Whether a send-back was asked for this slice — answered once, the
+    /// request cleared as it is taken.
+    public func takeSendBackRequest(sliceID: String) -> Bool {
+        guard sendBackRequest == sliceID else { return false }
+        sendBackRequest = nil
+        return true
+    }
+
     /// Select an ad hoc session of a project, activating it first.
     public func selectSession(_ sessionID: String, inProject projectID: String) async {
         await select(inProject: projectID) { $0.selectedSessionID = sessionID }

@@ -4,10 +4,10 @@ import NatKit
 /// A handed-back slice's runs, the titlebar band's trailing item: a split
 /// button. The main part,
 /// `▶ <label>`, runs the default — `nat run` with no `--label`, so nat picks
-/// it — and the split part, past a thin divider, is a chevron opening the
-/// menu of every run the slice is offered (`RunMenuList`), the default
-/// marked. Full bleed to the header's height, in `GnatHeaderButtonStyle`'s
-/// shape, its words at the titlebar's text size as the tabs' are; the glyph
+/// it — and the split part, past a full-height divider, is a chevron opening
+/// the menu of every run the slice is offered (`RunMenuList`), the default
+/// marked. A `HeaderSplitButton`: full bleed to the header's height, in
+/// `GnatHeaderButtonStyle`'s shape, its words at the titlebar's text size as the tabs' are; the glyph
 /// leads, unlike `HeaderActionLabel`'s, in a fixed slot the busy spinner
 /// takes over, so the words never shift.
 struct RunSplitButton: View {
@@ -22,70 +22,36 @@ struct RunSplitButton: View {
     /// Run a label — nil for the default.
     let onRun: (String?) -> Void
 
-    @Environment(\.isEnabled) private var isEnabled
-
     private var defaultLabel: String { runs.first?.label ?? "Run" }
     /// The default already running: the main part greys, the chevron stays
     /// live so another run can still be picked.
     private var defaultRunning: Bool { runs.first.map { isRunning($0.label) } ?? false }
 
     var body: some View {
-        HStack(spacing: 0) {
-            Button { onRun(nil) } label: {
-                HStack(spacing: 7) {
-                    Group {
-                        if isBusy {
-                            ProgressView().controlSize(.mini)
-                        } else {
-                            Image(systemName: "play.fill").font(.system(size: 12, weight: .semibold))
-                        }
+        HeaderSplitButton(
+            mainDisabled: defaultRunning,
+            mainHelp: defaultRunning ? "\(defaultLabel) is running" : "Run \(defaultLabel) in this task's worktree",
+            chevronLabel: "Choose a run", menuOpen: $menuOpen, action: { onRun(nil) }
+        ) {
+            HStack(spacing: 7) {
+                Group {
+                    if isBusy {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: "play.fill").font(.system(size: 12, weight: .semibold))
                     }
-                    // The play glyph's own width, so it sits as close to the
-                    // words as `HeaderActionLabel`'s does.
-                    .frame(width: 10, height: 13)
-                    Text(defaultLabel).fixedSize()
                 }
-                .font(.system(size: GnatMetrics.titlebarText))
+                // The play glyph's own width, so it sits as close to the
+                // words as `HeaderActionLabel`'s does.
+                .frame(width: 10, height: 13)
+                Text(defaultLabel).fixedSize()
             }
-            .buttonStyle(GnatHeaderButtonStyle())
-            .disabled(defaultRunning)
-            .help(defaultRunning ? "\(defaultLabel) is running" : "Run \(defaultLabel) in this task's worktree")
-            DesignTokens.rule(.separator, on: .chrome)
-                .frame(width: 1)
-                .padding(.vertical, 8)
-                .opacity(isEnabled ? 1 : 0.4)
-            Button { menuOpen.toggle() } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .accessibilityLabel("Choose a run")
-            }
-            .buttonStyle(RunHeaderChevronStyle())
-            .help("Choose a run")
-        }
-        .fixedSize(horizontal: true, vertical: false)
-        .popover(isPresented: $menuOpen, arrowEdge: .bottom) {
+            .font(.system(size: GnatMetrics.titlebarText))
+        } menu: {
             RunMenuList(runs: runs, isRunning: isRunning) { label in
                 menuOpen = false
                 onRun(label)
             }
-        }
-    }
-}
-
-/// The header split button's chevron: `GnatHeaderButtonStyle`'s full-bleed
-/// part, narrower — a glyph needs less room than words.
-private struct RunHeaderChevronStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        HoverReader { hovering in
-            configuration.label
-                .padding(.horizontal, 9)
-                .frame(maxHeight: .infinity)
-                .foregroundStyle(DesignTokens.ink(.primary, on: .chrome))
-                .background(hovering ? DesignTokens.rowWash(selected: false, on: .chrome) : .clear)
-                .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.4)
-                .contentShape(Rectangle())
         }
     }
 }

@@ -1,9 +1,10 @@
 import SwiftUI
 import NatKit
 
-/// Send back to agent's own few lines, opened over the action bar by its
-/// button: what the agent should change — prefilled with the pull request's
-/// trouble where it has any (`sendBackReason`) — then Cancel and Send back.
+/// Send back to agent's own few lines, opened over the action bar by the
+/// slice row menu's Send back to agent…: what the agent should change, the
+/// field empty — a pull request's own trouble goes back by the bar's Fix,
+/// with no editor — then Cancel and Send back.
 /// Drawn in the column rather than as a popover, so the gallery can render
 /// it, as the visual comment box is. What sending does is
 /// `AppModel.sendBack`'s: the note recorded with `nat slice-resume`, then the

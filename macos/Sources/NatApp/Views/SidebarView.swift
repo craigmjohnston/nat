@@ -1431,10 +1431,20 @@ struct SidebarView: View {
         let plan = appModel.plan(projectID: row.projectID)
         let page = plan?.slices.first { $0.id == row.sliceID }
         let targets = (plan?.milestones ?? []).sorted { $0.order < $1.order }.filter { $0.id != milestone }
-        let hasLiveAgent = appModel.activityStore?.agents[row.sliceID] != nil
+        let agent = appModel.activityStore?.agents[row.sliceID]
+        let hasLiveAgent = agent != nil
+        let nav = page.map { NavigatorModel(slice: $0, agent: agent.map { AgentActivity($0.activity) }) }
 
         Button("Launch agent", systemImage: "play.circle") { launch(row) }
             .disabled(page.map { !LaunchPlan(for: $0, hasLiveAgent: hasLiveAgent).canLaunch } ?? true)
+        // A handed-back slice — in review or at its pull request — goes back
+        // with a note of the user's own: the navigator's editor, opened empty.
+        if let nav, nav.showsSendBack {
+            Button("\(NavigatorBarButton.sendBackTitle)\u{2026}", systemImage: "arrow.uturn.left") {
+                Task { await appModel.requestSendBack(sliceID: row.sliceID, inProject: row.projectID) }
+            }
+            .disabled(!nav.canSendBack)
+        }
         Button("Edit description\u{2026}", systemImage: "pencil") { sliceForEdit = row }
             .disabled(page?.status != "Todo")
         if let url = page.flatMap({ URL(string: $0.url) }) ?? NotionPageURL.forPage(row.sliceID) {

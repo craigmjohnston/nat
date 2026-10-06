@@ -49,6 +49,20 @@ final class SendBackTests: XCTestCase {
         XCTAssertEqual(NavigatorBarButton.sendBackTitle, "Send back to agent")
     }
 
+    // MARK: - The row menu's request
+
+    /// The row menu selects the slice and leaves the request for its
+    /// navigator, which takes it once — and only its own slice's.
+    func testTheRowMenusRequestSelectsTheSliceAndIsTakenOnce() async {
+        let appModel = await Fixtures.startedAppModel(client: FixtureNatClient(agents: []))
+        await appModel.requestSendBack(sliceID: Fixtures.approveSliceID, inProject: Fixtures.projectID)
+        XCTAssertEqual(appModel.selectedSliceID, Fixtures.approveSliceID)
+        XCTAssertFalse(appModel.takeSendBackRequest(sliceID: "other"))
+        XCTAssertTrue(appModel.takeSendBackRequest(sliceID: Fixtures.approveSliceID))
+        XCTAssertFalse(appModel.takeSendBackRequest(sliceID: Fixtures.approveSliceID), "answered once")
+        XCTAssertNil(appModel.sendBackRequest)
+    }
+
     // MARK: - The flow
 
     func testWithNoAgentItResumesThenLaunches() async {

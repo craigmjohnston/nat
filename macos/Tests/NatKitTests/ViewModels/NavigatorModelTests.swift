@@ -350,29 +350,105 @@ final class NavigatorModelTests: XCTestCase {
                 action: .approve, title: "Approve changes", enabled: false, primary: true, help: "All commits only"))
     }
 
-    func testASliceAtItsPROffersSendBackBesideMergeThePrimaryTrailing() {
+    /// Send back to agent is the row menu's, never the bar's: a slice at its
+    /// pull request holds Merge alone, a review Approve alone.
+    func testTheBarNeverOffersSendBackAtThePROrInReview() {
         let approved = slice(status: "In progress", branch: "b", pr: prURL)
-        let sendBack = NavigatorBarButton(action: .sendBack, title: "Send back to agent", enabled: true, primary: false)
         XCTAssertEqual(bar(approved), .buttons([
-            sendBack,
             NavigatorBarButton(action: .merge, title: "Merge PR", enabled: true, primary: true),
         ]))
-        XCTAssertEqual(bar(approved, .working), bar(approved), "a live agent changes nothing but who is told")
+        XCTAssertEqual(bar(approved, .working), bar(approved))
         XCTAssertEqual(bar(approved, canMerge: false).button(.merge)?.enabled, false)
-        let blocked = slice(status: "In progress", branch: "b", pr: prURL, blocked: true)
-        XCTAssertEqual(
-            bar(blocked).button(.sendBack),
-            NavigatorBarButton(
-                action: .sendBack, title: "Send back to agent", enabled: false, primary: false,
-                help: "No agent is live, and none can be launched"))
-    }
-
-    func testAReviewOffersSendBackBesideApprove() {
         let handed = slice(status: "In progress", branch: "b", handedBack: true)
         XCTAssertEqual(bar(handed, .waiting), .buttons([
-            NavigatorBarButton(action: .sendBack, title: "Send back to agent", enabled: true, primary: false),
             NavigatorBarButton(action: .approve, title: "Approve changes", enabled: true, primary: true),
         ]))
+        XCTAssertNil(bar(handed).button(.fix), "no trouble, no Fix")
+    }
+
+    // MARK: - Fix
+
+    private let failing = ChecksNotice(checks: ["test"], action: .sendBack)
+    private let conflicting = ConflictNotice(conflict: BranchConflict(base: "main"), action: .sendBack)
+
+    private func fixBar(
+        _ s: Slice, _ agent: AgentActivity? = nil, canApprove: Bool = true, canMerge: Bool = true,
+        prOpen: Bool = true, checks: ChecksNotice? = nil, conflict: ConflictNotice? = nil
+    ) -> NavigatorBar {
+        NavigatorModel(slice: s, agent: agent).bar(
+            launchTitle: "Launch agent", canApprove: canApprove, approveHelp: "All commits only", canMerge: canMerge,
+            prOpen: prOpen, fix: BarFix(checks: checks, conflict: conflict))
+    }
+
+    private let merge = NavigatorBarButton(action: .merge, title: "Merge PR", enabled: true, primary: true)
+
+    /// Failing checks GitHub would still merge over: Fix in Merge's place,
+    /// Merge behind its chevron; checks GitHub requires: Fix alone.
+    func testFailingChecksPutFixInMergesPlaceWithMergeBehindItWhileItCanGo() {
+        let approved = slice(status: "In progress", branch: "b", pr: prURL)
+        XCTAssertEqual(fixBar(approved, checks: failing), .buttons([
+            NavigatorBarButton(
+                action: .fix, title: "Fix failing checks", enabled: true, primary: true, alternatives: [merge]),
+        ]))
+        XCTAssertEqual(fixBar(approved, canMerge: false, checks: failing), .buttons([
+            NavigatorBarButton(action: .fix, title: "Fix failing checks", enabled: true, primary: true),
+        ]))
+        XCTAssertEqual(fixBar(approved, checks: failing).button(.merge), merge, "found behind the chevron")
+    }
+
+    /// A conflict: GitHub refuses the merge, so no split — conflicts alone or
+    /// with failing checks.
+    func testAConflictPutsFixInMergesPlaceWithNothingBehindIt() {
+        let approved = slice(status: "In progress", branch: "b", pr: prURL)
+        XCTAssertEqual(fixBar(approved, conflict: conflicting), .buttons([
+            NavigatorBarButton(action: .fix, title: "Resolve conflicts", enabled: true, primary: true),
+        ]))
+        XCTAssertEqual(fixBar(approved, checks: failing, conflict: conflicting), .buttons([
+            NavigatorBarButton(action: .fix, title: "Fix checks and conflicts", enabled: true, primary: true),
+        ]))
+        XCTAssertNil(fixBar(approved, conflict: conflicting).button(.merge))
+    }
+
+    /// A review whose branch conflicts: Fix in Approve's place, Approve —
+    /// still possible — behind it while approving is available.
+    func testABranchConflictInReviewPutsFixInApprovesPlace() {
+        let handed = slice(status: "In progress", branch: "b", handedBack: true)
+        let branch = ConflictNotice(conflict: BranchConflict(base: "main"), action: .sendBack, hasPullRequest: false)
+        XCTAssertEqual(fixBar(handed, conflict: branch), .buttons([
+            NavigatorBarButton(
+                action: .fix, title: "Resolve conflicts", enabled: true, primary: true,
+                alternatives: [NavigatorBarButton(action: .approve, title: "Approve changes", enabled: true, primary: true)]),
+        ]))
+        XCTAssertEqual(fixBar(handed, canApprove: false, conflict: branch).button(.fix)?.alternatives, [])
+    }
+
+    /// Fix greys, saying why, where no agent is live and none can launch; a
+    /// pull request no longer open has nothing to fix.
+    func testFixGreysWithNoAgentToReachAndIsGoneOnceThePRCloses() {
+        let blocked = slice(status: "In progress", branch: "b", pr: prURL, blocked: true)
+        XCTAssertEqual(
+            fixBar(blocked, canMerge: false, checks: failing).button(.fix),
+            NavigatorBarButton(
+                action: .fix, title: "Fix failing checks", enabled: false, primary: true,
+                help: "No agent is live, and none can be launched"))
+        let approved = slice(status: "In progress", branch: "b", pr: prURL)
+        XCTAssertNil(fixBar(approved, prOpen: false, checks: failing).button(.fix))
+    }
+
+    /// What counts as trouble to fix: failing checks only while they wait on
+    /// a send-back — with an agent live nat has sent them already — and a
+    /// conflict whoever is on it.
+    func testBarFixCountsChecksAwaitingASendBackAndAnyConflict() {
+        XCTAssertNil(BarFix(checks: nil, conflict: nil))
+        XCTAssertNil(BarFix(checks: ChecksNotice(checks: ["test"], action: .sentToAgent), conflict: nil))
+        XCTAssertNil(BarFix(checks: ChecksNotice(checks: ["test"], action: .none), conflict: nil))
+        XCTAssertNil(BarFix(checks: nil, conflict: ConflictNotice(conflict: BranchConflict(base: "main"), action: .none)))
+        let live = ConflictNotice(conflict: BranchConflict(base: "main"), action: .liveAgent)
+        let fix = BarFix(checks: ChecksNotice(checks: ["test"], action: .sentToAgent), conflict: live)
+        XCTAssertEqual(fix?.title, "Resolve conflicts", "the checks already went to the agent")
+        XCTAssertEqual(fix?.note, sendBackReason(checks: nil, conflict: live))
+        XCTAssertEqual(
+            BarFix(checks: failing, conflict: conflicting)?.note, sendBackReason(checks: failing, conflict: conflicting))
     }
 
     /// Resumed, its agent at it again: nothing to press but the launch, greyed
@@ -412,8 +488,7 @@ final class NavigatorModelTests: XCTestCase {
 
     func testAMergedPRIsNoMergeAndNoSendBack() {
         let approved = slice(status: "In progress", branch: "b", pr: prURL)
-        // Nothing to press: Merge drawn greyed as the bar's stand-in, and no
-        // Send back — there is nothing to send back once it is merged.
+        // Nothing to press: Merge drawn greyed as the bar's stand-in.
         XCTAssertEqual(bar(approved, prOpen: false), .buttons([
             NavigatorBarButton(
                 action: .merge, title: "Merge PR", enabled: false, primary: true,
