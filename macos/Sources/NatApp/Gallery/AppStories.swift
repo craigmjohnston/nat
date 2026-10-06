@@ -1909,7 +1909,7 @@ enum AppStories {
 
         Story(
             name: "sidebar-loaded",
-            summary: "The sidebar over two projects: Active needs-you first, the active project's tree open, the other folded with its hot dot.",
+            summary: "The sidebar over two projects: Active needs-you first, the active project's tree open, the other folded with its activity pip on its folder's shoulder.",
             size: sidebar
         ) {
             let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)

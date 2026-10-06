@@ -146,7 +146,7 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
     /// The milestones every slice of which is done, in plan order: what the
     /// project's Done folder holds, drawn once there is at least one.
     public let doneMilestones: [SidebarMilestone]
-    /// How many of its rows need the user — the collapsed row's hot dot.
+    /// How many of its rows need the user — the collapsed row's activity pip, on its folder's shoulder.
     public let needsYou: Int
     /// The slices of the scratch project's unfiled milestone (`Milestone.unfiled`):
     /// drawn loose at the head of the tree, above every milestone, with no

@@ -1039,10 +1039,14 @@ struct SidebarView: View {
                 if hoveredProject == project.id {
                     DisclosureChevron(open: open)
                 } else {
+                    // Folded with something waiting on the user: the
+                    // activity pip on the folder's shoulder, taking no room
+                    // of the row's.
                     StackedFolderGlyph(
                         open: open,
                         color: DesignTokens.ink(.tertiary, on: .header),
-                        backColor: DesignTokens.ink(.tertiary, on: .header))
+                        backColor: DesignTokens.ink(.tertiary, on: .header),
+                        pip: !open && project.needsYou > 0 ? DesignTokens.hot : nil)
                 }
             }
             .frame(width: GnatMetrics.treeFolderColumn)
@@ -1067,9 +1071,6 @@ struct SidebarView: View {
                 }
             }
             Spacer(minLength: 0)
-            if !open && project.needsYou > 0 {
-                Circle().fill(DesignTokens.hot).frame(width: 6, height: 6)
-            }
             if projectMenuHasItems(project) {
                 // The right-click menu as a button, only under the pointer
                 // (unlike the `+`), its slot always kept.
