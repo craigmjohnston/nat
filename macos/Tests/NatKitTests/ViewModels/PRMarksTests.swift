@@ -8,11 +8,22 @@ import XCTest
 final class PRMarksTests: XCTestCase {
     private func slice(
         _ id: String = "s-1", status: String = "In progress", pr: String = "https://github.test/o/r/pull/7",
-        resumed: Bool = false, handedBack: Bool = false, branch: String? = nil
+        resumed: Bool = false, handedBack: Bool = false, branch: String? = nil, fixingChecks: [String]? = nil
     ) -> Slice {
         Slice(
             id: id, name: "Slice \(id)", status: status, milestoneID: "M1", assignee: "", pr: pr, url: "",
-            branch: branch, blocked: false, handedBack: handedBack, resumed: resumed)
+            branch: branch, blocked: false, handedBack: handedBack, resumed: resumed, takenBack: resumed,
+            fixingChecks: fixingChecks)
+    }
+
+    func testSliceDecodesFixingChecks() throws {
+        let json = """
+        {"id": "s", "name": "A", "status": "In progress", "milestone_id": "M1", "assignee": "", "pr": "u",
+         "url": "", "blocked": false, "handed_back": false, "resumed": true, "fixing_checks": ["CI / test"]}
+        """
+        XCTAssertEqual(try JSONDecoder().decode(Slice.self, from: Data(json.utf8)).fixingChecks, ["CI / test"])
+        let older = json.replacingOccurrences(of: #", "fixing_checks": ["CI / test"]"#, with: "")
+        XCTAssertNil(try JSONDecoder().decode(Slice.self, from: Data(older.utf8)).fixingChecks)
     }
 
     // MARK: - Decoding
@@ -109,46 +120,31 @@ final class PRMarksTests: XCTestCase {
             prMarks(PRMarks(conflict: BranchConflict(base: "main"), checksRunning: true), for: slice()),
             PRMarks(conflict: BranchConflict(base: "main")), "a conflict draws alone")
         XCTAssertEqual(
-            prMarks(PRMarks(checksRunning: true, heldFailingChecks: ["test"]), for: slice()), running,
-            "handed back, the checks running again: the held failure goes")
+            prMarks(running, for: slice(fixingChecks: ["test"])), running,
+            "handed back, the checks running again: the failure on its log goes")
         XCTAssertEqual(running.runningHelp, "Checks running")
         XCTAssertNil(PRMarks(checksPassing: true).runningHelp)
         XCTAssertFalse(running.isEmpty)
     }
 
     /// Work kicked back to the agent draws its failing checks alone — as
-    /// read, or held while the fix's checks run — until it is handed back.
+    /// read, or, while the fix's checks run, the failure on its task log
+    /// since its hand-back — until it is handed back.
     func testAResumedSliceKeepsOnlyItsFailingChecks() {
         let resumed = slice(resumed: true)
+        let fixing = slice(resumed: true, fixingChecks: ["test"])
         XCTAssertEqual(
             prMarks(PRMarks(failingChecks: ["test"], conflict: BranchConflict(base: "main")), for: resumed),
             PRMarks(failingChecks: ["test"]), "failing as read, the conflict not")
         XCTAssertEqual(
-            prMarks(PRMarks(checksRunning: true, heldFailingChecks: ["test"]), for: resumed),
-            PRMarks(failingChecks: ["test"]), "held while the fix's checks run")
-        XCTAssertEqual(prMarks(PRMarks(conflict: BranchConflict(base: "main")), for: resumed), .none)
-        XCTAssertFalse(PRMarks(heldFailingChecks: []).isEmpty)
-    }
-
-    /// A failure is held over checks running again, from the reading before
-    /// or the one before that, and dropped by any other verdict.
-    func testTheReadingHoldsAFailureWhileTheChecksRunAgain() {
-        func pr(_ verdict: String, failing: [String] = []) -> PRStatusDoc {
-            PRStatusDoc(slices: [PRStatusSlice(
-                sliceID: "s", name: "", pr: "",
-                readiness: verdict == "failing" ? PRStatusSlice.checksFailing : PRStatusSlice.awaitingReview,
-                checks: PRStatusChecks(verdict: verdict, failing: failing.map { PRStatusCheck(name: $0, url: "") }))])
-        }
-        let red = PRReading(pr("failing", failing: ["test"]))
-        XCTAssertEqual(red.heldFailingChecks, [:], "a failure as read is not held")
-        let rerun = PRReading(pr("pending"), after: red)
-        XCTAssertEqual(rerun.heldFailingChecks, ["s": ["test"]])
-        XCTAssertEqual(rerun.marks["s"], PRMarks(checksRunning: true, heldFailingChecks: ["test"]))
-        XCTAssertEqual(PRReading(pr("pending"), after: rerun).heldFailingChecks, ["s": ["test"]], "still running")
-        XCTAssertEqual(PRReading(pr("passing"), after: rerun).heldFailingChecks, [:], "passed")
-        XCTAssertEqual(PRReading(pr("pending")).heldFailingChecks, [:], "nothing before it")
+            prMarks(PRMarks(checksRunning: true), for: fixing), PRMarks(failingChecks: ["test"]),
+            "its fix's checks running")
         XCTAssertEqual(
-            PRReading(pr("pending"), after: PRReading(pr("passing"))).heldFailingChecks, [:], "never failed")
+            prMarks(PRMarks(checksRunning: true), for: resumed), .none,
+            "running, with no failure on its log since the hand-back — sent back for something else")
+        XCTAssertEqual(prMarks(PRMarks(checksPassing: true), for: fixing), .none, "its fix passed")
+        XCTAssertEqual(prMarks(.none, for: fixing), .none, "no reading")
+        XCTAssertEqual(prMarks(PRMarks(conflict: BranchConflict(base: "main")), for: resumed), .none)
     }
 
     func testACheckRowLeadsWithItsOutcomesMark() {
@@ -189,7 +185,7 @@ final class PRMarksTests: XCTestCase {
             milestones: [Milestone(id: "M1", name: "M1", order: 0, status: "Active")],
             slices: [
                 slice("a"), slice("b"), slice("c", pr: ""), slice("d", status: "Done"),
-                slice("g"), slice("h"), slice("i", resumed: true), slice("j", resumed: true),
+                slice("g"), slice("h"), slice("i", resumed: true), slice("j", resumed: true, fixingChecks: ["test"]),
             ])
         let other = ProjectInfo(
             project: Project(id: "q", name: "Q", conventions: ""),
@@ -203,7 +199,7 @@ final class PRMarksTests: XCTestCase {
             liveAgents: ["b": .waiting, "c": .working, "h": .working],
             prMarks: [
                 "g": PRMarks(checksPassing: true), "h": PRMarks(checksPassing: true),
-                "i": PRMarks(checksPassing: true), "j": PRMarks(checksRunning: true, heldFailingChecks: ["test"]),
+                "i": PRMarks(checksPassing: true), "j": PRMarks(checksRunning: true),
                 "a": both, "b": PRMarks(failingChecks: ["lint"]), "c": both, "d": both,
                 "e": PRMarks(conflict: BranchConflict(base: nil)),
             ])

@@ -47,7 +47,7 @@ struct SliceNavigatorView: View {
     /// The failing-checks notice, where the last PR reading has one.
     private var notice: ChecksNotice? {
         checksNotice(
-            slice: slice, failing: prReadingOfProject.failingChecks[slice.id],
+            slice: slice, marks: prReadingOfProject.marks[slice.id] ?? .none,
             hasLiveAgent: agent != nil, events: detail.detail?.events)
     }
     /// The conflict notice, where the last reading — the loaded pull request

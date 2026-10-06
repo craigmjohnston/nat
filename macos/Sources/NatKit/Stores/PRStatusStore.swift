@@ -40,12 +40,9 @@ public final class PRStatusStore {
     }
 
     /// Replaces a project's last reading with a fresh one, recording it in
-    /// the cache; one equal to the last publishes nothing. The fresh one
-    /// holds the last one's failures over checks now running
-    /// (`PRReading.heldFailingChecks`) — never cached, so a launch starts
-    /// with none held.
+    /// the cache; one equal to the last publishes nothing.
     public func apply(_ doc: PRStatusDoc, projectID: String) async {
-        let reading = PRReading(doc, after: readings[projectID])
+        let reading = PRReading(doc)
         guard readings[projectID] != reading else { return }
         readings[projectID] = reading
         await cache.writePRStatus(doc, projectID: projectID)

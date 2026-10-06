@@ -1054,6 +1054,17 @@ enum AppStories {
         },
 
         Story(
+            name: "window-pr-checks-fixing",
+            summary: "The red pull request's slice resumed on the nudge, its agent's fix pushed and the checks running again, not yet handed back: the PR header keeps the danger icon (sent to the agent to fix) and its sidebar rows the checks' danger mark, not the running mark.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: Fixtures.approvedAgentStatuses, plan: Fixtures.fixingChecksProjectInfo,
+                prStatus: Fixtures.prStatusChecksRunning, pr: Fixtures.prChecksRunning,
+                details: Fixtures.checksNudgedSliceDetails, focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
             name: "window-pr-checks-controls",
             summary: "An approved slice's PR section open over checks in every state — passed, failed, running, queued, and one Vercel reported — each row a sidebar task row's height: the heading's re-run and cancel over a checklist at the trailing edge, the rows' own pair hidden until the pointer is on one.",
             size: window

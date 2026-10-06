@@ -57,29 +57,42 @@ final class ChecksFailingTests: XCTestCase {
     // MARK: - The notice
 
     func testNoticeOffersSendBackWithNoAgent() {
-        let notice = checksNotice(slice: slice(), failing: ["test", "lint"], hasLiveAgent: false, events: nil)
+        let notice = checksNotice(slice: slice(), marks: PRMarks(failingChecks: ["test", "lint"]), hasLiveAgent: false, events: nil)
         XCTAssertEqual(notice, ChecksNotice(checks: ["test", "lint"], action: .sendBack))
         XCTAssertEqual(notice?.text, "Checks failing: test, lint.")
     }
 
     func testNoticeSaysTheAgentWasToldWhenTheNudgeIsTheLatestEvent() {
         let told: [TaskLogEvent] = [TaskLogEvent(.handedBack), TaskLogEvent(.sentBack, note: "x"), TaskLogEvent(.approved, pr: "u")]
-        let notice = checksNotice(slice: slice(), failing: ["test"], hasLiveAgent: true, events: told)
+        let notice = checksNotice(slice: slice(), marks: PRMarks(failingChecks: ["test"]), hasLiveAgent: true, events: told)
         XCTAssertEqual(notice?.action, .sentToAgent)
         XCTAssertEqual(notice?.text, "Checks failing: test — sent to the agent to fix.")
 
         let untold: [TaskLogEvent] = [TaskLogEvent(.sentBack, note: "x"), TaskLogEvent(.handedBack), TaskLogEvent(.approved, pr: "u")]
-        XCTAssertEqual(checksNotice(slice: slice(), failing: ["test"], hasLiveAgent: true, events: untold)?.action, ChecksNotice.Action.none)
-        XCTAssertEqual(checksNotice(slice: slice(), failing: ["test"], hasLiveAgent: true, events: nil)?.action, ChecksNotice.Action.none)
+        XCTAssertEqual(checksNotice(slice: slice(), marks: PRMarks(failingChecks: ["test"]), hasLiveAgent: true, events: untold)?.action, ChecksNotice.Action.none)
+        XCTAssertEqual(checksNotice(slice: slice(), marks: PRMarks(failingChecks: ["test"]), hasLiveAgent: true, events: nil)?.action, ChecksNotice.Action.none)
     }
 
-    func testNoticeIsDrawnOnlyAtThePRStage() {
-        XCTAssertNil(checksNotice(slice: slice(), failing: nil, hasLiveAgent: false, events: nil), "green, pending or unread")
-        XCTAssertNil(checksNotice(slice: slice(status: "Done"), failing: ["test"], hasLiveAgent: false, events: nil))
-        XCTAssertNil(checksNotice(slice: slice(pr: "", handedBack: true, branch: "b"), failing: ["test"], hasLiveAgent: false, events: nil))
+    func testNoticeIsDrawnWhereTheSidebarMarksTheFailure() {
+        XCTAssertNil(checksNotice(slice: slice(), marks: .none, hasLiveAgent: false, events: nil), "green, pending or unread")
+        XCTAssertNil(checksNotice(slice: slice(status: "Done"), marks: PRMarks(failingChecks: ["test"]), hasLiveAgent: false, events: nil))
+        XCTAssertNil(checksNotice(slice: slice(pr: "", handedBack: true, branch: "b"), marks: PRMarks(failingChecks: ["test"]), hasLiveAgent: false, events: nil))
+
+        // Resumed on the nudge: the failure as read, then held off the task
+        // log while the fix's checks run, until its hand-back.
+        let nudged: [TaskLogEvent] = [TaskLogEvent(.handedBack), TaskLogEvent(.resumed), TaskLogEvent(.sentBack, note: "x")]
+        let resumed = checksNotice(
+            slice: slice(resumed: true), marks: PRMarks(failingChecks: ["test"]), hasLiveAgent: true, events: nudged)
+        XCTAssertEqual(resumed, ChecksNotice(checks: ["test"], action: .sentToAgent))
+        let fixing = Slice(
+            id: "s-1", name: "", status: "In progress", milestoneID: "M1", assignee: "", pr: "https://pr/1", url: "",
+            blocked: false, handedBack: false, resumed: true, takenBack: true, fixingChecks: ["test"])
+        XCTAssertEqual(
+            checksNotice(slice: fixing, marks: PRMarks(checksRunning: true), hasLiveAgent: true, events: nudged),
+            ChecksNotice(checks: ["test"], action: .sentToAgent), "its fix's checks running")
         XCTAssertNil(
-            checksNotice(slice: slice(resumed: true), failing: ["test"], hasLiveAgent: false, events: nil),
-            "resumed: the red reading is of a commit its agent is replacing")
+            checksNotice(slice: slice(resumed: true), marks: PRMarks(checksRunning: true), hasLiveAgent: true, events: nil),
+            "running, with no failure on its log since the hand-back")
         XCTAssertEqual(ChecksNotice(checks: [], action: .none).text, "Checks failing.")
     }
 

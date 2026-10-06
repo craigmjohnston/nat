@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -426,6 +427,113 @@ func TestInfoAndSliceShowReadTakenBack(t *testing.T) {
 	}
 	if info, show, resumed := f.takenBackFlags(t, f.slice.ID); !info || !show || !resumed {
 		t.Errorf("resumed after approval: taken_back = %v/%v, resumed %v; want all true", info, show, resumed)
+	}
+}
+
+// fixingFlags reads one slice's fixing_checks off info --json and slice-show
+// --json both.
+func (f resumeFixture) fixingFlags(t *testing.T, id string) (info, show []string) {
+	t.Helper()
+	out, err := f.run(t, "info", "--json")
+	if err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	var doc struct {
+		Slices []struct {
+			ID           string   `json:"id"`
+			FixingChecks []string `json:"fixing_checks"`
+		} `json:"slices"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("info json: %v", err)
+	}
+	for _, sj := range doc.Slices {
+		if sj.ID == id {
+			info = sj.FixingChecks
+		}
+	}
+	out, err = f.run(t, "slice-show", id, "--json")
+	if err != nil {
+		t.Fatalf("slice-show: %v", err)
+	}
+	var sj struct {
+		FixingChecks []string `json:"fixing_checks"`
+	}
+	if err := json.Unmarshal([]byte(out), &sj); err != nil {
+		t.Fatalf("slice-show json: %v", err)
+	}
+	return info, sj.FixingChecks
+}
+
+// A slice resumed on a CI nudge reads the nudge's checks as its to fix, on
+// both commands; its next hand-back ends that, and a slice taken back again
+// after it — sent back for something else — has none.
+func TestInfoAndSliceShowReadFixingChecks(t *testing.T) {
+	f := newResumeFixture(t)
+	ctx := context.Background()
+	sh, err := f.st.Shape(ctx, storeProject(f.id, config.ProjectConfig{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.run(t, "slice-resume", f.slice.ID, "--note", "Checks failed."); err != nil {
+		t.Fatalf("slice-resume: %v", err)
+	}
+	if info, show := f.fixingFlags(t, f.slice.ID); info != nil || show != nil {
+		t.Errorf("resumed with no failure on record: fixing = %v/%v, want none", info, show)
+	}
+	record := actions.ChecksProvenance + "\n\n- CI / test: https://ci/1\n- lint"
+	if err := f.st.RecordSentBack(ctx, f.slice.ID, record); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"CI / test", "lint"}
+	if info, show := f.fixingFlags(t, f.slice.ID); !slices.Equal(info, want) || !slices.Equal(show, want) {
+		t.Errorf("resumed on a nudge: fixing = %v/%v, want %v", info, show, want)
+	}
+
+	if _, err := f.st.CompleteSlice(ctx, f.slice.ID, sh, store.Outcome{Summary: "Fixed.", Branch: "slice/b"}); err != nil {
+		t.Fatal(err)
+	}
+	if info, show := f.fixingFlags(t, f.slice.ID); info != nil || show != nil {
+		t.Errorf("handed back: fixing = %v/%v, want none", info, show)
+	}
+	if _, err := f.run(t, "slice-resume", f.slice.ID, "--note", "Rename it."); err != nil {
+		t.Fatalf("slice-resume: %v", err)
+	}
+	if info, show := f.fixingFlags(t, f.slice.ID); info != nil || show != nil {
+		t.Errorf("taken back after the fix's hand-back: fixing = %v/%v, want none", info, show)
+	}
+}
+
+// fixingChecks reads the latest CI failure since the last hand-back: a
+// Checks failed or a Sent back from CI, never a review's own Sent back.
+func TestFixingChecks(t *testing.T) {
+	section := func(heading, text string) string {
+		return "## " + heading + "\n\nAt 2026-10-06T10:00:00Z\n\n" + text + "\n\n"
+	}
+	failed := section("Checks failed", "- test: https://ci/1")
+	nudge := section("Sent back", actions.ChecksProvenance+"\n\n- lint: https://ci/2")
+	review := section("Sent back", "- Rename the helper.")
+	handed := section("Handed back", "Done.")
+	for _, tc := range []struct {
+		name, body string
+		want       []string
+	}{
+		{"nothing", "", nil},
+		{"checks failed", failed, []string{"test"}},
+		{"a nudge", nudge, []string{"lint"}},
+		{"the latest failure", failed + nudge, []string{"lint"}},
+		{"a review after a failure", failed + review, []string{"test"}},
+		{"a review alone", review, nil},
+		{"handed back since", failed + handed, nil},
+		{"failed after a hand-back", handed + failed, []string{"test"}},
+	} {
+		if got := fixingChecks(tc.body); !slices.Equal(got, tc.want) {
+			t.Errorf("%s: fixingChecks = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+	got := checkNames("Two failed.\n- CI / test: https://ci/1\n- lint: not a URL\n- vet")
+	if want := []string{"CI / test", "lint: not a URL", "vet"}; !slices.Equal(got, want) {
+		t.Errorf("checkNames = %v, want %v", got, want)
 	}
 }
 

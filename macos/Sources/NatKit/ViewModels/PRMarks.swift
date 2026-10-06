@@ -34,28 +34,20 @@ public struct PRMarks: Equatable, Sendable {
     /// Whether the checks were last read still running — set and kept by the
     /// same rule as `checksPassing`, drawn in the same slot.
     public let checksRunning: Bool
-    /// The checks a pull request now read running last failed, held from the
-    /// reading before (`PRReading.heldFailingChecks`) — what a resumed slice
-    /// still draws as failing until it is handed back. Never drawn itself:
-    /// `prMarks(_:for:)` folds it into `failingChecks` or drops it.
-    public let heldFailingChecks: [String]?
 
     public init(
         failingChecks: [String]? = nil, conflict: BranchConflict? = nil, checksPassing: Bool = false,
-        checksRunning: Bool = false, heldFailingChecks: [String]? = nil
+        checksRunning: Bool = false
     ) {
         self.failingChecks = failingChecks
         self.conflict = conflict
         self.checksPassing = checksPassing
         self.checksRunning = checksRunning
-        self.heldFailingChecks = heldFailingChecks
     }
 
     public static let none = PRMarks()
 
-    public var isEmpty: Bool {
-        failingChecks == nil && conflict == nil && !checksPassing && !checksRunning && heldFailingChecks == nil
-    }
+    public var isEmpty: Bool { failingChecks == nil && conflict == nil && !checksPassing && !checksRunning }
 
     /// The success mark's tooltip, where there is one.
     public var passingHelp: String? {
@@ -101,23 +93,9 @@ public struct CheckRowMark: Equatable, Sendable {
 /// arrived, replaced only by a newer one.
 public struct PRReading: Equatable, Sendable {
     public let doc: PRStatusDoc
-    /// The checks each pull request read running last failed, by slice id:
-    /// carried from `previous` — its failure, or one it was itself holding —
-    /// for as long as the checks keep reading running, and dropped by any
-    /// other reading. A fix pushed before its hand-back starts the checks
-    /// again, and the failure stays drawn on the resumed slice until then.
-    public let heldFailingChecks: [String: [String]]
 
-    public init(_ doc: PRStatusDoc, after previous: PRReading? = nil) {
+    public init(_ doc: PRStatusDoc) {
         self.doc = doc
-        var held: [String: [String]] = [:]
-        if let previous {
-            let failed = previous.failingChecks.merging(previous.heldFailingChecks) { failing, _ in failing }
-            for slice in doc.slices where slice.checks?.verdict == PRStatusSlice.checksPending {
-                held[slice.sliceID] = failed[slice.sliceID]
-            }
-        }
-        heldFailingChecks = held
     }
 
     public static let empty = PRReading(PRStatusDoc(slices: []))
@@ -180,7 +158,7 @@ public struct PRReading: Equatable, Sendable {
         for id in Set(failing.keys).union(conflicts.keys).union(passing).union(running) {
             out[id] = PRMarks(
                 failingChecks: failing[id], conflict: conflicts[id], checksPassing: passing.contains(id),
-                checksRunning: running.contains(id), heldFailingChecks: heldFailingChecks[id])
+                checksRunning: running.contains(id))
         }
         return out
     }
@@ -290,8 +268,9 @@ public func atPullRequest(_ slice: Slice) -> Bool {
 /// The marks a slice's rows and PR heading draw, from its reading's `marks`:
 /// a slice in review (`inReview`) its handed-back branch's conflict alone; a
 /// resumed one — its work kicked back to the agent — its failing checks
-/// alone, as read or held while they run again (`heldFailingChecks`), until
-/// it is handed back; none elsewhere off its pull request (`atPullRequest`).
+/// alone: as read, or, while the checks run again, the failure its agent was
+/// given and has not handed back a fix for (`Slice.fixingChecks`, off its
+/// task log); none elsewhere off its pull request (`atPullRequest`).
 /// At the PR stage, failing and conflict as read, and the passing tick and
 /// the running mark where the pull request is neither conflicting nor read
 /// failing — whatever its agent's activity reads, since an agent left idle
@@ -299,7 +278,9 @@ public func atPullRequest(_ slice: Slice) -> Bool {
 public func prMarks(_ marks: PRMarks, for slice: Slice) -> PRMarks {
     // In review, before any pull request: its branch's conflict alone.
     if inReview(slice) { return PRMarks(conflict: marks.conflict) }
-    if slice.resumed { return PRMarks(failingChecks: marks.failingChecks ?? marks.heldFailingChecks) }
+    if slice.resumed {
+        return PRMarks(failingChecks: marks.failingChecks ?? (marks.checksRunning ? slice.fixingChecks : nil))
+    }
     guard atPullRequest(slice) else { return .none }
     let clear = marks.failingChecks == nil && marks.conflict == nil
     return PRMarks(

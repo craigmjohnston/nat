@@ -220,10 +220,10 @@ before the first fresh read (`restore`); a reading equal to the last
 publishes nothing, and `forget` drops a closed tab's. `PRStatusStore.marks` (by slice id) puts
 `PRMarks` on **both** sidebar row kinds — `SidebarActiveRow.marks` and
 `SidebarSliceRow.marks`, pr stage only (`atPullRequest`), and a resumed
-slice its failing checks alone — as read, or `heldFailingChecks`: the
-failure `PRReading(_:after:)` carries over readings whose verdict is
-`pending`, so a fix pushed before hand-back stays red until handed back,
-where it reads running (never cached) — drawn by
+slice its failing checks alone — as read, or, while the verdict is
+`pending`, `Slice.fixingChecks` (nat's `fixing_checks`, off the task log:
+the latest CI failure with no hand-back after it), so a fix pushed before
+hand-back stays red until handed back, where it reads running — drawn by
 `PRMarksView`: the checks' `xmark.octagon.fill` and the conflict's own
 `ConflictMark` (`MergeIcon`, "Conflicts with <base>" / "Merge
 conflicts"), which takes a `BranchConflict` and nothing about a PR, for a
@@ -242,7 +242,8 @@ queued check the running mark, a skipped one `slash.circle`, its line faded
 and its name struck through.
 `attention(projectID:)` reads the
 project's own reading. In the navigator, `checksNotice` is the PR section
-header's danger icon (`NavSectionView`'s `warning`, its text the tooltip;
+header's danger icon, drawn wherever the sidebar marks the failure (its
+checks are `prMarks`' own — a resumed slice's too) (`NavSectionView`'s `warning`, its text the tooltip;
 "sent to the agent to fix" when the latest recorded event is the nudge's
 Sent back). A conflict is never a callout in a section body: it is a
 **Conflict** badge in the header (`NavSectionView.conflict`: a small danger

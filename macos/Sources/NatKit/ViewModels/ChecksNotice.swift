@@ -36,18 +36,17 @@ public struct ChecksNotice: Equatable, Sendable {
     }
 }
 
-/// The checks notice for a slice, or nil where there is none to draw: only a
-/// slice at the PR stage whose pull request was last read
-/// failing its checks (`ReviewStatsStore.failingChecks`) — a pending, green or
-/// never-taken reading draws nothing. `events` is `slice-show`'s task log,
-/// whose recorded events come before the `approved`/`merged` it adds from the
-/// slice's properties; the latest recorded one says whether a live agent was
-/// the one the nudge reached.
+/// The checks notice for a slice, or nil where there is none to draw: the
+/// failing checks the sidebar marks it with, from its reading's `marks` by
+/// the same gate (`prMarks(_:for:)`) — at the PR stage as read, and on a
+/// resumed slice until its fix is handed back. `events` is `slice-show`'s
+/// task log, whose recorded events come before the `approved`/`merged` it
+/// adds from the slice's properties; the latest recorded one says whether a
+/// live agent was the one the nudge reached.
 public func checksNotice(
-    slice: Slice, failing: [String]?, hasLiveAgent: Bool, events: [TaskLogEvent]?
+    slice: Slice, marks: PRMarks, hasLiveAgent: Bool, events: [TaskLogEvent]?
 ) -> ChecksNotice? {
-    guard let failing else { return nil }
-    guard atPullRequest(slice) else { return nil }
+    guard let failing = prMarks(marks, for: slice).failingChecks else { return nil }
     guard hasLiveAgent else {
         let action: ChecksNotice.Action = LaunchPlan(for: slice, hasLiveAgent: false).canLaunch ? .sendBack : .none
         return ChecksNotice(checks: failing, action: action)
