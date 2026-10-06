@@ -745,6 +745,33 @@ enum AppStories {
         },
 
         Story(
+            name: "visuals-comment-editor-image-foot",
+            summary: "The comment box open at a point near the first image's bottom edge: floated over the pane, "
+                + "it runs past the image's bottom border unclipped, the pin uncovered above it.",
+            size: pane
+        ) {
+            await VisualsPaneStory.make(zoomFirst: 1, draft: CGPoint(x: 700, y: 860))
+        },
+
+        Story(
+            name: "visuals-comment-editor-zoomed-edge",
+            summary: "The first image at 200% scrolled to its right end, the comment box open near that edge: "
+                + "clamped to the pane's right inset, the pin visible above it.",
+            size: pane
+        ) {
+            await VisualsPaneStory.make(zoomFirst: 2, draft: CGPoint(x: 1420, y: 300), anchor: .trailing)
+        },
+
+        Story(
+            name: "visuals-comment-editor-pane-foot",
+            summary: "The comment box open at a point on the second image, low in the pane where below would run "
+                + "off it: the box sits above the pin, wholly on screen.",
+            size: pane
+        ) {
+            await VisualsPaneStory.make(zoomFirst: 1, draft: CGPoint(x: 400, y: 80), on: 1)
+        },
+
+        Story(
             name: "diff-comment-button",
             summary: "A marked line in the diff: the comment button laid over the end of the line on a face of its own, the code under it unwrapped.",
             size: CGSize(width: 520, height: 260)
@@ -2726,10 +2753,12 @@ private struct DiffCommentButtonStory: View {
 
 /// The image list on its own, over the handed-back slice's images with the
 /// pending comments seeded: the first image zoomed as given, and with
-/// `draft`, the comment box open at that point on it.
+/// `draft`, the comment box open at that point on the image at offset `on`.
+/// A zoomed image's sideways scroll starts at `anchor` where given, else its
+/// middle.
 @MainActor
 private enum VisualsPaneStory {
-    static func make(zoomFirst: CGFloat, draft: CGPoint?) async -> some View {
+    static func make(zoomFirst: CGFloat, draft: CGPoint?, on: Int = 0, anchor: UnitPoint? = nil) async -> some View {
         let appModel = await Fixtures.startedAppModel(
             client: FixtureNatClient(details: Fixtures.visualsSliceDetails), config: Fixtures.twoProjectConfig)
         let review = VisualReview()
@@ -2738,13 +2767,13 @@ private enum VisualsPaneStory {
         await store.load(sliceID: Fixtures.mergeBoxSliceID, visuals: Fixtures.visualChanges)
         Fixtures.seedPendingVisualComments(into: store)
         store.setZoom(zoomFirst, sliceID: Fixtures.mergeBoxSliceID, index: 1)
-        if let draft, let size = Fixtures.visualPixelSizes[Fixtures.visualChanges[0].uri] {
-            review.openDraft(Fixtures.visualChanges[0], point: draft, imageSize: size)
+        if let draft, let size = Fixtures.visualPixelSizes[Fixtures.visualChanges[on].uri] {
+            review.openDraft(Fixtures.visualChanges[on], point: draft, imageSize: size)
         }
         return VisualsPane(
             appModel: appModel, review: review, slice: Fixtures.slice(Fixtures.mergeBoxSliceID),
             handIn: Fixtures.visualChanges, authorName: "Craig Johnston",
-            horizontalAnchor: zoomFirst > 1 ? .center : .leading)
+            horizontalAnchor: anchor ?? (zoomFirst > 1 ? .center : .leading))
         .surface(.window)
     }
 
