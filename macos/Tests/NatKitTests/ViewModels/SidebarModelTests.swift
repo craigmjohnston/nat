@@ -200,6 +200,31 @@ final class SidebarModelTests: XCTestCase {
         XCTAssertEqual(model.projects.map(\.needsYou), [3, 0])
     }
 
+    func testAWorkshopWithAProposalUpSaysPlanReady() {
+        let model = buildSidebarModel(
+            projects: [
+                SidebarProjectInput(id: "p", name: "P", plan: plan([slice("1", status: "In progress")])),
+                SidebarProjectInput(id: "q", name: "Q", plan: plan([])),
+                SidebarProjectInput(id: "untitled-1", name: "Untitled", kind: .untitled, plan: nil),
+                SidebarProjectInput(id: "untitled-2", name: "Untitled", kind: .untitled, plan: nil),
+            ],
+            liveAgents: [:],
+            planningAgents: ["p": .waiting, "untitled-1": .working],
+            pinnedWorkshops: ["q", "untitled-2"],
+            proposedWorkshops: ["p", "untitled-1", "1"])
+        let ready = Dictionary(uniqueKeysWithValues: model.active.map { ($0.id, $0.planReady) })
+        XCTAssertEqual(ready, [
+            "workshop:p": true, "workshop:untitled-1": true, "slice:1": false,
+            "workshop:q": false, "workshop:untitled-2": false,
+        ], "a project's by its id, an Untitled tab's by its tab id; never a slice row")
+        XCTAssertFalse(
+            SidebarActiveRow(
+                kind: .session, targetID: "s", projectID: "p", projectName: "P", title: "t", state: .working,
+                live: true, planReady: true
+            ).planReady, "never a session row")
+        XCTAssertEqual(planReadyLabel, "Plan ready")
+    }
+
     func testAProjectsTagIsItsFirstThreeLetters() {
         XCTAssertEqual(projectTags([("a", "notion-agent-tracker"), ("b", "gnat")]), ["a": "NOT", "b": "GNA"])
         XCTAssertEqual(projectTags([("a", "Go")]), ["a": "GO"])

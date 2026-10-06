@@ -29,6 +29,14 @@ extension Fixtures {
             base: "main"),
     ])
 
+    /// The same pull request with its checks still running.
+    public static let prStatusChecksRunning = PRStatusDoc(slices: [
+        PRStatusSlice(
+            sliceID: approveSliceID, name: "Approve opens the pull request", pr: prURL,
+            readiness: PRStatusSlice.awaitingReview, checks: PRStatusChecks(verdict: PRStatusSlice.checksPending),
+            base: "main"),
+    ])
+
     /// The same pull request red and conflicting at once.
     public static let prStatusChecksFailingAndConflicting = PRStatusDoc(slices: [
         PRStatusSlice(

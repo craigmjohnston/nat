@@ -67,10 +67,13 @@ struct SliceNavigatorView: View {
     private var prWarning: String? { notice?.text }
     /// The PR header's success mark's tooltip, where the last reading has the
     /// checks passing and the gate (`prMarks`) trusts it.
-    private var prPassing: String? {
+    private var prPassing: String? { prHeaderMarks.passingHelp }
+    /// The PR header's running mark's tooltip, where the last reading has the
+    /// checks still running, under the passing mark's gate.
+    private var prRunning: String? { prHeaderMarks.runningHelp }
+    private var prHeaderMarks: PRMarks {
         prMarks(
-            prReadingOfProject.marks[slice.id] ?? .none, for: slice, agent: agent.map { AgentActivity($0.activity) }
-        ).passingHelp
+            prReadingOfProject.marks[slice.id] ?? .none, for: slice, agent: agent.map { AgentActivity($0.activity) })
     }
     private var detail: SliceDetailLoadState { appModel.sliceDetailStore(projectID: projectID).state(for: slice.id) }
     private var visuals: [VisualChange] { detail.detail?.visuals ?? [] }
@@ -139,7 +142,8 @@ struct SliceNavigatorView: View {
                     status: nav.prStatus ?? NavSectionStatus(prStore.badge(sliceID: slice.id)),
                     reworking: reworking(nav, .pr),
                     conflict: conflictNotice?.text,
-                    warning: prWarning, passing: prPassing, onHead: { click(.pr) }, onFold: { fold(.pr) }
+                    warning: prWarning, passing: prPassing, running: prRunning,
+                    onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
                     PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
                 } content: {

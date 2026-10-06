@@ -48,7 +48,8 @@ extension Fixtures {
         toolsReady: Bool = false,
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
         planCache: PlanCaching = NullPlanCache(),
-        seenMemory: SeenMemory = .inMemory()
+        seenMemory: SeenMemory = .inMemory(),
+        prStatusFastInterval: Duration? = nil
     ) -> AppModel {
         AppModel(
             configReader: FixtureConfigReader(config: config),
@@ -57,6 +58,8 @@ extension Fixtures {
             // fires under one; the fixtures do not change, so a poll would
             // only be work nobody reads.
             pollIntervalSeconds: 3600,
+            // No pull-request loop unless a test asks for one.
+            prStatusFastInterval: prStatusFastInterval,
             pathsProvider: { Fixtures.paths },
             workshopLauncher: { projectID, model, effort, request in
                 try await client.workshopLaunch(
@@ -119,11 +122,12 @@ extension Fixtures {
         toolsReady: Bool = false,
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
         planCache: PlanCaching = NullPlanCache(),
-        seenMemory: SeenMemory = .inMemory()
+        seenMemory: SeenMemory = .inMemory(),
+        prStatusFastInterval: Duration? = nil
     ) async -> AppModel {
         let model = appModel(
             client: client, config: config, toolsReady: toolsReady, workshopCache: workshopCache, planCache: planCache,
-            seenMemory: seenMemory)
+            seenMemory: seenMemory, prStatusFastInterval: prStatusFastInterval)
         await start(model)
         return model
     }

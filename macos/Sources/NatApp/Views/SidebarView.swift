@@ -892,6 +892,11 @@ struct SidebarView: View {
             // The pull request was last read failing its checks, or
             // conflicting: its marks, each named under the pointer.
             PRMarksView(marks: row.marks)
+            // A badge, not a button: the row's click opens the workshop,
+            // which lands on its Plan. Never squeezed — the title gives first.
+            if row.planReady {
+                Chip(planReadyLabel, tone: .success, size: .small, systemImage: "checkmark").fixedSize()
+            }
             if row.kind == .workshop {
                 Button { closeWorkshopRow(row) } label: {
                     Image(systemName: "xmark")

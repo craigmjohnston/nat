@@ -38,6 +38,10 @@ struct NavSectionView<Actions: View, Content: View>: View {
     /// A success mark in the warning's slot, drawn only where there is no
     /// warning — the PR section's passing checks. Its tooltip is its text.
     var passing: String?
+    /// The running mark in the same slot, drawn only where there is neither a
+    /// warning nor a passing mark — the PR section's checks still running. Its
+    /// tooltip is its text.
+    var running: String?
     let onHead: () -> Void
     var onFold: (() -> Void)?
     @ViewBuilder var actions: () -> Actions
@@ -109,6 +113,12 @@ struct NavSectionView<Actions: View, Content: View>: View {
                         .ink(.success)
                         .help(passing)
                         .accessibilityLabel(passing)
+                } else if let running {
+                    Image(systemName: "circle")
+                        .font(.system(size: 12, weight: .medium))
+                        .ink(.warning)
+                        .help(running)
+                        .accessibilityLabel(running)
                 }
             }
             .frame(minWidth: 58, alignment: .leading)
