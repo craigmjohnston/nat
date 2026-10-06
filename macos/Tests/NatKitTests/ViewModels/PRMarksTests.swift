@@ -66,8 +66,10 @@ final class PRMarksTests: XCTestCase {
             pr("red", "failing"), pr("unread", nil), pr("x", PRStatusSlice.checksPassing, conflicting: true),
         ]))
         XCTAssertEqual(reading.passingChecks, ["green", "x"])
+        XCTAssertEqual(reading.runningChecks, ["pending"])
         XCTAssertEqual(reading.marks, [
             "green": PRMarks(checksPassing: true),
+            "pending": PRMarks(checksRunning: true),
             "red": PRMarks(failingChecks: []),
             "x": PRMarks(conflict: BranchConflict(base: nil), checksPassing: true),
         ])
@@ -98,6 +100,39 @@ final class PRMarksTests: XCTestCase {
         XCTAssertEqual(
             prMarks(both, for: slice(resumed: true), agent: .working), .none,
             "resumed: the reading is of a commit its agent is replacing")
+    }
+
+    func testTheRunningMarkKeepsThePassingTicksGate() {
+        let running = PRMarks(checksRunning: true)
+        XCTAssertEqual(PRStatusSlice.checksPending, "pending")
+        XCTAssertEqual(prMarks(running, for: slice(), agent: nil), running, "at the PR stage, no agent")
+        XCTAssertEqual(prMarks(running, for: slice(), agent: .waiting), running, "an idle agent left from hand-back")
+        XCTAssertEqual(prMarks(running, for: slice(), agent: .working), .none, "a working agent may push")
+        XCTAssertEqual(prMarks(running, for: slice(resumed: true), agent: nil), .none, "resumed")
+        XCTAssertEqual(prMarks(running, for: slice(status: "Done"), agent: nil), .none, "Done")
+        XCTAssertEqual(
+            prMarks(PRMarks(failingChecks: ["test"], checksRunning: true), for: slice(), agent: nil),
+            PRMarks(failingChecks: ["test"]), "failing wins")
+        XCTAssertEqual(
+            prMarks(PRMarks(conflict: BranchConflict(base: "main"), checksRunning: true), for: slice(), agent: nil),
+            PRMarks(conflict: BranchConflict(base: "main")), "a conflict draws alone")
+        XCTAssertEqual(running.runningHelp, "Checks running")
+        XCTAssertNil(PRMarks(checksPassing: true).runningHelp)
+        XCTAssertFalse(running.isEmpty)
+    }
+
+    func testACheckRowLeadsWithItsOutcomesMark() {
+        XCTAssertEqual(CheckRowMark(.passing), CheckRowMark(.passing))
+        XCTAssertEqual(CheckRowMark(.passing).symbol, "checkmark.circle.fill")
+        XCTAssertEqual(CheckRowMark(.passing).role, .success)
+        XCTAssertEqual(CheckRowMark(.failing).symbol, "xmark.circle.fill")
+        XCTAssertEqual(CheckRowMark(.failing).role, .danger)
+        XCTAssertEqual(CheckRowMark(.pending).symbol, PRMarks.runningSymbol, "the sidebar's running mark")
+        XCTAssertEqual(CheckRowMark(.pending).role, .secondary, "neutral, never a warning")
+        XCTAssertEqual(CheckRowMark(.skipped).symbol, "slash.circle")
+        XCTAssertEqual(CheckRowMark(.skipped).role, .tertiary)
+        XCTAssertEqual(PRMarks.runningSymbol, "ellipsis.circle.fill")
+        XCTAssertEqual(PRMarks.runningOutlineSymbol, "ellipsis.circle")
     }
 
     func testTheMarksSayWhatTheyMark() {

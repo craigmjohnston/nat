@@ -67,10 +67,13 @@ struct SliceNavigatorView: View {
     private var prWarning: String? { notice?.text }
     /// The PR header's success mark's tooltip, where the last reading has the
     /// checks passing and the gate (`prMarks`) trusts it.
-    private var prPassing: String? {
+    private var prPassing: String? { prHeaderMarks.passingHelp }
+    /// The PR header's running mark's tooltip, where the last reading has the
+    /// checks still running, under the passing mark's gate.
+    private var prRunning: String? { prHeaderMarks.runningHelp }
+    private var prHeaderMarks: PRMarks {
         prMarks(
-            prReadingOfProject.marks[slice.id] ?? .none, for: slice, agent: agent.map { AgentActivity($0.activity) }
-        ).passingHelp
+            prReadingOfProject.marks[slice.id] ?? .none, for: slice, agent: agent.map { AgentActivity($0.activity) })
     }
     private var detail: SliceDetailLoadState { appModel.sliceDetailStore(projectID: projectID).state(for: slice.id) }
     private var visuals: [VisualChange] { detail.detail?.visuals ?? [] }
@@ -139,7 +142,8 @@ struct SliceNavigatorView: View {
                     status: nav.prStatus ?? NavSectionStatus(prStore.badge(sliceID: slice.id)),
                     reworking: reworking(nav, .pr),
                     conflict: conflictNotice?.text,
-                    warning: prWarning, passing: prPassing, onHead: { click(.pr) }, onFold: { fold(.pr) }
+                    warning: prWarning, passing: prPassing, running: prRunning,
+                    onHead: { click(.pr) }, onFold: { fold(.pr) }
                 ) {
                     PROpenInGitHubButton(store: prStore, expectedNumber: pullRequestNumber(slice.pr))
                 } content: {
@@ -844,27 +848,23 @@ struct PRSectionBody: View {
         .padding(.horizontal, -12)
     }
 
-    /// A check's line, led by a circle of its outcome: empty for one that
-    /// did not run, dashed for one running, and filled — the only two in
-    /// colour — for done and failed.
+    /// A check's line, led by its outcome's mark (`CheckRowMark`): the
+    /// sidebar's own for passing, failing and running, a slashed circle for
+    /// one that never ran — its line faded and its name struck through.
     /// Set in the pane's own sans at its body size, as the Review line is —
     /// a check's name ("test") is a label, not code.
     private func checkLine(_ check: PRCheck) -> some View {
         let outcome = checkOutcome(state: check.state)
-        let (symbol, role): (String, InkRole) = switch outcome {
-        case .passing: ("checkmark.circle.fill", .success)
-        case .failing: ("xmark.circle.fill", .danger)
-        case .pending: ("circle.dashed", .secondary)
-        case .skipped: ("circle", .tertiary)
-        }
+        let mark = CheckRowMark(outcome)
+        let skipped = outcome == .skipped
         return HStack(spacing: 6) {
-            Image(systemName: symbol)
+            Image(systemName: mark.symbol)
                 .font(.system(size: GnatMetrics.treeGlyph, weight: .medium))
-                .ink(role)
+                .ink(mark.role)
                 .frame(width: GnatMetrics.treeGlyphColumn)
-            Text(check.name).ink(.primary).lineLimit(1)
+            Text(check.name).ink(skipped ? .tertiary : .primary).strikethrough(skipped).lineLimit(1)
             if outcome != .passing {
-                Text("· \(checkStateWord(check.state))").ink(.secondary).lineLimit(1)
+                Text("· \(checkStateWord(check.state))").ink(skipped ? .tertiary : .secondary).lineLimit(1)
             }
         }
     }

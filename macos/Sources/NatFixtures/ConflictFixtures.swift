@@ -29,6 +29,33 @@ extension Fixtures {
             base: "main"),
     ])
 
+    /// The same pull request with its checks still running.
+    public static let prStatusChecksRunning = PRStatusDoc(slices: [
+        PRStatusSlice(
+            sliceID: approveSliceID, name: "Approve opens the pull request", pr: prURL,
+            readiness: PRStatusSlice.awaitingReview, checks: PRStatusChecks(verdict: PRStatusSlice.checksPending),
+            base: "main"),
+    ])
+
+    /// The green pull request (`prGreen`) with its checks still going: one
+    /// passed, one running, one queued, one skipped.
+    public static var prChecksRunning: PRDetail {
+        let green = prGreen
+        return PRDetail(
+            number: green.number, title: green.title, body: green.body, state: green.state, isDraft: green.isDraft,
+            author: green.author, baseRefName: green.baseRefName, headRefName: green.headRefName, url: green.url,
+            checks: [
+                PRCheck(name: "CI / lint", state: "SUCCESS", link: prURL + "/checks?check_run_id=2"),
+                PRCheck(name: "CI / test", state: "IN_PROGRESS", link: prURL + "/checks?check_run_id=1"),
+                PRCheck(name: "CodeQL / Analyze", state: "SKIPPED", link: prURL + "/checks?check_run_id=4"),
+                PRCheck(name: "macOS App CI / test", state: "QUEUED", link: prURL + "/checks?check_run_id=3"),
+            ],
+            reviews: green.reviews, comments: green.comments, reviewDecision: green.reviewDecision,
+            mergeable: green.mergeable, mergeStateStatus: "BLOCKED", additions: green.additions,
+            deletions: green.deletions, changedFiles: green.changedFiles, commits: green.commits,
+            reviewRequests: green.reviewRequests, headRefOid: green.headRefOid)
+    }
+
     /// The same pull request red and conflicting at once.
     public static let prStatusChecksFailingAndConflicting = PRStatusDoc(slices: [
         PRStatusSlice(

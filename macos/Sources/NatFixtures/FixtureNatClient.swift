@@ -24,7 +24,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public let behaviour: Behaviour
-    private let plan: ProjectInfo
+    /// The fixture project's plan — swapped by `setPlan` as a story moves a
+    /// slice on mid-life.
+    private let planBox: Box<ProjectInfo>
+    private var plan: ProjectInfo { planBox.get() }
     /// Plans for projects other than the fixture's own, by project ID — what
     /// a multi-project sidebar reads for each of the others. A project with
     /// none here reads `plan`.
@@ -82,6 +85,14 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// The projects `info` has read, in order.
     public var infoReads: [String] { infoRecorded.all() }
 
+    /// Every project `pr-status` was asked for, in order — a test of the
+    /// reading's own cadence counts here.
+    private let prStatusRecorded = Recorder()
+    /// The projects `pr-status` has read, in order.
+    public var prStatusReads: [String] { prStatusRecorded.all() }
+    /// Set while `pr-status` reads are held mid-call.
+    private let prStatusHeld = Box(false)
+
     /// Set once a caller wants every `sliceDiff` read from here on to refuse
     /// — armed rather than counted, since a story's own setup (`AppModel`
     /// startup reads a handed-back slice's diff for its review stats before
@@ -114,7 +125,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         self.plugins = plugins
         self.sources = sources
         self.behaviour = behaviour
-        self.plan = plan
+        self.planBox = Box(plan)
         self.otherPlans = otherPlans
         self.agents = agents
         self.diff = diff
@@ -123,6 +134,12 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         self.usageReading = usage
         self.sessionsList = sessions
         self.details = details
+    }
+
+    /// Say what the fixture project's plan reads from here on, as a write
+    /// would have moved it.
+    public func setPlan(_ plan: ProjectInfo) {
+        planBox.set(plan)
     }
 
     /// Say what the workshop has proposed, as `plan-propose` would have.
@@ -152,6 +169,16 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// stays mid-call.
     public func holdChecksActions() {
         checksHang.set(true)
+    }
+
+    /// Hold every `pr-status` read from now on mid-call, until `releasePRStatus`.
+    public func holdPRStatus() {
+        prStatusHeld.set(true)
+    }
+
+    /// Let every held `pr-status` read answer.
+    public func releasePRStatus() {
+        prStatusHeld.set(false)
     }
 
     /// Hold every workshop launch from now on, so the app stays mid-launch.
@@ -336,6 +363,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func prStatus(projectID: String) async throws -> PRStatusDoc {
+        prStatusRecorded.append(projectID)
+        while prStatusHeld.get() { try await Task.sleep(for: .milliseconds(1)) }
         if let doc = prStatusByProject.get()[projectID] {
             guard let doc else { throw NatError.commandFailed("gh could not be read") }
             return try await answer(doc)

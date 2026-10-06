@@ -419,6 +419,9 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     /// A slice's pull request's failing checks and conflict, where it was
     /// last read with either — `.none` for every other row.
     public let marks: PRMarks
+    /// A workshop row whose workshop has a proposal up — the row's Plan ready
+    /// badge. False for every slice and session row.
+    public let planReady: Bool
 
     public var id: String { "\(kind):\(targetID)" }
 
@@ -429,7 +432,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     public init(
         kind: SidebarActiveKind, targetID: String, projectID: String, projectName: String,
         projectTag: String? = nil, title: String, state: SliceDisplayState, live: Bool,
-        marks: PRMarks = .none
+        marks: PRMarks = .none, planReady: Bool = false
     ) {
         self.kind = kind
         self.targetID = targetID
@@ -440,6 +443,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
         self.state = state
         self.live = live
         self.marks = marks
+        self.planReady = kind == .workshop && planReady
     }
 }
 
@@ -549,6 +553,9 @@ public let workshopRowTitle = "Workshop"
 /// starter card's own glyph, so the row reads as what that opened.
 public let workshopSymbol = "wand.and.stars"
 
+/// The badge a workshop row wears while its proposal is up.
+public let planReadyLabel = "Plan ready"
+
 /// Builds the sidebar.
 ///
 /// `sessions` are the ad hoc sessions of `sessionsProjectID` alone — the one
@@ -560,7 +567,9 @@ public let workshopSymbol = "wand.and.stars"
 /// over both. Active is sorted needs-you first and otherwise left in project,
 /// then plan, order. `prMarks` is every project's pull request marks by slice
 /// id (`PRStatusStore.marks`), drawn on a slice's Active and tree rows alike
-/// as `prMarks(_:for:agent:)` gates them.
+/// as `prMarks(_:for:agent:)` gates them. `proposedWorkshops` are the tabs
+/// whose workshop has a proposal up (`AppModel.proposals`' keys — a project's
+/// id, an Untitled tab's own): their workshop rows say Plan ready.
 public func buildSidebarModel(
     projects: [SidebarProjectInput],
     liveAgents: [String: AgentActivity],
@@ -569,7 +578,8 @@ public func buildSidebarModel(
     planningAgents: [String: AgentActivity] = [:],
     pinnedWorkshops: Set<String> = [],
     launchingWorkshop: String? = nil,
-    prMarks: [String: PRMarks] = [:]
+    prMarks: [String: PRMarks] = [:],
+    proposedWorkshops: Set<String> = []
 ) -> SidebarModel {
     var active: [SidebarActiveRow] = []
     var built: [SidebarProject] = []
@@ -583,13 +593,15 @@ public func buildSidebarModel(
             if state.needsYou { needsYou += 1 }
             active.append(SidebarActiveRow(
                 kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
-                title: workshopRowTitle, state: state, live: true))
+                title: workshopRowTitle, state: state, live: true,
+                planReady: proposedWorkshops.contains(project.id)))
         } else if pinnedWorkshops.contains(project.id) || launchingWorkshop == project.id {
             // Opened and not yet running: a draft being written, or a launch
             // on its way — the row holds the workshop's place until then.
             active.append(SidebarActiveRow(
                 kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
-                title: workshopRowTitle, state: launchingWorkshop == project.id ? .working : .todo, live: false))
+                title: workshopRowTitle, state: launchingWorkshop == project.id ? .working : .todo, live: false,
+                planReady: proposedWorkshops.contains(project.id)))
         }
 
         if project.id == sessionsProjectID {

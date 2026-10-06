@@ -17,8 +17,9 @@ struct ConflictMark: View {
 
 /// A pull request as a sidebar row marks it, at its trailing edge: the
 /// failing checks' danger mark, and the conflict mark — both where both are
-/// wrong — or, in the same slot, the passing checks' success mark where
-/// `prMarks(_:for:agent:)` kept it; nothing where none is.
+/// wrong — or, in the same slot, the passing checks' success mark or the
+/// running checks' mark (in progress, neutral and static: a pulse means a
+/// live agent) where `prMarks(_:for:agent:)` kept it; nothing where none is.
 struct PRMarksView: View {
     let marks: PRMarks
 
@@ -39,6 +40,13 @@ struct PRMarksView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 10, weight: .medium))
                         .ink(.success)
+                        .help(help)
+                        .accessibilityLabel(help)
+                }
+                if let help = marks.runningHelp {
+                    Image(systemName: PRMarks.runningSymbol)
+                        .font(.system(size: 10, weight: .medium))
+                        .ink(.secondary)
                         .help(help)
                         .accessibilityLabel(help)
                 }

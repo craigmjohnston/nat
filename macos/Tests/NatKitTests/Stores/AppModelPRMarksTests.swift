@@ -38,6 +38,27 @@ final class AppModelPRMarksTests: XCTestCase {
     private let redMarks = PRMarks(failingChecks: ["CI / build"])
     private let conflictMarks = PRMarks(conflict: BranchConflict(base: "main"))
 
+    /// Every open project reads on its own loop — the background one too —
+    /// and closing its tab stops it; reopening starts one again.
+    func testEveryOpenProjectPollsAndAClosedTabStopsItsLoop() async {
+        let model = await Fixtures.startedAppModel(
+            client: client(), config: Fixtures.twoProjectConfig, prStatusFastInterval: .seconds(10))
+        for _ in 0..<500 where model.prStatusStore?.intervals[Fixtures.secondProjectID] == nil {
+            await Task.yield()
+        }
+        let store = model.prStatusStore
+        XCTAssertEqual(store?.intervals[Fixtures.secondProjectID], .seconds(3600), "slow: the plan poll's cadence")
+        XCTAssertNotNil(store?.intervals[Fixtures.projectID])
+
+        _ = await model.closeProject(Fixtures.secondProjectID)
+        XCTAssertNil(store?.intervals[Fixtures.secondProjectID])
+        await model.addProject(id: Fixtures.secondProjectID, name: "gnat")
+        for _ in 0..<500 where store?.intervals[Fixtures.secondProjectID] == nil { await Task.yield() }
+        XCTAssertNotNil(store?.intervals[Fixtures.secondProjectID])
+        model.cleanup()
+        XCTAssertEqual(store?.intervals, [:])
+    }
+
     func testABackgroundProjectsPullRequestsAreMarkedWithoutOpeningIt() async {
         let model = await started(client())
         XCTAssertEqual(model.activeProjectID, Fixtures.projectID)

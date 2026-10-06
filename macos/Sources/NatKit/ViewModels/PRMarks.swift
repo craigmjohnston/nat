@@ -19,7 +19,8 @@ public struct BranchConflict: Equatable, Sendable {
 }
 
 /// What a sidebar row carries about its pull request: the checks it was last
-/// read failing, whether it conflicts, and whether its checks all passed.
+/// read failing, whether it conflicts, and whether its checks all passed or
+/// are still running.
 /// Failing and conflict can be set at once; `.none` draws nothing.
 public struct PRMarks: Equatable, Sendable {
     /// The failing checks by name — nil where the checks are not failing, and
@@ -30,25 +31,61 @@ public struct PRMarks: Equatable, Sendable {
     /// from the verdict alone; `prMarks(_:for:agent:)` keeps it only where
     /// the green tick can be trusted.
     public let checksPassing: Bool
+    /// Whether the checks were last read still running — set and kept by the
+    /// same rule as `checksPassing`, drawn in the same slot.
+    public let checksRunning: Bool
 
-    public init(failingChecks: [String]? = nil, conflict: BranchConflict? = nil, checksPassing: Bool = false) {
+    public init(
+        failingChecks: [String]? = nil, conflict: BranchConflict? = nil, checksPassing: Bool = false,
+        checksRunning: Bool = false
+    ) {
         self.failingChecks = failingChecks
         self.conflict = conflict
         self.checksPassing = checksPassing
+        self.checksRunning = checksRunning
     }
 
     public static let none = PRMarks()
 
-    public var isEmpty: Bool { failingChecks == nil && conflict == nil && !checksPassing }
+    public var isEmpty: Bool { failingChecks == nil && conflict == nil && !checksPassing && !checksRunning }
 
     /// The success mark's tooltip, where there is one.
     public var passingHelp: String? {
         checksPassing ? "Checks passing" : nil
     }
 
+    /// The running mark: GitHub's "in progress" as the check rows' filled
+    /// circles draw it — an ellipsis — in a neutral ink, never a warning.
+    /// The PR header draws its outline form.
+    public static let runningSymbol = "ellipsis.circle.fill"
+    public static let runningOutlineSymbol = "ellipsis.circle"
+
+    /// The running mark's tooltip, where there is one.
+    public var runningHelp: String? {
+        checksRunning ? "Checks running" : nil
+    }
+
     /// The danger mark's tooltip, where there is one.
     public var checksHelp: String? {
         failingChecks.map { $0.isEmpty ? "Checks failing" : "Checks failing: \($0.joined(separator: ", "))" }
+    }
+}
+
+/// The glyph and ink a check row leads with, by outcome — the sidebar's own
+/// marks for passing, failing and running, and a slashed circle for a check
+/// that never ran, whose row is drawn faded and struck through
+/// (`isSkipped`).
+public struct CheckRowMark: Equatable, Sendable {
+    public let symbol: String
+    public let role: InkRole
+
+    public init(_ outcome: CheckOutcome) {
+        switch outcome {
+        case .passing: (symbol, role) = ("checkmark.circle.fill", .success)
+        case .failing: (symbol, role) = ("xmark.circle.fill", .danger)
+        case .pending: (symbol, role) = (PRMarks.runningSymbol, .secondary)
+        case .skipped: (symbol, role) = ("slash.circle", .tertiary)
+        }
     }
 }
 
@@ -104,6 +141,11 @@ public struct PRReading: Equatable, Sendable {
         Set(doc.slices.filter { $0.checks?.verdict == PRStatusSlice.checksPassing }.map(\.sliceID))
     }
 
+    /// Every pull request whose checks were read still running, by slice id.
+    public var runningChecks: Set<String> {
+        Set(doc.slices.filter { $0.checks?.verdict == PRStatusSlice.checksPending }.map(\.sliceID))
+    }
+
     /// Each slice's marks, by slice id — only slices with one. A slice's
     /// conflict is its pull request's, else its handed-back branch's: a slice
     /// has one or the other, never both.
@@ -111,9 +153,12 @@ public struct PRReading: Equatable, Sendable {
         let failing = failingChecks
         let conflicts = conflicts.merging(branchConflicts) { pr, _ in pr }
         let passing = passingChecks
+        let running = runningChecks
         var out: [String: PRMarks] = [:]
-        for id in Set(failing.keys).union(conflicts.keys).union(passing) {
-            out[id] = PRMarks(failingChecks: failing[id], conflict: conflicts[id], checksPassing: passing.contains(id))
+        for id in Set(failing.keys).union(conflicts.keys).union(passing).union(running) {
+            out[id] = PRMarks(
+                failingChecks: failing[id], conflict: conflicts[id], checksPassing: passing.contains(id),
+                checksRunning: running.contains(id))
         }
         return out
     }
@@ -222,14 +267,16 @@ public func atPullRequest(_ slice: Slice) -> Bool {
 /// The marks a slice's rows and PR heading draw, from its reading's `marks`:
 /// a slice in review (`inReview`) its handed-back branch's conflict alone;
 /// none elsewhere off its pull request (`atPullRequest`); failing and conflict as read;
-/// and the passing tick only where it can be trusted — at the PR stage
-/// exactly, with no live agent working (an idle one left from hand-back is fine), and
-/// the pull request neither conflicting nor read failing.
+/// and the passing tick and the running mark only where they can be trusted —
+/// at the PR stage exactly, with no live agent working (an idle one left from
+/// hand-back is fine), and the pull request neither conflicting nor read
+/// failing. The two share the checks' slot under the one rule.
 public func prMarks(_ marks: PRMarks, for slice: Slice, agent: AgentActivity?) -> PRMarks {
     // In review, before any pull request: its branch's conflict alone.
     if inReview(slice) { return PRMarks(conflict: marks.conflict) }
     guard atPullRequest(slice) else { return .none }
-    let passing = marks.checksPassing && marks.failingChecks == nil && marks.conflict == nil
-        && agent != .working
-    return PRMarks(failingChecks: marks.failingChecks, conflict: marks.conflict, checksPassing: passing)
+    let trusted = marks.failingChecks == nil && marks.conflict == nil && agent != .working
+    return PRMarks(
+        failingChecks: marks.failingChecks, conflict: marks.conflict, checksPassing: trusted && marks.checksPassing,
+        checksRunning: trusted && marks.checksRunning)
 }

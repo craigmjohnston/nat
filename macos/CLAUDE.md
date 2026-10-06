@@ -143,7 +143,9 @@ moves no stage or PR gate: `resumed` alone drives those. Story:
 (`showsChangesSend`), and `DiffStore.sendComments` — like `VisualStore`'s —
 asks for the hand-back and runs `slice-rework` only where the slice is
 handed back. Stories: `window-resumed`, `window-resumed-notices`,
-`window-task-log-resumed`, `window-pr-send-back`,
+`window-task-log-resumed`, `window-resumed-pr-open` (sent back from its
+open PR mid-story: Task and the terminal up, the PR section folded and kept),
+`window-pr-send-back`,
 `window-pr-send-back-prefilled`, `action-bar-send-back-and-merge`.
 
 **New and Updated.** One rule, one store: `SeenMemory` (UserDefaults
@@ -174,7 +176,15 @@ skipped where no slice has a PR or stands in review (`inReview`). A project's re
 newer reading of it (a failed one leaves it standing; switching projects
 touches nothing), written beside its plan in the read cache
 (`PlanCaching.writePRStatus`, `<id>.pr-status.json`) and restored before the
-first fresh read (`restore`). `PRStatusStore.marks` (by slice id) puts
+first fresh read (`restore`). Given a `Cadence` (`NatApp` passes
+`prStatusFastInterval: 10 s`; tests and stories none), the store also reads
+every open project on its own loop, whatever is on screen: each reading, by
+whoever asked, schedules the next — **fast** while an open PR's checks are
+`pending` or a live agent sits on a slice with an open PR, else **slow**,
+the plan poll's cadence — one sleeping task per project, skipped where the
+plan has nothing to read (`shouldRead`), stopped by `forget` (a closed tab)
+and `stop`; a second `update` joins the one under way, and a reading equal
+to the last publishes nothing. `PRStatusStore.marks` (by slice id) puts
 `PRMarks` on **both** sidebar row kinds — `SidebarActiveRow.marks` and
 `SidebarSliceRow.marks`, pr stage only (`atPullRequest`) — drawn by
 `PRMarksView`: the checks' `xmark.octagon.fill` and the conflict's own
@@ -184,8 +194,14 @@ conflicting branch with no PR to reuse — and, in the checks' slot, the
 success mark (`checkmark.circle.fill`, "Checks passing") where
 `prMarks(_:for:agent:)` keeps `checksPassing`: the `.pr` stage (not
 resumed), no live agent working, verdict `passing`, not conflicting or
-failing. The PR section header draws the same gate as its outline
-`checkmark.circle` where it has no warning (`NavSectionView.passing`).
+failing — and, under the same gate, the running mark (`checksRunning`,
+verdict `pending`: a static, neutral `PRMarks.runningSymbol` —
+`ellipsis.circle.fill` — "Checks running"). The PR section header draws the
+same gate as its outline `checkmark.circle` (or `ellipsis.circle` for
+running) where it has no warning (`NavSectionView.passing`/`running`). The
+Checks block's rows lead with the same marks (`CheckRowMark`): a running or
+queued check the running mark, a skipped one `slash.circle`, its line faded
+and its name struck through.
 `attention(projectID:)` reads the
 project's own reading. In the navigator, `checksNotice` is the PR section
 header's danger icon (`NavSectionView`'s `warning`, its text the tooltip;
@@ -208,6 +224,7 @@ same; a launch then carries nat's rebase passage. Stories:
 `window-review-conflicting`, `window-review-conflicting-send-back`,
 `sidebar-checks-failing`,
 `sidebar-pr-marks`, `sidebar-pr-marks-passing`, `window-pr-checks-passing`,
+`sidebar-pr-marks-running`, `window-pr-checks-running`,
 `window-pr-checks-failing`, `window-pr-checks-agent-told`,
 `window-pr-conflicting`, `window-pr-conflicting-checks-failing`,
 `window-task-log-checks-failed`.
@@ -289,7 +306,11 @@ Changes file rows' sans), on a click
 while the workshop is on screen (`WorkshopMenuActions`). Opening a
 workshop pins its row in Active (`workshopPinnedProjects`) until a launch or
 the row's ✕; the row is "Workshop", with the `wand.and.stars` glyph in the
-state dot's place (`workshopSymbol`, the crumb too). Pins, drafts, attached
+state dot's place (`workshopSymbol`, the crumb too). While its tab has a
+proposal up the row wears a green ✓ **Plan ready** badge before the ✕
+(`SidebarActiveRow.planReady`, set by `buildSidebarModel` from
+`proposedWorkshops` — `AppModel.proposals`' keys — never by the view; stories
+`sidebar-workshop-plan-ready`, `-hovered`). Pins, drafts, attached
 plan files, launched requests and the open Untitled tabs (with their
 workspace ids) are kept across relaunches in `workshops.json`
 (`WorkshopCaching`: `DiskWorkshopCache` only in `NatApp`, in memory

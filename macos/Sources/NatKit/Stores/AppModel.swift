@@ -476,6 +476,9 @@ public final class AppModel {
     @ObservationIgnored private var workshopSaveTask: Task<Void, Never>?
 
     private let pollInterval: UInt64 // in seconds
+    /// The pull-request reading's fast cadence (`PRStatusStore.Cadence`) —
+    /// nil, as in tests, for no loop of its own.
+    private let prStatusFastInterval: Duration?
     private var pollTask: Task<Void, Never>?
     private var nudgeWatcher: NudgeWatcher?
 
@@ -547,6 +550,7 @@ public final class AppModel {
         configReader: ConfigReaderProtocol = FileConfigReader(),
         planCache: PlanCaching = DiskPlanCache(),
         pollIntervalSeconds: UInt64 = 30,
+        prStatusFastInterval: Duration? = nil,
         pathsProvider: @escaping @Sendable () async throws -> NatPaths = { try await NatClient().paths() },
         workshopLauncher: @escaping @Sendable (String, String?, String?, String?) async throws -> WorkshopLaunchResult = {
             try await NatClient().workshopLaunch(projectID: $0, model: $1, effort: $2, request: $3)
@@ -583,6 +587,7 @@ public final class AppModel {
         self.configReader = configReader
         self.planCache = planCache
         self.pollInterval = pollIntervalSeconds
+        self.prStatusFastInterval = prStatusFastInterval
         self.pathsProvider = pathsProvider
         self.clientFactory = clientFactory
         self.workshopLauncher = workshopLauncher
@@ -832,7 +837,7 @@ public final class AppModel {
             let activityStore = activityStoreFactory()
             self.activityStore = activityStore
             self.reviewStatsStore = ReviewStatsStore(client: clientFactory())
-            self.prStatusStore = PRStatusStore(client: clientFactory(), cache: planCache)
+            self.prStatusStore = makePRStatusStore()
             self.sessionStore = SessionStore(client: clientFactory())
             startUsageStore()
 
@@ -876,7 +881,7 @@ public final class AppModel {
         if activityStore == nil {
             activityStore = activityStoreFactory()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
-            prStatusStore = PRStatusStore(client: clientFactory(), cache: planCache)
+            prStatusStore = makePRStatusStore()
             sessionStore = SessionStore(client: clientFactory())
         }
         if usageStore == nil {
@@ -1011,6 +1016,8 @@ public final class AppModel {
         let closing = Set((stores[projectID]?.state.projectInfo?.slices ?? []).map(\.id))
         await reapFinishedAgents(ignoringHoldsFor: closing)
         projectTabs.remove(at: index)
+        // Its pull-request loop stops with the tab; reopening starts one.
+        prStatusStore?.forget(projectID: projectID)
         if !isUntitledTab(projectID) { closedTabMemory.close(projectID) }
         if activeProjectID == projectID {
             let neighbour = projectTabs[min(index, projectTabs.count - 1)]
@@ -1068,7 +1075,7 @@ public final class AppModel {
         if activityStore == nil {
             activityStore = activityStoreFactory()
             reviewStatsStore = ReviewStatsStore(client: clientFactory())
-            prStatusStore = PRStatusStore(client: clientFactory(), cache: planCache)
+            prStatusStore = makePRStatusStore()
             sessionStore = SessionStore(client: clientFactory())
         }
         if usageStore == nil {
@@ -1175,7 +1182,8 @@ public final class AppModel {
             planningAgents: planningAgents,
             pinnedWorkshops: workshopPinnedProjects,
             launchingWorkshop: workshopLaunching ? activeProjectID : nil,
-            prMarks: prStatusStore?.marks ?? [:])
+            prMarks: prStatusStore?.marks ?? [:],
+            proposedWorkshops: Set(proposals.keys))
     }
 
     /// What the navigator's titlebar names `selection` in the active project
@@ -1347,10 +1355,28 @@ public final class AppModel {
     /// slice has a pull request worth asking about, nor a handed-back branch
     /// under review for nat to test against its base.
     private func updatePRStatus(of store: ProjectStore) async {
-        guard let info = store.state.projectInfo,
-            info.slices.contains(where: { !$0.pr.isEmpty || inReview($0) })
-        else { return }
+        guard hasPullRequestWork(projectID: store.projectID) else { return }
         await prStatusStore?.update(projectID: store.projectID)
+    }
+
+    /// Whether a project's plan, as its store holds it, has anything for
+    /// `pr-status` to read: a slice with a pull request, or a handed-back
+    /// branch under review.
+    private func hasPullRequestWork(projectID: String) -> Bool {
+        guard let info = stores[projectID]?.state.projectInfo else { return false }
+        return info.slices.contains(where: { !$0.pr.isEmpty || inReview($0) })
+    }
+
+    /// The app-wide pull-request reading, polling every open project on its
+    /// own loop where `prStatusFastInterval` is set — its slow cadence the
+    /// plan poll's, its liveness the activity store's.
+    private func makePRStatusStore() -> PRStatusStore {
+        let slow = Duration.seconds(Int64(config.map(pollSeconds) ?? pollInterval))
+        return PRStatusStore(
+            client: clientFactory(), cache: planCache,
+            cadence: prStatusFastInterval.map { PRStatusStore.Cadence(fast: $0, slow: slow) },
+            liveSliceIDs: { [weak self] in Set((self?.activityStore?.agents.values).map { $0.map(\.sliceID) } ?? []) },
+            shouldRead: { [weak self] in self?.hasPullRequestWork(projectID: $0) ?? false })
     }
 
     /// The slice-detail cache for one project, created on first use — the
@@ -2598,6 +2624,7 @@ public final class AppModel {
         usageStore?.stop()
         usageStore = nil
         reviewStatsStore = nil
+        prStatusStore?.stop()
         prStatusStore = nil
         sessionStore = nil
         sliceDetailStores = [:]

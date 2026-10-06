@@ -212,6 +212,42 @@ enum AppStories {
         return shell(appModel)
     }
 
+    /// The approved slice at its open pull request, the PR section open and
+    /// its conversation up, sent back to its live agent once the pane is up —
+    /// `AppModel.sendBack` as the action bar's Send runs it, the plan then
+    /// reading the slice resumed.
+    private static func resumedFromPullRequest() async -> some View {
+        let client = FixtureNatClient(
+            plan: Fixtures.projectInfo, agents: Fixtures.approvedAgentStatuses,
+            details: Fixtures.resumedVisualsSliceDetails)
+        let appModel = await Fixtures.startedAppModel(client: client, config: Fixtures.twoProjectConfig)
+        appModel.selectedSliceID = Fixtures.approveSliceID
+        for _ in 0..<50 where appModel.activityStore?.agents.isEmpty != false {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        await appModel.prStore(projectID: Fixtures.projectID)
+            .fetch(projectID: Fixtures.projectID, sliceRef: Fixtures.approveSliceID)
+        let slice = Fixtures.slice(Fixtures.approveSliceID)
+        Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            client.setPlan(Fixtures.resumedProjectInfo)
+            _ = await appModel.sendBack(slice: slice, note: "Fix the failing test.", model: nil, effort: nil)
+        }
+        return shell(appModel, focus: NavigatorFocus(open: [.pr], main: .pr))
+    }
+
+    /// The sidebar over a project whose live workshop has a proposal up —
+    /// `hovered` drawing its Active row under the pointer.
+    private static func workshopPlanReadySidebar(hovered: Bool) async -> some View {
+        let client = FixtureNatClient(agents: Fixtures.agentStatusesWithPlanner)
+        client.setProposal(Fixtures.proposal, forProject: Fixtures.projectID)
+        let appModel = await Fixtures.startedAppModel(client: client)
+        await settleOnPlanner(appModel)
+        await appModel.refreshProposals()
+        return SidebarView(appModel: appModel, hoveredActiveRow: hovered ? Fixtures.projectID : nil)
+            .environment(\.pulsesPaused, true)
+    }
+
     /// The handed-back slice with its images handed in, the Visual changes
     /// section open and the image list up — `live` adding a waiting agent so
     /// there is one to send comments to.
@@ -838,6 +874,14 @@ enum AppStories {
         },
 
         Story(
+            name: "window-resumed-pr-open",
+            summary: "The approved slice at its open pull request, the PR section open and the conversation up, then sent back to its live agent (slice-resume, agent-send, the plan re-read resumed): the navigator lands on Task with the terminal up, and the PR section stays — folded, wearing Reworking — with its PR tab in the titlebar; no Merge in the bar.",
+            size: window
+        ) {
+            await resumedFromPullRequest()
+        },
+
+        Story(
             name: "window-taken-back",
             summary: "A review sent back to its agent before any pull request (nat's taken_back): working again, Changes kept open on the diff, its header wearing Reworking and the main pane's banner saying the agent is working on this again; no PR section.",
             size: window
@@ -1033,6 +1077,30 @@ enum AppStories {
         ) {
             await slicePane(
                 Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusChecksPassing, pr: Fixtures.prGreen,
+                focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
+            name: "sidebar-pr-marks-running",
+            summary: "As sidebar-pr-marks, but the approved slice's pull request has its checks still running: its rows in Active and in the tree carry the neutral in-progress mark (an ellipsis circle) in the checks' slot; gnat's red and conflicting rows are as before.",
+            size: sidebar
+        ) {
+            let appModel = await prMarksAppModel(prStatus: Fixtures.prStatusChecksRunning)
+            let open: [String: Bool] = [
+                "p:\(Fixtures.projectID)": false, "p:\(Fixtures.secondProjectID)": false,
+                "m:\(Fixtures.projectID)/M2: Review flow": false, "m:\(Fixtures.secondProjectID)/Detail overhaul": false,
+                "m:\(Fixtures.projectID)/~sessions": true,
+            ]
+            return SidebarView(appModel: appModel, folded: open).environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "window-pr-checks-running",
+            summary: "An approved slice whose pull request's checks are still running, no agent on it, its PR section open: the neutral in-progress mark (an ellipsis circle) on the PR header where the passing mark would be; the running and queued checks lead with the same mark, the skipped one with a slashed circle, faded and struck through.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusChecksRunning, pr: Fixtures.prChecksRunning,
                 focus: NavigatorFocus(open: [.pr], main: .pr))
         },
 
@@ -1355,6 +1423,22 @@ enum AppStories {
             size: window
         ) {
             await projectProposalShell(accepting: true)
+        },
+
+        Story(
+            name: "sidebar-workshop-plan-ready",
+            summary: "A project's workshop that proposed a plan, seen from the sidebar: its Active row wears the green ✓ Plan ready badge between the marks' slot and its ✕, the row's height and the ✕ where they always are.",
+            size: sidebar
+        ) {
+            await workshopPlanReadySidebar(hovered: false)
+        },
+
+        Story(
+            name: "sidebar-workshop-plan-ready-hovered",
+            summary: "As sidebar-workshop-plan-ready, the workshop row under the pointer: washed, the badge and the ✕ where they were.",
+            size: sidebar
+        ) {
+            await workshopPlanReadySidebar(hovered: true)
         },
 
         Story(
