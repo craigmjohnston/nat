@@ -39,6 +39,9 @@ enum GnatMetrics {
     static var titlebarText: CGFloat { Typo.scaled(13) }
     /// Where the titlebar band's breadcrumb starts: the navigator's inset.
     static let breadcrumbInset: CGFloat = 10
+    /// A sidebar row's leading padding, which a project's puck sits in —
+    /// the room the breadcrumb makes for its puck too.
+    static let puckRowInset: CGFloat = 18
     /// The least room between the breadcrumb's end and what follows it in
     /// the band — the first tab, else the run button — at every stage of
     /// its fitting, since the breadcrumb measures its room inside it.
@@ -87,9 +90,12 @@ struct StateDot: View {
     var size: CGFloat = 7
 
     /// Dropped half a point below the row's centre, onto the middle of the
-    /// title's capitals — the line the Active rows' project tags sit on too.
+    /// title's capitals — the line the Active rows' project tags sit on too,
+    /// and a project's puck beside them.
+    static let drop: CGFloat = 0.5
+
     var body: some View {
-        mark.offset(y: 0.5)
+        mark.offset(y: Self.drop)
     }
 
     @ViewBuilder

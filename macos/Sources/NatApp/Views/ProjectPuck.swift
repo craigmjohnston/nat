@@ -11,8 +11,11 @@ struct ProjectPuck: View {
     var ground: Ground = .window
 
     static let width: CGFloat = 3
-    /// The room kept between the puck and whatever follows it in the row.
-    static let gap: CGFloat = 4
+    /// The room kept between the puck and whatever follows it in a row.
+    static let gap: CGFloat = 6
+    /// The narrower room a fold heading keeps, whose leading padding is
+    /// only 10pt.
+    static let headingGap: CGFloat = 4
     static var height: CGFloat { GnatMetrics.body - 1 }
 
     var body: some View {
@@ -26,13 +29,18 @@ struct ProjectPuck: View {
 extension View {
     /// The puck drawn in space already there — a row's leading padding,
     /// `inset` wide — never added to its stack, so nothing else in the row
-    /// moves by a point. It ends `ProjectPuck.gap` short of the row's first
-    /// glyph. No colour, no puck.
-    func projectPuck(_ color: ProjectColor?, inset: CGFloat, ground: Ground = .window) -> some View {
+    /// moves by a point. It ends `gap` short of the row's first glyph, and
+    /// sits `drop` below the row's centre — `StateDot.drop` beside a state
+    /// dot or a project tag, so the three share a line. No colour, no puck.
+    func projectPuck(
+        _ color: ProjectColor?, inset: CGFloat, gap: CGFloat = ProjectPuck.gap, drop: CGFloat = 0,
+        ground: Ground = .window
+    ) -> some View {
         overlay(alignment: .leading) {
             if let color {
                 ProjectPuck(color: color, ground: ground)
-                    .padding(.leading, inset - ProjectPuck.gap - ProjectPuck.width)
+                    .offset(y: drop)
+                    .padding(.leading, inset - gap - ProjectPuck.width)
                     .allowsHitTesting(false)
             }
         }

@@ -385,7 +385,7 @@ struct SidebarView: View {
         // below, so a folded heading sits centred between its rule and the
         // next line.
         .frame(height: GnatMetrics.sectionHeadHeight)
-        .projectPuck(puck, inset: 10, ground: .header)
+        .projectPuck(puck, inset: 10, gap: ProjectPuck.headingGap, ground: .header)
         .contentShape(Rectangle())
         .onTapGesture { toggle(key, open: open) }
     }
@@ -574,7 +574,7 @@ struct SidebarView: View {
         }
         .padding(.horizontal, 10)
         .frame(height: GnatMetrics.sectionHeadHeight)
-        .projectPuck(project.color, inset: 10, ground: .header)
+        .projectPuck(project.color, inset: 10, gap: ProjectPuck.headingGap, ground: .header)
         .contentShape(Rectangle())
         .onTapGesture { toggle(key, open: open) }
         .contextMenu { sourceProjectMenu(project) }
@@ -924,8 +924,9 @@ struct SidebarView: View {
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
-        // Left of the state dot, in the leading padding already there.
-        .projectPuck(row.color, inset: 18, ground: .header)
+        // Left of the state dot, in the leading padding already there, on
+        // the dot's and the tag's line.
+        .projectPuck(row.color, inset: 18, drop: StateDot.drop, ground: .header)
         .gnatRow(selected: isSelected(row))
         .transformEnvironment(\.hoverForced) { if row.targetID == hoveredActiveRow { $0 = true } }
         .contentShape(Rectangle())

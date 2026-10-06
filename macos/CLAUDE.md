@@ -488,12 +488,16 @@ runs one `config-set project.<id>.color auto` per project with none, each
 once a run, then `reloadConfig` — only where `assignsProjectColors`, which
 only `NatApp` sets (tests run the real `nat`). It is drawn as `ProjectPuck`,
 a 3pt vertical capsule, **in space already there** (`projectPuck(_:inset:)`,
-an overlay in the leading padding — nothing in the row moves): Active rows
-left of the state dot (`SidebarActiveRow.color`), PROJECTS rows left of the
-folder glyph and the source and Scratch fold headings (`SidebarProject.color`;
-never an Untitled row), and the titlebar breadcrumb at the far left in
-`GnatMetrics.breadcrumbInset` (`TitlebarBreadcrumb.projectColor`, at every
-`BreadcrumbFit` stage, uncounted by its measurements; none with no
+an overlay in the leading padding, `ProjectPuck.gap` short of the first
+glyph — nothing in the row moves): Active rows left of the state dot,
+dropped onto its line (`StateDot.drop`; `SidebarActiveRow.color`), PROJECTS
+rows left of the folder glyph and the source and Scratch fold headings
+(`headingGap`, their padding being 10pt; `SidebarProject.color`; never an
+Untitled row), and the titlebar breadcrumb, whose crumbs move right by
+`GnatMetrics.puckRowInset` less `breadcrumbInset` to give it a sidebar row's
+room (`TitlebarBreadcrumb.projectColor`, at every `BreadcrumbFit` stage,
+uncounted by its measurements, on the line of what follows it — the dot at
+the minimal stage, the tag crumb's capitals at the tag stage; none with no
 breadcrumb). No colour, no puck. Stories: `sidebar-project-colours`
 (`-light`), `titlebar-band-project-colour`.
 
