@@ -550,8 +550,9 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 	b.WriteString("creating new ones: a top-level `remove` list of titles sends each to the\n")
 	b.WriteString("trash, `move` (`[{\"slice\": <title>, \"milestone\": <name>}]`) refiles\n")
 	b.WriteString("each under a milestone the project has or the document creates, and\n")
-	b.WriteString("`edit` (`[{\"slice\": <title>, \"description\": <brief>}]`) replaces each\n")
-	b.WriteString("brief whole. Each names a Todo slice by title, as `depends_on` does. A\n")
+	b.WriteString("`edit` (`[{\"slice\": <title>, \"title\": <new title>, \"description\":\n")
+	b.WriteString("<brief>}]`) renames each, replaces its brief whole, or both — give at\n")
+	b.WriteString("least one. Each names a Todo slice by title, as `depends_on` does. A\n")
 	b.WriteString("Todo slice the new plan supersedes is removed in the same document that\n")
 	b.WriteString("replaces it — never left as a list for the user to delete or move by\n")
 	b.WriteString("hand. They apply in the order edits, moves, removals, then creations, so\n")
@@ -566,9 +567,8 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 		fmt.Fprintf(b, "    nat plan-propose --project %s\n\n", projectID)
 		b.WriteString("Never run plan-apply, milestone-add or slice-add yourself — the\n")
 		b.WriteString("user's Accept in the app is the one approval there is, and it is what\n")
-		b.WriteString("applies the plan, not you. A revised proposal replaces whichever one\n")
-		b.WriteString("is on screen, so send the whole plan again each time rather than a\n")
-		b.WriteString("diff of it.\n")
+		b.WriteString("applies the plan, not you.\n\n")
+		b.WriteString(acceptedProposalPassage(projectID))
 	} else {
 		b.WriteString("Draft in conversation first, and write only after the user explicitly\n")
 		b.WriteString("approves. The `nat` planning commands are the only way to change the\n")
@@ -581,6 +581,7 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 		fmt.Fprintf(b, "- `nat slice-add <title> --milestone <name> [--description -] --project %s`\n", projectID)
 		b.WriteString("  — one new Todo slice, its brief read from stdin\n")
 	}
+	b.WriteString("\n" + SliceTitleRule + "\n")
 
 	b.WriteString(namingPassage)
 	b.WriteString(tmuxPassage)
@@ -801,6 +802,7 @@ func followUpsPassage(c PromptContext) string {
 	fmt.Fprintf(&b, "    nat slice-followups %s --project %s \\\n", c.Slice.ID, c.ProjectID)
 	b.WriteString("        --follow-up '<title line>\n\n<the change: which file or function, what it does instead, and why>\nDone when: <how anyone checks it is finished>'\n\n")
 	b.WriteString(followUpBriefPassage)
+	b.WriteString(SliceTitleRule + "\n\n")
 	b.WriteString("`--follow-up` repeats, one per follow-up. A later hand-in carries only\n")
 	b.WriteString("what is new — never a repeat of a follow-up already handed in. The user\n")
 	b.WriteString("decides in the app — queue it as a slice, fold it into this one, or drop\n")
@@ -850,6 +852,34 @@ func rerunPassage(sliceID, projectID string) string {
 	b.WriteString("job of that run — the output says which. It is never a way to retry a\n")
 	b.WriteString("real failure without a fix: a pushed commit re-runs CI by itself. Never\n")
 	b.WriteString("`gh` for this either.\n")
+	return b.String()
+}
+
+// SliceTitleRule is the one sentence every text that tells an agent how to
+// name slices carries — the workshop, new-project and slice (follow-ups)
+// prompts, and the queue-work, queue-project and next-slice skills in their
+// own copies — with the cap read from [domain.MaxSliceTitleLen], the one place
+// the number is kept. Tests walk each template and skill for it.
+var SliceTitleRule = fmt.Sprintf("A slice title is at most %d characters, one change named, "+
+	"with the list of what it covers in the brief.", domain.MaxSliceTitleLen)
+
+// acceptedProposalPassage tells a gnat-launched planning agent what an
+// unaccepted proposal and an accepted one each are to its next revision: the
+// first is replaced whole, the second is on the board and is changed only
+// through the document's edit, move and remove lists — and that the plan is
+// re-read before every revision. The agent is told of an accept as it
+// happens ([ProposalAcceptedPrompt]); skills/queue-work/SKILL.md says the
+// same in its own words.
+func acceptedProposalPassage(projectID string) string {
+	var b strings.Builder
+	b.WriteString("While a proposal is unaccepted, a revised one replaces whichever is on\n")
+	b.WriteString("screen, so send the whole plan again each time rather than a diff of it.\n")
+	b.WriteString("Once the user accepts it, its milestones and slices are on the board —\n")
+	b.WriteString("you are told when that happens — and a revision changes them only\n")
+	b.WriteString("through `edit`, `move` and `remove` by title, never by creating them\n")
+	b.WriteString("again. Re-read the plan before every revision, since the board may have\n")
+	b.WriteString("moved while you worked:\n\n")
+	fmt.Fprintf(&b, "    nat info --project %s\n", projectID)
 	return b.String()
 }
 

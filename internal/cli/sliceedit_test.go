@@ -122,8 +122,8 @@ func TestSliceEditRefusesNoDescription(t *testing.T) {
 
 	err := Run(context.Background(), []string{"slice-edit", testSliceID, "--project", "project-1"}, env)
 
-	if err == nil || !strings.Contains(err.Error(), "no description given") {
-		t.Errorf("err = %v, want 'no description given'", err)
+	if err == nil || !strings.Contains(err.Error(), "nothing to edit: pass --title, --description") {
+		t.Errorf("err = %v, want it refused as nothing to edit", err)
 	}
 }
 

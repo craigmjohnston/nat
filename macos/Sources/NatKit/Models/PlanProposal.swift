@@ -60,14 +60,17 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
         }
     }
 
-    /// A slice already on the board whose brief the proposal replaces: its
-    /// title, and the new brief whole.
+    /// A slice already on the board the proposal retitles, rewrites or
+    /// both: its title, the new title (nil where the edit keeps it), and the
+    /// new brief whole (empty where the edit keeps it).
     public struct ProposedEdit: Equatable, Sendable {
         public let name: String
+        public let title: String?
         public let brief: String
 
-        public init(name: String, brief: String) {
+        public init(name: String, title: String? = nil, brief: String) {
             self.name = name
+            self.title = title
             self.brief = brief
         }
     }
@@ -137,7 +140,9 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
     private struct Plan: Decodable {
         struct Named: Decodable { let name: String }
         struct Move: Decodable { let slice: String; let milestone: String }
-        struct Edit: Decodable { let slice: String; let description: String }
+        // nat always writes description (empty for a rename alone); title is
+        // there only where the edit renames.
+        struct Edit: Decodable { let slice: String; let title: String?; let description: String }
         struct Slice: Decodable {
             let title: String
             let milestone: String
@@ -188,7 +193,10 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
         func trimmed(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
         removals = (plan.remove ?? []).map(trimmed)
         moves = (plan.move ?? []).map { ProposedMove(name: trimmed($0.slice), milestone: trimmed($0.milestone)) }
-        edits = (plan.edit ?? []).map { ProposedEdit(name: trimmed($0.slice), brief: trimmed($0.description)) }
+        edits = (plan.edit ?? []).map {
+            let title = trimmed($0.title ?? "")
+            return ProposedEdit(name: trimmed($0.slice), title: title.isEmpty ? nil : title, brief: trimmed($0.description))
+        }
     }
 
     /// How the CLI matches a slice to its milestone: trimmed, case-folded.
@@ -246,6 +254,12 @@ public enum ProposalText {
     /// The destination a moved task is drawn with.
     public static func moveDestination(_ milestone: String) -> String {
         "→ \(milestone)"
+    }
+
+    /// The title a retitled task had, drawn under the name it will have once
+    /// the proposal is accepted.
+    public static func renamedFrom(_ title: String) -> String {
+        "Renamed from \(title)"
     }
 
     /// The same caption on a project's own workshop, which has its name.

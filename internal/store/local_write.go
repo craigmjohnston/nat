@@ -662,6 +662,14 @@ func (l *Local) SetSliceBrief(ctx context.Context, id, brief string) error {
 	return err
 }
 
+// SetSliceTitle renames a slice and changes nothing else about it.
+func (l *Local) SetSliceTitle(ctx context.Context, id, title string) error {
+	_, err := l.updateSlice(ctx, id, "rename the slice", func(tx *sql.Tx, _ domain.Slice) error {
+		return l.exec(ctx, tx, "rename the slice", `UPDATE slices SET title = ? WHERE id = ?`, title, id)
+	})
+	return err
+}
+
 // SetDependencies records exactly the slices a slice waits on, replacing
 // whatever it waited on before — an empty list being how a slice is freed.
 func (l *Local) SetDependencies(ctx context.Context, id string, on []string) (domain.Slice, error) {

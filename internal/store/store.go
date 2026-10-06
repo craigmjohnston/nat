@@ -319,6 +319,8 @@ type Store interface {
 	EditSlice(ctx context.Context, id, title, repo, brief string) error
 	// SetSliceBrief rewrites a slice's brief and nothing else about it.
 	SetSliceBrief(ctx context.Context, id, brief string) error
+	// SetSliceTitle renames a slice and changes nothing else about it.
+	SetSliceTitle(ctx context.Context, id, title string) error
 	// SetDependencies records exactly the slices a slice waits on, replacing
 	// whatever it waited on before — an empty list being how a slice is freed —
 	// and answers with the slice as it stands afterwards.

@@ -242,7 +242,8 @@ choice, pick one and name the alternative rejected; no "could", "might",
 "consider" or "worth looking at". If saying what to change needs a look at the
 code, take that look now — it is usually one read; if it genuinely needs
 investigation, the investigation is the deliverable and `Done when:` says what
-it produces.
+it produces. A slice title is at most 64 characters, one change named, with the
+list of what it covers in the brief.
 
 `--follow-up` repeats, one per follow-up. A later hand-in carries only what is
 new — never a repeat of a follow-up already handed in. The user decides on the

@@ -97,6 +97,9 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	if title == "" {
 		return usageErrorf("slice-add: the slice title is empty")
 	}
+	if err := domain.CheckSliceTitle(title); err != nil {
+		return usageErrorf("slice-add: %v", err)
+	}
 	unfiled := strings.TrimSpace(*milestoneRef) == ""
 	// The brief is settled before anything is read from Notion, so a slice-add
 	// whose stdin cannot be read fails having written nothing.

@@ -375,6 +375,16 @@ func TestLocalEditMoveAndDelete(t *testing.T) {
 		t.Errorf("brief = %q, want the one written", b)
 	}
 
+	if err := l.SetSliceTitle(ctx, "writes", "Write it all"); err != nil {
+		t.Fatalf("SetSliceTitle: %v", err)
+	}
+	if got := readBack(t, l, "writes"); got.Name != "Write it all" || got.Repo != "/tmp/repo" {
+		t.Errorf("renamed = %+v, want only the title rewritten", got)
+	}
+	if b := body(t, l, "writes"); b != "Write it very properly." {
+		t.Errorf("brief = %q, want it left alone by a rename", b)
+	}
+
 	if err := l.MoveSlice(ctx, "writes", domain.Milestone{ID: "M1: The format", Name: "M1: The format"}); err != nil {
 		t.Fatalf("MoveSlice: %v", err)
 	}
@@ -498,6 +508,7 @@ func TestLocalWritesRefuseASliceThatIsNotThere(t *testing.T) {
 		"ClearBranch":     func() error { return l.ClearBranch(ctx, "ghost") },
 		"EditSlice":       func() error { return l.EditSlice(ctx, "ghost", "t", "r", "b") },
 		"SetSliceBrief":   func() error { return l.SetSliceBrief(ctx, "ghost", "b") },
+		"SetSliceTitle":   func() error { return l.SetSliceTitle(ctx, "ghost", "t") },
 		"SetDependencies": func() error { _, err := l.SetDependencies(ctx, "ghost", nil); return err },
 		"MoveSlice":       func() error { return l.MoveSlice(ctx, "ghost", domain.Milestone{}) },
 		"DeleteSlice":     func() error { return l.DeleteSlice(ctx, "ghost") },
@@ -734,6 +745,7 @@ func TestLocalNamesItsFileWhenAWriteIsRefused(t *testing.T) {
 		"ClearBranch":   func() error { return l.ClearBranch(ctx, "writes") },
 		"EditSlice":     func() error { return l.EditSlice(ctx, "writes", "t", "r", "b") },
 		"SetSliceBrief": func() error { return l.SetSliceBrief(ctx, "writes", "b") },
+		"SetSliceTitle": func() error { return l.SetSliceTitle(ctx, "writes", "t") },
 		"MoveSlice":     func() error { return l.MoveSlice(ctx, "writes", domain.Milestone{}) },
 		"ReorderSlice": func() error {
 			_, _, err := l.ReorderSlice(ctx, wholeShape, "writes", "reads", true)

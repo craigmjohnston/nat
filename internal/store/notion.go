@@ -774,6 +774,16 @@ func (n *Notion) SetSliceBrief(ctx context.Context, id, brief string) error {
 	return nil
 }
 
+// SetSliceTitle renames a slice: its title property, and nothing else.
+func (n *Notion) SetSliceTitle(ctx context.Context, id, title string) error {
+	if _, err := n.api.UpdatePageProperties(ctx, id, map[string]notion.PropertyValue{
+		notion.PropName: notion.NewTitle(title),
+	}); err != nil {
+		return fmt.Errorf("rename the slice: %w", err)
+	}
+	return nil
+}
+
 // SetDependencies records exactly the slices a slice waits on, replacing what
 // it waited on before — an empty list being how a slice is freed.
 func (n *Notion) SetDependencies(ctx context.Context, id string, on []string) (domain.Slice, error) {

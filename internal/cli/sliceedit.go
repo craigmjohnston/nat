@@ -12,7 +12,11 @@ import (
 )
 
 // sliceEdit replaces a slice's description — the page body slice-add writes
-// it as — with new text, clearing whatever was there first.
+// it as — with new text, clearing whatever was there first, and with --title
+// renames it: either or both, never neither. A new title is held to
+// [domain.MaxSliceTitleLen]; whether another slice already has it is not this
+// command's to refuse — a direct edit is the caller's deliberate act, as a
+// direct slice-add is.
 //
 // Only a Todo slice is editable. One in progress is being worked by an agent
 // that already has its own idea of the brief, written the moment it claimed
@@ -22,7 +26,8 @@ import (
 func sliceEdit(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("slice-edit", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	description := flags.String("description", "", "the new brief to write on the slice page (required); `-` reads it from stdin")
+	description := flags.String("description", "", "the new brief to write on the slice page; `-` reads it from stdin")
+	newTitle := flags.String("title", "", "the slice's new title")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
@@ -42,8 +47,12 @@ func sliceEdit(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	if brief == "" {
-		return usageErrorf("slice-edit: no description given: pass --description or pipe one in with -")
+	title := strings.TrimSpace(*newTitle)
+	if brief == "" && title == "" {
+		return usageErrorf("slice-edit: nothing to edit: pass --title, --description (or pipe one in with -), or both")
+	}
+	if err := domain.CheckSliceTitle(title); err != nil {
+		return usageErrorf("slice-edit: %v", err)
 	}
 
 	_, projectID, project, err := env.projectFor(*projectRef)
@@ -63,16 +72,27 @@ func sliceEdit(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 
-	if err := st.SetSliceBrief(ctx, s.ID, brief); err != nil {
-		return err
+	if title != "" {
+		if err := st.SetSliceTitle(ctx, s.ID, title); err != nil {
+			return err
+		}
+	}
+	if brief != "" {
+		if err := st.SetSliceBrief(ctx, s.ID, brief); err != nil {
+			// A rename already written stands, and the board should hear of it.
+			if title != "" {
+				env.nudged()
+			}
+			return err
+		}
 	}
 
 	env.nudged()
-	logging.Action("slice edited", "slice", s.ID, "name", s.Name)
+	logging.Action("slice edited", "slice", s.ID, "name", s.Name, "retitled", title != "")
 	if *asJSON {
-		return writeJSON(env.Out, sliceEditedJSON{ID: s.ID, Name: s.Name, URL: s.URL, Brief: brief})
+		return writeJSON(env.Out, sliceEditedJSON{ID: s.ID, Name: s.Name, URL: s.URL, Title: title, Brief: brief})
 	}
-	_, err = io.WriteString(env.Out, sliceEditedMarkdown(s, brief, project.WorkingDir))
+	_, err = io.WriteString(env.Out, sliceEditedMarkdown(s, title, brief, project.WorkingDir))
 	return err
 }
 
@@ -90,20 +110,32 @@ func editable(s domain.Slice) error {
 }
 
 // sliceEditedJSON is the structured form of a successful edit.
+// Name is the slice's name as it was read; Title is the one it was renamed
+// to, omitted where the edit left the title alone.
 type sliceEditedJSON struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	URL   string `json:"url,omitempty"`
+	Title string `json:"title,omitempty"`
 	Brief string `json:"brief"`
 }
 
-// sliceEditedMarkdown reports the slice as edited, the brief included so the
-// caller can see exactly what landed rather than trust the write went
-// through.
-func sliceEditedMarkdown(s domain.Slice, brief, workingDir string) string {
+// sliceEditedMarkdown reports the slice as edited, under the name it now
+// has, the brief included so the caller can see exactly what landed rather
+// than trust the write went through.
+func sliceEditedMarkdown(s domain.Slice, title, brief, workingDir string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", s.Name)
-	b.WriteString("Description replaced.\n\n")
+	name := s.Name
+	if title != "" {
+		name = title
+	}
+	fmt.Fprintf(&b, "# %s\n\n", name)
+	if title != "" {
+		fmt.Fprintf(&b, "Renamed from %q.\n\n", s.Name)
+	}
+	if brief != "" {
+		b.WriteString("Description replaced.\n\n")
+	}
 	fmt.Fprintf(&b, "- Notion page: %s\n", s.ID)
 	if s.URL != "" {
 		fmt.Fprintf(&b, "- Notion URL: %s\n", s.URL)
@@ -114,8 +146,10 @@ func sliceEditedMarkdown(s domain.Slice, brief, workingDir string) string {
 	if workingDir != "" {
 		fmt.Fprintf(&b, "- Working directory: %s\n", workingDir)
 	}
-	b.WriteString("\n## Brief\n\n")
-	b.WriteString(brief)
-	b.WriteString("\n")
+	if brief != "" {
+		b.WriteString("\n## Brief\n\n")
+		b.WriteString(brief)
+		b.WriteString("\n")
+	}
 	return b.String()
 }

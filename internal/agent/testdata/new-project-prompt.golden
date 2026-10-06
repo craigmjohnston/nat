@@ -21,6 +21,7 @@ itself, even though there is no project yet to run its setup or its
 - A slice is a small unit of work one agent completes in a single
   fresh session, each with a clear imperative title, a self-contained
   brief, and the milestone it falls under.
+- A slice title is at most 64 characters, one change named, with the list of what it covers in the brief.
 - List the slices, and the milestones, in the order they should be
   worked — that is the order they will land in once the plan is
   accepted.

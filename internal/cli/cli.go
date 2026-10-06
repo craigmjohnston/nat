@@ -305,10 +305,10 @@ usage:
                       print lines N..M (1-based, inclusive; M left off reads
                       to the end) of a file as the branch, or one commit of
                       it, leaves it — what a diff's expand controls reveal
-  nat slice-edit <slice> --description TEXT|- --project ID
-                      replace a Todo slice's description, its page body;
-                      refused on a slice in progress or Done. --description -
-                      reads it from stdin
+  nat slice-edit <slice> [--title TITLE] [--description TEXT|-] --project ID
+                      rename a Todo slice, replace its description (its page
+                      body), or both; refused on a slice in progress or Done.
+                      --description - reads it from stdin
   nat slice-move <slice> --milestone <name> [--json] --project ID
                       refile a slice under another milestone, by name; the
                       work itself is untouched. Refused on a slice in progress.
@@ -454,6 +454,7 @@ usage:
                         --project ID
                       add a Todo slice under a milestone, its description
                       written on the page; --description - reads it from stdin.
+                      A title is at most 64 characters, the rest is the brief.
                       The scratch project takes no --milestone, filing the
                       slice under its reserved Unfiled milestone. A source
                       project takes --container <id> instead of --milestone,
@@ -475,7 +476,13 @@ usage:
                       create a whole plan of milestones and slices from a JSON
                       document, read from FILE or stdin. Once it has all
                       applied, each milestone its move and remove lists left
-                      with no slice is removed (--json: milestones_removed)
+                      with no slice is removed (--json: milestones_removed).
+                      Its remove, move and edit lists change Todo slices
+                      already there, by title; an edit gives a new "title", a
+                      new "description", or both. A slice title is
+                      at most 64 characters, and a created slice may not take
+                      a title the project already has (remove that one to
+                      replace it) or another created slice's
   nat plan-propose [FILE] (--workspace ID | --project ID) [--name NAME] [--json]
                       validate a drafted plan and write it to a proposal file
                       instead of applying it — exactly one of --workspace (the

@@ -539,6 +539,16 @@ func (m *Mirrored) SetSliceBrief(ctx context.Context, id, brief string) error {
 	return nil
 }
 
+// SetSliceTitle renames the slice locally, then pushes the name to the
+// workspace.
+func (m *Mirrored) SetSliceTitle(ctx context.Context, id, title string) error {
+	if err := m.local.SetSliceTitle(ctx, id, title); err != nil {
+		return err
+	}
+	m.push(ctx, id, func() error { return m.remote.SetSliceTitle(ctx, id, title) })
+	return nil
+}
+
 // SetDependencies makes sure the file holds every slice depended on, records
 // them locally, then pushes the same dependencies to the workspace.
 func (m *Mirrored) SetDependencies(ctx context.Context, id string, on []string) (domain.Slice, error) {

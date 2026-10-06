@@ -730,13 +730,14 @@ func TestPlanApplyRefusesAnUnresolvableDependency(t *testing.T) {
 			want: `depends on "Nothing at all", which is neither in the plan nor in the project`,
 		},
 		{
+			// Refused as a duplicate title before any dependency is resolved.
 			name: "a title the plan creates twice",
 			doc: `{"slices": [
 				{"title": "Frame the board", "milestone": "M2: Board", "depends_on": ["Twice"]},
 				{"title": "Twice", "milestone": "M2: Board"},
 				{"title": "Twice", "milestone": "M2: Board"}
 			]}`,
-			want: `which the plan creates 2 times`,
+			want: `slice 3 ("Twice") is already slice 2 of the plan: give each its own title`,
 		},
 		{
 			name: "a slice waiting on itself",

@@ -297,6 +297,11 @@ func (s *Sourced) SetSliceBrief(ctx context.Context, id, brief string) error {
 	return s.local.SetSliceBrief(ctx, id, brief)
 }
 
+// SetSliceTitle renames the slice in the file.
+func (s *Sourced) SetSliceTitle(ctx context.Context, id, title string) error {
+	return s.local.SetSliceTitle(ctx, id, title)
+}
+
 // SetDependencies records the slice's dependencies in the file.
 func (s *Sourced) SetDependencies(ctx context.Context, id string, on []string) (domain.Slice, error) {
 	return s.local.SetDependencies(ctx, id, on)

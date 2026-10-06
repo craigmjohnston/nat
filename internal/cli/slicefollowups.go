@@ -98,6 +98,12 @@ func followUpsOf(given []string) ([]store.FollowUp, error) {
 		case seen[title]:
 			return nil, usageErrorf("slice-followups: two follow-ups are titled %q: give each its own title", title)
 		}
+		// A queued follow-up's title is the new slice's, so it is held to the
+		// cap here, where the agent can still shorten it, rather than at the
+		// user's queue.
+		if err := domain.CheckSliceTitle(title); err != nil {
+			return nil, usageErrorf("slice-followups: %v", err)
+		}
 		seen[title] = true
 		items = append(items, store.FollowUp{Title: title, Brief: brief})
 	}

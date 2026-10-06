@@ -51,6 +51,7 @@ func NewProjectPrompt(workspaceID, description string) string {
 	b.WriteString("- A slice is a small unit of work one agent completes in a single\n")
 	b.WriteString("  fresh session, each with a clear imperative title, a self-contained\n")
 	b.WriteString("  brief, and the milestone it falls under.\n")
+	b.WriteString("- " + SliceTitleRule + "\n")
 	b.WriteString("- List the slices, and the milestones, in the order they should be\n")
 	b.WriteString("  worked — that is the order they will land in once the plan is\n")
 	b.WriteString("  accepted.\n")

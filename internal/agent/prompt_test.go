@@ -2,6 +2,7 @@ package agent
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1009,5 +1010,61 @@ func TestPromptsSayWhyTheProjectIsPinned(t *testing.T) {
 				t.Errorf("the %s prompt does not say %q", prompt, want)
 			}
 		}
+	}
+}
+
+// Every template that tells an agent how to name slices carries the title
+// cap, the number read from domain: the workshop and new-project prompts,
+// and the slice prompt where it hands in follow-ups.
+func TestEveryNamingPromptCarriesTheTitleCap(t *testing.T) {
+	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
+	if !strings.Contains(SliceTitleRule, fmt.Sprintf("at most %d characters", domain.MaxSliceTitleLen)) {
+		t.Fatalf("SliceTitleRule = %q, want the cap from domain", SliceTitleRule)
+	}
+	for prompt, text := range map[string]string{
+		"slice gnat":   Prompt(gnatContext()),
+		"plan":         PlanPrompt(testProjectID, name, dir, "", "", ""),
+		"plan request": PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
+		"plan gnat":    PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
+		"new project":  NewProjectPrompt("ws-1", "A todo app."),
+	} {
+		if !strings.Contains(text, SliceTitleRule) {
+			t.Errorf("the %s prompt does not carry the title cap", prompt)
+		}
+	}
+}
+
+// The gnat workshop prompt says a revision replaces only an unaccepted
+// proposal, reaches an accepted one's slices through edit, move and remove,
+// and re-reads the plan first, pinned to the project.
+func TestGnatPlanPromptCarriesTheAcceptedProposalPassage(t *testing.T) {
+	text := PlanPrompt(testProjectID, "nat", "/src/nat", "", "", FrontendGnat)
+	if !strings.Contains(text, acceptedProposalPassage(testProjectID)) {
+		t.Error("the gnat plan prompt does not carry the accepted-proposal passage")
+	}
+	for _, want := range []string{"While a proposal is unaccepted", "through `edit`, `move` and `remove` by title",
+		"Re-read the plan before every revision", "nat info --project " + testProjectID} {
+		if !strings.Contains(acceptedProposalPassage(testProjectID), want) {
+			t.Errorf("the passage does not say %q", want)
+		}
+	}
+}
+
+func TestProposalAcceptedPrompt(t *testing.T) {
+	got := ProposalAcceptedPrompt(testProjectID, []string{`"M4"`}, []string{`"Frame it" (M4)`, `"Colour it" (M2)`})
+	want := "The user accepted your proposal, and it has been applied to the plan.\n" +
+		"\nNew milestones on the board now: \"M4\".\n" +
+		"\nNew slices on the board now: \"Frame it\" (M4), \"Colour it\" (M2).\n" +
+		"\nThat proposal is no longer on screen to replace. A later revision\n" +
+		"reaches these slices only through the plan document's `edit`, `move`\n" +
+		"and `remove` lists, by title — never by creating them again. Before you\n" +
+		"propose again, re-read the plan:\n\n" +
+		"    nat info --project " + testProjectID + "\n"
+	if got != want {
+		t.Errorf("prompt =\n%s\nwant\n%s", got, want)
+	}
+	// A plan of edits alone created nothing to list.
+	if bare := ProposalAcceptedPrompt(testProjectID, nil, nil); strings.Contains(bare, "New ") {
+		t.Errorf("prompt =\n%s\nwant no empty lists", bare)
 	}
 }

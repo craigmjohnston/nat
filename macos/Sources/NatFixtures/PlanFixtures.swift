@@ -639,8 +639,8 @@ extension Fixtures {
 
     /// A tracked project's proposal that supersedes work already planned: a
     /// new milestone with its replacement task, and one Todo task of the
-    /// fixture plan removed, one moved under the new milestone and one
-    /// rewritten.
+    /// fixture plan removed, one moved under the new milestone, one
+    /// rewritten and one renamed.
     public static let supersedingProposal = PlanProposal(
         name: "",
         milestones: [
@@ -657,6 +657,8 @@ extension Fixtures {
 
             - Written after every successful read.
             - A read that fails leaves the cache as it was.
-            """)]
+            """),
+            .init(name: "Poll the board in the background", title: "Refresh the board on a timer", brief: ""),
+        ]
     )
 }

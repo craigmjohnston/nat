@@ -99,6 +99,25 @@ final class PlanProposalModelTests: XCTestCase {
         XCTAssertEqual(ProposalText.moveDestination("M9: New"), "→ M9: New")
     }
 
+    /// An edit may rename alone (nat writes its description empty), rewrite
+    /// alone, or both; a blank title is no rename.
+    func testAnEditCarriesItsNewTitle() throws {
+        let proposal = try JSONDecoder().decode(PlanProposal.self, from: Data("""
+        {"project": "p-1", "name": "", "plan": {"slices": [], "edit": [
+          {"slice": "A", "title": " B ", "description": ""},
+          {"slice": "C", "title": "D", "description": "New."},
+          {"slice": "E", "title": "  ", "description": "Newer."}
+        ]}}
+        """.utf8))
+
+        XCTAssertEqual(proposal.edits, [
+            .init(name: "A", title: "B", brief: ""),
+            .init(name: "C", title: "D", brief: "New."),
+            .init(name: "E", brief: "Newer."),
+        ])
+        XCTAssertEqual(ProposalText.renamedFrom("A"), "Renamed from A")
+    }
+
     func testAProposalWithoutTheListsChangesNothingOnTheBoard() throws {
         let proposal = try JSONDecoder().decode(PlanProposal.self, from: Data("""
         {"project": "p-1", "name": "", "plan": {"milestones": [{"name": "M9"}], "slices": []}}

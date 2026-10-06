@@ -444,9 +444,18 @@ struct WorkshopNavigatorView: View {
             ProposalChangeGroupLine(label: ProposalText.editLabel, systemImage: "pencil", count: proposal.edits.count)
             ForEach(proposal.edits, id: \.name) { edit in
                 let open = appModel.expandedProposalEdits.contains(edit.name)
-                ProposalChangeLine(title: edit.name, disclosure: open)
-                    .onTapGesture { appModel.toggleProposalEdit(edit.name) }
-                if open {
+                // A rename alone has no brief to unfold.
+                // Named as it will be once accepted; the name it has now under it.
+                ProposalChangeLine(title: edit.title ?? edit.name, disclosure: edit.brief.isEmpty ? nil : open)
+                    .onTapGesture { if !edit.brief.isEmpty { appModel.toggleProposalEdit(edit.name) } }
+                if edit.title != nil {
+                    Text(ProposalText.renamedFrom(edit.name))
+                        .monoXS().ink(.tertiary).lineLimit(1)
+                        .padding(.leading, 38)
+                        .padding(.trailing, 10)
+                        .padding(.bottom, 6)
+                }
+                if open, !edit.brief.isEmpty {
                     MarkdownView(text: edit.brief, size: GnatMetrics.body)
                         .padding(.leading, 38)
                         .padding(.trailing, 12)

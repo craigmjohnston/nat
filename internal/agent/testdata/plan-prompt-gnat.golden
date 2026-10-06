@@ -32,8 +32,9 @@ The plan document changes Todo slices already on the board as well as
 creating new ones: a top-level `remove` list of titles sends each to the
 trash, `move` (`[{"slice": <title>, "milestone": <name>}]`) refiles
 each under a milestone the project has or the document creates, and
-`edit` (`[{"slice": <title>, "description": <brief>}]`) replaces each
-brief whole. Each names a Todo slice by title, as `depends_on` does. A
+`edit` (`[{"slice": <title>, "title": <new title>, "description":
+<brief>}]`) renames each, replaces its brief whole, or both — give at
+least one. Each names a Todo slice by title, as `depends_on` does. A
 Todo slice the new plan supersedes is removed in the same document that
 replaces it — never left as a list for the user to delete or move by
 hand. They apply in the order edits, moves, removals, then creations, so
@@ -50,9 +51,19 @@ pipe the plan JSON (the same document plan-apply reads) to this:
 
 Never run plan-apply, milestone-add or slice-add yourself — the
 user's Accept in the app is the one approval there is, and it is what
-applies the plan, not you. A revised proposal replaces whichever one
-is on screen, so send the whole plan again each time rather than a
-diff of it.
+applies the plan, not you.
+
+While a proposal is unaccepted, a revised one replaces whichever is on
+screen, so send the whole plan again each time rather than a diff of it.
+Once the user accepts it, its milestones and slices are on the board —
+you are told when that happens — and a revision changes them only
+through `edit`, `move` and `remove` by title, never by creating them
+again. Re-read the plan before every revision, since the board may have
+moved while you worked:
+
+    nat info --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+
+A slice title is at most 64 characters, one change named, with the list of what it covers in the brief.
 
 ## Naming slices
 

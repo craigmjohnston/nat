@@ -155,7 +155,15 @@ succeeds), `plan-apply`, `project-create`, `config-set`.
 - `slice-edit` — **Todo-only**, same rule as the board's edit key: In
   progress refuses with "work in flight cannot be edited under its agent",
   Done with "a finished slice's brief is not edited after the fact"
-  (`editable`). Replaces the whole body; does not append.
+  (`editable`). `--description` replaces the whole body (no append);
+  `--title` renames (`Store.SetSliceTitle`, written first); either or both,
+  neither refused. No duplicate check — a direct edit, like a direct
+  `slice-add`, is the caller's deliberate act.
+- **Title cap**: `domain.CheckSliceTitle` (`MaxSliceTitleLen`, 64 runes
+  trimmed) refuses, naming the title and its length, in `slice-add`,
+  `slice-edit --title`, `slice-followups` (each first line) and the plan
+  path (created titles, `edit` titles) — before any write. Titles already on
+  the board are never re-validated.
 - `slice-move` — refuses only **In progress** (not Done — moving milestones
   is plan bookkeeping, not touching the work).
 - `slice-move`, `slice-delete`, a refiling `slice-reorder` and `plan-apply`
@@ -434,7 +442,9 @@ refused the same way by whichever of the three asks. Running either again for
 the same key replaces its proposal — how a revision lands.
 
 A plan document may also hold `remove` (titles), `move` (`{slice,
-milestone}`) and `edit` (`{slice, description}`), each naming a **Todo**
+milestone}`) and `edit` (`{slice, title, description}` — a new title, a new
+brief, or both, never neither; `title` omitempty, `description` always
+written since gnat decodes it as present), each naming a **Todo**
 slice already on the board by title (`resolveChanges`, `planchanges.go`):
 in progress/Done, no match, more than one match, a removed slice also moved
 or edited, or any `depends_on`/`dependencies` naming a removed slice each
@@ -445,8 +455,21 @@ stripped). `applyPlan` writes edits, then milestones (a move may name a new
 one), moves, the dropped waits (`SetDependencies` on each slice that waited
 on a removed one — reported as the removal's `dependents`), the removals,
 then creations — so a replacement may take a removed slice's title.
-`plan-apply`'s output gains `edited`/`moved`/`removed`; `plan-accept`'s JSON
+`plan-apply`'s output gains `edited`/`moved`/`removed` (an edited entry's
+`title` is its new one, omitted where not renamed); `plan-accept`'s JSON
 their counts. `plan-propose --workspace` refuses all three lists.
+
+**No duplicate titles** (`checkDuplicateTitles`, in `validatePlan` after
+`resolveChanges`, so all three plan commands run it): a created slice whose
+title (trimmed, case-insensitive) a board slice the document does not
+`remove` already has — "slice N ("…") is already on the board as a Todo
+slice: edit it to change its brief, or remove it to replace it" — or
+another created slice has, or a retitling `edit` gives, is refused; so is an
+`edit` renaming to a held title. A retitled slice frees its old title.
+Board slices already sharing a title that the plan doesn't touch are left
+alone. `validateAgainstProject` therefore reads the project's slices
+whenever the plan creates any, so `plan-propose --project` refuses at
+propose time; `--workspace` checks the document against itself only.
 
 `plan-proposal (--workspace <id> | --project <id>) --json` reads back what
 `plan-propose` wrote for that key (`{"proposal": null}` with none yet — the
@@ -473,6 +496,15 @@ proposal, empty name, an invalid or outgrown plan) all land before anything
 is written; a failure after the claim leaves the project (made or already
 there) and what was filed, puts the proposal back (`os.Link`, so a revision
 proposed meanwhile is never overwritten), then nudges.
+
+**Accept notice.** After a `--project` accept has applied and nudged,
+`tellPlanner` reads tmux for the project's own planning session
+(`live[agent.PlanTag(id)]`, never the legacy bare one) and sends one
+`agent.ProposalAcceptedPrompt` (created milestones and slices by name, edit/
+move/remove by title from now on, re-read with `nat info`) — the same
+`SendPrompt` path `slice-note` and `slice-triage` use. A failed listing or
+send is logged, never the command's failure; no live session sends nothing.
+`--workspace` sends nothing (gnat kills that tab's session).
 
 ## `usage`
 
