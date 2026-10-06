@@ -123,15 +123,18 @@ struct SourceIdentityLabel: View {
     }
 }
 
-/// One fact's value: its words, led by a small dot in the plugin's colour
-/// where the fact carries one.
+/// One fact's value: its words, led by the fact's badge where it carries one
+/// (as the sidebar draws a card's, with no source icon), else by a small dot
+/// in the plugin's colour where it carries that.
 struct SourceFactValue: View {
     @Environment(\.ground) private var ground
     let fact: SourceFact
 
     var body: some View {
         HStack(spacing: 5) {
-            if let color = fact.color.flatMap({ DesignTokens.wireTint($0, on: ground) }) {
+            if let badge = fact.badge {
+                SourceBadgeView(badge: badge)
+            } else if let color = fact.color.flatMap({ DesignTokens.wireTint($0, on: ground) }) {
                 Circle().fill(color).frame(width: 7, height: 7)
             }
             Text(fact.value).ink(.primary).lineLimit(1)

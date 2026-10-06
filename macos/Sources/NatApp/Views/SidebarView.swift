@@ -887,9 +887,9 @@ struct SidebarView: View {
         return isSelected(last)
     }
 
-    /// One top-level item of Active: a row, or a source card — its badge,
-    /// a slash, the card glyph and its title — with its active tasks nested
-    /// under it, each its dot and title alone.
+    /// One top-level item of Active: a row, or a source card — its badge
+    /// and a slash, then its title — with its active tasks nested under it,
+    /// each its dot and title alone.
     @ViewBuilder
     private func activeEntry(_ entry: SidebarActiveEntry) -> some View {
         switch entry {
@@ -908,10 +908,6 @@ struct SidebarView: View {
                 CardMarkView(badge: badge, icon: card.icon)
                 CrumbSlash()
             }
-            Image(systemName: SourceGlyph.container)
-                .font(.system(size: 11))
-                .ink(.tertiary)
-                .frame(width: GnatMetrics.treeGlyphColumn)
             Text(card.title)
                 .ink(.secondary)
                 .lineLimit(1)

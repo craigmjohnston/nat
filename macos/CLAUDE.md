@@ -808,7 +808,7 @@ section a task or container is named by its **card mark** (`CardMarkView`):
 the card's first badge (a Shortcut card's project, `SourceInfo.badge(ofContainer:)`)
 led by the source's icon, else the icon alone. In Active the card is the
 top-level row (`SidebarModel.activeEntries`, `SidebarActiveCard`: its badge
-where it has one, a slash, the card glyph, its title — a click selects it),
+and a slash where it has one, then its title — a click selects it),
 its in-flight tasks nested under it with no badge; every other row is as it
 was. The titlebar reads the same (`TitlebarIdentity.cardBadge`/`cardIcon`,
 `titlebarIdentity(…, plan:)`). A
@@ -823,7 +823,10 @@ the PR section its `task_note`, and the breadcrumb `<card mark> /
 <container> / <task>` — the card mark in the project crumb's place, no group
 (segment) crumb; a selected container `<card mark> / <container>`, its own
 crumb the card glyph and title (`SourceIdentityLabel`); `CrumbTree`'s middle column for a source project is its containers
-(each once, in fold order), no group column. Stories:
+(each once, in fold order), no group column, and the source project's own
+row there leads with its source's icon in the folder's place. A fact with a
+`badge` (the Shortcut plugin's `project`) draws that badge, with no icon,
+before its value in the dot's place (`SourceFactValue`). Stories:
 `crumb-tree-picker-source`, `titlebar-band-source-task`,
 `titlebar-band-container`.
 `DesignTokens.wireTint`/`wireBadge` are the one place a plugin's `#rrggbb`

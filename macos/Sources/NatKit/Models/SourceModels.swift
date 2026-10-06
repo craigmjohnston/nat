@@ -373,13 +373,17 @@ public struct SourceFact: Codable, Equatable, Sendable {
     public let value: String
     /// `#rrggbb`, tinting the value's leading dot.
     public let color: String?
+    /// Drawn before the value in the dot's place — a fact naming what one of
+    /// the container's badges stands for (a Shortcut card's project).
+    public let badge: SourceBadge?
 
-    enum CodingKeys: String, CodingKey { case label, value, color }
+    enum CodingKeys: String, CodingKey { case label, value, color, badge }
 
-    public init(label: String, value: String, color: String? = nil) {
+    public init(label: String, value: String, color: String? = nil, badge: SourceBadge? = nil) {
         self.label = label
         self.value = value
         self.color = color
+        self.badge = badge
     }
 
     public init(from decoder: Decoder) throws {
@@ -387,6 +391,7 @@ public struct SourceFact: Codable, Equatable, Sendable {
         label = c.lenientString(.label)
         value = c.lenientString(.value)
         color = c.optionalString(.color)
+        badge = (try? c.decodeIfPresent(SourceBadge.self, forKey: .badge)) ?? nil
     }
 }
 

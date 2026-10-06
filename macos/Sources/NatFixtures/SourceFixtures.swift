@@ -251,7 +251,7 @@ extension Fixtures {
 
     static let sourceCardFacts: [SourceFact] = [
         SourceFact(label: "id", value: "dm-4821"),
-        SourceFact(label: "project", value: "NA · Native App", color: "#4f6bd8"),
+        SourceFact(label: "project", value: "Mobile App", color: "#e5732a", badge: sourceMobileApp),
         SourceFact(label: "state", value: "In Development"),
         SourceFact(label: "type", value: "feature"),
         SourceFact(label: "epic", value: "Native app parity"),

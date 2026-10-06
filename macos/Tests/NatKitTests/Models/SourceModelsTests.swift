@@ -245,7 +245,9 @@ final class SourceModelsTests: XCTestCase {
       "external_url": "https://app.shortcut.com/acme/story/4821",
       "facts": [
         { "label": "id", "value": "sc-4821" },
-        { "label": "project", "value": "NA · Native App", "color": "#4f6bd8" }
+        { "label": "project", "value": "Mobile App", "color": "#e5732a",
+          "badge": { "text": "MOB", "color": "#e5732a", "title": "Mobile App" } },
+        { "label": "team", "value": "NA", "badge": "not a badge" }
       ],
       "sections": [
         { "id": "story", "title": "Story", "kind": "prose", "body": "Comments **never** arrive." },
@@ -270,7 +272,10 @@ final class SourceModelsTests: XCTestCase {
         XCTAssertEqual(detail.externalURL, "https://app.shortcut.com/acme/story/4821")
         XCTAssertEqual(detail.facts, [
             SourceFact(label: "id", value: "sc-4821"),
-            SourceFact(label: "project", value: "NA · Native App", color: "#4f6bd8"),
+            SourceFact(
+                label: "project", value: "Mobile App", color: "#e5732a",
+                badge: SourceBadge(text: "MOB", color: "#e5732a", title: "Mobile App")),
+            SourceFact(label: "team", value: "NA"),
         ])
         XCTAssertEqual(detail.sections.map(\.kind), [.prose, .comments, .links, .unknown("chart")])
         XCTAssertEqual(detail.sections.map(\.kind.word), ["prose", "comments", "links", "chart"])

@@ -22,11 +22,19 @@ struct CrumbTreePicker: View {
             column {
                 ForEach(tree.projects) { project in
                     row(selected: project.id == tree.projectID, opens: true) {
-                        StackedFolderGlyph(
-                            open: project.id == tree.projectID,
-                            color: DesignTokens.ink(.tertiary, on: .header),
-                            backColor: DesignTokens.ink(.tertiary, on: .header))
-                            .frame(width: 16)
+                        // A source project is its source's icon; every other
+                        // a folder of folders.
+                        Group {
+                            if let icon = project.source?.icon {
+                                SourceIconView(icon: icon, size: 13).ink(.tertiary)
+                            } else {
+                                StackedFolderGlyph(
+                                    open: project.id == tree.projectID,
+                                    color: DesignTokens.ink(.tertiary, on: .header),
+                                    backColor: DesignTokens.ink(.tertiary, on: .header))
+                            }
+                        }
+                        .frame(width: 16)
                         // The project's badge 6pt before its name, the
                         // folder keeping its column — never an Untitled
                         // row, nor a source project, which takes none.
