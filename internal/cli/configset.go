@@ -13,7 +13,7 @@ import (
 )
 
 // The keys config-set answers to: the settings form's own fields, plus one
-// project's working directory and run commands, addressed by its page ID. Nothing else in the
+// project's working directory, run commands and colour, addressed by its page ID. Nothing else in the
 // file is reachable this way — see configShow's doc comment for why.
 const (
 	keySplitPercent     = "agent_split_percent"
@@ -25,6 +25,10 @@ const (
 	projectKeyPrefix    = "project."
 	workingDirKeySuffix = ".working_dir"
 	runsKeySuffix       = ".runs"
+	colorKeySuffix      = ".color"
+	// autoColor is the value that clears a project's colour, so the save that
+	// follows picks one afresh ([config.Config.AssignColors]).
+	autoColor = "auto"
 )
 
 // configSet writes one local config key. There is no --project flag: a
@@ -63,8 +67,19 @@ func configSet(args []string, env Env) error {
 		return fmt.Errorf("save config: %w", err)
 	}
 
-	_, err = io.WriteString(env.Out, configSetMarkdown(key, value))
+	_, err = io.WriteString(env.Out, configSetMarkdown(key, reportedValue(cfg, key, value)))
 	return err
+}
+
+// reportedValue is what config-set says it wrote: the value given, except a
+// colour set to auto, which says the name the save chose — read off cfg, whose
+// map the save filled in.
+func reportedValue(cfg config.Config, key, value string) string {
+	if value != autoColor || !strings.HasPrefix(key, projectKeyPrefix) || !strings.HasSuffix(key, colorKeySuffix) {
+		return value
+	}
+	pid, _ := projectKeyFor(cfg, strings.TrimSuffix(strings.TrimPrefix(key, projectKeyPrefix), colorKeySuffix))
+	return cfg.Projects[pid].Color
 }
 
 // applyConfigSet writes value onto the field key names, refusing exactly what
@@ -104,6 +119,8 @@ func applyConfigSet(cfg *config.Config, key, value string) error {
 		return applyProjectWorkingDir(cfg, key, value)
 	case strings.HasPrefix(key, projectKeyPrefix) && strings.HasSuffix(key, runsKeySuffix):
 		return applyProjectRuns(cfg, key, value)
+	case strings.HasPrefix(key, projectKeyPrefix) && strings.HasSuffix(key, colorKeySuffix):
+		return applyProjectColor(cfg, key, value)
 	default:
 		return usageErrorf("config-set: unknown key %q", key)
 	}
@@ -153,6 +170,34 @@ func applyProjectRuns(cfg *config.Config, key, value string) error {
 	p.Runs = nil
 	if len(runs) > 0 {
 		p.Runs = runs
+	}
+	cfg.Projects[pid] = p
+	return nil
+}
+
+// applyProjectColor writes value as the colour of the project
+// project.<id>.color names, by [applyProjectWorkingDir]'s addressing. A
+// palette name is written as given; auto clears the field, so the save that
+// follows chooses one. Anything else is refused — the empty string too, since
+// the word for "choose again" is auto, and a project is never left with none —
+// and so is any colour for a project that takes none ([config.Config.Colorable]).
+func applyProjectColor(cfg *config.Config, key, value string) error {
+	id := strings.TrimSuffix(strings.TrimPrefix(key, projectKeyPrefix), colorKeySuffix)
+	pid, err := projectKeyFor(*cfg, id)
+	if err != nil {
+		return err
+	}
+	if !cfg.Colorable(pid) {
+		return fmt.Errorf("config-set: %s is the scratch project or a source project, which take no colour", id)
+	}
+	if value != autoColor && !config.ValidProjectColor(value) {
+		return usageErrorf("config-set: %s wants one of %s, or %s, given %q",
+			key, strings.Join(config.ProjectColors, ", "), autoColor, value)
+	}
+	p := cfg.Projects[pid]
+	p.Color = value
+	if value == autoColor {
+		p.Color = ""
 	}
 	cfg.Projects[pid] = p
 	return nil

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -51,6 +52,68 @@ type ProjectConfig struct {
 	// the slice-scoped ones from a handed-back slice's worktree. Omitted until
 	// set, so a config written before there were any round-trips unchanged.
 	Runs []RunCommand `json:"runs,omitempty"`
+	// Color is the project's colour, one of [ProjectColors] by name — never a
+	// hex value, so gnat resolves it through whichever palette is on. Empty
+	// until the next [Save] picks one ([Config.AssignColors]) or the user does,
+	// and always for a project that takes none ([Config.Colorable]).
+	Color string `json:"color,omitempty"`
+}
+
+// ProjectColors is the palette a project's colour is named from, in the order
+// [Config.AssignColors] hands them out.
+var ProjectColors = []string{"red", "orange", "yellow", "green", "teal", "blue", "purple", "pink"}
+
+// ValidProjectColor says whether name is one of [ProjectColors].
+func ValidProjectColor(name string) bool {
+	return slices.Contains(ProjectColors, name)
+}
+
+// Colorable reports whether the project id names takes a colour: every one
+// but the scratch project and a source project, which are not drawn as
+// projects of the user's own.
+func (c Config) Colorable(id string) bool {
+	p, ok := c.Projects[id]
+	return ok && !p.IsSource() && id != c.ScratchProject
+}
+
+// AssignColors gives every project with no colour one: entries walked in ID
+// order, each given the palette name the fewest other entries already hold,
+// a tie going to the earlier name in palette order. An entry already coloured
+// is never changed — except one that takes no colour ([Config.Colorable]),
+// whose colour is cleared and counts against nothing: scratch-open saves its
+// project before recording it as the scratch one, and the second save takes
+// back what the first gave. It writes into c.Projects in place, so a caller
+// holding the same map sees what was assigned.
+func (c *Config) AssignColors() {
+	held := map[string]int{}
+	var bare []string
+	for id, p := range c.Projects {
+		if !c.Colorable(id) {
+			if p.Color != "" {
+				p.Color = ""
+				c.Projects[id] = p
+			}
+			continue
+		}
+		if p.Color == "" {
+			bare = append(bare, id)
+			continue
+		}
+		held[p.Color]++
+	}
+	slices.Sort(bare)
+	for _, id := range bare {
+		pick := ProjectColors[0]
+		for _, name := range ProjectColors[1:] {
+			if held[name] < held[pick] {
+				pick = name
+			}
+		}
+		held[pick]++
+		p := c.Projects[id]
+		p.Color = pick
+		c.Projects[id] = p
+	}
 }
 
 // RunCommand is one of a project's run commands: Label is what its button
@@ -365,12 +428,16 @@ func Load() (Config, bool, error) {
 }
 
 // Save writes the config file with mode 0644, creating the config directory
-// if needed.
+// if needed. Every project with no colour is given one first
+// ([Config.AssignColors]) — here rather than on [Load], since a read never
+// writes and a colour held only in memory is one gnat, which reads the file,
+// never sees. The caller's map is filled in too.
 func Save(c Config) error {
 	path, err := Path()
 	if err != nil {
 		return err
 	}
+	c.AssignColors()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}

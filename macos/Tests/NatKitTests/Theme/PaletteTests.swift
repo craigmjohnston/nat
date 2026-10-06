@@ -261,4 +261,44 @@ final class PaletteTests: XCTestCase {
         }
         return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
     }
+
+    /// Every palette draws eight project colours told apart by eye: no two
+    /// share a hue, each palette's own where its outcome hues fall short.
+    func testEveryPaletteDrawsEightDistinctProjectColours() {
+        for (name, palette) in palettes {
+            let hues = ProjectColor.allCases.map { palette.projectTint($0).hex }
+            XCTAssertEqual(Set(hues).count, ProjectColor.allCases.count, "\(name): \(hues)")
+        }
+    }
+
+    /// A colour with no hue of the palette's own is its namesake outcome hue.
+    func testAProjectColourIsItsOutcomeHueUnlessThePaletteGivesOne() {
+        let iceberg = Palette.iceberg
+        XCTAssertEqual(iceberg.projectTint(.red), iceberg.systemRed)
+        XCTAssertEqual(iceberg.projectTint(.orange), iceberg.systemOrange)
+        XCTAssertEqual(iceberg.projectTint(.green), iceberg.systemGreen)
+        XCTAssertEqual(iceberg.projectTint(.teal), iceberg.systemTeal)
+        XCTAssertEqual(iceberg.projectTint(.blue), iceberg.systemBlue)
+        XCTAssertNotEqual(iceberg.projectTint(.yellow), iceberg.systemYellow, "iceberg's yellow is its orange")
+        XCTAssertEqual(Palette.light.projectTint(.pink), Palette.light.systemPink)
+
+        let bare = Palette(
+            windowBg: iceberg.windowBg, chromeBg: iceberg.chromeBg, titlebarBg: iceberg.titlebarBg,
+            controlBg: iceberg.controlBg, rowAltBg: iceberg.rowAltBg, controlFace: iceberg.controlFace,
+            fieldBg: iceberg.fieldBg, hoverWash: iceberg.hoverWash, terminalBg: iceberg.terminalBg,
+            terminalFg: iceberg.terminalFg, terminalCursor: iceberg.terminalCursor,
+            terminalSelection: iceberg.terminalSelection, ansi: iceberg.ansi, label: iceberg.label,
+            labelSecondary: iceberg.labelSecondary, labelTertiary: iceberg.labelTertiary,
+            labelQuaternary: iceberg.labelQuaternary, accent: iceberg.accent, accentText: iceberg.accentText,
+            hot: iceberg.hot, rowHoverShare: 0, rowSelectedShare: 0, rowWashTint: iceberg.rowWashTint,
+            line: iceberg.line, line2: iceberg.line2, selectionShare: 0, bandShare: 0, chipShare: 0,
+            avatarShare: 0, diffRowShare: 0, diffGutterShare: 0, commentShare: 0, headerVeilShare: 0,
+            mutedShare: 0, skeletonShare: 0, onAccentRuleShare: 0, systemOrange: iceberg.systemOrange,
+            systemYellow: iceberg.systemYellow, systemGreen: iceberg.systemGreen, systemRed: iceberg.systemRed,
+            systemBlue: iceberg.systemBlue, systemPink: iceberg.systemPink, systemTeal: iceberg.systemTeal,
+            systemGray: iceberg.systemGray, isDark: true)
+        XCTAssertEqual(bare.projectTint(.purple), iceberg.systemPink)
+        XCTAssertEqual(bare.projectTint(.pink), iceberg.systemPink)
+        XCTAssertEqual(bare.projectTint(.yellow), iceberg.systemYellow)
+    }
 }

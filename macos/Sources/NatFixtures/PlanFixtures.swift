@@ -517,7 +517,7 @@ extension Fixtures {
     public static var acceptedConfig: NatProjectConfig {
         NatProjectConfig(projects: [
             acceptedProjectID: ProjectConfig(
-                name: "rust-importer", slicesDSID: "", workingDir: "", backend: .local),
+                name: "rust-importer", slicesDSID: "", workingDir: "", backend: .local, color: .green),
         ])
     }
 

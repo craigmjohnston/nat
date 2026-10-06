@@ -69,6 +69,12 @@ public enum SettingsModel {
         "project.\(projectID).working_dir"
     }
 
+    /// The `config-set` key for one project's colour: a palette name, or
+    /// `auto` for nat to choose one.
+    public static func colorKey(projectID: String) -> String {
+        "project.\(projectID).color"
+    }
+
     /// The `config-set` writes that would carry `edited` onto `original` —
     /// one per field that actually changed, nothing for a field left alone.
     /// Order is fixed so a save always writes in the same order twice.

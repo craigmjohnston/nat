@@ -158,6 +158,10 @@ struct TitlebarCrumbs: Equatable {
 struct TitlebarBreadcrumb<Picker: View>: View {
     let crumbs: TitlebarCrumbs
     let identity: TitlebarIdentity?
+    /// The project's colour: its puck, at the far left before the crumbs —
+    /// never in the row, so `measurements` do not count it and it stays at
+    /// every `BreadcrumbFit` stage.
+    var projectColor: ProjectColor?
     @Binding var openPicker: CrumbPickerOrigin?
     @ViewBuilder var picker: (CrumbPickerOrigin) -> Picker
 
@@ -189,6 +193,27 @@ struct TitlebarBreadcrumb<Picker: View>: View {
             title: width(.titleGroup, .titleText))
     }
 
+    /// The puck drawn, where there is one and a breadcrumb to draw it by.
+    private var puck: ProjectColor? { crumbs.title.isEmpty ? nil : projectColor }
+
+    /// How far the crumbs move right to make room for the puck: as far as a
+    /// sidebar row's leading padding (`GnatMetrics.puckRowInset`) runs past
+    /// the band's own inset, so the puck has the room it has in the trees.
+    private var puckRoom: CGFloat {
+        puck == nil ? 0 : GnatMetrics.puckRowInset - GnatMetrics.breadcrumbInset
+    }
+
+    /// Half a point up: the middle of `CrumbTagLabel`'s capitals, measured
+    /// off a render, against the band's middle.
+    private static var tagLine: CGFloat { -0.5 }
+
+    /// Where the puck sits off the row's middle at a stage: on the line of
+    /// whatever follows it.
+    private func puckDrop(_ fit: BreadcrumbFit) -> CGFloat {
+        if fit.stage == .minimal { return StateDot.drop }
+        return fit.projectAsTag ? Self.tagLine : 0
+    }
+
     var body: some View {
         let fit = fit
         Group {
@@ -204,6 +229,15 @@ struct TitlebarBreadcrumb<Picker: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { widths[.available] = $0 }
         .background(alignment: .leading) { measurements.hidden() }
+        // Outside the measured frame, so the room the crumbs fit in is what
+        // the band offers less the puck's.
+        .padding(.leading, puckRoom)
+        // Left of the project crumb's folder glyph, placed as the PROJECTS
+        // row places it; none with no breadcrumb. Beside the state dot (the
+        // minimal stage) it drops onto the dot's line, as an Active row's
+        // does; beside the tag crumb, whose capitals sit above the band's
+        // middle, it rises to theirs.
+        .projectPuck(puck, inset: puckRoom, drop: puckDrop(fit), ground: .header)
         .contentTransition(.interpolate)
         .font(.system(size: GnatMetrics.titlebarText))
         .lineLimit(1)

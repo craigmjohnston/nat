@@ -5,15 +5,20 @@ import Foundation
 /// here and a case in `ProjectSettingsModel.changes`/`applying`.
 public struct ProjectSettingsFields: Equatable, Sendable {
     public var workingDir: String
+    /// The project's colour — the picked swatch. Nil only where the entry has
+    /// none yet, and nothing then is written until a swatch is picked.
+    public var color: ProjectColor?
 
-    public init(workingDir: String) {
+    public init(workingDir: String, color: ProjectColor? = nil) {
         self.workingDir = workingDir
+        self.color = color
     }
 
     /// The project's entry as config holds it — empty for a project config
     /// does not name (or no config read yet), which is what the field shows.
     public init(projectID: String, config: NatProjectConfig?) {
         workingDir = config?.projects[projectID]?.workingDir ?? ""
+        color = config?.projects[projectID]?.color
     }
 }
 
@@ -34,6 +39,9 @@ public final class ProjectSettingsModel {
     /// nat's refusal of the last Save, by key.
     public private(set) var errors: [String: String] = [:]
     public private(set) var isSaving = false
+    /// Whether the sheet has a Colour row: not for the scratch project or a
+    /// source project, which take no colour.
+    public let takesColor: Bool
 
     private let write: @Sendable (ConfigChange) async throws -> Void
     private let reload: @MainActor () async -> Void
@@ -44,9 +52,11 @@ public final class ProjectSettingsModel {
     public init(
         projectID: String,
         fields: ProjectSettingsFields,
+        takesColor: Bool = true,
         write: @escaping @Sendable (ConfigChange) async throws -> Void,
         reload: @escaping @MainActor () async -> Void
     ) {
+        self.takesColor = takesColor
         self.projectID = projectID
         self.original = fields
         self.edited = fields
@@ -64,12 +74,16 @@ public final class ProjectSettingsModel {
         self.init(
             projectID: projectID,
             fields: ProjectSettingsFields(projectID: projectID, config: config),
+            takesColor: config?.takesColor(projectID) ?? false,
             write: { try await client.configSet(key: $0.key, value: $0.value) },
             reload: reload)
     }
 
     /// The working directory's `config-set` key.
     public var workingDirKey: String { SettingsModel.workingDirKey(projectID: projectID) }
+
+    /// The colour's `config-set` key.
+    public var colorKey: String { SettingsModel.colorKey(projectID: projectID) }
 
     /// The writes Save would make now.
     public var changes: [ConfigChange] {
@@ -85,6 +99,9 @@ public final class ProjectSettingsModel {
         if original.workingDir != edited.workingDir {
             changes.append(ConfigChange(key: SettingsModel.workingDirKey(projectID: projectID), value: edited.workingDir))
         }
+        if original.color != edited.color, let color = edited.color {
+            changes.append(ConfigChange(key: SettingsModel.colorKey(projectID: projectID), value: color.rawValue))
+        }
         return changes
     }
 
@@ -94,8 +111,12 @@ public final class ProjectSettingsModel {
         _ changes: [ConfigChange], projectID: String, to fields: ProjectSettingsFields
     ) -> ProjectSettingsFields {
         var result = fields
-        for change in changes where change.key == SettingsModel.workingDirKey(projectID: projectID) {
-            result.workingDir = change.value
+        for change in changes {
+            switch change.key {
+            case SettingsModel.workingDirKey(projectID: projectID): result.workingDir = change.value
+            case SettingsModel.colorKey(projectID: projectID): result.color = ProjectColor(rawValue: change.value)
+            default: break
+            }
         }
         return result
     }

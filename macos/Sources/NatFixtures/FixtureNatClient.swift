@@ -88,6 +88,13 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// The projects `info` has read, in order.
     public var infoReads: [String] { infoRecorded.all() }
 
+    /// Every `config-set` that landed, key and value, in order — `writes`
+    /// names the key alone.
+    private let configSets = Recorder()
+
+    /// Each `config-set` that landed, as `key=value`.
+    public var configSetValues: [String] { configSets.all() }
+
     /// Every project `pr-status` was asked for, in order — a test of the
     /// reading's own cadence counts here.
     private let prStatusRecorded = Recorder()
@@ -679,6 +686,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public func configSet(key: String, value: String) async throws {
         try await record("config-set \(key)")
+        configSets.append("\(key)=\(value)")
     }
 
     /// Remembered by action and target, and answered with the message a
@@ -849,7 +857,8 @@ extension Fixtures {
             projects: [
                 projectID: ConfigDocProject(
                     name: "notion-agent-tracker",
-                    workingDir: "/Users/craig/Projects/notion-agent-tracker"
+                    workingDir: "/Users/craig/Projects/notion-agent-tracker",
+                    color: .teal
                 ),
             ]
         )

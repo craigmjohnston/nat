@@ -45,6 +45,11 @@ struct ProjectSettingsView: View {
                         .ink(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                if model.takesColor {
+                    Section {
+                        colorRow
+                    }
+                }
             }
             .formStyle(.grouped)
             // The sheet's own ground behind the group, heading to buttons,
@@ -97,6 +102,34 @@ struct ProjectSettingsView: View {
         }
     }
 
+    /// One swatch per project colour, in nat's order — the picked one ringed
+    /// in the accent — then the puck as the sidebar will draw it. No "auto":
+    /// a project always has a colour, and the one ringed first is the one
+    /// its entry holds. nat's refusal, where the last Save had one, under it.
+    private var colorRow: some View {
+        LabeledContent("Colour") {
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 6) {
+                    ForEach(ProjectColor.allCases, id: \.self) { color in
+                        ColorSwatch(color: color, selected: model.edited.color == color) {
+                            model.edited.color = color
+                        }
+                    }
+                    if let color = model.edited.color {
+                        ProjectPuck(color: color)
+                            .padding(.leading, 6)
+                    }
+                }
+                if let error = model.errors[model.colorKey] {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .ink(.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
     private func save() {
         Task {
             if await model.save() { dismiss() }
@@ -129,5 +162,31 @@ struct ProjectSettingsView: View {
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
               isDirectory.boolValue else { return nil }
         return URL(fileURLWithPath: path)
+    }
+}
+
+/// One colour of the Colour row: a filled circle in the colour's tint on
+/// the sheet's ground, ringed in the accent while picked, named in its
+/// tooltip and to accessibility.
+private struct ColorSwatch: View {
+    let color: ProjectColor
+    let selected: Bool
+    let pick: () -> Void
+
+    var body: some View {
+        Button(action: pick) {
+            Circle()
+                .fill(DesignTokens.projectInk(color, on: .window))
+                .frame(width: 14, height: 14)
+                .padding(3)
+                .overlay {
+                    Circle().strokeBorder(DesignTokens.accent, lineWidth: 2).opacity(selected ? 1 : 0)
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(color.rawValue.capitalized)
+        .accessibilityLabel(color.rawValue.capitalized)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

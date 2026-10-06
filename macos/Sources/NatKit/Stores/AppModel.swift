@@ -392,6 +392,15 @@ public final class AppModel {
     /// drives this model over whatever `nat` the machine has, and must never
     /// write a project into its real config.
     private let makesSourceProjects: Bool
+    /// Whether reading config may go on to ask nat for a colour for each
+    /// project with none (`assignProjectColors`). Only the app turns it on,
+    /// for `makesSourceProjects`' reason: a test must never write the
+    /// machine's real config.
+    private let assignsProjectColors: Bool
+    /// The projects a colour has been asked for in this run, so two readings
+    /// of config ask once — a second `auto` would choose afresh — and one nat
+    /// refused waits for the next launch.
+    private var colorsAsked: Set<String> = []
 
     /// How long each visited slice's session is held from being reaped, keyed
     /// by slice ID and set to visit-time-plus-hold on every visit — the
@@ -603,8 +612,10 @@ public final class AppModel {
         workshopSaveWait: @escaping @MainActor @Sendable () async -> Void = {
             try? await Task.sleep(nanoseconds: 500_000_000)
         },
-        makesSourceProjects: Bool = false
+        makesSourceProjects: Bool = false,
+        assignsProjectColors: Bool = false
     ) {
+        self.assignsProjectColors = assignsProjectColors
         self.workshopCache = workshopCache
         self.workshopSaveWait = workshopSaveWait
         self.makesSourceProjects = makesSourceProjects
@@ -719,6 +730,7 @@ public final class AppModel {
                 let created = try await clientFactory().projectCreate(
                     name: plugin.displayTitle, repo: nil, description: nil, source: plugin.name)
                 await reloadConfig()
+                await assignProjectColors()
                 if !projectTabs.contains(where: { $0.id == created.id }) {
                     projectTabs.append((id: created.id, name: tabName(created.id, fallback: created.name)))
                     closedTabMemory.reopen(created.id)
@@ -904,6 +916,7 @@ public final class AppModel {
             // The plugins' reading may have landed before config did, with
             // nowhere then to look for their projects.
             if makesSourceProjects { await ensureSourceProjects() }
+            await assignProjectColors()
         } catch {
             // No config file to read from is the common case here, not a
             // crash-worthy one: it is exactly what a first run looks like.
@@ -956,6 +969,30 @@ public final class AppModel {
         guard let path = loadedConfigPath else { return }
         guard let reloaded = try? await configReader.readConfig(from: path) else { return }
         self.config = reloaded
+    }
+
+    /// gnat never picks a colour: every config project that takes one
+    /// (`NatProjectConfig.takesColor`) and whose entry has none
+    /// is given one by nat — one `config-set project.<id>.color auto` each,
+    /// one at a time — and config is read again, which puts up their pucks.
+    /// Each project is asked once a run; a refusal is logged and leaves it
+    /// with no puck until the next launch. Off unless `assignsProjectColors`.
+    public func assignProjectColors() async {
+        guard assignsProjectColors, let config else { return }
+        let bare = config.projects
+            .filter { config.takesColor($0.key) && $0.value.color == nil && !colorsAsked.contains($0.key) }
+            .map(\.key).sorted()
+        guard !bare.isEmpty else { return }
+        colorsAsked.formUnion(bare)
+        let client = clientFactory()
+        for id in bare {
+            do {
+                try await client.configSet(key: SettingsModel.colorKey(projectID: id), value: "auto")
+            } catch {
+                NSLog("AppModel: could not colour project %@: %@", id, error.localizedDescription)
+            }
+        }
+        await reloadConfig()
     }
 
     /// Activate a project by ID, creating and loading its store lazily.
@@ -1119,6 +1156,7 @@ public final class AppModel {
             await start()
         } else {
             await reloadConfig()
+            await assignProjectColors()
         }
         guard let config = config else { return }
         needsOnboarding = false
@@ -1202,8 +1240,17 @@ public final class AppModel {
                 plan: state?.projectInfo,
                 isLoading: state?.isLoading ?? (kind != .untitled),
                 errorMessage: state?.errorMessage,
-                isSource: config?.projects[tab.id]?.backend == .source)
+                isSource: config?.projects[tab.id]?.backend == .source,
+                color: projectColor(ofProject: tab.id))
         }
+    }
+
+    /// The colour a project's config entry holds — its puck's — nil for one
+    /// nat has not coloured yet, for an Untitled tab, which has no entry, and
+    /// for the scratch and source projects, which take none.
+    public func projectColor(ofProject projectID: String) -> ProjectColor? {
+        guard config?.takesColor(projectID) == true else { return nil }
+        return config?.projects[projectID]?.color
     }
 
     /// One project's plan as its store last read it — nil before it lands.
@@ -2209,6 +2256,7 @@ public final class AppModel {
         mirrorNudgeMemory.disarm(oldID)
         mirrorNudgePending.remove(oldID)
         await reloadConfig()
+        await assignProjectColors()
         forgetProjectState(oldID)
         let tab = (id: project.id, name: tabName(project.id, fallback: project.name))
         if let index = projectTabs.firstIndex(where: { $0.id == oldID }) {

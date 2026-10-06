@@ -300,4 +300,39 @@ final class SidebarModelTests: XCTestCase {
         XCTAssertTrue(scratch.contains(sliceID: "1"))
         XCTAssertEqual(scratch.hidingDone().loose.map(\.sliceID), ["1"])
     }
+
+    // MARK: - Project colours
+
+    /// Every row drawn for a project carries its colour — its project row
+    /// and each of its Active rows, slice, session and workshop alike — and
+    /// an Untitled row, which has no config entry, none.
+    func testEveryRowCarriesItsProjectsColour() {
+        let sessions = [session("s1", tag: "nat-s1", startedAt: Date())]
+        let model = buildSidebarModel(
+            projects: [
+                SidebarProjectInput(
+                    id: "p", name: "P", plan: plan([slice("a", status: "In progress")]), color: .teal),
+                SidebarProjectInput(id: "q", name: "Q", plan: plan([]), color: nil),
+                SidebarProjectInput(id: "u", name: "Untitled", kind: .untitled, plan: nil, color: .red),
+            ],
+            liveAgents: ["nat-s1": .working],
+            sessions: sessions, sessionsProjectID: "p",
+            planningAgents: ["p": .working])
+
+        XCTAssertEqual(model.projects.map(\.color), [.teal, nil, nil])
+        XCTAssertEqual(model.active.map(\.kind), [.workshop, .session, .slice])
+        XCTAssertEqual(model.active.map(\.color), [.teal, .teal, .teal])
+        XCTAssertEqual(model.projects[0].hidingDone().color, .teal, "hiding done work keeps the colour")
+    }
+
+    /// A pinned or reconnecting workshop row is its project's colour too.
+    func testAWorkshopRowNotYetRunningCarriesItsProjectsColour() {
+        let inputs = [
+            SidebarProjectInput(id: "p", name: "P", plan: plan([]), color: .blue),
+            SidebarProjectInput(id: "q", name: "Q", plan: plan([]), color: .pink),
+        ]
+        let model = buildSidebarModel(
+            projects: inputs, liveAgents: [:], pinnedWorkshops: ["p"], reconnectingWorkshops: ["q"])
+        XCTAssertEqual(model.active.map(\.color), [.blue, .pink])
+    }
 }

@@ -106,7 +106,8 @@ func projectMirror(ctx context.Context, args []string, env Env) error {
 	}
 	logging.Action("project created", "project", s.PageID, "name", project.Name, "mirrored", oldID)
 
-	mirrored := config.ProjectConfig{Name: project.Name, SlicesDSID: s.SlicesDSID, WorkingDir: project.WorkingDir}
+	// The colour goes with it: the project is the same one under a new ID.
+	mirrored := config.ProjectConfig{Name: project.Name, SlicesDSID: s.SlicesDSID, WorkingDir: project.WorkingDir, Color: project.Color}
 	// The entry goes in before the plan does, so a plan that fails partway is one
 	// a later command can be pointed at rather than pages nothing knows about.
 	fresh, _, err := env.Load()
@@ -151,6 +152,7 @@ func projectMirror(ctx context.Context, args []string, env Env) error {
 			Project: createdProjectJSON{
 				ID: s.PageID, Name: project.Name, URL: s.PageURL, SlicesDBID: s.SlicesDBID,
 				SlicesDSID: s.SlicesDSID, WorkingDir: project.WorkingDir, Assignee: assignee,
+				Color: fresh.Projects[s.PageID].Color,
 			},
 			Replaced: oldID, Milestones: len(local.Project.Milestones), Slices: filed,
 		})

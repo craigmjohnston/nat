@@ -261,6 +261,14 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
         self.sliceAgent = sliceAgent
         self.assigneeUserName = assigneeUserName
     }
+
+    /// Whether the project `id` names takes a colour — nat's
+    /// `Config.Colorable`: every one but the scratch project and a source
+    /// project, which nat never colours.
+    public func takesColor(_ id: String) -> Bool {
+        guard let entry = projects[id] else { return false }
+        return entry.backend != .source && id != scratchProject
+    }
 }
 
 /// Where a project's plan lives: a Notion database, or a file of nat's own with
@@ -305,6 +313,9 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
     public let source: String?
     /// The project's run commands — none where its entry names none.
     public let runs: [RunCommand]
+    /// The project's colour; nil until nat has given it one (and for a word
+    /// this build does not know).
+    public let color: ProjectColor?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -314,6 +325,7 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         case planDir = "plan_dir"
         case source
         case runs
+        case color
     }
 
     public init(
@@ -323,7 +335,8 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         backend: PlanBackend = .notion,
         planDir: String? = nil,
         source: String? = nil,
-        runs: [RunCommand] = []
+        runs: [RunCommand] = [],
+        color: ProjectColor? = nil
     ) {
         self.name = name
         self.slicesDSID = slicesDSID
@@ -332,6 +345,7 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         self.planDir = planDir
         self.source = source
         self.runs = runs
+        self.color = color
     }
 
     public init(from decoder: Decoder) throws {
@@ -347,11 +361,12 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         planDir = try c.decodeIfPresent(String.self, forKey: .planDir)
         source = try c.decodeIfPresent(String.self, forKey: .source)
         runs = try c.decodeIfPresent([RunCommand].self, forKey: .runs) ?? []
+        color = ProjectColor(word: try? c.decodeIfPresent(String.self, forKey: .color))
     }
 
-    /// Written the way nat writes it: the backend, plan directory, source and
-    /// runs only where they mean something, so an entry for a Notion project
-    /// round-trips unchanged.
+    /// Written the way nat writes it: the backend, plan directory, source,
+    /// runs and colour only where they mean something, so an entry for a
+    /// Notion project round-trips unchanged.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(name, forKey: .name)
@@ -361,6 +376,7 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         try c.encodeIfPresent(planDir, forKey: .planDir)
         try c.encodeIfPresent(source, forKey: .source)
         if !runs.isEmpty { try c.encode(runs, forKey: .runs) }
+        try c.encodeIfPresent(color?.rawValue, forKey: .color)
     }
 }
 

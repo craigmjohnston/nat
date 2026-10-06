@@ -12,7 +12,7 @@ import (
 
 // configShow prints local configuration: the fields the settings form edits
 // and nothing else — the agent split, the poll interval, the two model pairs
-// and each tracked project's working directory and runs. It touches neither Notion nor
+// and each tracked project's working directory, runs and colour. It touches neither Notion nor
 // a project: the workspace's databases, the assignee and a project's Slices
 // data source ID are the wizard's own writes rather than something meant to be
 // typed over, so they are left off exactly as internal/tui/settings.go leaves
@@ -72,6 +72,9 @@ type configProjectJSON struct {
 	// Runs are the project's run commands, each with its scope as written
 	// (empty being both); omitted where there are none.
 	Runs []config.RunCommand `json:"runs,omitempty"`
+	// Color is the project's colour by palette name; omitted until one is
+	// assigned.
+	Color string `json:"color,omitempty"`
 }
 
 // configDoc is the structured form of local config.
@@ -101,7 +104,7 @@ func configShowJSON(cfg config.Config) configDoc {
 		ScratchProject:    cfg.ScratchProject,
 	}
 	for id, p := range cfg.Projects {
-		doc.Projects[id] = configProjectJSON{Name: p.Name, WorkingDir: p.WorkingDir, Backend: p.BackendName(), PlanDir: p.PlanDir, Source: p.Source, Runs: p.Runs}
+		doc.Projects[id] = configProjectJSON{Name: p.Name, WorkingDir: p.WorkingDir, Backend: p.BackendName(), PlanDir: p.PlanDir, Source: p.Source, Runs: p.Runs, Color: p.Color}
 	}
 	return doc
 }
@@ -136,6 +139,9 @@ func configShowMarkdown(cfg config.Config) string {
 		}
 		if p.Source != "" {
 			out += fmt.Sprintf(" source=%s", p.Source)
+		}
+		if p.Color != "" {
+			out += fmt.Sprintf(" color=%s", p.Color)
 		}
 		out += "\n"
 		for _, r := range p.Runs {

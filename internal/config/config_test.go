@@ -773,3 +773,130 @@ func TestValidRuns(t *testing.T) {
 		}
 	}
 }
+
+func TestValidProjectColor(t *testing.T) {
+	for _, name := range ProjectColors {
+		if !ValidProjectColor(name) {
+			t.Errorf("%q refused", name)
+		}
+	}
+	for _, name := range []string{"", "auto", "Red", "#ff0000", "magenta"} {
+		if ValidProjectColor(name) {
+			t.Errorf("%q accepted", name)
+		}
+	}
+}
+
+func colorsOf(c Config) map[string]string {
+	out := map[string]string{}
+	for id, p := range c.Projects {
+		out[id] = p.Color
+	}
+	return out
+}
+
+func TestAssignColors(t *testing.T) {
+	// Nothing to colour is nothing done.
+	empty := Config{}
+	empty.AssignColors()
+	if empty.Projects != nil {
+		t.Fatalf("an empty config grew projects: %v", empty.Projects)
+	}
+
+	// Nine bare entries, walked in ID order: each name once, then red again.
+	nine := Config{Projects: map[string]ProjectConfig{}}
+	for _, id := range []string{"i", "c", "a", "e", "g", "b", "h", "d", "f"} {
+		nine.Projects[id] = ProjectConfig{Name: id}
+	}
+	nine.AssignColors()
+	want := map[string]string{"a": "red", "b": "orange", "c": "yellow", "d": "green", "e": "teal",
+		"f": "blue", "g": "purple", "h": "pink", "i": "red"}
+	if got := colorsOf(nine); !reflect.DeepEqual(got, want) {
+		t.Errorf("nine = %v, want %v", got, want)
+	}
+	if nine.Projects["a"].Name != "a" {
+		t.Errorf("assignment lost the rest of the entry: %+v", nine.Projects["a"])
+	}
+
+	// An entry already coloured keeps its colour and counts against it; ties
+	// among the least-held go to palette order.
+	held := Config{Projects: map[string]ProjectConfig{
+		"a": {Color: "red"}, "b": {Color: "red"}, "c": {Color: "orange"}, "d": {}, "e": {},
+	}}
+	held.AssignColors()
+	want = map[string]string{"a": "red", "b": "red", "c": "orange", "d": "yellow", "e": "green"}
+	if got := colorsOf(held); !reflect.DeepEqual(got, want) {
+		t.Errorf("held = %v, want %v", got, want)
+	}
+
+	// Every name held once but blue twice: the next goes to red, the first of
+	// the least held.
+	full := Config{Projects: map[string]ProjectConfig{"z": {}}}
+	for i, name := range ProjectColors {
+		full.Projects[string(rune('a'+i))] = ProjectConfig{Color: name}
+	}
+	full.Projects["blue2"] = ProjectConfig{Color: "blue"}
+	full.AssignColors()
+	if got := full.Projects["z"].Color; got != "red" {
+		t.Errorf("z = %q, want red", got)
+	}
+}
+
+// Save writes the colours it assigned, and into the caller's map; Load
+// assigns nothing.
+func TestSaveAssignsColorsLoadDoesNot(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"projects":{"a":{"working_dir":"/w"},"b":{"working_dir":"/x","color":"teal"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := colorsOf(cfg); !reflect.DeepEqual(got, map[string]string{"a": "", "b": "teal"}) {
+		t.Fatalf("Load assigned: %v", got)
+	}
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), `"red"`) {
+		t.Fatalf("Load wrote the file:\n%s", data)
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Projects["a"].Color; got != "red" {
+		t.Errorf("the caller's map: a = %q, want red", got)
+	}
+	again, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := colorsOf(again); !reflect.DeepEqual(got, map[string]string{"a": "red", "b": "teal"}) {
+		t.Errorf("saved = %v", got)
+	}
+}
+
+// The scratch project and a source project take no colour: none is given,
+// one they hold is cleared, and neither counts against another project's.
+func TestAssignColorsSkipsScratchAndSourceProjects(t *testing.T) {
+	c := Config{ScratchProject: "s", Projects: map[string]ProjectConfig{
+		"a": {},
+		"s": {Backend: BackendLocal, Color: "red"},
+		"w": {Backend: BackendSource, Source: "demo", Color: "red"},
+		"x": {Backend: BackendSource, Source: "demo"},
+	}}
+	c.AssignColors()
+	want := map[string]string{"a": "red", "s": "", "w": "", "x": ""}
+	if got := colorsOf(c); !reflect.DeepEqual(got, want) {
+		t.Errorf("colours = %v, want %v", got, want)
+	}
+	if c.Colorable("a") != true || c.Colorable("s") || c.Colorable("w") || c.Colorable("missing") {
+		t.Error("Colorable disagrees with the entries")
+	}
+}

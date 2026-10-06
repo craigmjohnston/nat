@@ -346,7 +346,13 @@ who works its slices is `Config.AssigneeFor` — the name *is* the identity,
 falling back to whoever is logged in. Creating one writes the plan file
 **before** the config entry (`nat project-create --local [--plan-dir]`; the
 board's `N`, which asks where the plan lives only when a projects database
-gives a choice). `config-show` says every project's backend. gnat's
+gives a choice). `config-show` says every project's backend. Every entry also carries a
+`color` (a `config.ProjectColors` name, never hex): `config.Save` assigns one
+to any entry without (`Config.AssignColors`, `Load` never does) — the one
+deliberate exception to the round trip, since the first save after it landed
+coloured every entry — and `config-set project.<id>.color` changes it. The
+scratch project and source projects take none (`Config.Colorable`): a save
+clears one, `config-set` refuses one, and gnat draws none. gnat's
 `ProjectConfig` / `ConfigDocProject` decode all of it and tolerate a missing `slices_ds_id`.
 
 **Task sources.** A source project is a local plan with `backend: source`

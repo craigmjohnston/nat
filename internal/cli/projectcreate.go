@@ -119,12 +119,13 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 			err = errors.Join(err, aerr)
 		}
 	}
-	if serr := registerProject(env, cfg, s, name, workdir); serr != nil {
+	color, serr := registerProject(env, cfg, s, name, workdir)
+	if serr != nil {
 		err = errors.Join(err, serr)
 	}
 	env.nudged()
 
-	if werr := printProject(env, *asJSON, s, name, workdir, assignee); werr != nil {
+	if werr := printProject(env, *asJSON, s, name, workdir, color, assignee); werr != nil {
 		return errors.Join(err, werr)
 	}
 	return err
@@ -139,45 +140,48 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 // written at all if the file could not be laid down: a config naming a project
 // whose plan is not there is one every later command fails on.
 func projectCreateLocal(ctx context.Context, env Env, name, conventions, workdir, planDir string, asJSON bool) error {
-	id, dir, err := createLocalProject(ctx, env, name, conventions, workdir, planDir)
+	id, entry, err := createLocalProject(ctx, env, name, conventions, workdir, planDir)
 	if err != nil {
 		return err
 	}
 
 	if asJSON {
 		return writeJSON(env.Out, projectCreatedJSON{Project: createdProjectJSON{
-			ID: id, Name: name, WorkingDir: workdir, Backend: config.BackendLocal, PlanDir: dir,
+			ID: id, Name: name, WorkingDir: workdir, Backend: config.BackendLocal, PlanDir: entry.PlanDir, Color: entry.Color,
 		}})
 	}
-	_, err = io.WriteString(env.Out, localProjectCreatedMarkdown(id, name, workdir, dir))
+	_, err = io.WriteString(env.Out, localProjectCreatedMarkdown(id, name, workdir, entry.PlanDir))
 	return err
 }
 
 // createLocalProject is the one way a local project comes to exist: shared by
 // project-create --local and scratch-open, so there is no second way to be
-// local. It returns the new ID and the plan directory as config now keeps it.
-func createLocalProject(ctx context.Context, env Env, name, conventions, workdir, planDir string) (string, string, error) {
+// local. It returns the new ID and the entry as config now keeps it.
+func createLocalProject(ctx context.Context, env Env, name, conventions, workdir, planDir string) (string, config.ProjectConfig, error) {
 	return createPlanProject(ctx, env, config.ProjectConfig{Name: name, WorkingDir: workdir, Backend: config.BackendLocal}, conventions, planDir)
 }
 
 // createPlanProject lays down a plan file of nat's own and then records entry —
 // a local project's, or a source project's, which keeps the same file — in
 // config under a new ID, with the plan directory filled in as config keeps it.
-func createPlanProject(ctx context.Context, env Env, entry config.ProjectConfig, conventions, planDir string) (string, string, error) {
+// The entry returned is the one saved, its colour included — the save assigns
+// one, into the map it was handed.
+func createPlanProject(ctx context.Context, env Env, entry config.ProjectConfig, conventions, planDir string) (string, config.ProjectConfig, error) {
+	none := config.ProjectConfig{}
 	dir, err := absPlanDir(planDir)
 	if err != nil {
-		return "", "", err
+		return "", none, err
 	}
 	// No configuration yet is not an obstacle here: the first thing a machine
 	// with no Notion workspace does is make a project, and that is what starts one.
 	cfg, _, err := env.Load()
 	if err != nil {
-		return "", "", err
+		return "", none, err
 	}
 	id := store.NewProjectID()
 	entry.PlanDir = dir
 	if err := store.CreateLocalProject(ctx, store.ProjectOf(id, entry), conventions); err != nil {
-		return "", "", fmt.Errorf("create the plan: %w", err)
+		return "", none, fmt.Errorf("create the plan: %w", err)
 	}
 	logging.Action("project created", "project", id, "name", entry.Name, "backend", entry.Backend, "source", entry.Source)
 	if cfg.Projects == nil {
@@ -185,10 +189,10 @@ func createPlanProject(ctx context.Context, env Env, entry config.ProjectConfig,
 	}
 	cfg.Projects[id] = entry
 	if err := env.Save(cfg); err != nil {
-		return "", "", fmt.Errorf("save config: %w", err)
+		return "", none, fmt.Errorf("save config: %w", err)
 	}
 	env.nudged()
-	return id, dir, nil
+	return id, cfg.Projects[id], nil
 }
 
 // projectCreateSource is project-create for a source project: a plan file of
@@ -208,17 +212,17 @@ func projectCreateSource(ctx context.Context, env Env, srcName, conventions, pla
 	}
 	name := cmp.Or(strings.TrimSpace(d.Title), srcName)
 	entry := config.ProjectConfig{Backend: config.BackendSource, Source: srcName}
-	id, dir, err := createPlanProject(ctx, env, entry, conventions, planDir)
+	id, saved, err := createPlanProject(ctx, env, entry, conventions, planDir)
 	if err != nil {
 		return err
 	}
 
 	if asJSON {
 		return writeJSON(env.Out, projectCreatedJSON{Project: createdProjectJSON{
-			ID: id, Name: name, Backend: config.BackendSource, PlanDir: dir, Source: srcName,
+			ID: id, Name: name, Backend: config.BackendSource, PlanDir: saved.PlanDir, Source: srcName, Color: saved.Color,
 		}})
 	}
-	_, err = io.WriteString(env.Out, sourceProjectCreatedMarkdown(id, name, dir, srcName, d.Title))
+	_, err = io.WriteString(env.Out, sourceProjectCreatedMarkdown(id, name, saved.PlanDir, srcName, d.Title))
 	return err
 }
 
@@ -286,7 +290,8 @@ func appendPageBody(ctx context.Context, client API, pageID string, blocks []map
 // its work happens, and the data source ID is what every later query addresses.
 //
 // The active project is left exactly as it was, on purpose — see projectCreate.
-func registerProject(env Env, cfg config.Config, s *notion.ProjectStructure, name, workdir string) error {
+// It returns the colour the save gave the entry.
+func registerProject(env Env, cfg config.Config, s *notion.ProjectStructure, name, workdir string) (string, error) {
 	if cfg.Projects == nil {
 		cfg.Projects = map[string]config.ProjectConfig{}
 	}
@@ -296,9 +301,9 @@ func registerProject(env Env, cfg config.Config, s *notion.ProjectStructure, nam
 		WorkingDir: workdir,
 	}
 	if err := env.Save(cfg); err != nil {
-		return fmt.Errorf("save config: %w", err)
+		return "", fmt.Errorf("save config: %w", err)
 	}
-	return nil
+	return cfg.Projects[s.PageID].Color, nil
 }
 
 // workingDir is where the project's agents will start: what --repo named, or
@@ -316,7 +321,7 @@ func workingDir(repo string) (string, error) {
 }
 
 // printProject reports what was created, in whichever form was asked for.
-func printProject(env Env, asJSON bool, s *notion.ProjectStructure, name, workdir string, assignee bool) error {
+func printProject(env Env, asJSON bool, s *notion.ProjectStructure, name, workdir, color string, assignee bool) error {
 	if asJSON {
 		return writeJSON(env.Out, projectCreatedJSON{Project: createdProjectJSON{
 			ID:         s.PageID,
@@ -326,6 +331,7 @@ func printProject(env Env, asJSON bool, s *notion.ProjectStructure, name, workdi
 			SlicesDSID: s.SlicesDSID,
 			WorkingDir: workdir,
 			Assignee:   assignee,
+			Color:      color,
 		}})
 	}
 	_, err := io.WriteString(env.Out, projectCreatedMarkdown(s, name, workdir, assignee))
@@ -354,6 +360,9 @@ type createdProjectJSON struct {
 	PlanDir string `json:"plan_dir,omitempty"`
 	// Source is a source project's plugin, by name.
 	Source string `json:"source,omitempty"`
+	// Color is the colour the save gave the project, by palette name, so gnat
+	// draws it with no second read; omitted where none was.
+	Color string `json:"color,omitempty"`
 }
 
 // projectCreatedMarkdown reports the project as created, saying the two things

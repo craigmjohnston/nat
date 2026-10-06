@@ -155,11 +155,14 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
     /// A source project's fold — its plugin and tree; nil for every other
     /// project, and for a source project whose plan has not landed yet.
     public let source: SidebarSource?
+    /// The project's colour — its puck; nil for one nat has not coloured yet
+    /// and for an Untitled row, which has no config entry.
+    public let color: ProjectColor?
 
     public init(
         id: String, name: String, kind: SidebarProjectKind, status: SidebarPlanStatus,
         milestones: [SidebarMilestone], doneMilestones: [SidebarMilestone] = [], needsYou: Int,
-        loose: [SidebarSliceRow] = [], source: SidebarSource? = nil
+        loose: [SidebarSliceRow] = [], source: SidebarSource? = nil, color: ProjectColor? = nil
     ) {
         self.id = id
         self.name = name
@@ -170,6 +173,7 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
         self.needsYou = needsYou
         self.loose = loose
         self.source = source
+        self.color = kind == .untitled ? nil : color
     }
 
     /// Whether the project files a slice, for the default-open rule.
@@ -196,7 +200,7 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
                     slices: milestone.slices.filter { $0.state != .done })
             },
             doneMilestones: [], needsYou: needsYou, loose: loose.filter { $0.state != .done },
-            source: source?.hidingDone())
+            source: source?.hidingDone(), color: color)
     }
 }
 
@@ -426,6 +430,8 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     /// poll's first reading is still to land — drawn as a launching row,
     /// captioned `reconnectingLabel`. False for every other row.
     public let reconnecting: Bool
+    /// The row's project's colour — its puck; nil where it has none yet.
+    public let color: ProjectColor?
 
     public var id: String { "\(kind):\(targetID)" }
 
@@ -436,7 +442,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     public init(
         kind: SidebarActiveKind, targetID: String, projectID: String, projectName: String,
         projectTag: String? = nil, title: String, state: SliceDisplayState, live: Bool,
-        marks: PRMarks = .none, planReady: Bool = false, reconnecting: Bool = false
+        marks: PRMarks = .none, planReady: Bool = false, reconnecting: Bool = false, color: ProjectColor? = nil
     ) {
         self.kind = kind
         self.targetID = targetID
@@ -449,6 +455,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
         self.marks = marks
         self.planReady = kind == .workshop && planReady
         self.reconnecting = kind == .workshop && reconnecting
+        self.color = color
     }
 }
 
@@ -463,10 +470,12 @@ public struct SidebarProjectInput: Sendable {
     /// Whether config names it a source project — what files it under its
     /// own fold before its plan (and the `source` in it) has landed.
     public let isSource: Bool
+    /// The colour its config entry holds, nil where it holds none.
+    public let color: ProjectColor?
 
     public init(
         id: String, name: String, kind: SidebarProjectKind = .project, plan: ProjectInfo?,
-        isLoading: Bool = false, errorMessage: String? = nil, isSource: Bool = false
+        isLoading: Bool = false, errorMessage: String? = nil, isSource: Bool = false, color: ProjectColor? = nil
     ) {
         self.id = id
         self.name = name
@@ -475,6 +484,7 @@ public struct SidebarProjectInput: Sendable {
         self.isLoading = isLoading
         self.errorMessage = errorMessage
         self.isSource = isSource
+        self.color = color
     }
 
     /// A source project: config says so, or its plan carries a `source`.
@@ -602,21 +612,21 @@ public func buildSidebarModel(
             active.append(SidebarActiveRow(
                 kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
                 title: workshopRowTitle, state: state, live: true,
-                planReady: proposedWorkshops.contains(project.id)))
+                planReady: proposedWorkshops.contains(project.id), color: project.color))
         } else if reconnectingWorkshops.contains(project.id) {
             // Running when the app last quit, and not yet read again: drawn
             // as a launch is, until the first reading confirms or ends it.
             active.append(SidebarActiveRow(
                 kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
                 title: workshopRowTitle, state: .working, live: false,
-                planReady: proposedWorkshops.contains(project.id), reconnecting: true))
+                planReady: proposedWorkshops.contains(project.id), reconnecting: true, color: project.color))
         } else if pinnedWorkshops.contains(project.id) || launchingWorkshop == project.id {
             // Opened and not yet running: a draft being written, or a launch
             // on its way — the row holds the workshop's place until then.
             active.append(SidebarActiveRow(
                 kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
                 title: workshopRowTitle, state: launchingWorkshop == project.id ? .working : .todo, live: false,
-                planReady: proposedWorkshops.contains(project.id)))
+                planReady: proposedWorkshops.contains(project.id), color: project.color))
         }
 
         if project.id == sessionsProjectID {
@@ -632,7 +642,7 @@ public func buildSidebarModel(
                 if state.needsYou { needsYou += 1 }
                 active.append(SidebarActiveRow(
                     kind: .session, targetID: session.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
-                    title: sessionRowTitle, state: state, live: liveAgents[session.tag] != nil))
+                    title: sessionRowTitle, state: state, live: liveAgents[session.tag] != nil, color: project.color))
             }
         }
 
@@ -656,7 +666,7 @@ public func buildSidebarModel(
                 if row.state.needsYou { needsYou += 1 }
                 active.append(SidebarActiveRow(
                     kind: .slice, targetID: row.sliceID, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
-                    title: row.title, state: row.state, live: row.live, marks: row.marks))
+                    title: row.title, state: row.state, live: row.live, marks: row.marks, color: project.color))
             }
 
             // A source project's tasks are drawn under the plugin's own tree,
@@ -664,7 +674,8 @@ public func buildSidebarModel(
             if let info = plan.source {
                 built.append(SidebarProject(
                     id: project.id, name: project.name, kind: project.kind, status: planStatus(project),
-                    milestones: [], needsYou: needsYou, source: buildSidebarSource(info, rows: rows, plan: plan)))
+                    milestones: [], needsYou: needsYou, source: buildSidebarSource(info, rows: rows, plan: plan),
+                    color: project.color))
                 continue
             }
 
@@ -705,7 +716,7 @@ public func buildSidebarModel(
         built.append(SidebarProject(
             id: project.id, name: project.name, kind: project.kind,
             status: planStatus(project), milestones: milestones, doneMilestones: doneMilestones,
-            needsYou: needsYou, loose: loose))
+            needsYou: needsYou, loose: loose, color: project.color))
     }
 
     // Stable: needs-you first, the rest of the order kept.

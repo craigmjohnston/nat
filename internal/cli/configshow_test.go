@@ -190,3 +190,34 @@ func TestConfigShowListsRuns(t *testing.T) {
 		t.Errorf("a project with no runs wrote the key:\n%s", out.String())
 	}
 }
+
+// Each project's colour is shown where it has one, and left off where not.
+func TestConfigShowSaysEachColor(t *testing.T) {
+	cfg := fullConfig()
+	cfg.Projects["local-1"] = config.ProjectConfig{Name: "mine", WorkingDir: "/w", Backend: "local", Color: "teal"}
+	env, out := testEnv(cfg, &fakeAPI{})
+	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
+		t.Fatal(err)
+	}
+	if want := `local-1 (mine): backend=local working_dir="/w" color=teal` + "\n"; !strings.Contains(out.String(), want) {
+		t.Errorf("output missing %q:\n%s", want, out.String())
+	}
+	if strings.Contains(out.String(), "color=\n") || strings.Count(out.String(), "color=") != 1 {
+		t.Errorf("an uncoloured project said a colour:\n%s", out.String())
+	}
+
+	env, out = testEnv(cfg, &fakeAPI{})
+	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
+		t.Fatal(err)
+	}
+	var got configDoc
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Projects["local-1"].Color != "teal" || got.Projects["project-1"].Color != "" {
+		t.Errorf("json = %+v", got.Projects)
+	}
+	if strings.Count(out.String(), `"color"`) != 1 {
+		t.Errorf("an empty color was written:\n%s", out.String())
+	}
+}

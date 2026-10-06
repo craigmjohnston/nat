@@ -90,4 +90,16 @@ final class StoryNamesTests: XCTestCase {
                 "no story for \(prefix) in \(names)")
         }
     }
+
+    /// Project colours are drawn in every place the puck goes, and chosen
+    /// in the project settings sheet.
+    func testProjectColoursAreInTheCatalog() throws {
+        let names = try shippedNames()
+        for name in [
+            "sidebar-project-colours", "sidebar-project-colours-light", "titlebar-band-project-colour",
+            "project-settings-colour-chosen",
+        ] {
+            XCTAssertTrue(names.contains(name), "no story \(name)")
+        }
+    }
 }

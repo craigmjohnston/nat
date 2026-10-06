@@ -919,6 +919,9 @@ struct SidebarView: View {
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
+        // Left of the state dot, in the leading padding already there, on
+        // the dot's and the tag's line.
+        .projectPuck(row.color, inset: 18, drop: StateDot.drop, ground: .header)
         .gnatRow(selected: isSelected(row))
         .transformEnvironment(\.hoverForced) { if row.targetID == hoveredActiveRow { $0 = true } }
         .contentShape(Rectangle())
@@ -1086,6 +1089,8 @@ struct SidebarView: View {
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: GnatMetrics.sidebarRowHeight)
+        // Left of the folder glyph, in the leading padding already there.
+        .projectPuck(project.color, inset: 18, ground: .header)
         .gnatRow(selected: project.kind == .untitled && isActive, washed: pinned)
         .contentShape(Rectangle())
         .onHover { inside in

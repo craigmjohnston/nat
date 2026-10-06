@@ -12,10 +12,10 @@ final class ProjectSettingsModelTests: XCTestCase {
         var refusal: String?
     }
 
-    private func model(workingDir: String = "/repo", calls: Calls) -> ProjectSettingsModel {
+    private func model(workingDir: String = "/repo", color: ProjectColor? = .teal, calls: Calls) -> ProjectSettingsModel {
         ProjectSettingsModel(
             projectID: "p1",
-            fields: ProjectSettingsFields(workingDir: workingDir),
+            fields: ProjectSettingsFields(workingDir: workingDir, color: color),
             write: { change in
                 if let refusal = calls.refusal { throw NatError.commandFailed(refusal) }
                 calls.writes.append(change)
@@ -128,5 +128,88 @@ final class ProjectSettingsModelTests: XCTestCase {
             [ConfigChange(key: "project.other.working_dir", value: "/x"), ConfigChange(key: "poll_seconds", value: "5")],
             projectID: "p1", to: fields)
         XCTAssertEqual(result, fields)
+    }
+
+    // MARK: - Colour
+
+    func testTheColourIsReadFromTheProjectsEntry() {
+        XCTAssertEqual(ProjectSettingsFields(projectID: Fixtures.projectID, config: Fixtures.config).color, .teal)
+        XCTAssertNil(ProjectSettingsFields(projectID: "elsewhere", config: Fixtures.config).color)
+        XCTAssertNil(ProjectSettingsFields(projectID: "p1", config: nil).color)
+    }
+
+    func testAnUnchangedColourWritesNothing() async {
+        let calls = Calls()
+        let model = model(calls: calls)
+        model.edited.color = .teal
+
+        let closed = await model.save()
+        XCTAssertTrue(closed)
+        XCTAssertTrue(calls.writes.isEmpty)
+    }
+
+    func testAPickedColourWritesExactlyOneConfigSet() async {
+        let calls = Calls()
+        let model = model(calls: calls)
+        model.edited.color = .purple
+
+        let closed = await model.save()
+        XCTAssertTrue(closed)
+        XCTAssertEqual(calls.writes, [ConfigChange(key: "project.p1.color", value: "purple")])
+        XCTAssertEqual(model.colorKey, "project.p1.color")
+        XCTAssertEqual(model.original.color, .purple)
+        XCTAssertTrue(model.changes.isEmpty)
+        XCTAssertEqual(calls.reloads, 1, "config is re-read, which repaints every puck")
+    }
+
+    /// A project with no colour yet writes none until a swatch is picked.
+    func testNoColourWritesNothingUntilOneIsPicked() async {
+        let calls = Calls()
+        let model = model(color: nil, calls: calls)
+        model.edited.workingDir = "/elsewhere"
+
+        let closed = await model.save()
+        XCTAssertTrue(closed)
+        XCTAssertEqual(calls.writes.map(\.key), ["project.p1.working_dir"])
+    }
+
+    func testARefusedColourKeepsTheBaseline() async {
+        let calls = Calls()
+        calls.refusal = "config-set: project.p1.color wants one of …"
+        let model = model(calls: calls)
+        model.edited.color = .red
+
+        let closed = await model.save()
+        XCTAssertFalse(closed)
+        XCTAssertEqual(model.errors, [model.colorKey: "config-set: project.p1.color wants one of …"])
+        XCTAssertEqual(model.original.color, .teal)
+        XCTAssertEqual(model.edited.color, .red)
+        XCTAssertEqual(calls.reloads, 0)
+    }
+
+    func testBothFieldsChangedAreTwoWritesInFieldOrder() {
+        let original = ProjectSettingsFields(workingDir: "/a", color: .red)
+        let edited = ProjectSettingsFields(workingDir: "/b", color: .blue)
+        let changes = ProjectSettingsModel.changes(projectID: "p1", from: original, to: edited)
+        XCTAssertEqual(changes, [
+            ConfigChange(key: "project.p1.working_dir", value: "/b"),
+            ConfigChange(key: "project.p1.color", value: "blue"),
+        ])
+        XCTAssertEqual(ProjectSettingsModel.applying(changes, projectID: "p1", to: original), edited)
+    }
+
+    /// The sheet has a Colour row only for a project that takes a colour.
+    func testOnlyAProjectThatTakesAColourHasTheRow() {
+        var projects = Fixtures.config.projects
+        projects["s"] = ProjectConfig(name: "Scratch", workingDir: "/")
+        projects["w"] = ProjectConfig(name: "Work", workingDir: "", backend: .source, source: "demo")
+        let config = NatProjectConfig(projects: projects, scratchProject: "s")
+        func sheet(_ id: String, _ config: NatProjectConfig?) -> ProjectSettingsModel {
+            ProjectSettingsModel(projectID: id, config: config, client: FixtureNatClient(), reload: {})
+        }
+        XCTAssertTrue(sheet(Fixtures.projectID, config).takesColor)
+        XCTAssertFalse(sheet("s", config).takesColor)
+        XCTAssertFalse(sheet("w", config).takesColor)
+        XCTAssertFalse(sheet("p1", nil).takesColor)
     }
 }

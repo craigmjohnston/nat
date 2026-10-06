@@ -439,7 +439,8 @@ extension Fixtures {
                 projectID: ProjectConfig(
                     name: "notion-agent-tracker",
                     slicesDSID: "f1x70000-0000-4000-8000-0000000000d5",
-                    workingDir: "/Users/craig/Projects/notion-agent-tracker"
+                    workingDir: "/Users/craig/Projects/notion-agent-tracker",
+                    color: .teal
                 ),
             ],
             agentSplitPercent: 45,
@@ -467,7 +468,8 @@ extension Fixtures {
                 projectID: ProjectConfig(
                     name: "notion-agent-tracker",
                     slicesDSID: "f1x70000-0000-4000-8000-0000000000d5",
-                    workingDir: "/Users/craig/Projects/notion-agent-tracker"
+                    workingDir: "/Users/craig/Projects/notion-agent-tracker",
+                    color: .teal
                 ),
                 scratchProjectID: ProjectConfig(
                     name: "Scratch",
@@ -504,12 +506,14 @@ extension Fixtures {
                 projectID: ProjectConfig(
                     name: "notion-agent-tracker",
                     slicesDSID: "f1x70000-0000-4000-8000-0000000000d5",
-                    workingDir: "/Users/craig/Projects/notion-agent-tracker"
+                    workingDir: "/Users/craig/Projects/notion-agent-tracker",
+                    color: .teal
                 ),
                 secondProjectID: ProjectConfig(
                     name: "gnat",
                     slicesDSID: "f1x70000-0000-4000-8000-0000000000d6",
-                    workingDir: "/Users/craig/Projects/gnat"
+                    workingDir: "/Users/craig/Projects/gnat",
+                    color: .orange
                 ),
             ],
             agentSplitPercent: 45,
@@ -538,10 +542,11 @@ extension Fixtures {
         var projects = twoProjectConfig.projects
         let p = projects[projectID]!
         projects[projectID] = ProjectConfig(
-            name: p.name, slicesDSID: p.slicesDSID, workingDir: p.workingDir, runs: runs)
+            name: p.name, slicesDSID: p.slicesDSID, workingDir: p.workingDir, runs: runs, color: p.color)
         let second = projects[secondProjectID]!
         projects[secondProjectID] = ProjectConfig(
-            name: second.name, slicesDSID: second.slicesDSID, workingDir: second.workingDir, runs: secondProjectRuns)
+            name: second.name, slicesDSID: second.slicesDSID, workingDir: second.workingDir, runs: secondProjectRuns,
+            color: second.color)
         return NatProjectConfig(
             projects: projects, agentSplitPercent: 45, pollSeconds: 3600,
             workshopAgent: AgentModel(model: "sonnet", effort: nil),

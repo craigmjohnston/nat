@@ -152,7 +152,11 @@ struct WindowShellView: View {
             navigatorWidth: liveNavigatorWidth ?? navigatorWidth, tabs: titlebarTabs, selected: selectedTabID,
             onTab: showTitlebarTab, trailing: sliceRunButton
         ) {
-            TitlebarBreadcrumb(crumbs: crumbs, identity: titlebarIdentity, openPicker: $crumbPicker) { origin in
+            TitlebarBreadcrumb(
+                crumbs: crumbs, identity: titlebarIdentity,
+                projectColor: appModel.activeProjectID.flatMap(appModel.projectColor(ofProject:)),
+                openPicker: $crumbPicker
+            ) { origin in
                 crumbTreePicker(openingOn: origin)
             }
         }

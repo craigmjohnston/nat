@@ -639,15 +639,17 @@ usage:
                       first of its scope otherwise
   nat config-show [--json]
                       print local config: the agent split, the poll interval,
-                      the two model pairs and each project's working directory
-                      and runs
+                      the two model pairs and each project's working directory,
+                      runs and colour
   nat config-set <key> <value>
                       set one local config key: agent_split_percent,
                       poll_seconds, workshop_agent.model, workshop_agent.effort,
                       slice_agent.model, slice_agent.effort,
-                      project.<id>.working_dir, or project.<id>.runs (a JSON
+                      project.<id>.working_dir, project.<id>.runs (a JSON
                       array of {label, command, scope}, scope global, slice or
-                      none for both); an empty value unsets it
+                      none for both), or project.<id>.color (red, orange,
+                      yellow, green, teal, blue, purple, pink, or auto for
+                      nat to choose); an empty value unsets the rest
   nat help            show this message
 `
 
