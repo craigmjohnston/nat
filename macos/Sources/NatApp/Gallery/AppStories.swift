@@ -128,11 +128,12 @@ enum AppStories {
     /// `prStatus` is the first project's reading.
     @MainActor
     private static func prMarksAppModel(
-        prStatus: PRStatusDoc = Fixtures.prStatusChecksFailingAndConflicting
+        prStatus: PRStatusDoc = Fixtures.prStatusChecksFailingAndConflicting,
+        agents: [AgentStatus] = Fixtures.agentStatuses
     ) async -> AppModel {
         let appModel = await Fixtures.startedAppModel(
             client: FixtureNatClient(
-                otherPlans: [Fixtures.secondProjectID: Fixtures.secondProjectInfoWithPRs],
+                otherPlans: [Fixtures.secondProjectID: Fixtures.secondProjectInfoWithPRs], agents: agents,
                 prStatus: prStatus,
                 prStatusByProject: [Fixtures.secondProjectID: Fixtures.secondProjectPRStatus]),
             config: Fixtures.twoProjectConfig)
@@ -1133,6 +1134,21 @@ enum AppStories {
             size: sidebar
         ) {
             let appModel = await prMarksAppModel(prStatus: Fixtures.prStatusChecksPassing)
+            let open: [String: Bool] = [
+                "p:\(Fixtures.projectID)": false, "p:\(Fixtures.secondProjectID)": false,
+                "m:\(Fixtures.projectID)/M2: Review flow": false, "m:\(Fixtures.secondProjectID)/Detail overhaul": false,
+                "m:\(Fixtures.projectID)/~sessions": true,
+            ]
+            return SidebarView(appModel: appModel, folded: open).environment(\.pulsesPaused, true)
+        },
+
+        Story(
+            name: "sidebar-pr-marks-passing-agent-left",
+            summary: "As sidebar-pr-marks-passing, with the agent left in the approved slice's pane after its hand-back — which reads as working: its rows still carry the green passing mark.",
+            size: sidebar
+        ) {
+            let appModel = await prMarksAppModel(
+                prStatus: Fixtures.prStatusChecksPassing, agents: Fixtures.approvedAgentStatuses)
             let open: [String: Bool] = [
                 "p:\(Fixtures.projectID)": false, "p:\(Fixtures.secondProjectID)": false,
                 "m:\(Fixtures.projectID)/M2: Review flow": false, "m:\(Fixtures.secondProjectID)/Detail overhaul": false,

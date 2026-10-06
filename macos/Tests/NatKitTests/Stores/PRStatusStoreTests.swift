@@ -45,6 +45,23 @@ final class PRStatusStoreTests: XCTestCase {
         XCTAssertEqual(store.reading(projectID: "p-1").readiness, ["s-red": PRStatusSlice.readyToMerge])
     }
 
+    /// A failure is held over the project's next reading while the checks
+    /// run again, and is never cached.
+    func testAFailureIsHeldWhileTheChecksRunAgain() async {
+        let cache = FakePlanCache()
+        let store = PRStatusStore(cache: cache)
+        await store.apply(doc(red), projectID: "p-1")
+        let rerun = PRStatusSlice(
+            sliceID: "s-red", name: "A", pr: "u", readiness: PRStatusSlice.awaitingReview,
+            checks: PRStatusChecks(verdict: PRStatusSlice.checksPending))
+        await store.apply(doc(rerun), projectID: "p-1")
+        XCTAssertEqual(store.marks, ["s-red": PRMarks(checksRunning: true, heldFailingChecks: ["test", "lint"])])
+        XCTAssertEqual(cache.storedPRStatus["p-1"], doc(rerun))
+
+        await store.apply(doc(rerun), projectID: "p-2")
+        XCTAssertEqual(store.reading(projectID: "p-2").heldFailingChecks, [:], "only the project's own reading")
+    }
+
     func testEveryReadingThatLandsIsCachedAndRestoredBeforeAnyFresherOne() async {
         let cache = FakePlanCache()
         let first = PRStatusStore(cache: cache)

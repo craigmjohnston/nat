@@ -574,7 +574,7 @@ public let planReadyLabel = "Plan ready"
 /// over all three. Active is sorted needs-you first and otherwise left in project,
 /// then plan, order. `prMarks` is every project's pull request marks by slice
 /// id (`PRStatusStore.marks`), drawn on a slice's Active and tree rows alike
-/// as `prMarks(_:for:agent:)` gates them. `proposedWorkshops` are the tabs
+/// as `prMarks(_:for:)` gates them. `proposedWorkshops` are the tabs
 /// whose workshop has a proposal up (`AppModel.proposals`' keys — a project's
 /// id, an Untitled tab's own): their workshop rows say Plan ready.
 public func buildSidebarModel(
@@ -644,13 +644,13 @@ public func buildSidebarModel(
                 let agent = liveAgents[slice.id]
                 // A pull request read failing its checks or conflicting is
                 // marked on the rows it already has: at the PR stage — never
-                // a Done, pre-PR or resumed slice. Passing
-                // checks, more narrowly (`prMarks`).
+                // a Done or pre-PR slice, and a resumed one only its failing
+                // checks. Passing checks, more narrowly (`prMarks`).
                 return SidebarSliceRow(
                     sliceID: slice.id, projectID: project.id, title: slice.name,
                     state: displayState(for: slice, agent: agent),
                     live: agent != nil,
-                    marks: NatKit.prMarks(prMarks[slice.id] ?? .none, for: slice, agent: agent))
+                    marks: NatKit.prMarks(prMarks[slice.id] ?? .none, for: slice))
             }
             for row in rows where row.state.isInFlight {
                 if row.state.needsYou { needsYou += 1 }

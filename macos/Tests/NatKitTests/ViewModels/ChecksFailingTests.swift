@@ -99,7 +99,7 @@ final class ChecksFailingTests: XCTestCase {
         XCTAssertEqual(marks["a"], ["test"])
         XCTAssertEqual(marks["b"], ["lint"], "at its pull request, its agent waiting")
         XCTAssertEqual(marks["c"], .some(nil), "a working slice has no pull request to mark")
-        XCTAssertEqual(marks["d"], .some(nil), "nor does a resumed one, its agent at it again")
+        XCTAssertEqual(marks["d"], ["old"], "a resumed one keeps it while its agent fixes them")
     }
 
     // MARK: - The task log

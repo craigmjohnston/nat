@@ -146,8 +146,8 @@ public struct AttentionItem: Hashable, Sendable {
 /// - **conflict** — at the PR stage, conflicting, and no live agent (the
 ///   conflict notice names the live agent rather than the user);
 /// - **readyToMerge** — the sidebar's own passing-checks gate
-///   (`prMarks(_:for:agent:)`): the PR stage, checks read passing, neither
-///   conflicting nor failing, no agent working.
+///   (`prMarks(_:for:)`): the PR stage, checks read passing, neither
+///   conflicting nor failing — and, as above, no live agent.
 ///
 /// A resumed slice is working, so it counts for nothing but a waiting agent;
 /// a Done slice for nothing at all. A pull request merely awaiting its review
@@ -205,7 +205,7 @@ private func attentionKind(_ slice: Slice, agent: AgentActivity?, marks: PRMarks
         // nat sent it the failure, the conflict notice names it — so none of
         // it is the user's.
         guard agent == nil else { break }
-        let gated = prMarks(marks, for: slice, agent: agent)
+        let gated = prMarks(marks, for: slice)
         if gated.failingChecks != nil { return .checksFailed }
         if gated.conflict != nil { return .conflict }
         if gated.checksPassing { return .readyToMerge }

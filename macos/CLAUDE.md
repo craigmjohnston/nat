@@ -219,15 +219,20 @@ cache (`PlanCaching.writePRStatus`, `<id>.pr-status.json`) and restored
 before the first fresh read (`restore`); a reading equal to the last
 publishes nothing, and `forget` drops a closed tab's. `PRStatusStore.marks` (by slice id) puts
 `PRMarks` on **both** sidebar row kinds — `SidebarActiveRow.marks` and
-`SidebarSliceRow.marks`, pr stage only (`atPullRequest`) — drawn by
+`SidebarSliceRow.marks`, pr stage only (`atPullRequest`), and a resumed
+slice its failing checks alone — as read, or `heldFailingChecks`: the
+failure `PRReading(_:after:)` carries over readings whose verdict is
+`pending`, so a fix pushed before hand-back stays red until handed back,
+where it reads running (never cached) — drawn by
 `PRMarksView`: the checks' `xmark.octagon.fill` and the conflict's own
 `ConflictMark` (`MergeIcon`, "Conflicts with <base>" / "Merge
 conflicts"), which takes a `BranchConflict` and nothing about a PR, for a
 conflicting branch with no PR to reuse — and, in the checks' slot, the
 success mark (`checkmark.circle.fill`, "Checks passing") where
-`prMarks(_:for:agent:)` keeps `checksPassing`: the `.pr` stage (not
-resumed), no live agent working, verdict `passing`, not conflicting or
-failing — and, under the same gate, the running mark (`checksRunning`,
+`prMarks(_:for:)` keeps `checksPassing`: the `.pr` stage (not resumed),
+verdict `passing`, not conflicting or failing — whatever the agent's
+activity reads, since an agent left idle after its hand-back never runs
+`agent-waiting` and reads working until reaped — and, under the same gate, the running mark (`checksRunning`,
 verdict `pending`: a static, neutral `PRMarks.runningSymbol` —
 `ellipsis.circle.fill` — "Checks running"). The PR section header draws the
 same gate as its outline `checkmark.circle` (or `ellipsis.circle` for
