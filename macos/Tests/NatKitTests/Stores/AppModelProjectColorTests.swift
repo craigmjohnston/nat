@@ -81,4 +81,26 @@ final class AppModelProjectColorTests: XCTestCase {
 
         XCTAssertEqual(colourWrites(client), [])
     }
+
+    /// The scratch and source projects take no colour: none is asked for,
+    /// and one their entry holds is never drawn.
+    func testScratchAndSourceProjectsTakeNoColour() async {
+        var projects = Fixtures.twoProjectConfig.projects
+        projects[Fixtures.scratchProjectID] = ProjectConfig(name: "Scratch", workingDir: "/Users/craig", color: .red)
+        projects[Fixtures.sourceProjectID] = ProjectConfig(name: "Work", workingDir: "", backend: .source, source: "demo")
+        let config = NatProjectConfig(projects: projects, pollSeconds: 3600, scratchProject: Fixtures.scratchProjectID)
+        XCTAssertTrue(config.takesColor(Fixtures.projectID))
+        XCTAssertFalse(config.takesColor(Fixtures.scratchProjectID))
+        XCTAssertFalse(config.takesColor(Fixtures.sourceProjectID))
+        XCTAssertFalse(config.takesColor("missing"))
+
+        let client = FixtureNatClient()
+        let model = model(client: client, config: config)
+        await model.start(configPath: Fixtures.paths.config, nudgePath: Fixtures.paths.nudge)
+
+        XCTAssertEqual(colourWrites(client), [])
+        XCTAssertNil(model.projectColor(ofProject: Fixtures.scratchProjectID))
+        XCTAssertNil(model.projectColor(ofProject: Fixtures.sourceProjectID))
+        XCTAssertEqual(model.projectColor(ofProject: Fixtures.projectID), .teal)
+    }
 }

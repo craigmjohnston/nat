@@ -179,12 +179,16 @@ func applyProjectRuns(cfg *config.Config, key, value string) error {
 // project.<id>.color names, by [applyProjectWorkingDir]'s addressing. A
 // palette name is written as given; auto clears the field, so the save that
 // follows chooses one. Anything else is refused — the empty string too, since
-// the word for "choose again" is auto, and a project is never left with none.
+// the word for "choose again" is auto, and a project is never left with none —
+// and so is any colour for a project that takes none ([config.Config.Colorable]).
 func applyProjectColor(cfg *config.Config, key, value string) error {
 	id := strings.TrimSuffix(strings.TrimPrefix(key, projectKeyPrefix), colorKeySuffix)
 	pid, err := projectKeyFor(*cfg, id)
 	if err != nil {
 		return err
+	}
+	if !cfg.Colorable(pid) {
+		return fmt.Errorf("config-set: %s is the scratch project or a source project, which take no colour", id)
 	}
 	if value != autoColor && !config.ValidProjectColor(value) {
 		return usageErrorf("config-set: %s wants one of %s, or %s, given %q",

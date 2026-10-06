@@ -90,7 +90,8 @@ main window titled with the project's name — one grouped `Form`, no
 sidebar or tabs — holding the working directory (field + Choose…) and, under it, Colour:
 one swatch per `ProjectColor` in nat's order (the picked one ringed in the
 accent, its name its tooltip and accessibility label) then a `ProjectPuck`
-of the pick — no "auto", a colour is always set. Its
+of the pick — no "auto", a colour is always set; no row at all for the
+scratch or a source project (`ProjectSettingsModel.takesColor`). Its
 logic is `ProjectSettingsModel` (NatKit, tested): the same one `config-set`
 per changed key (`SettingsModel.workingDirKey`, `colorKey`), a refusal kept under its
 row with the baseline as read, `AppModel.reloadConfig` after any write so
@@ -478,22 +479,23 @@ nothing. Tests: `ClosedTabTests`.
 
 ## The window
 
-**Project colours.** Every config entry carries a `color`, a
+**Project colours.** Every config entry but the scratch project's and a
+source project's (`NatProjectConfig.takesColor`, nat's `Config.Colorable` —
+no puck, no auto, no Colour row) carries a `color`, a
 `ProjectColor` name nat chooses (`config.Save`) — never hex: each `Palette`
 resolves it (`projectTint`, its own hue where its outcome hues fall short),
 `DesignTokens.projectInk(_:on:)` on a ground. gnat never picks one: once
 config is read, and whenever a project joins the strip (`addProject`,
 `ensureSourceProjects`, `projectMirrored`), `AppModel.assignProjectColors`
-runs one `config-set project.<id>.color auto` per project with none, each
+runs one `config-set project.<id>.color auto` per such project with none, each
 once a run, then `reloadConfig` — only where `assignsProjectColors`, which
 only `NatApp` sets (tests run the real `nat`). It is drawn as `ProjectPuck`,
 a 3pt vertical capsule, **in space already there** (`projectPuck(_:inset:)`,
 an overlay in the leading padding, `ProjectPuck.gap` short of the first
 glyph — nothing in the row moves): Active rows left of the state dot,
 dropped onto its line (`StateDot.drop`; `SidebarActiveRow.color`), PROJECTS
-rows left of the folder glyph and the source and Scratch fold headings
-(`headingGap`, their padding being 10pt; `SidebarProject.color`; never an
-Untitled row), and the titlebar breadcrumb, whose crumbs move right by
+rows left of the folder glyph (`SidebarProject.color`; never an Untitled
+row), and the titlebar breadcrumb, whose crumbs move right by
 `GnatMetrics.puckRowInset` less `breadcrumbInset` to give it a sidebar row's
 room (`TitlebarBreadcrumb.projectColor`, at every `BreadcrumbFit` stage,
 uncounted by its measurements, on the line of what follows it — the dot at

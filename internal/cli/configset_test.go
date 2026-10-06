@@ -371,3 +371,20 @@ func TestConfigSetProjectColorRefusals(t *testing.T) {
 		t.Errorf("err = %v, want the unknown project named", err)
 	}
 }
+
+// The scratch project and a source project take no colour, not even auto.
+func TestConfigSetProjectColorRefusesScratchAndSourceProjects(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Projects["scratch"] = config.ProjectConfig{Name: "Scratch", Backend: config.BackendLocal}
+	cfg.Projects["work"] = config.ProjectConfig{Backend: config.BackendSource, Source: "demo"}
+	cfg.ScratchProject = "scratch"
+	for _, id := range []string{"scratch", "work"} {
+		for _, value := range []string{"red", "auto"} {
+			env, _ := savingEnv(cfg)
+			err := Run(context.Background(), []string{"config-set", "project." + id + ".color", value}, env)
+			if err == nil || !strings.Contains(err.Error(), "take no colour") {
+				t.Errorf("%s %s: err = %v, want it refused", id, value, err)
+			}
+		}
+	}
+}

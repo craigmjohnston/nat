@@ -4,8 +4,8 @@ import NatKit
 /// A project's colour as a mark: a small vertical capsule, no wider than
 /// 3pt and about the row's text height, filled in the project's tint on the
 /// ground it is drawn over. One mark wherever a project is named — its
-/// Active rows, its PROJECTS row (and a source or Scratch fold's heading),
-/// the titlebar breadcrumb — so the eye reads them as one.
+/// Active rows, its PROJECTS row, the titlebar breadcrumb — so the eye reads
+/// them as one. The scratch and source projects take no colour, so none.
 struct ProjectPuck: View {
     let color: ProjectColor
     var ground: Ground = .window
@@ -13,9 +13,6 @@ struct ProjectPuck: View {
     static let width: CGFloat = 3
     /// The room kept between the puck and whatever follows it in a row.
     static let gap: CGFloat = 6
-    /// The narrower room a fold heading keeps, whose leading padding is
-    /// only 10pt.
-    static let headingGap: CGFloat = 4
     static var height: CGFloat { GnatMetrics.body - 1 }
 
     var body: some View {

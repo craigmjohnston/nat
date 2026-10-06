@@ -54,7 +54,8 @@ type ProjectConfig struct {
 	Runs []RunCommand `json:"runs,omitempty"`
 	// Color is the project's colour, one of [ProjectColors] by name — never a
 	// hex value, so gnat resolves it through whichever palette is on. Empty
-	// until the next [Save] picks one ([Config.AssignColors]) or the user does.
+	// until the next [Save] picks one ([Config.AssignColors]) or the user does,
+	// and always for a project that takes none ([Config.Colorable]).
 	Color string `json:"color,omitempty"`
 }
 
@@ -67,15 +68,33 @@ func ValidProjectColor(name string) bool {
 	return slices.Contains(ProjectColors, name)
 }
 
+// Colorable reports whether the project id names takes a colour: every one
+// but the scratch project and a source project, which are not drawn as
+// projects of the user's own.
+func (c Config) Colorable(id string) bool {
+	p, ok := c.Projects[id]
+	return ok && !p.IsSource() && id != c.ScratchProject
+}
+
 // AssignColors gives every project with no colour one: entries walked in ID
 // order, each given the palette name the fewest other entries already hold,
 // a tie going to the earlier name in palette order. An entry already coloured
-// is never changed. It writes into c.Projects in place, so a caller holding the
-// same map sees what was assigned.
+// is never changed — except one that takes no colour ([Config.Colorable]),
+// whose colour is cleared and counts against nothing: scratch-open saves its
+// project before recording it as the scratch one, and the second save takes
+// back what the first gave. It writes into c.Projects in place, so a caller
+// holding the same map sees what was assigned.
 func (c *Config) AssignColors() {
 	held := map[string]int{}
 	var bare []string
 	for id, p := range c.Projects {
+		if !c.Colorable(id) {
+			if p.Color != "" {
+				p.Color = ""
+				c.Projects[id] = p
+			}
+			continue
+		}
 		if p.Color == "" {
 			bare = append(bare, id)
 			continue

@@ -43,7 +43,8 @@ where the caller meant.
 - `config-set`'s `project.<id>.*` keys — `.working_dir`, `.runs` (a JSON
   array, `config.ValidRuns`) and `.color` (a `config.ProjectColors` name, or
   `auto` to clear it so the save picks one; anything else, the empty string
-  included, a usage error; the report names what auto chose) — do their own
+  included, a usage error; the report names what auto chose; refused for the
+  scratch project and a source project, which take none — `Config.Colorable`) — do their own
   copy of this match (`projectKeyFor`) against the config already in memory,
   rather than calling `namedProject` and re-reading the file they write back.
 

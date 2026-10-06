@@ -69,8 +69,9 @@ enum AppStories {
 
     /// The sidebar alone over the Work source project — Projects folded
     /// unless `folded` says otherwise — the first card selected.
-    /// Four projects, each its own colour — two tracked, the Work source
-    /// project and Scratch, every fold open — with Active rows across them.
+    /// Four projects — two tracked, each its own colour, and the Work source
+    /// project and Scratch, which take none, every fold open — with Active
+    /// rows across them.
     private static func projectColoursSidebar() async -> some View {
         var projects = Fixtures.sourceConfig.projects
         projects[Fixtures.scratchProjectID] = Fixtures.scratchConfig.projects[Fixtures.scratchProjectID]
@@ -1869,8 +1870,9 @@ enum AppStories {
         Story(
             name: "sidebar-project-colours",
             summary: "Every project's colour as its puck: a thin capsule in each Active row's leading padding, "
-                + "left of the state dot, and in each PROJECTS row's, left of the folder glyph \u{2014} the "
-                + "source fold's and Scratch's headings too \u{2014} nothing else in any row moved.",
+                + "left of the state dot, and in each PROJECTS row's, left of the folder glyph \u{2014} "
+                + "nothing else in any row moved. The source fold and Scratch take no colour: their rows "
+                + "and headings have none.",
             size: sidebar
         ) {
             await projectColoursSidebar()

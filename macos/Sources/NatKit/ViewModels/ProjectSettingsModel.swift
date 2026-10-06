@@ -39,6 +39,9 @@ public final class ProjectSettingsModel {
     /// nat's refusal of the last Save, by key.
     public private(set) var errors: [String: String] = [:]
     public private(set) var isSaving = false
+    /// Whether the sheet has a Colour row: not for the scratch project or a
+    /// source project, which take no colour.
+    public let takesColor: Bool
 
     private let write: @Sendable (ConfigChange) async throws -> Void
     private let reload: @MainActor () async -> Void
@@ -49,9 +52,11 @@ public final class ProjectSettingsModel {
     public init(
         projectID: String,
         fields: ProjectSettingsFields,
+        takesColor: Bool = true,
         write: @escaping @Sendable (ConfigChange) async throws -> Void,
         reload: @escaping @MainActor () async -> Void
     ) {
+        self.takesColor = takesColor
         self.projectID = projectID
         self.original = fields
         self.edited = fields
@@ -69,6 +74,7 @@ public final class ProjectSettingsModel {
         self.init(
             projectID: projectID,
             fields: ProjectSettingsFields(projectID: projectID, config: config),
+            takesColor: config?.takesColor(projectID) ?? false,
             write: { try await client.configSet(key: $0.key, value: $0.value) },
             reload: reload)
     }

@@ -971,14 +971,17 @@ public final class AppModel {
         self.config = reloaded
     }
 
-    /// gnat never picks a colour: every config project whose entry has none
+    /// gnat never picks a colour: every config project that takes one
+    /// (`NatProjectConfig.takesColor`) and whose entry has none
     /// is given one by nat — one `config-set project.<id>.color auto` each,
     /// one at a time — and config is read again, which puts up their pucks.
     /// Each project is asked once a run; a refusal is logged and leaves it
     /// with no puck until the next launch. Off unless `assignsProjectColors`.
     public func assignProjectColors() async {
         guard assignsProjectColors, let config else { return }
-        let bare = config.projects.filter { $0.value.color == nil && !colorsAsked.contains($0.key) }.map(\.key).sorted()
+        let bare = config.projects
+            .filter { config.takesColor($0.key) && $0.value.color == nil && !colorsAsked.contains($0.key) }
+            .map(\.key).sorted()
         guard !bare.isEmpty else { return }
         colorsAsked.formUnion(bare)
         let client = clientFactory()
@@ -1243,9 +1246,11 @@ public final class AppModel {
     }
 
     /// The colour a project's config entry holds — its puck's — nil for one
-    /// nat has not coloured yet and for an Untitled tab, which has no entry.
+    /// nat has not coloured yet, for an Untitled tab, which has no entry, and
+    /// for the scratch and source projects, which take none.
     public func projectColor(ofProject projectID: String) -> ProjectColor? {
-        config?.projects[projectID]?.color
+        guard config?.takesColor(projectID) == true else { return nil }
+        return config?.projects[projectID]?.color
     }
 
     /// One project's plan as its store last read it — nil before it lands.

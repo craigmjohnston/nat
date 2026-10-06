@@ -350,7 +350,9 @@ gives a choice). `config-show` says every project's backend. Every entry also ca
 `color` (a `config.ProjectColors` name, never hex): `config.Save` assigns one
 to any entry without (`Config.AssignColors`, `Load` never does) — the one
 deliberate exception to the round trip, since the first save after it landed
-coloured every entry — and `config-set project.<id>.color` changes it. gnat's
+coloured every entry — and `config-set project.<id>.color` changes it. The
+scratch project and source projects take none (`Config.Colorable`): a save
+clears one, `config-set` refuses one, and gnat draws none. gnat's
 `ProjectConfig` / `ConfigDocProject` decode all of it and tolerate a missing `slices_ds_id`.
 
 **Task sources.** A source project is a local plan with `backend: source`

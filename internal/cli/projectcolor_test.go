@@ -52,13 +52,11 @@ func TestProjectCreateReportsTheColorItWasGiven(t *testing.T) {
 		t.Errorf("local: reported %q, want red", got)
 	}
 
+	// A source project takes no colour, so reports none.
 	sp := newSourceProject(t, &source.Fake{})
-	first := sp.saved.Projects[sp.id]
-	first.Color = "red"
-	sp.saved.Projects[sp.id] = first
 	sp.env.Save = assigningSave(sp.env.Save)
-	if got := createdColor(t, []byte(sp.run(t, "project-create", "--source", "demo", "--plan-dir", sp.planDir, "--json"))); got != "orange" {
-		t.Errorf("source: reported %q, want orange (red is held)", got)
+	if got := createdColor(t, []byte(sp.run(t, "project-create", "--source", "demo", "--plan-dir", sp.planDir, "--json"))); got != "" {
+		t.Errorf("source: reported %q, want none", got)
 	}
 }
 
@@ -83,5 +81,18 @@ func TestProjectMirrorCarriesTheColor(t *testing.T) {
 	}
 	if got.Project.Color != "teal" {
 		t.Errorf("reported colour = %q, want teal", got.Project.Color)
+	}
+}
+
+// scratch-open saves its project before recording it as the scratch one; the
+// second save takes back the colour the first gave, so it ends with none.
+func TestScratchOpenLeavesTheScratchProjectUncoloured(t *testing.T) {
+	env, _, saved := noNotionEnv(t, config.Config{}, false)
+	env.Save = assigningSave(env.Save)
+	if err := Run(context.Background(), []string{"scratch-open", "--dir", "/tmp"}, env); err != nil {
+		t.Fatal(err)
+	}
+	if got := saved.Projects[saved.ScratchProject].Color; got != "" {
+		t.Errorf("scratch project's colour = %q, want none", got)
 	}
 }

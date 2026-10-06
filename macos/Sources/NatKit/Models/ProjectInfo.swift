@@ -252,6 +252,14 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
         self.sliceAgent = sliceAgent
         self.assigneeUserName = assigneeUserName
     }
+
+    /// Whether the project `id` names takes a colour — nat's
+    /// `Config.Colorable`: every one but the scratch project and a source
+    /// project, which nat never colours.
+    public func takesColor(_ id: String) -> Bool {
+        guard let entry = projects[id] else { return false }
+        return entry.backend != .source && id != scratchProject
+    }
 }
 
 /// Where a project's plan lives: a Notion database, or a file of nat's own with

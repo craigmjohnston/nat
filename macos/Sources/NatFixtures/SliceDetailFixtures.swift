@@ -474,8 +474,7 @@ extension Fixtures {
                 scratchProjectID: ProjectConfig(
                     name: "Scratch",
                     slicesDSID: "",
-                    workingDir: "/Users/craig",
-                    color: .purple
+                    workingDir: "/Users/craig"
                 ),
             ],
             agentSplitPercent: 45,

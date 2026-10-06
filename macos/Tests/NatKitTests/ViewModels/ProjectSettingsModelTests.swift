@@ -197,4 +197,19 @@ final class ProjectSettingsModelTests: XCTestCase {
         ])
         XCTAssertEqual(ProjectSettingsModel.applying(changes, projectID: "p1", to: original), edited)
     }
+
+    /// The sheet has a Colour row only for a project that takes a colour.
+    func testOnlyAProjectThatTakesAColourHasTheRow() {
+        var projects = Fixtures.config.projects
+        projects["s"] = ProjectConfig(name: "Scratch", workingDir: "/")
+        projects["w"] = ProjectConfig(name: "Work", workingDir: "", backend: .source, source: "demo")
+        let config = NatProjectConfig(projects: projects, scratchProject: "s")
+        func sheet(_ id: String, _ config: NatProjectConfig?) -> ProjectSettingsModel {
+            ProjectSettingsModel(projectID: id, config: config, client: FixtureNatClient(), reload: {})
+        }
+        XCTAssertTrue(sheet(Fixtures.projectID, config).takesColor)
+        XCTAssertFalse(sheet("s", config).takesColor)
+        XCTAssertFalse(sheet("w", config).takesColor)
+        XCTAssertFalse(sheet("p1", nil).takesColor)
+    }
 }

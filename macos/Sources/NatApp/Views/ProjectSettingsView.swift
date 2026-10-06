@@ -45,8 +45,10 @@ struct ProjectSettingsView: View {
                         .ink(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Section {
-                    colorRow
+                if model.takesColor {
+                    Section {
+                        colorRow
+                    }
                 }
             }
             .formStyle(.grouped)

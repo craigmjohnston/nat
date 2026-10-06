@@ -881,3 +881,22 @@ func TestSaveAssignsColorsLoadDoesNot(t *testing.T) {
 		t.Errorf("saved = %v", got)
 	}
 }
+
+// The scratch project and a source project take no colour: none is given,
+// one they hold is cleared, and neither counts against another project's.
+func TestAssignColorsSkipsScratchAndSourceProjects(t *testing.T) {
+	c := Config{ScratchProject: "s", Projects: map[string]ProjectConfig{
+		"a": {},
+		"s": {Backend: BackendLocal, Color: "red"},
+		"w": {Backend: BackendSource, Source: "demo", Color: "red"},
+		"x": {Backend: BackendSource, Source: "demo"},
+	}}
+	c.AssignColors()
+	want := map[string]string{"a": "red", "s": "", "w": "", "x": ""}
+	if got := colorsOf(c); !reflect.DeepEqual(got, want) {
+		t.Errorf("colours = %v, want %v", got, want)
+	}
+	if c.Colorable("a") != true || c.Colorable("s") || c.Colorable("w") || c.Colorable("missing") {
+		t.Error("Colorable disagrees with the entries")
+	}
+}
