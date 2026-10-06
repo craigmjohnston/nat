@@ -436,6 +436,12 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     public let reconnecting: Bool
     /// The row's project's colour — its badge's; nil where it has none yet.
     public let color: ProjectColor?
+    /// A source task's card: Active draws the task nested under it
+    /// (`SidebarModel.activeEntries`), and the titlebar names the task by
+    /// the card's badge in the project badge's place — a source project
+    /// takes no badge of its own (`projectTag` empty). Nil for every other
+    /// row, and for a task whose card neither the tree nor the plan names.
+    public let card: SidebarActiveCard?
 
     public var id: String { "\(kind):\(targetID)" }
 
@@ -446,7 +452,8 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     public init(
         kind: SidebarActiveKind, targetID: String, projectID: String, projectName: String,
         projectTag: String? = nil, title: String, state: SliceDisplayState, live: Bool,
-        marks: PRMarks = .none, planReady: Bool = false, reconnecting: Bool = false, color: ProjectColor? = nil
+        marks: PRMarks = .none, planReady: Bool = false, reconnecting: Bool = false, color: ProjectColor? = nil,
+        card: SidebarActiveCard? = nil
     ) {
         self.kind = kind
         self.targetID = targetID
@@ -460,6 +467,50 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
         self.planReady = kind == .workshop && planReady
         self.reconnecting = kind == .workshop && reconnecting
         self.color = color
+        self.card = kind == .slice ? card : nil
+    }
+}
+
+/// A source task's card as Active draws it: the top-level row its active
+/// tasks nest under, named by its badge — its first (`badge`, a Shortcut
+/// card's project), led by the source's `icon` — and its title.
+public struct SidebarActiveCard: Equatable, Sendable {
+    /// The container's id.
+    public let id: String
+    public let projectID: String
+    public let title: String
+    /// Nil for a card with none, which draws no badge and no slash.
+    public let badge: SourceBadge?
+    public let icon: SourceIcon
+
+    public init(id: String, projectID: String, title: String, badge: SourceBadge?, icon: SourceIcon) {
+        self.id = id
+        self.projectID = projectID
+        self.title = title
+        self.badge = badge
+        self.icon = icon
+    }
+}
+
+/// One top-level item of the Active fold: a row as it is, or a source card
+/// with its active tasks' rows nested under it.
+public enum SidebarActiveEntry: Equatable, Identifiable, Sendable {
+    case row(SidebarActiveRow)
+    case card(SidebarActiveCard, rows: [SidebarActiveRow])
+
+    public var id: String {
+        switch self {
+        case .row(let row): row.id
+        case .card(let card, _): "card:\(card.projectID):\(card.id)"
+        }
+    }
+
+    /// The rows it draws, in order.
+    public var rows: [SidebarActiveRow] {
+        switch self {
+        case .row(let row): [row]
+        case .card(_, let rows): rows
+        }
     }
 }
 
@@ -507,6 +558,27 @@ public struct SidebarModel: Equatable, Sendable {
     /// The reserved scratch project, drawn as a fold of its own rather than
     /// a row of Projects — nil when there is none open.
     public let scratch: SidebarProject?
+
+    /// Active as the sidebar draws it: `active` in order, each source task
+    /// nested under its card, the card standing where its first task would.
+    public var activeEntries: [SidebarActiveEntry] {
+        var entries: [SidebarActiveEntry] = []
+        var cardAt: [String: Int] = [:]
+        for row in active {
+            guard let card = row.card else {
+                entries.append(.row(row))
+                continue
+            }
+            let key = "\(card.projectID):\(card.id)"
+            if let index = cardAt[key], case .card(let held, let rows) = entries[index] {
+                entries[index] = .card(held, rows: rows + [row])
+            } else {
+                cardAt[key] = entries.count
+                entries.append(.card(card, rows: [row]))
+            }
+        }
+        return entries
+    }
 
     /// The Active heading's hot count.
     public var needsYouCount: Int {
@@ -609,26 +681,29 @@ public func buildSidebarModel(
 
     for project in projects {
         var needsYou = 0
+        // A source project takes no badge: its rows carry no tag, a task's
+        // its card's badge instead.
+        let tag = project.isSourceProject ? "" : tags[project.id] ?? ""
 
         if let planner = planningAgents[project.id] {
             let state: SliceDisplayState = planner == .waiting ? .waiting : .working
             if state.needsYou { needsYou += 1 }
             active.append(SidebarActiveRow(
-                kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
+                kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tag,
                 title: workshopRowTitle, state: state, live: true,
                 planReady: proposedWorkshops.contains(project.id), color: project.color))
         } else if reconnectingWorkshops.contains(project.id) {
             // Running when the app last quit, and not yet read again: drawn
             // as a launch is, until the first reading confirms or ends it.
             active.append(SidebarActiveRow(
-                kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
+                kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tag,
                 title: workshopRowTitle, state: .working, live: false,
                 planReady: proposedWorkshops.contains(project.id), reconnecting: true, color: project.color))
         } else if pinnedWorkshops.contains(project.id) || launchingWorkshop == project.id {
             // Opened and not yet running: a draft being written, or a launch
             // on its way — the row holds the workshop's place until then.
             active.append(SidebarActiveRow(
-                kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
+                kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tag,
                 title: workshopRowTitle, state: launchingWorkshop == project.id ? .working : .todo, live: false,
                 planReady: proposedWorkshops.contains(project.id), color: project.color))
         }
@@ -645,7 +720,7 @@ public func buildSidebarModel(
                 }
                 if state.needsYou { needsYou += 1 }
                 active.append(SidebarActiveRow(
-                    kind: .session, targetID: session.id, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
+                    kind: .session, targetID: session.id, projectID: project.id, projectName: project.name, projectTag: tag,
                     title: sessionRowTitle, state: state, live: liveAgents[session.tag] != nil, color: project.color))
             }
         }
@@ -666,11 +741,13 @@ public func buildSidebarModel(
                     live: agent != nil,
                     marks: NatKit.prMarks(prMarks[slice.id] ?? .none, for: slice))
             }
+            let filedUnder = Dictionary(plan.slices.map { ($0.id, $0.milestoneID) }, uniquingKeysWith: { first, _ in first })
             for row in rows where row.state.isInFlight {
                 if row.state.needsYou { needsYou += 1 }
                 active.append(SidebarActiveRow(
-                    kind: .slice, targetID: row.sliceID, projectID: project.id, projectName: project.name, projectTag: tags[project.id],
-                    title: row.title, state: row.state, live: row.live, marks: row.marks, color: project.color))
+                    kind: .slice, targetID: row.sliceID, projectID: project.id, projectName: project.name, projectTag: tag,
+                    title: row.title, state: row.state, live: row.live, marks: row.marks, color: project.color,
+                    card: activeCard(filedUnder[row.sliceID] ?? "", projectID: project.id, plan: plan)))
             }
 
             // A source project's tasks are drawn under the plugin's own tree,
@@ -679,7 +756,7 @@ public func buildSidebarModel(
                 built.append(SidebarProject(
                     id: project.id, name: project.name, kind: project.kind, status: planStatus(project),
                     milestones: [], needsYou: needsYou, source: buildSidebarSource(info, rows: rows, plan: plan),
-                    color: project.color, tag: tags[project.id] ?? ""))
+                    color: project.color, tag: ""))
                 continue
             }
 
@@ -734,6 +811,16 @@ public func buildSidebarModel(
         active: sorted, projects: built.filter { $0.kind != .scratch && !sourceIDs.contains($0.id) },
         sources: built.filter { sourceIDs.contains($0.id) },
         scratch: built.first { $0.kind == .scratch })
+}
+
+/// A source task's card as Active draws it — titled as the plugin's tree
+/// titles it, else as nat's cache does — nil outside a source project and
+/// for a card neither names.
+func activeCard(_ id: String, projectID: String, plan: ProjectInfo) -> SidebarActiveCard? {
+    guard let info = plan.source, !id.isEmpty else { return nil }
+    let container = info.container(withID: id)
+    guard let title = container?.title ?? plan.milestones.first(where: { $0.id == id })?.name else { return nil }
+    return SidebarActiveCard(id: id, projectID: projectID, title: title, badge: container?.badges.first, icon: info.icon)
 }
 
 private func planStatus(_ project: SidebarProjectInput) -> SidebarPlanStatus {

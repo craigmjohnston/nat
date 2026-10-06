@@ -189,8 +189,7 @@ struct RunTreePicker: View {
                         // folder keeping its column.
                         HStack(spacing: 6) {
                             if !project.tag.isEmpty {
-                                ProjectBadgeView(
-                                    tag: project.tag, color: project.color, name: project.name, icon: project.icon)
+                                ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
                             }
                             Text(project.name)
                         }

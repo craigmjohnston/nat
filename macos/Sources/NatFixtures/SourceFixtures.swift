@@ -49,7 +49,7 @@ extension Fixtures {
 
     // A card's one badge is its Shortcut-style project, as the plugin sends
     // it; a card with no project has none (never its team's).
-    static let sourceMobileApp = SourceBadge(text: "MOB", color: "#e5732a", title: "Mobile App")
+    public static let sourceMobileApp = SourceBadge(text: "MOB", color: "#e5732a", title: "Mobile App")
     static let sourceWeb = SourceBadge(text: "WE", color: "#8e8e93", title: "Web")
 
     // The workspace's choices a filter offers, as the Shortcut plugin sends
@@ -176,7 +176,8 @@ extension Fixtures {
     public static func sourceInfo(expand: [String] = [], epicsLoading: Bool = false) -> SourceInfo {
         SourceInfo(
             name: "demo", title: "Demo source", tag: "DM",
-            iconSymbol: "rectangle.on.rectangle.angled",
+            // Drawn with the Shortcut mark, as the plugin it stands for is.
+            iconSymbol: "rectangle.on.rectangle.angled", iconSVG: shortcutIcon.svg,
             containerNoun: "card", taskNoun: "task",
             menu: [
                 SourceAction(id: "refresh", label: "Refresh"),

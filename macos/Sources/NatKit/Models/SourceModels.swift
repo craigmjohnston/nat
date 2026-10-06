@@ -727,3 +727,29 @@ public struct SourceActionResult: Codable, Equatable, Sendable {
         message = c.optionalString(.message)
     }
 }
+
+extension SourceInfo {
+    /// The plugin's icon — `icon_svg`, else its SF Symbol.
+    public var icon: SourceIcon { SourceIcon(symbol: iconSymbol, svg: iconSVG) }
+
+    /// The container with `id` wherever the tree first lists it, at any
+    /// depth; nil for one it does not list (a lazy group still folded).
+    public func container(withID id: String) -> SourceContainer? {
+        func find(_ groups: [SourceGroup]) -> SourceContainer? {
+            for group in groups {
+                if let found = group.containers.first(where: { $0.id == id }) ?? find(group.children) {
+                    return found
+                }
+            }
+            return nil
+        }
+        return find(groups)
+    }
+
+    /// The first badge of the container with `id` — a Shortcut card's
+    /// project — what names that card outside the source's own section.
+    /// Nil for a container with none, or one the tree does not list.
+    public func badge(ofContainer id: String) -> SourceBadge? {
+        container(withID: id)?.badges.first
+    }
+}

@@ -49,7 +49,7 @@ final class RunCommandModelTests: XCTestCase {
 
 @MainActor
 final class AppModelRunTests: XCTestCase {
-    func testASourceProjectsRunProjectCarriesItsPluginsIconAndTagAndNoColour() async {
+    func testASourceProjectsRunProjectTakesNoBadge() async {
         let source = Fixtures.sourceConfig
         var projects = source.projects
         let work = projects[Fixtures.sourceProjectID]!
@@ -61,12 +61,8 @@ final class AppModelRunTests: XCTestCase {
             assigneeUserName: source.assigneeUserName)
         let model = await Fixtures.startedAppModel(config: config)
         let project = model.runProjects.first { $0.id == Fixtures.sourceProjectID }
-        XCTAssertEqual(project?.tag, "DM")
+        XCTAssertEqual(project?.tag, "", "a source project takes no badge")
         XCTAssertNil(project?.color)
-        XCTAssertEqual(project?.icon, SourceIcon(symbol: "rectangle.on.rectangle.angled"))
-        XCTAssertEqual(model.sourceIcon(ofProject: Fixtures.sourceProjectID), project?.icon)
-        XCTAssertNil(model.sourceIcon(ofProject: Fixtures.projectID), "not a source project")
-        XCTAssertNil(model.sourceIcon(ofProject: "nowhere"), "no plan read")
     }
 
     func testARunIsHeldAndItsButtonBusyUntilItEnds() async {
@@ -81,7 +77,6 @@ final class AppModelRunTests: XCTestCase {
             model.runProjects.map(\.color),
             [Fixtures.runsConfig.projects[Fixtures.secondProjectID]?.color,
              Fixtures.runsConfig.projects[Fixtures.projectID]?.color])
-        XCTAssertEqual(model.runProjects.map(\.icon), [nil, nil], "no source project, no icon")
 
         XCTAssertFalse(model.anyRunBusy)
         await model.startRun(projectID: Fixtures.projectID)

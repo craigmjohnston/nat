@@ -84,15 +84,19 @@ enum AppStories {
             .environment(\.pulsesPaused, true)
     }
 
-    /// Every project colour's badge, then the no-colour chip, then a source
-    /// project's — its plugin's icon, then its tag — on the sidebar's ground.
+    /// A Shortcut card's project badge, as the stories draw it.
+    static let storyCardBadge = Fixtures.sourceMobileApp
+
+    /// Every project colour's badge, then the no-colour chip, then a Shortcut
+    /// card's badge as it is drawn outside the Shortcut section — the logo,
+    /// then its project — on the sidebar's ground.
     private static func projectBadgeRow() -> some View {
         HStack(spacing: 6) {
             ForEach(ProjectColor.allCases, id: \.self) { color in
                 ProjectBadgeView(tag: String(color.rawValue.prefix(3)).uppercased(), color: color)
             }
             ProjectBadgeView(tag: "SCR", color: nil)
-            ProjectBadgeView(tag: "SC", color: nil, icon: Fixtures.shortcutIcon)
+            CardMarkView(badge: storyCardBadge, icon: Fixtures.shortcutIcon)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.fill(.header))
@@ -428,8 +432,7 @@ enum AppStories {
         tabs: [MainPaneTab], selected: MainPaneMode?, crumbs: TitlebarCrumbs, state: SliceDisplayState = .working,
         identity: TitlebarIdentity? = nil, hoveredTab: MainPaneTab? = nil, runs: Bool = false,
         runBusy: Bool = false, runHovered: Bool = false,
-        projectColor: ProjectColor? = Fixtures.config.projects[Fixtures.projectID]?.color,
-        projectIcon: SourceIcon? = nil
+        projectColor: ProjectColor? = Fixtures.config.projects[Fixtures.projectID]?.color
     ) -> some View {
         TitlebarBand(
             navigatorWidth: GnatMetrics.navigatorWidth, tabs: tabs.map(\.titlebarTab),
@@ -444,7 +447,7 @@ enum AppStories {
             TitlebarBreadcrumb(
                 crumbs: crumbs,
                 identity: identity ?? TitlebarIdentity(tag: "GNA", state: state, live: true, title: crumbs.title),
-                projectColor: projectColor, projectIcon: projectIcon,
+                projectColor: projectColor,
                 openPicker: .constant(nil)
             ) { _ in EmptyView() }
         }
@@ -1922,9 +1925,10 @@ enum AppStories {
         Story(
             name: "sidebar-project-colours",
             summary: "Every project's colour as its badge: each Active row reads badge, slash, state dot, "
-                + "title, and each PROJECTS row folder, name, then its badge at the row's trailing edge. The "
-                + "source fold's and Scratch's projects take no colour: their Active rows' badges are the quiet "
-                + "grey chip, the source's led by its plugin's icon, and their headings carry none.",
+                + "title, and each PROJECTS row folder, name, then its badge at the row's trailing edge. "
+                + "Scratch's rows take the quiet grey chip; the source project takes no badge: its card is an "
+                + "Active row of its own — the Shortcut logo and the card's project, MOB, then the card — its "
+                + "tasks nested under it. Fold headings carry none.",
             size: sidebar
         ) {
             await projectColoursSidebar()
@@ -2195,7 +2199,7 @@ enum AppStories {
 
         Story(
             name: "window-container",
-            summary: "A card selected: the source's grey badge and icon in the titlebar, Story open with its facts "
+            summary: "A card selected: its card mark (the Shortcut logo and MOB), a slash, the card glyph and title in the titlebar, Story open with its facts "
                 + "and tasks and New task, Comments and Links folded with their counts; the story and its "
                 + "comments with the composer in the main pane, Open in Demo source at the trailing edge.",
             size: window
@@ -2422,28 +2426,46 @@ enum AppStories {
 
         Story(
             name: "titlebar-band-source-task",
-            summary: "A source task\u{2019}s band: its container crumb with the card mark, then the task \u{2014} "
-                + "its source\u{2019}s grey badge, led by the source\u{2019}s icon, and slash kept before the dot, no project crumb before it.",
+            summary: "A Shortcut task\u{2019}s band: its card\u{2019}s badge \u{2014} the Shortcut logo then the card\u{2019}s "
+                + "project, MOB, in its colour \u{2014} in the project crumb\u{2019}s place, then the card with the card mark, "
+                + "then the task\u{2019}s dot and title with no second badge. Shortcut itself takes none.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(
                 tabs: [.terminal, .changes], selected: .terminal,
-                crumbs: TitlebarCrumbs(parent: "Billing export", parentKind: .container, title: "Add the CSV column"),
-                identity: TitlebarIdentity(tag: "SC", state: .working, live: true, title: "Add the CSV column"),
-                projectColor: nil, projectIcon: Fixtures.shortcutIcon)
+                crumbs: TitlebarCrumbs(
+                    project: "Shortcut", parent: "Billing export", parentKind: .container, title: "Add the CSV column"),
+                identity: TitlebarIdentity(
+                    tag: "", state: .working, live: true, title: "Add the CSV column", cardBadge: storyCardBadge,
+                    cardIcon: Fixtures.shortcutIcon),
+                projectColor: nil)
+        },
+
+        Story(
+            name: "titlebar-band-source-task-no-project",
+            summary: "A Shortcut task whose card has no project: the Shortcut logo alone in the project crumb\u{2019}s "
+                + "place, then the card, then the task.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes], selected: .terminal,
+                crumbs: TitlebarCrumbs(
+                    project: "Shortcut", parent: "Billing export", parentKind: .container, title: "Add the CSV column"),
+                identity: TitlebarIdentity(
+                    tag: "", state: .working, live: true, title: "Add the CSV column", cardIcon: Fixtures.shortcutIcon),
+                projectColor: nil)
         },
 
         Story(
             name: "titlebar-band-container",
-            summary: "A container\u{2019}s band: no project crumb \u{2014} a source\u{2019}s trail starts at the "
-                + "card \u{2014} just the source\u{2019}s grey badge, a slash, its icon and the container\u{2019}s title; no tabs and "
-                + "no trailing items.",
+            summary: "A Shortcut card\u{2019}s band: its badge \u{2014} the Shortcut logo then MOB \u{2014} in the project "
+                + "crumb\u{2019}s place, a slash, then the card mark and the card\u{2019}s title; no tabs and no trailing items.",
             size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
         ) {
             band(
                 tabs: [], selected: nil,
-                crumbs: TitlebarCrumbs(title: "Billing export"),
-                identity: .container(title: "Billing export", tag: "SC", icon: Fixtures.shortcutIcon),
+                crumbs: TitlebarCrumbs(project: "Shortcut", title: "Billing export"),
+                identity: .container(title: "Billing export", icon: Fixtures.shortcutIcon, badge: storyCardBadge),
                 projectColor: nil)
         },
 

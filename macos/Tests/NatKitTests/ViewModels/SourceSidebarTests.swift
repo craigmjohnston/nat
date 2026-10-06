@@ -30,7 +30,7 @@ final class SourceSidebarTests: XCTestCase {
         let source = try XCTUnwrap(model.sources[0].source)
         XCTAssertEqual(source.title, "Demo source")
         XCTAssertEqual(source.tag, "DM")
-        XCTAssertEqual(source.icon, SourceIcon(symbol: "rectangle.on.rectangle.angled"))
+        XCTAssertEqual(source.icon, Fixtures.shortcutIcon)
         XCTAssertEqual(source.containerNoun, "card")
         XCTAssertEqual(source.menu.map(\.id), ["refresh", "new-segment", "filter"])
         XCTAssertTrue(model.sources[0].milestones.isEmpty)
@@ -93,12 +93,12 @@ final class SourceSidebarTests: XCTestCase {
         XCTAssertEqual(mine.tasks.map(\.sliceID), ["t-mine"])
     }
 
-    func testNeedsYouRollsUpToTheFoldAndActiveRowsCarryTheSourceTag() {
+    func testNeedsYouRollsUpToTheFoldAndActiveRowsCarryNoTag() {
         let model = model(agents: [Fixtures.sourceWorkingTaskID: .waiting])
         XCTAssertEqual(model.sources[0].needsYou, 2, "the PR open and the waiting agent")
         let rows = model.active.filter { $0.projectID == Fixtures.sourceProjectID }
         XCTAssertEqual(Set(rows.map(\.targetID)), [Fixtures.sourceWorkingTaskID, Fixtures.sourceReviewTaskID])
-        XCTAssertEqual(Set(rows.map(\.projectTag)), ["DM"])
+        XCTAssertEqual(Set(rows.map(\.projectTag)), [""], "a source project takes no badge")
         XCTAssertEqual(sidebarTags([input()])[Fixtures.sourceProjectID], "DM")
         // A plugin that gave no tag leaves the project's own.
         XCTAssertEqual(sidebarTags([input(nil)])[Fixtures.sourceProjectID], "WOR")
@@ -184,16 +184,20 @@ final class SourceSidebarTests: XCTestCase {
 
     // MARK: - The titlebar
 
-    func testAContainerIsNamedByItsSourceNotAnActiveRow() {
+    func testAContainerIsNamedByItsCardsBadgeNotAnActiveRowOrATag() {
         let icon = SourceIcon(symbol: "star", svg: "<svg/>")
         let identity = titlebarIdentity(
-            for: .container(id: "4821", title: "Card", tag: "DM", icon: icon),
-            projectID: "p", active: [], tags: ["p": "WOR"])
-        XCTAssertEqual(identity, TitlebarIdentity(tag: "DM", state: .todo, live: false, title: "Card", icon: icon))
-        XCTAssertEqual(identity, .container(title: "Card", tag: "DM", icon: icon))
-        let untagged = titlebarIdentity(
-            for: .container(id: "4821", title: "Card", tag: "", icon: icon), projectID: "p", active: [], tags: ["p": "WOR"])
-        XCTAssertEqual(untagged.tag, "WOR")
+            for: .container(id: Fixtures.sourceCardID, title: "Card", icon: icon),
+            projectID: "p", active: [], tags: ["p": "WOR"], plan: Fixtures.sourceProjectInfo())
+        XCTAssertEqual(identity, TitlebarIdentity(
+            tag: "", state: .todo, live: false, title: "Card", icon: icon, cardBadge: Fixtures.sourceMobileApp,
+            cardIcon: icon))
+        XCTAssertEqual(identity, .container(title: "Card", icon: icon, badge: Fixtures.sourceMobileApp))
+        let unread = titlebarIdentity(
+            for: .container(id: "4821", title: "Card", icon: icon), projectID: "p", active: [], tags: ["p": "WOR"])
+        XCTAssertEqual(unread.tag, "", "never the project's tag")
+        XCTAssertNil(unread.cardBadge, "no plan read, no badge")
+        XCTAssertEqual(unread.cardIcon, icon, "the source's icon alone")
         XCTAssertEqual(SourceIcon(symbol: "").symbol, SourceIcon.fallbackSymbol)
     }
 

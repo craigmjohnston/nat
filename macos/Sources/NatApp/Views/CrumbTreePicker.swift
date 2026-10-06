@@ -28,12 +28,11 @@ struct CrumbTreePicker: View {
                             backColor: DesignTokens.ink(.tertiary, on: .header))
                             .frame(width: 16)
                         // The project's badge 6pt before its name, the
-                        // folder keeping its column — never an Untitled row.
+                        // folder keeping its column — never an Untitled
+                        // row, nor a source project, which takes none.
                         HStack(spacing: 6) {
                             if project.kind != .untitled && !project.tag.isEmpty {
-                                ProjectBadgeView(
-                                    tag: project.tag, color: project.color, name: project.name,
-                                    icon: project.source?.icon)
+                                ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
                             }
                             Text(project.name)
                         }
