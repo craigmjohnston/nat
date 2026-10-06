@@ -49,7 +49,8 @@ let package = Package(
                 // Only so `ChildReaperTests` can drive SwiftTerm's own
                 // `LocalProcess` — the attach client's terminate-without-reap
                 // is SwiftTerm's behaviour, so the test reproduces it there
-                // rather than against a stand-in.
+                // rather than against a stand-in — and `SameSizeFrameTests`
+                // its `TerminalView`'s redraw on a same-size frame.
                 .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
             path: "Tests/NatKitTests"
