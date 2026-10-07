@@ -25,7 +25,9 @@ fuller structure and theme system.
 - A key that misbehaves in the agent pane: `docs/debugging/agent-pane-keys.md`
   (the key chain, the `NAT_KEY_DEBUG` harness on a private tmux socket).
 - Context menus that stop opening: `docs/debugging/context-menus.md` (the
-  `NatMenuDebug` default / `NAT_MENU_DEBUG` trace, what is ruled out).
+  `NatMenuDebug` default / `NAT_MENU_DEBUG` trace, what is ruled out). The
+  sidebar's `.contextMenu`s are presented by `ContextMenuRegion`, not
+  SwiftUI's right-button path — a menu added there needs nothing more.
 
 ## NatClient: `nat` is the only source of truth
 

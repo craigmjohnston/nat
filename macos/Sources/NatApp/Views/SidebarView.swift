@@ -207,6 +207,12 @@ struct SidebarView: View {
         // item with no image unless the label style asks for one, and this
         // reaches every menu below it.
         .labelStyle(.titleAndIcon)
+        // Every one of those menus is presented by gnat's own path on a
+        // right- or control-click (`ContextMenuRegion`), never SwiftUI's
+        // right-button handling, which a captured trace caught answering a
+        // row's menu and never putting it up
+        // (`docs/debugging/context-menus.md`).
+        .background(ContextMenuRegion())
         .modifier(SidebarDialogs(view: self))
         .focusedSceneValue(\.sidebarMenu, menuActions)
     }
