@@ -26,7 +26,10 @@ Saved whole at
   and project menus that opened at 12:52 had no right-click line before
   them: the hover three-dot buttons, a left click.)
 - 14 misses between 15:10 and 15:17, all two-finger trackpad clicks (the
-  trace cannot tell a trackpad from a mouse; the user reported it). 11 are
+  trace cannot tell a trackpad from a mouse; the user reported it). Whether
+  a mouse's right button also failed in that instance was not checked; both
+  reach `ContextMenuRegion` as a `rightMouseDown`, so the workaround covers
+  either. 11 are
   `menu-not-presented`, on slice rows, a milestone row, a project row and
   the workshop row: `menu(for:)` answered the row's whole menu —
   `["Launch agent", "Edit description…", "Open in Notion", "", "Move to",
