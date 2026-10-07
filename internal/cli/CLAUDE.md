@@ -419,8 +419,11 @@ found merged or closed — goes to `actions.SweepLanded` with tmux's live
 slices; neither changes the output;
 writes `actions.ReopenUnmerged` for any Done-at-approve
 legacy row whose PR still reads open — see root CLAUDE.md's Domain rules on
-`StateOf`; `--json` carries `checks` `{verdict, failing: [{name, url}]}` per
-PR the listing read, and the red ones go to `actions.NoticeFailingChecks`;
+`StateOf`; `--json` carries `checks` `{verdict, failing: [{name, url}],
+checks: [{name, state, url}]}` per PR the listing read — `checks.checks` every
+check the verdict rolled up (`gh.PRStatus.All`, gh's order and workflow-led
+names, `state` the raw word `Check.Outcome` reads; no extra request — gnat's
+PR section lists from it), text unchanged — and the red ones go to `actions.NoticeFailingChecks`;
 a tmux that can't list live sessions concludes nothing; every entry carries
 `conflicting` — true only where gh positively said so, `mergeable`
 CONFLICTING or merge state DIRTY (`gh.PRStatus.Conflicting`, the merge
@@ -530,6 +533,13 @@ propose time; `--workspace` checks the document against itself only.
 `plan-propose` wrote for that key (`{"proposal": null}` with none yet — the
 app polls it on every nudge; a file that won't parse is an error, which the
 app logs and ignores).
+
+`plan-withdraw (--workspace <id> | --project <id>) [--json]` removes that
+key's proposal file (`{"withdrawn": bool}`; none is not an error, and an
+accept's `.accepting-<pid>` claim is never touched), nudging only where it
+removed one. Only the app runs it — when the user writes to the workshop's
+agent with a proposal up — and both gnat planning prompts carry
+`agent.ProposalWithdrawnRule`, so the agent proposes again every turn.
 
 `plan-accept (--workspace <id> --name <name> | --project <id>)` is the user's
 Accept. `--workspace` makes a local project (`createLocalProject`, no working

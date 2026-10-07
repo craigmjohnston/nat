@@ -687,10 +687,19 @@ type prStatusSliceJSON struct {
 }
 
 // prChecksJSON is how an open pull request's checks stand: the verdict in
-// [gh.ChecksVerdict]'s words, and every failed check by name and run URL.
+// [gh.ChecksVerdict]'s words, every failed check by name and run URL, and
+// every check at all, in gh's order, with the raw state it gave — so a reader
+// lists them from the same reading the verdict came from.
 type prChecksJSON struct {
-	Verdict string        `json:"verdict"`
-	Failing []prCheckJSON `json:"failing"`
+	Verdict string             `json:"verdict"`
+	Failing []prCheckJSON      `json:"failing"`
+	Checks  []prCheckStateJSON `json:"checks"`
+}
+
+type prCheckStateJSON struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
+	URL   string `json:"url"`
 }
 
 type prCheckJSON struct {
@@ -706,9 +715,14 @@ func prStatusJSON(readings []prReading) prStatusDoc {
 	for _, r := range readings {
 		entry := prStatusSliceJSON{SliceID: r.SliceID, Name: r.SliceName, PR: r.PR, Readiness: r.Readiness.String()}
 		if r.Checks != nil {
-			checks := &prChecksJSON{Verdict: r.Checks.Checks.String(), Failing: []prCheckJSON{}}
+			checks := &prChecksJSON{
+				Verdict: r.Checks.Checks.String(), Failing: []prCheckJSON{}, Checks: []prCheckStateJSON{},
+			}
 			for _, c := range r.Checks.Failing {
 				checks.Failing = append(checks.Failing, prCheckJSON{Name: c.Name, URL: c.URL})
+			}
+			for _, c := range r.Checks.All {
+				checks.Checks = append(checks.Checks, prCheckStateJSON{Name: c.Name, State: c.State, URL: c.URL})
 			}
 			entry.Checks = checks
 			entry.Conflicting, entry.Base = r.Checks.Conflicting, r.Checks.Base

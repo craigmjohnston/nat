@@ -101,4 +101,32 @@ final class AppModelGitHubReadingTests: XCTestCase {
         await model.githubReadingStore?.read()
         XCTAssertFalse(client.prStatusRuns.last?.contains(" ") ?? true, "a hidden tab is no detail")
     }
+
+    /// The PR section's body read stale while its heading went green: the
+    /// tab's first `pr-view` read two checks running, then a reading of all
+    /// checks passing carried the slice's pull request as its detail. The
+    /// detail lands on the store, so the body the detail feeds agrees with
+    /// the heading the reading feeds.
+    func testAReadingsDetailRefreshesTheBodyBesideTheHeading() async {
+        let running = Fixtures.prChecksRunning
+        let client = FixtureNatClient(pr: running, prStatus: Fixtures.prStatusChecksRunning)
+        let model = await Fixtures.startedAppModel(client: client, config: Fixtures.config)
+        await model.githubReadingStore?.idle()
+        let prStore = model.prStore(projectID: Fixtures.projectID)
+        await prStore.fetch(projectID: Fixtures.projectID, sliceRef: Fixtures.approveSliceID)
+        prStore.setVisible(true)
+        XCTAssertEqual(prStore.loadState.pr?.checks, running.checks)
+
+        client.setPRStatus(Fixtures.prStatusChecksPassing, forProject: Fixtures.projectID)
+        client.setDetail(Fixtures.prGreen)
+        await model.githubReadingStore?.read()
+
+        XCTAssertEqual(client.prStatusRuns.last?.hasSuffix(" " + running.url), true, "the detail rode the tick")
+        let reading = model.prStatusStore?.reading(projectID: Fixtures.projectID) ?? .empty
+        XCTAssertEqual(reading.passingChecks, [Fixtures.approveSliceID], "the heading reads green")
+        XCTAssertEqual(prStore.loadState.pr?.checks, Fixtures.prGreen.checks, "the body read with it")
+        XCTAssertEqual(
+            reading.checkRows(sliceID: Fixtures.approveSliceID, detail: running.checks).map(\.state),
+            Fixtures.prGreen.checks.map(\.state), "and lists from the reading even over a stale detail")
+    }
 }

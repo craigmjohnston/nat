@@ -84,6 +84,36 @@ final class ProposalStateTests: XCTestCase {
         XCTAssertFalse(state.land(inFlight, found: first))
     }
 
+    /// A withdraw takes the proposal and its refusal down, and a reading
+    /// already in flight cannot bring it back; a later one can.
+    func testAWithdrawClearsAndDropsReadingsStillInFlight() {
+        var state = ProposalState()
+        state.land(state.beginReading(), found: first)
+        state.refuse("name it")
+        let inFlight = state.beginReading()
+
+        XCTAssertTrue(state.withdraw())
+
+        XCTAssertNil(state.proposal)
+        XCTAssertNil(state.error)
+        XCTAssertFalse(state.land(inFlight, found: first), "a stale reading is dropped")
+        XCTAssertTrue(state.land(state.beginReading(), found: second), "the agent's next proposal lands")
+        XCTAssertEqual(state.proposal, second)
+    }
+
+    /// Nothing up, or a proposal being accepted: a withdraw changes nothing.
+    func testAWithdrawIsANoOpWithNothingUpOrWhileAccepting() {
+        var empty = ProposalState()
+        XCTAssertFalse(empty.withdraw())
+
+        var state = ProposalState()
+        state.land(state.beginReading(), found: first)
+        _ = state.beginAccept()
+        XCTAssertFalse(state.withdraw())
+        XCTAssertEqual(state.proposal, first)
+        XCTAssertTrue(state.accepting)
+    }
+
     func testErrorsAreSetAndClearedAndANewProposalClearsThem() {
         var state = ProposalState()
         state.land(state.beginReading(), found: first)

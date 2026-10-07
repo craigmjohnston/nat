@@ -56,4 +56,13 @@ public enum TerminalKeyEncoding {
         }
         return nil
     }
+
+    /// Whether a byte run bound for the pty is a submit to the agent: a bare
+    /// carriage return, a plain Enter's own encoding — and nothing else. A
+    /// modified enter goes as its CSI-u run (`returnKey`), a paste as a
+    /// bracketed run (`TerminalPasteEncoding`) and the colour-scheme report as
+    /// an escape, so none of them reads as one.
+    public static func isSubmit(_ bytes: some Sequence<UInt8>) -> Bool {
+        bytes.elementsEqual([0x0d])
+    }
 }

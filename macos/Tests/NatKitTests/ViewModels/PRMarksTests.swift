@@ -179,7 +179,7 @@ final class PRMarksTests: XCTestCase {
 
     /// Active rows and tree rows carry the same marks, in every project,
     /// only while the slice stands at its pull request.
-    func testBothRowKindsCarryTheMarksAtThePRStageOnly() {
+    func testTheActiveRowCarriesTheMarksAndTheTreeRowItsConflictAtThePRStageOnly() {
         let plan = ProjectInfo(
             project: Project(id: "p", name: "P", conventions: ""),
             milestones: [Milestone(id: "M1", name: "M1", order: 0, status: "Active")],
@@ -216,14 +216,16 @@ final class PRMarksTests: XCTestCase {
         let tree = Dictionary(uniqueKeysWithValues: model.projects.flatMap { project in
             (project.milestones + project.doneMilestones).flatMap(\.slices).map { ($0.sliceID, $0.marks) }
         })
-        XCTAssertEqual(tree["a"], both)
-        XCTAssertEqual(tree["b"], PRMarks(failingChecks: ["lint"]))
+        // The tree row carries the conflict alone: the checks' marks are
+        // Active's.
+        XCTAssertEqual(tree["a"], PRMarks(conflict: BranchConflict(base: "main")))
+        XCTAssertEqual(tree["b"], PRMarks.none)
         XCTAssertEqual(tree["c"], PRMarks.none)
         XCTAssertEqual(tree["d"], PRMarks.none, "a Done slice carries neither")
         XCTAssertEqual(tree["e"], PRMarks(conflict: BranchConflict(base: nil)))
-        XCTAssertEqual(tree["g"], PRMarks(checksPassing: true))
-        XCTAssertEqual(tree["h"], PRMarks(checksPassing: true))
-        XCTAssertEqual(tree["j"], PRMarks(failingChecks: ["test"]))
+        XCTAssertEqual(tree["g"], PRMarks.none)
+        XCTAssertEqual(tree["h"], PRMarks.none)
+        XCTAssertEqual(tree["j"], PRMarks.none)
     }
 
     // MARK: - The PR section

@@ -31,6 +31,57 @@ final class ChecksFailingTests: XCTestCase {
         XCTAssertNil(doc.slices[2].checks)
     }
 
+    /// Every check the reading rolled up decodes under `checks`; an older
+    /// nat's reading, with no such list, decodes with none.
+    func testPRStatusDecodesEveryCheck() throws {
+        let json = """
+        {"slices": [
+          {"slice_id": "s-1", "name": "A", "pr": "u", "readiness": "awaiting review",
+           "checks": {"verdict": "pending", "failing": [], "checks": [
+             {"name": "CI / lint", "state": "SUCCESS", "url": "https://ci/1"},
+             {"name": "CI / test", "state": "IN_PROGRESS", "url": "https://ci/2"},
+             {"name": "deploy"}]}},
+          {"slice_id": "s-2", "name": "B", "pr": "u", "readiness": "ready to merge", "checks": {"verdict": "passing"}}
+        ]}
+        """
+        let doc = try JSONDecoder().decode(PRStatusDoc.self, from: Data(json.utf8))
+        XCTAssertEqual(doc.slices[0].checks?.checks, [
+            PRStatusCheckState(name: "CI / lint", state: "SUCCESS", url: "https://ci/1"),
+            PRStatusCheckState(name: "CI / test", state: "IN_PROGRESS", url: "https://ci/2"),
+            PRStatusCheckState(name: "deploy", state: ""),
+        ])
+        XCTAssertNil(doc.slices[1].checks?.checks)
+        let encoded = try JSONDecoder().decode(PRStatusDoc.self, from: JSONEncoder().encode(doc))
+        XCTAssertEqual(encoded, doc, "round-trips through the read cache")
+    }
+
+    /// The PR section lists the reading's checks wherever it read the slice's,
+    /// keeping what only the detail knows of each by name; else the detail's.
+    func testCheckRowsFollowTheReadingOverAStaleDetail() {
+        let detail = [
+            PRCheck(name: "CI / lint", state: "SUCCESS", link: "https://pr/lint", rerunnable: true, run: "7"),
+            PRCheck(name: "CI / test", state: "IN_PROGRESS", link: "https://pr/test", rerunnable: true, run: "7"),
+        ]
+        let reading = PRReading(PRStatusDoc(slices: [
+            PRStatusSlice(sliceID: "s-1", name: "A", pr: "u", readiness: PRStatusSlice.readyToMerge,
+                          checks: PRStatusChecks(verdict: "passing", checks: [
+                              PRStatusCheckState(name: "CI / lint", state: "SUCCESS", url: "https://ci/lint"),
+                              PRStatusCheckState(name: "CI / test", state: "SUCCESS"),
+                              PRStatusCheckState(name: "deploy", state: "SUCCESS", url: "https://ci/deploy"),
+                          ])),
+            PRStatusSlice(sliceID: "s-2", name: "B", pr: "u", readiness: PRStatusSlice.readyToMerge,
+                          checks: PRStatusChecks(verdict: "passing")),
+        ]))
+        XCTAssertEqual(reading.checkRows(sliceID: "s-1", detail: detail), [
+            PRCheck(name: "CI / lint", state: "SUCCESS", link: "https://ci/lint", rerunnable: true, run: "7"),
+            PRCheck(name: "CI / test", state: "SUCCESS", link: "https://pr/test", rerunnable: true, run: "7"),
+            PRCheck(name: "deploy", state: "SUCCESS", link: "https://ci/deploy"),
+        ])
+        XCTAssertEqual(reading.checkRows(sliceID: "s-2", detail: detail), detail, "an older nat's reading lists none")
+        XCTAssertEqual(reading.checkRows(sliceID: "session", detail: detail), detail, "not in the reading")
+        XCTAssertEqual(PRReading.empty.checkRows(sliceID: "s-1", detail: detail), detail, "no reading yet")
+    }
+
     func testSliceDecodesResumedAndDefaultsItFalse() throws {
         let base = #""id":"s","name":"n","status":"In progress","milestone_id":"m","assignee":"","pr":"u","url":"","blocked":false,"handed_back":false"#
         XCTAssertTrue(try JSONDecoder().decode(Slice.self, from: Data("{\(base),\"resumed\":true}".utf8)).resumed)

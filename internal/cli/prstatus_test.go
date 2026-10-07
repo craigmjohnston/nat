@@ -223,7 +223,7 @@ func TestPRStatusJSON(t *testing.T) {
 	}
 	want := prStatusDoc{Slices: []prStatusSliceJSON{
 		{SliceID: "s1", Name: "Awaiting review", PR: "https://github.test/craig/nat/pull/1", Readiness: "awaiting review",
-			Base: "main", Checks: &prChecksJSON{Verdict: "none", Failing: []prCheckJSON{}}},
+			Base: "main", Checks: &prChecksJSON{Verdict: "none", Failing: []prCheckJSON{}, Checks: []prCheckStateJSON{}}},
 	}, Branches: []branchJSON{}, Sessions: []sessionPRsJSON{}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("json = %+v\nwant %+v", got, want)
@@ -594,8 +594,8 @@ func (f *fakePRReader) EditPRBody(dir, ref, body string) error                  
 func (f *fakePRReader) Collaborators(dir string) ([]string, error)                { return nil, nil }
 
 // redStatusEnv is a plan with one approved slice whose pull request reads red
-// — one failing run — another reading green and one pending, with the tmux the
-// test hands it.
+// — one failing run — another reading green and one pending (one check passed,
+// two still running), with the tmux the test hands it.
 func redStatusEnv(t *testing.T, runner *agentTestRunner) (Env, *fakeAPI, interface{ String() string }) {
 	t.Helper()
 	api := &fakeAPI{
@@ -613,7 +613,10 @@ func redStatusEnv(t *testing.T, runner *agentTestRunner) (Env, *fakeAPI, interfa
 		"https://github.test/craig/nat/pull/1": openPR(false, false,
 			gh.Check{Name: "test", State: "FAILURE", URL: "https://github.test/craig/nat/actions/runs/9/job/1"}),
 		"https://github.test/craig/nat/pull/2": openPR(true, true, gh.Check{Name: "test", State: "SUCCESS"}),
-		"https://github.test/craig/nat/pull/3": openPR(false, false, gh.Check{Name: "test", State: "IN_PROGRESS"}),
+		"https://github.test/craig/nat/pull/3": openPR(false, false,
+			gh.Check{Name: "CI / lint", State: "SUCCESS", URL: "https://github.test/craig/nat/actions/runs/7/job/1"},
+			gh.Check{Name: "CI / test", State: "IN_PROGRESS", URL: "https://github.test/craig/nat/actions/runs/7/job/2"},
+			gh.Check{Name: "CI / vet", State: "QUEUED"}),
 	}}
 	env.NewGH = func() GH { return reader }
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
@@ -634,11 +637,20 @@ func TestPRStatusJSONReportsFailingChecks(t *testing.T) {
 	want := []prStatusSliceJSON{
 		{SliceID: "s1", Name: "Red", PR: "https://github.test/craig/nat/pull/1", Readiness: "checks failing",
 			Base: "main", Checks: &prChecksJSON{Verdict: "failing", Failing: []prCheckJSON{
-				{Name: "test", URL: "https://github.test/craig/nat/actions/runs/9/job/1"}}}},
+				{Name: "test", URL: "https://github.test/craig/nat/actions/runs/9/job/1"}},
+				Checks: []prCheckStateJSON{
+					{Name: "test", State: "FAILURE", URL: "https://github.test/craig/nat/actions/runs/9/job/1"}}}},
 		{SliceID: "s2", Name: "Green", PR: "https://github.test/craig/nat/pull/2", Readiness: "ready to merge",
-			Base: "main", Checks: &prChecksJSON{Verdict: "passing", Failing: []prCheckJSON{}}},
+			Base: "main", Checks: &prChecksJSON{Verdict: "passing", Failing: []prCheckJSON{},
+				Checks: []prCheckStateJSON{{Name: "test", State: "SUCCESS"}}}},
 		{SliceID: "s3", Name: "Pending", PR: "https://github.test/craig/nat/pull/3", Readiness: "awaiting review",
-			Base: "main", Checks: &prChecksJSON{Verdict: "pending", Failing: []prCheckJSON{}}},
+			Base: "main", Checks: &prChecksJSON{Verdict: "pending", Failing: []prCheckJSON{},
+				// Every check, in gh's order, each with its raw state.
+				Checks: []prCheckStateJSON{
+					{Name: "CI / lint", State: "SUCCESS", URL: "https://github.test/craig/nat/actions/runs/7/job/1"},
+					{Name: "CI / test", State: "IN_PROGRESS", URL: "https://github.test/craig/nat/actions/runs/7/job/2"},
+					{Name: "CI / vet", State: "QUEUED"},
+				}}},
 	}
 	if !reflect.DeepEqual(got.Slices, want) {
 		t.Errorf("json = %+v\nwant %+v", got.Slices, want)
@@ -761,7 +773,7 @@ func TestPRStatusJSONConflicting(t *testing.T) {
 	}
 	entry := func(id, name, n, readiness, conflicting string) string {
 		return `{"slice_id":"` + id + `","name":"` + name + `","pr":"` + pr + n + `","readiness":"` + readiness +
-			`","conflicting":` + conflicting + `,"base":"main","checks":{"verdict":"none","failing":[]}}`
+			`","conflicting":` + conflicting + `,"base":"main","checks":{"verdict":"none","failing":[],"checks":[]}}`
 	}
 	want := `{"slices":[` +
 		entry("s1", "Conflicting", "1", "awaiting review", "true") + `,` +

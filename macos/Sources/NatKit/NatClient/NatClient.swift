@@ -998,6 +998,22 @@ public final class NatClient: Sendable {
         return try decodeJSON(PlanAccepted.self, from: output)
     }
 
+    /// Take a workspace's proposal down (`nat plan-withdraw`) — the user has
+    /// written to its agent since, so it is stale. None there is no error.
+    ///
+    /// - Throws: NatError.commandFailed carrying the refusal
+    public func planWithdraw(workspaceID: String) async throws {
+        _ = try await runNat(arguments: ["plan-withdraw", "--workspace", workspaceID, "--json"])
+    }
+
+    /// Take a project workshop's proposal down (`nat plan-withdraw
+    /// --project`), as `planWithdraw(workspaceID:)` does.
+    ///
+    /// - Throws: NatError.commandFailed carrying the refusal
+    public func planWithdraw(projectID: String) async throws {
+        _ = try await runNat(arguments: ["plan-withdraw", "--project", projectID, "--json"])
+    }
+
     /// List the pages and databases of the Notion workspace a project page
     /// could be put under (`nat notion-search`), narrowed by `query` the way
     /// the workspace's own search is; an empty query lists what was edited

@@ -53,7 +53,13 @@ user's Accept, once they have seen the proposal, not yours to reach
 for. If the user asks for changes after you have proposed a plan,
 revise it in conversation and run `nat plan-propose` again — the same
 workspace id replaces the proposal already there rather than adding a
-second one.
+second one, so send the whole plan again each time rather than a diff
+of it.
+
+Once you have proposed, a message from the user withdraws the proposal —
+the app takes it off screen the moment they send it. So every turn that
+answers the user ends with plan-propose run again, the whole plan, even
+unchanged: never assume your last proposal is still on screen.
 
 ## Naming slices
 

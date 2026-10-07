@@ -57,6 +57,68 @@ func planProposal(_ context.Context, args []string, env Env) error {
 	return writeJSON(env.Out, proposalAnswer{Proposal: &doc})
 }
 
+// planWithdraw takes a proposal down — the app's doing, once the user writes
+// to the workshop's agent after it proposed: whatever it says next makes the
+// proposal stale, and the agent proposes again on its next turn. Exactly one
+// of --workspace or --project names it, as plan-proposal's. No proposal is
+// nothing to withdraw, not an error; a proposal an accept has claimed
+// (`.accepting-<pid>`) is no longer at the proposal path, so it is never
+// touched.
+func planWithdraw(_ context.Context, args []string, env Env) error {
+	flags := flag.NewFlagSet("plan-withdraw", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	asJSON := flags.Bool("json", false, "answer as JSON")
+	workspace := flags.String("workspace", "", "the app's own id for the new-project session (exclusive with --project)")
+	projectRef := projectFlag(flags)
+	rest, err := parseFlags(flags, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 0 {
+		return usageErrorf("plan-withdraw: takes no arguments, given %d", len(rest))
+	}
+	ws := strings.TrimSpace(*workspace)
+	proj := strings.TrimSpace(*projectRef)
+	if (ws == "") == (proj == "") {
+		return usageErrorf("plan-withdraw: give exactly one of --workspace or --project")
+	}
+	key := ws
+	if key == "" {
+		key = proj
+	}
+	path, err := proposalPath(key)
+	if err != nil {
+		return fmt.Errorf("resolve the proposal file: %w", err)
+	}
+	withdrawn := true
+	if err := os.Remove(path); err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("withdraw the proposal: %w", err)
+		}
+		withdrawn = false
+	}
+	if withdrawn {
+		env.nudged()
+	}
+	logging.Action("plan withdrawn", "workspace", ws, "project", proj, "withdrawn", withdrawn)
+
+	if *asJSON {
+		return writeJSON(env.Out, withdrawAnswer{Withdrawn: withdrawn})
+	}
+	if !withdrawn {
+		_, err = fmt.Fprintf(env.Out, "No proposal to withdraw for %s.\n", key)
+		return err
+	}
+	_, err = fmt.Fprintf(env.Out, "Withdrew the proposal for %s.\n", key)
+	return err
+}
+
+// withdrawAnswer is plan-withdraw's JSON: whether a proposal was there to
+// take down.
+type withdrawAnswer struct {
+	Withdrawn bool `json:"withdrawn"`
+}
+
 // proposalAnswer is plan-proposal's output: the proposal, or null.
 type proposalAnswer struct {
 	Proposal *proposalDoc `json:"proposal"`

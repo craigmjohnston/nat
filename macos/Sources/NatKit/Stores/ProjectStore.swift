@@ -48,6 +48,8 @@ public protocol NatClientProtocol: Sendable {
     func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted
     func planProposal(projectID: String) async throws -> PlanProposal?
     func planAccept(projectID: String) async throws -> PlanAccepted
+    func planWithdraw(workspaceID: String) async throws
+    func planWithdraw(projectID: String) async throws
     func notionSearch(query: String) async throws -> [NotionPlace]
     func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored
     func info(projectID: String, refresh: Bool, expand: [String]) async throws -> ProjectInfo
@@ -163,6 +165,15 @@ extension NatClientProtocol {
 
     public func planAccept(projectID: String) async throws -> PlanAccepted {
         throw NatError.commandFailed("plan-accept --project: not supported by this client")
+    }
+
+    /// Taking a proposal down: same reasoning.
+    public func planWithdraw(workspaceID: String) async throws {
+        throw NatError.commandFailed("plan-withdraw: not supported by this client")
+    }
+
+    public func planWithdraw(projectID: String) async throws {
+        throw NatError.commandFailed("plan-withdraw --project: not supported by this client")
     }
 
     /// Making a project — what connecting a plugin does for its section:

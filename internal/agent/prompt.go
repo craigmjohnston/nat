@@ -863,6 +863,16 @@ func rerunPassage(sliceID, projectID string) string {
 var SliceTitleRule = fmt.Sprintf("A slice title is at most %d characters, one change named, "+
 	"with the list of what it covers in the brief.", domain.MaxSliceTitleLen)
 
+// ProposalWithdrawnRule is what both gnat planning prompts — a project's
+// workshop and a new project's — say of a proposal the user writes after: the
+// app withdraws it (`nat plan-withdraw`) the moment they send, so the agent
+// proposes again, whole, on every turn that answers them. Tests walk both
+// templates for it.
+const ProposalWithdrawnRule = "Once you have proposed, a message from the user withdraws the proposal —\n" +
+	"the app takes it off screen the moment they send it. So every turn that\n" +
+	"answers the user ends with plan-propose run again, the whole plan, even\n" +
+	"unchanged: never assume your last proposal is still on screen.\n"
+
 // acceptedProposalPassage tells a gnat-launched planning agent what an
 // unaccepted proposal and an accepted one each are to its next revision: the
 // first is replaced whole, the second is on the board and is changed only
@@ -875,6 +885,7 @@ func acceptedProposalPassage(projectID string) string {
 	var b strings.Builder
 	b.WriteString("While a proposal is unaccepted, a revised one replaces whichever is on\n")
 	b.WriteString("screen, so send the whole plan again each time rather than a diff of it.\n")
+	b.WriteString(ProposalWithdrawnRule)
 	b.WriteString("Nothing tells you when the user accepts it. Re-read the plan before\n")
 	b.WriteString("every revision, since the board may have moved while you worked:\n\n")
 	fmt.Fprintf(&b, "    nat info --project %s\n", projectID)

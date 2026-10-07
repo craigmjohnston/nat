@@ -114,6 +114,9 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// Every `session-list`, by project.
     private let sessionListRecorded = Recorder()
     public var sessionListReads: [String] { sessionListRecorded.all() }
+    /// The pull request `pr-status --detail` reads where a test set one
+    /// (`setDetail`) — else the fixture's.
+    private let detailPR = Box<PRDetail?>(nil)
     /// The rate limit `pr-status` reads — none unless a test says.
     private let rateLimit = Box<GitHubRateLimit?>(nil)
     /// Set while `pr-status` reads are held mid-call.
@@ -434,7 +437,13 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
             }
         }
         return try await answer(GitHubReading(
-            projects: projects, rateLimit: rateLimit.get(), detail: detail == nil ? nil : pr))
+            projects: projects, rateLimit: rateLimit.get(), detail: detail == nil ? nil : detailPR.get() ?? pr))
+    }
+
+    /// Say what `pr-status --detail` reads from here on, in place of the
+    /// fixture's pull request `pr-view` still answers with.
+    public func setDetail(_ pr: PRDetail?) {
+        detailPR.set(pr)
     }
 
     /// Say what rate limit `pr-status` reads from here on.
@@ -649,6 +658,18 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
             milestones: proposal?.milestoneCount ?? 0,
             slices: proposal?.sliceCount ?? 0
         )
+    }
+
+    /// Takes the proposal down as nat does — the file gone, so the next
+    /// reading finds none — and records the call.
+    public func planWithdraw(workspaceID: String) async throws {
+        try await record("plan-withdraw --workspace \(workspaceID)")
+        proposalBox.set(nil)
+    }
+
+    public func planWithdraw(projectID: String) async throws {
+        try await record("plan-withdraw --project \(projectID)")
+        setProposal(nil, forProject: projectID)
     }
 
     public func notionSearch(query: String) async throws -> [NotionPlace] {

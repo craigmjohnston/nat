@@ -25,15 +25,22 @@ extension Fixtures {
     public static let prStatusChecksPassing = PRStatusDoc(slices: [
         PRStatusSlice(
             sliceID: approveSliceID, name: "Approve opens the pull request", pr: prURL,
-            readiness: PRStatusSlice.readyToMerge, checks: PRStatusChecks(verdict: PRStatusSlice.checksPassing),
+            readiness: PRStatusSlice.readyToMerge,
+            checks: PRStatusChecks(verdict: PRStatusSlice.checksPassing, checks: readingOf(passingChecks)),
             base: "main"),
     ])
+
+    /// `checks` as the batched reading lists them.
+    static func readingOf(_ checks: [PRCheck]) -> [PRStatusCheckState] {
+        checks.map { PRStatusCheckState(name: $0.name, state: $0.state, url: $0.link) }
+    }
 
     /// The same pull request with its checks still running.
     public static let prStatusChecksRunning = PRStatusDoc(slices: [
         PRStatusSlice(
             sliceID: approveSliceID, name: "Approve opens the pull request", pr: prURL,
-            readiness: PRStatusSlice.awaitingReview, checks: PRStatusChecks(verdict: PRStatusSlice.checksPending),
+            readiness: PRStatusSlice.awaitingReview,
+            checks: PRStatusChecks(verdict: PRStatusSlice.checksPending, checks: readingOf(prChecksRunning.checks)),
             base: "main"),
     ])
 

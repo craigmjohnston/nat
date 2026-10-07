@@ -83,6 +83,20 @@ public struct ProposalState: Equatable, Sendable {
         floor = nextTicket
     }
 
+    /// The user wrote to the workshop's agent: the proposal is stale and
+    /// comes down at once, before nat removes the file — every reading
+    /// already asked is stale, so one still in flight cannot bring it back.
+    /// Returns whether there was one to withdraw: none, or one being
+    /// accepted, is left as it is.
+    @discardableResult
+    public mutating func withdraw() -> Bool {
+        guard proposal != nil, !accepting else { return false }
+        proposal = nil
+        error = nil
+        floor = nextTicket
+        return true
+    }
+
     /// A refusal made before nat is asked — the name field's.
     public mutating func refuse(_ reason: String) {
         error = reason

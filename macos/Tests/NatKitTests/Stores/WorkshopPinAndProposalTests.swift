@@ -177,6 +177,113 @@ final class WorkshopPinAndProposalTests: XCTestCase {
         XCTAssertFalse(model.proposalAccepting)
     }
 
+    // MARK: - Withdrawing on a message to the agent
+
+    /// An Enter in the workshop's terminal with a proposal up: the Plan
+    /// section, the Plan ready badge and the Plan tab come down at once, and
+    /// nat is asked once, by the project.
+    func testAWithdrawClearsTheProposalAndAsksNatOnceByProject() async {
+        let client = FixtureNatClient(agents: [Fixtures.planningAgentStatus])
+        client.setProposal(Fixtures.proposal, forProject: Fixtures.projectID)
+        let model = await Fixtures.startedAppModel(client: client)
+        model.openWorkshop()
+        let deadline = ContinuousClock.now + .seconds(10)
+        while model.planningAgent == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        await model.refreshProposals()
+        XCTAssertEqual(model.workshopTab, .plan)
+        XCTAssertTrue(model.sidebarModel.active.contains { $0.kind == .workshop && $0.planReady })
+
+        let call = model.withdrawProposal(tabID: Fixtures.projectID)
+
+        XCTAssertNil(model.proposal(forTab: Fixtures.projectID), "cleared before nat is asked")
+        XCTAssertNil(model.proposals[Fixtures.projectID])
+        XCTAssertFalse(model.sidebarModel.active.contains { $0.planReady }, "the badge comes down with it")
+        XCTAssertEqual(model.workshopTab, .terminal)
+        await call?.value
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("plan-withdraw") }, ["plan-withdraw --project \(Fixtures.projectID)"])
+
+        await model.refreshProposals()
+        XCTAssertNil(model.activeProposal, "the file is gone too")
+    }
+
+    /// An Untitled tab's proposal is withdrawn by its workspace.
+    func testAnUntitledTabWithdrawsByItsWorkspace() async {
+        let client = FixtureNatClient(agents: [])
+        let model = await Fixtures.startedAppModel(client: client)
+        let tab = model.openUntitledTab()
+        client.setProposal(Fixtures.proposal)
+        await model.refreshProposals()
+        XCTAssertNotNil(model.proposal(forTab: tab))
+
+        await model.withdrawProposal(tabID: tab)?.value
+
+        XCTAssertNil(model.proposal(forTab: tab))
+        let workspace = model.workspaceID(forTab: tab) ?? "?"
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("plan-withdraw") }, ["plan-withdraw --workspace \(workspace)"])
+    }
+
+    /// No proposal up, or one being accepted: nothing withdrawn, nat not
+    /// asked.
+    func testNoProposalOrOneBeingAcceptedWithdrawsNothing() async {
+        let client = FixtureNatClient(agents: [])
+        let model = await Fixtures.startedAppModel(client: client)
+        model.openWorkshop()
+        XCTAssertNil(model.withdrawProposal(tabID: Fixtures.projectID))
+
+        client.setProposal(Fixtures.proposal, forProject: Fixtures.projectID)
+        await model.refreshProposals()
+        client.holdAccepts()
+        let accepting = Task { await model.acceptProposal() }
+        for _ in 0..<200 where !model.proposalAccepting { await Task.yield() }
+        XCTAssertTrue(model.proposalAccepting)
+
+        XCTAssertNil(model.withdrawProposal(tabID: Fixtures.projectID))
+        XCTAssertEqual(model.proposal(forTab: Fixtures.projectID), Fixtures.proposal)
+        XCTAssertFalse(client.writes.contains { $0.hasPrefix("plan-withdraw") })
+        accepting.cancel()
+    }
+
+    /// A withdraw nat refuses is logged; the local clear stands.
+    func testARefusedWithdrawKeepsTheLocalClear() async {
+        let client = FixtureNatClient(agents: [])
+        client.setProposal(Fixtures.proposal, forProject: Fixtures.projectID)
+        let model = await Fixtures.startedAppModel(client: client)
+        model.openWorkshop()
+        await model.refreshProposals()
+        client.refuseWrites("plan-withdraw: the state directory is read-only")
+
+        await model.withdrawProposal(tabID: Fixtures.projectID)?.value
+
+        XCTAssertNil(model.proposal(forTab: Fixtures.projectID))
+    }
+
+    func testTheWithdrawCommands() async throws {
+        let runner = RecordingRunner()
+        runner.stdout = #"{"withdrawn": true}"#
+        let client = NatClient(commandRunner: runner)
+
+        try await client.planWithdraw(projectID: "p-1")
+        XCTAssertEqual(runner.lastArguments, ["plan-withdraw", "--project", "p-1", "--json"])
+        try await client.planWithdraw(workspaceID: "ws-1")
+        XCTAssertEqual(runner.lastArguments, ["plan-withdraw", "--workspace", "ws-1", "--json"])
+
+        let bare = MockActivityClientForProposals()
+        do {
+            try await bare.planWithdraw(projectID: "p")
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("plan-withdraw --project"))
+        }
+        do {
+            try await bare.planWithdraw(workspaceID: "w")
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("plan-withdraw"))
+        }
+    }
+
     func testAProjectProposalWithNoNameDecodes() throws {
         let proposal = try JSONDecoder().decode(
             PlanProposal.self, from: Data(#"{"project": "p", "plan": {"milestones": [{"name": "M1"}]}}"#.utf8))
