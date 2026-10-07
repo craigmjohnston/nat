@@ -3,7 +3,57 @@
 The wedge: right-click stops presenting gnat's SwiftUI `.contextMenu`s —
 slices, milestone and project rows, Active rows, containers — and stays
 broken until relaunch. It has tended to follow sleep/wake or a long idle.
-No reproduction yet: this is the harness for catching the next one.
+
+**Worked around, cause unknown.** The sidebar no longer relies on SwiftUI's
+right-button handling: `ContextMenuRegion` (NatKit), mounted behind
+`SidebarView`, takes every right-click and control-click inside the sidebar,
+asks the hit view's `menu(for:)` walking up (as `RightClickDiagnosis` does),
+and puts the answer up with `NSMenu.popUpContextMenu(_:with:for:)` — the
+control-click path, which kept working while wedged. It consumes the click,
+so SwiftUI never presents a second menu, and it does so always, wedged or
+not. `.contextMenu` is still where every menu and its actions are defined.
+Its monitor is installed after the trace's, so the trace below still logs
+every click. What breaks inside SwiftUI's right-button path is not known.
+
+## The captured trace (2026-10-06, release build 1.0.209, macOS 15.7.3)
+
+Saved whole at
+`~/Library/Logs/notion-agent-tracker/gnat-menu-debug-2026-10-06.log`.
+
+- The instance launched at 12:38 with the trace on. Its first right-click
+  came at 15:10; every one after missed. Whether right-click ever worked in
+  that instance is not known: there was none before 15:10 to say. (The slice
+  and project menus that opened at 12:52 had no right-click line before
+  them: the hover three-dot buttons, a left click.)
+- 14 misses between 15:10 and 15:17, all two-finger trackpad clicks (the
+  trace cannot tell a trackpad from a mouse; the user reported it). Whether
+  a mouse's right button also failed in that instance was not checked; both
+  reach `ContextMenuRegion` as a `rightMouseDown`, so the workaround covers
+  either. 11 are
+  `menu-not-presented`, on slice rows, a milestone row, a project row and
+  the workshop row: `menu(for:)` answered the row's whole menu —
+  `["Launch agent", "Edit description…", "Open in Notion", "", "Move to",
+  "Delete…"]`, `["New task…", "Rename…", "", "Move up", "Move down", "",
+  "Delete"]`, the project menu, `["End workshop session…"]` — and no menu
+  began tracking. The other 3 are `no-menu-from-swiftui`, clicks outside
+  the sidebar (the main pane, twice the agent terminal), which have no menu.
+- Every miss reads open menus 0, no modal, no sheet, the main window key and
+  the app active. The first responder was `FirstLayoutTerminalView` (the
+  embedded agent terminal, `AgentTerminalHostView.swift`) on 13 of them and
+  the window itself on the first.
+- A control-click on a slice row at 15:17:08, in the same state, presented
+  its menu at once; the menu bar, the `+` menu and alerts had been opening
+  all afternoon.
+- No sleep, wake or session change since launch. There *were* screen
+  changes: bursts of `NSApplicationDidChangeScreenParameters` (~60 a
+  second, ~1,500 in all) between 13:38 and 14:52, the main and terminal
+  windows posting `DidChangeScreen` with them. Whether they wedged anything
+  is not known — there was no right-click across them.
+
+So the diagnosis is `menu-not-presented`: SwiftUI builds the menu and hands
+it over on request; what does not run is the right-button path from
+`rightMouseDown` to presentation, where control-click (AppKit asking
+`menu(for:)` itself from `NSWindow`'s event handling) still does.
 
 What a wedged instance showed (2026-10-04, release build, up ~7 h):
 
@@ -84,9 +134,10 @@ The diagnosis says where a click that opened nothing stopped. SwiftUI serves
   point: its context-menu state is lost. Expected for a click on a row
   with no menu (empty space), so read it against what was clicked.
 - `menu-not-presented` — SwiftUI answers the menu and AppKit never put it
-  up: presentation is what fails. This is the case the brief's fallback is
-  for — presenting the three sites' menus through an `NSMenu` of gnat's
-  own (`NSMenu.popUpContextMenu`) rather than SwiftUI's machinery.
+  up: presentation is what fails. What the 2026-10-06 trace caught, and what
+  `ContextMenuRegion` works around. With it in place a sidebar right-click
+  never reaches SwiftUI's path, so a miss on a sidebar row now means gnat's
+  own presentation failed.
 
 The trailing state (`open menus`, `modal`, `sheet`, `key`, `active`, `first
 responder`) is what to compare across the healthy clicks before the wedge

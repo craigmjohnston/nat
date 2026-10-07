@@ -193,7 +193,12 @@ struct NatApp: App {
             .onAppear { KeyDebug.synthesizeIfAsked() }
             // Likewise a no-op unless NAT_MENU_DEBUG=1 or the NatMenuDebug
             // default is set; installs once however often this reappears.
-            .onAppear { MenuDebug.startIfAsked() }
+            // Then the sidebar's own menu presenter, after the trace's
+            // monitor so the trace still sees every click it consumes.
+            .onAppear {
+                MenuDebug.startIfAsked()
+                ContextMenuRegion.install()
+            }
             // The other half of init's `.regular` policy: brings the window
             // to the front the way launching a bundled app would, now that
             // there is a window to bring.
