@@ -763,6 +763,7 @@ struct SliceNavigatorView: View {
         if let pr = prStore.loadState.pr {
             PRSectionBody(
                 pr: pr,
+                checks: prReadingOfProject.checkRows(sliceID: slice.id, detail: pr.checks),
                 reviewerStore: prStore,
                 checksStore: prStore,
                 staleMessage: prStore.loadState.errorMessage,
@@ -787,6 +788,10 @@ struct SliceNavigatorView: View {
 /// main pane's (`PRConversationPane`, `PROpenInGitHubButton`).
 struct PRSectionBody: View {
     let pr: PRDetail
+    /// The check rows to list — a slice's from the batched reading, which
+    /// the heading's mark and the sidebar's come from too
+    /// (`PRReading.checkRows`). Nil lists the detail's own (`pr.checks`).
+    var checks: [PRCheck]?
     /// The store reviewers are asked through — a slice's pull request. Nil
     /// for an ad hoc session's, which lists its requests but cannot edit
     /// them (`nat pr-reviewers` names a slice).
@@ -807,7 +812,8 @@ struct PRSectionBody: View {
 
     var body: some View {
         let verdict = reviewVerdict(reviewDecision: pr.reviewDecision)
-        let controls = ChecksControls(checks: pr.checks)
+        let checks = checks ?? pr.checks
+        let controls = ChecksControls(checks: checks)
         VStack(spacing: 0) {
             if let notice = checksStore?.checksNotice {
                 NavNotice(text: notice.text, role: notice.isError ? .danger : .secondary)
@@ -822,11 +828,11 @@ struct PRSectionBody: View {
                     }
 
                     ChecksHeading(controls: controls, store: checksStore)
-                    if pr.checks.isEmpty {
+                    if checks.isEmpty {
                         Text("No checks have run.").ink(.secondary)
                     } else {
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(pr.checks.enumerated()), id: \.offset) { _, check in
+                            ForEach(Array(checks.enumerated()), id: \.offset) { _, check in
                                 checkRow(check, controls: controls)
                             }
                         }

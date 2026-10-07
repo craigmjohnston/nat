@@ -176,6 +176,35 @@ final class SidebarModelTests: XCTestCase {
         XCTAssertEqual(model.active.first?.id, "slice:review")
     }
 
+    /// The checks' marks — failing, passing, running — are drawn on a slice's
+    /// Active row only; a conflict on its tree row too.
+    func testTheChecksMarksAreActivesAloneAndAConflictIsOnBothRows() {
+        let conflict = BranchConflict(base: "main")
+        let readings: [String: PRMarks] = [
+            "failing": PRMarks(failingChecks: ["CI / build"]),
+            "conflicting": PRMarks(conflict: conflict),
+            "both": PRMarks(failingChecks: ["CI / build"], conflict: conflict),
+            "passing": PRMarks(checksPassing: true),
+            "running": PRMarks(checksRunning: true),
+        ]
+        let ids = ["failing", "conflicting", "both", "passing", "running"]
+        let model = buildSidebarModel(
+            projects: [SidebarProjectInput(id: "p", name: "P", plan: plan(ids.map {
+                slice($0, status: "In progress", pr: "https://x/pull/\($0)")
+            }))],
+            liveAgents: [:], prMarks: readings)
+        let tree = Dictionary(uniqueKeysWithValues: model.projects.flatMap(\.milestones).flatMap(\.slices).map {
+            ($0.sliceID, $0.marks)
+        })
+        let active = Dictionary(uniqueKeysWithValues: model.active.map { ($0.targetID, $0.marks) })
+
+        XCTAssertEqual(active, readings)
+        XCTAssertEqual(tree, [
+            "failing": .none, "conflicting": PRMarks(conflict: conflict), "both": PRMarks(conflict: conflict),
+            "passing": .none, "running": .none,
+        ])
+    }
+
     func testPlanningAgentsAndSessionsJoinActive() {
         let now = Date()
         let live = session("s1", tag: "session:p:s1", startedAt: now)

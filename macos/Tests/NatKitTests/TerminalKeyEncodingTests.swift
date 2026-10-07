@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import NatKit
 
 final class TerminalKeyEncodingTests: XCTestCase {
@@ -8,6 +9,21 @@ final class TerminalKeyEncodingTests: XCTestCase {
     /// `ctrlEnterBytes` verbatim. Written out as escapes here rather than
     /// compared to the constants they came from, so a typo in either one is
     /// the failure rather than agreeing with itself.
+    /// Only a bare carriage return is a submit: not a modified enter's CSI-u,
+    /// a bracketed paste (even of a lone return), an unbracketed multi-line
+    /// paste, the colour-scheme report, or nothing.
+    func testOnlyABareReturnIsASubmit() {
+        XCTAssertTrue(TerminalKeyEncoding.isSubmit([0x0d]))
+        XCTAssertTrue(TerminalKeyEncoding.isSubmit(ArraySlice<UInt8>([0x0d])))
+        for run in [
+            TerminalKeyEncoding.shiftEnter, TerminalKeyEncoding.ctrlEnter,
+            TerminalPasteEncoding.send("\r", bracketed: true), "a\rb", "\r\r", "\n", "",
+            ColorSchemeReport.escape(for: .dark),
+        ] {
+            XCTAssertFalse(TerminalKeyEncoding.isSubmit(Array(run.utf8)), "\(run.debugDescription)")
+        }
+    }
+
     func testShiftEnterIsTheCSIuEncodingOfEnterWithShift() {
         XCTAssertEqual(TerminalKeyEncoding.shiftEnter, "\u{1b}[13;2u")
     }

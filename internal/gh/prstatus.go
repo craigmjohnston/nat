@@ -37,6 +37,10 @@ const (
 // empty unless Checks is [ChecksFailing]. Its run URLs are what tells one red
 // reading from the next: a re-push that fails again fails in a new run.
 //
+// All is every check the verdict was rolled up from, in the order gh listed
+// them — GitHub's own, workflow-led names, as `pr-view` and `slice-checks`
+// print them — each with the raw state [Check.Outcome] reads.
+//
 // State is GitHub's word for where the pull request is — OPEN, MERGED or
 // CLOSED — and MergedAt when it merged, zero for one that has not.
 type PRStatus struct {
@@ -46,6 +50,7 @@ type PRStatus struct {
 	Base        string
 	Checks      ChecksVerdict
 	Failing     []Check
+	All         []Check
 	State       string
 	MergedAt    time.Time
 }
@@ -62,6 +67,7 @@ func StatusOf(pr PR) PRStatus {
 		Base:        strings.TrimSpace(pr.BaseRefName),
 		Checks:      checks,
 		Failing:     failing,
+		All:         pr.Checks,
 		State:       pr.State,
 		MergedAt:    pr.MergedAt,
 	}

@@ -63,7 +63,7 @@ final class AppModelPRMarksTests: XCTestCase {
         XCTAssertEqual(model.activeProjectID, Fixtures.projectID)
 
         XCTAssertEqual(activeMarks(model, red), redMarks)
-        XCTAssertEqual(treeMarks(model, red), redMarks)
+        XCTAssertEqual(treeMarks(model, red), PRMarks.none, "the checks' marks are Active's alone")
         XCTAssertEqual(activeMarks(model, conflicting), conflictMarks)
         XCTAssertEqual(treeMarks(model, conflicting), conflictMarks)
         // Its tab counts the red and the conflicting pull requests beside its
@@ -127,7 +127,8 @@ final class AppModelPRMarksTests: XCTestCase {
         await model.githubReadingStore?.read()
         // The trouble cleared, and the green tick in its place.
         XCTAssertEqual(activeMarks(model, red), PRMarks(checksPassing: true))
-        XCTAssertEqual(treeMarks(model, conflicting), PRMarks(checksPassing: true))
+        XCTAssertEqual(activeMarks(model, conflicting), PRMarks(checksPassing: true))
+        XCTAssertEqual(treeMarks(model, conflicting), PRMarks.none, "the tick is Active's alone")
     }
 
     /// A background project's reading is the tick's, not its plan's refresh.
@@ -149,10 +150,11 @@ final class AppModelPRMarksTests: XCTestCase {
         client.setPRStatus(nil, forProject: Fixtures.secondProjectID)
         let model = await Fixtures.startedAppModel(
             client: client, config: Fixtures.twoProjectConfig, planCache: cache)
-        for _ in 0..<500 where treeMarks(model, red) == nil || treeMarks(model, red) == PRMarks.none {
+        for _ in 0..<500 where activeMarks(model, red) == nil || activeMarks(model, red) == PRMarks.none {
             await Task.yield()
         }
-        XCTAssertEqual(treeMarks(model, red), redMarks)
+        XCTAssertEqual(activeMarks(model, red), redMarks)
+        XCTAssertEqual(treeMarks(model, conflicting), conflictMarks)
         XCTAssertEqual(activeMarks(model, conflicting), conflictMarks)
     }
 

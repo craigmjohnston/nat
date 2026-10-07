@@ -659,8 +659,9 @@ public let planReadyLabel = "Plan ready"
 /// poll has yet to read (`AppModel.reconnectingWorkshops`). A live agent wins
 /// over all three. Active is sorted needs-you first and otherwise left in project,
 /// then plan, order. `prMarks` is every project's pull request marks by slice
-/// id (`PRStatusStore.marks`), drawn on a slice's Active and tree rows alike
-/// as `prMarks(_:for:)` gates them. `proposedWorkshops` are the tabs
+/// id (`PRStatusStore.marks`), gated by `prMarks(_:for:)`: drawn whole on a
+/// slice's Active row, and on its tree row only the conflict — the checks'
+/// marks are Active's alone. `proposedWorkshops` are the tabs
 /// whose workshop has a proposal up (`AppModel.proposals`' keys — a project's
 /// id, an Untitled tab's own): their workshop rows say Plan ready.
 public func buildSidebarModel(
@@ -729,24 +730,29 @@ public func buildSidebarModel(
         var doneMilestones: [SidebarMilestone] = []
         var loose: [SidebarSliceRow] = []
         if let plan = project.plan {
+            // A pull request read failing its checks or conflicting is marked
+            // at the PR stage — never a Done or pre-PR slice, and a resumed
+            // one only its failing checks. Passing checks, more narrowly
+            // (`prMarks`). The Active row carries all of it; the tree row
+            // the conflict alone, the checks' slot left to Active.
+            var activeMarks: [String: PRMarks] = [:]
             let rows = plan.slices.map { slice -> SidebarSliceRow in
                 let agent = liveAgents[slice.id]
-                // A pull request read failing its checks or conflicting is
-                // marked on the rows it already has: at the PR stage — never
-                // a Done or pre-PR slice, and a resumed one only its failing
-                // checks. Passing checks, more narrowly (`prMarks`).
+                let marks = NatKit.prMarks(prMarks[slice.id] ?? .none, for: slice)
+                activeMarks[slice.id] = marks
                 return SidebarSliceRow(
                     sliceID: slice.id, projectID: project.id, title: slice.name,
                     state: displayState(for: slice, agent: agent),
                     live: agent != nil,
-                    marks: NatKit.prMarks(prMarks[slice.id] ?? .none, for: slice))
+                    marks: PRMarks(conflict: marks.conflict))
             }
             let filedUnder = Dictionary(plan.slices.map { ($0.id, $0.milestoneID) }, uniquingKeysWith: { first, _ in first })
             for row in rows where row.state.isInFlight {
                 if row.state.needsYou { needsYou += 1 }
                 active.append(SidebarActiveRow(
                     kind: .slice, targetID: row.sliceID, projectID: project.id, projectName: project.name, projectTag: tag,
-                    title: row.title, state: row.state, live: row.live, marks: row.marks, color: project.color,
+                    title: row.title, state: row.state, live: row.live, marks: activeMarks[row.sliceID] ?? .none,
+                    color: project.color,
                     card: activeCard(filedUnder[row.sliceID] ?? "", projectID: project.id, plan: plan)))
             }
 

@@ -1210,7 +1210,7 @@ enum AppStories {
 
         Story(
             name: "sidebar-pr-marks",
-            summary: "Pull request marks across two projects, the second never opened: the approved slice's row in Active and in the tree carries both the checks' danger mark and the conflict mark; in gnat, one slice's rows carry the checks mark alone and another's the conflict mark alone.",
+            summary: "Pull request marks across two projects, the second never opened: the approved slice's Active row carries both the checks' danger mark and the conflict mark, its tree row the conflict mark alone; in gnat, one slice's Active row carries the checks mark (its tree row none) and another's rows the conflict mark alone.",
             size: sidebar
         ) {
             let appModel = await prMarksAppModel()
@@ -1224,7 +1224,7 @@ enum AppStories {
 
         Story(
             name: "sidebar-pr-marks-passing",
-            summary: "As sidebar-pr-marks, but the approved slice's pull request reads mergeable with every check passed: its rows in Active and in the tree carry the green passing mark in the danger mark's slot; gnat's red and conflicting rows are as before.",
+            summary: "As sidebar-pr-marks, but the approved slice's pull request reads mergeable with every check passed: its Active row carries the green passing mark in the danger mark's slot, its tree row no checks mark; gnat's red and conflicting rows are as before.",
             size: sidebar
         ) {
             let appModel = await prMarksAppModel(prStatus: Fixtures.prStatusChecksPassing)
@@ -1238,7 +1238,7 @@ enum AppStories {
 
         Story(
             name: "sidebar-pr-marks-passing-agent-left",
-            summary: "As sidebar-pr-marks-passing, with the agent left in the approved slice's pane after its hand-back — which reads as working: its rows still carry the green passing mark.",
+            summary: "As sidebar-pr-marks-passing, with the agent left in the approved slice's pane after its hand-back — which reads as working: its Active row still carries the green passing mark.",
             size: sidebar
         ) {
             let appModel = await prMarksAppModel(
@@ -1262,8 +1262,18 @@ enum AppStories {
         },
 
         Story(
+            name: "window-pr-checks-stale-detail",
+            summary: "As window-pr-checks-passing, but the pull request's own view was last read with its checks still going (one passed, one running, one queued, one skipped): the Checks list follows the batched reading the green header mark comes from, every check passed and the skipped one struck through.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], prStatus: Fixtures.prStatusChecksPassing, pr: Fixtures.prChecksRunning,
+                focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
             name: "sidebar-pr-marks-running",
-            summary: "As sidebar-pr-marks, but the approved slice's pull request has its checks still running: its rows in Active and in the tree carry the neutral in-progress mark (an ellipsis circle) in the checks' slot; gnat's red and conflicting rows are as before.",
+            summary: "As sidebar-pr-marks, but the approved slice's pull request has its checks still running: its Active row carries the neutral in-progress mark (an ellipsis circle) in the checks' slot, its tree row no checks mark; gnat's red and conflicting rows are as before.",
             size: sidebar
         ) {
             let appModel = await prMarksAppModel(prStatus: Fixtures.prStatusChecksRunning)

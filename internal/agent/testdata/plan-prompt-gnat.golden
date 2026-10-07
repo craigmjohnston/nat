@@ -55,6 +55,10 @@ applies the plan, not you.
 
 While a proposal is unaccepted, a revised one replaces whichever is on
 screen, so send the whole plan again each time rather than a diff of it.
+Once you have proposed, a message from the user withdraws the proposal —
+the app takes it off screen the moment they send it. So every turn that
+answers the user ends with plan-propose run again, the whole plan, even
+unchanged: never assume your last proposal is still on screen.
 Nothing tells you when the user accepts it. Re-read the plan before
 every revision, since the board may have moved while you worked:
 

@@ -2060,6 +2060,34 @@ public final class AppModel {
         terminalFocusRequest += 1
     }
 
+    /// The user wrote to a workshop's agent (an Enter in its terminal) with a
+    /// proposal up: whatever they said makes it stale, and the agent proposes
+    /// again on its next turn (`agent.ProposalWithdrawnRule`). The proposal
+    /// and its Plan ready badge come down here and now, the Terminal put back
+    /// up; then `nat plan-withdraw` removes the file, off the main actor. A
+    /// failed withdraw is logged and the local clear stands — a reading that
+    /// still finds the file brings it back. No proposal, or one being
+    /// accepted, withdraws nothing. The task is the nat call's, for a test to
+    /// wait on; nil where nothing was withdrawn.
+    @discardableResult
+    public func withdrawProposal(tabID: String) -> Task<Void, Never>? {
+        guard proposalStates[tabID]?.withdraw() == true else { return nil }
+        workshopTabPicks[tabID] = .terminal
+        let client = clientFactory()
+        let workspace = workspaceIDs[tabID]
+        return Task {
+            do {
+                if let workspace {
+                    try await client.planWithdraw(workspaceID: workspace)
+                } else {
+                    try await client.planWithdraw(projectID: tabID)
+                }
+            } catch {
+                NSLog("AppModel: could not withdraw the proposal for %@: %@", tabID, error.localizedDescription)
+            }
+        }
+    }
+
     /// Keep workshopping on a workshop whose agent has ended with a plan
     /// still up: a new planning agent on the same request, told the plan is
     /// there and how to read it, to take it up from where it was left. The

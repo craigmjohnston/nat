@@ -118,23 +118,51 @@ public struct PRStatusSlice: Codable, Equatable, Sendable {
 }
 
 /// One open pull request's checks, as `nat pr-status` reads them: the
-/// verdict — "passing", "failing", "pending" or "none" — and every check
-/// that failed, by name and run URL.
+/// verdict — "passing", "failing", "pending" or "none" — every check that
+/// failed, by name and run URL, and every check at all (`checks`, in
+/// GitHub's order) — nil from an older `nat` that sent no such list.
 public struct PRStatusChecks: Codable, Equatable, Sendable {
     public let verdict: String
     public let failing: [PRStatusCheck]
+    public let checks: [PRStatusCheckState]?
 
-    public init(verdict: String, failing: [PRStatusCheck] = []) {
+    public init(verdict: String, failing: [PRStatusCheck] = [], checks: [PRStatusCheckState]? = nil) {
         self.verdict = verdict
         self.failing = failing
+        self.checks = checks
     }
 
-    enum CodingKeys: String, CodingKey { case verdict, failing }
+    enum CodingKeys: String, CodingKey { case verdict, failing, checks }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         verdict = try c.decode(String.self, forKey: .verdict)
         failing = try c.decodeIfPresent([PRStatusCheck].self, forKey: .failing) ?? []
+        checks = try c.decodeIfPresent([PRStatusCheckState].self, forKey: .checks)
+    }
+}
+
+/// One check as the batched reading read it: its name, gh's raw state word
+/// (`checkOutcome(state:)` reads it, as it reads `PRCheck.state`) and where
+/// its run can be read.
+public struct PRStatusCheckState: Codable, Equatable, Sendable {
+    public let name: String
+    public let state: String
+    public let url: String
+
+    public init(name: String, state: String, url: String = "") {
+        self.name = name
+        self.state = state
+        self.url = url
+    }
+
+    enum CodingKeys: String, CodingKey { case name, state, url }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        state = try c.decodeIfPresent(String.self, forKey: .state) ?? ""
+        url = try c.decodeIfPresent(String.self, forKey: .url) ?? ""
     }
 }
 

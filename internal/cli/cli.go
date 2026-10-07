@@ -512,6 +512,10 @@ usage:
                       read back the proposal plan-propose wrote for a
                       workspace or a project, as {"proposal": ...} — null
                       with none yet
+  nat plan-withdraw (--workspace ID | --project ID) [--json]
+                      take that proposal down (the app runs it once the user
+                      writes to the workshop's agent); none is nothing to
+                      withdraw, not an error
   nat plan-accept (--workspace ID --name NAME | --project ID) [--json]
                       accept that proposal: with --workspace, create a local
                       project named NAME (no Notion), file the proposal's plan
@@ -784,6 +788,8 @@ func runCommand(ctx context.Context, args []string, env Env) error {
 		return planPropose(ctx, args[1:], env)
 	case "plan-proposal":
 		return planProposal(ctx, args[1:], env)
+	case "plan-withdraw":
+		return planWithdraw(ctx, args[1:], env)
 	case "plan-accept":
 		return planAccept(ctx, args[1:], env)
 	case "complete-slice":

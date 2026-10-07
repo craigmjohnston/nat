@@ -546,7 +546,11 @@ struct WorkshopMainPane: View {
                         : appModel.workshopEnded ? "The planning agent has ended. Keep workshopping starts a new one on the plan." : nil,
                     focusRequest: appModel.terminalFocusRequest,
                     sessionExists: { appModel.planningAgent != nil },
-                    onSubmit: { appModel.planningAgentKey.map { appModel.terminalSubmitted(agentKey: $0) } })
+                    onSubmit: {
+                        appModel.planningAgentKey.map { appModel.terminalSubmitted(agentKey: $0) }
+                        // What the user writes makes a proposal up stale.
+                        if let tab = appModel.activeProjectID { appModel.withdrawProposal(tabID: tab) }
+                    })
             } else {
                 WorkshopBriefEditor(text: $appModel.workshopDraft) {
                     Task { await appModel.launchWorkshop(request: appModel.workshopDraft) }

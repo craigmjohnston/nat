@@ -149,6 +149,19 @@ func TestStatusOfFailingChecks(t *testing.T) {
 	if green := statusOf(t, green); green.Failing != nil {
 		t.Errorf("green PR Failing = %+v, want none", green.Failing)
 	}
+	// Every check is kept beside the verdict, in GitHub's name order, the
+	// running and passing ones with the failures.
+	all := []Check{
+		{Name: "bare", State: "FAILURE", URL: "https://github.test/runs/3"},
+		{Name: "CI / lint", State: "FAILURE", URL: "https://github.test/runs/1"},
+		{Name: "deploy", State: "ERROR", URL: "https://ci.test/9"},
+		{Name: "Pull request / Gate", State: "FAILURE", URL: "https://github.test/runs/2"},
+		{Name: "test", State: "IN_PROGRESS"},
+		{Name: "vet", State: "SUCCESS"},
+	}
+	if !reflect.DeepEqual(got.All, all) {
+		t.Errorf("red PR All = %+v, want %+v", got.All, all)
+	}
 }
 
 // TestCheckOutcome is the one table of GitHub's check words: every finished

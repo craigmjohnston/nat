@@ -235,8 +235,9 @@ switching projects touches nothing), written beside its plan in the read
 cache (`PlanCaching.writePRStatus`, `<id>.pr-status.json`) and restored
 before the first fresh read (`restore`); a reading equal to the last
 publishes nothing, and `forget` drops a closed tab's. `PRStatusStore.marks` (by slice id) puts
-`PRMarks` on **both** sidebar row kinds — `SidebarActiveRow.marks` and
-`SidebarSliceRow.marks`, pr stage only (`atPullRequest`), and a resumed
+`PRMarks` on a slice's `SidebarActiveRow.marks` whole and on its
+`SidebarSliceRow.marks` (the Projects tree) the conflict alone — the checks'
+slot is Active's only (`buildSidebarModel`), pr stage only (`atPullRequest`), and a resumed
 slice its failing checks alone — as read, or, while the verdict is
 `pending`, `Slice.fixingChecks` (nat's `fixing_checks`, off the task log:
 the latest CI failure with no hand-back after it), so a fix pushed before
@@ -351,7 +352,17 @@ never drops a load asked for mid-read — it owes one more read, answering
 every request made meanwhile — and a nudge reads the replica (`refresh(.replica)`;
 the poll and the user's refresh pull). `plan-accept` claims the proposal file
 before filing (so it is accepted at most once) and nudges only once it is
-gone. Tests: `ProposalStateTests`, `ProposalRaceTests`. The navigator's Plan
+gone. **Writing to the agent withdraws a proposal:** an Enter in the
+workshop's terminal (`FirstLayoutTerminalView.onSubmit`, a bare return only —
+`TerminalKeyEncoding.isSubmit`, never a paste, shift+enter or the colour
+report; slice and session panes withdraw nothing) runs
+`AppModel.withdrawProposal(tabID:)`: `ProposalState.withdraw` clears it at once
+(stale readings dropped; nothing while accepting), the tab goes back to
+Terminal and the Plan ready badge with it, then `nat plan-withdraw` removes the
+file (a failure logged, the clear kept) — and both planning prompts tell the
+agent to propose again, whole, every turn. Any return withdraws, a yes/no
+answer's included: the agent re-proposes, so nothing is lost. Tests:
+`ProposalStateTests`, `ProposalRaceTests`. The navigator's Plan
 section draws `PlanProposal.folders` (`TreeMilestoneLine`/`TreeSliceLine`,
 the sidebar's own rows) and the sidebar shows nothing of it; under the
 created work, a project's proposal draws the Todo tasks it changes

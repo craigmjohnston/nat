@@ -403,11 +403,11 @@ final class FirstLayoutTerminalView: LocalProcessTerminalView {
     /// the press that was meant to send it.
     override func send(source: TerminalView, data: ArraySlice<UInt8>) {
         KeyDebug.log("pty <- \(KeyDebug.escaped(data))")
-        if KeyDebug.enabled, data.elementsEqual([0x0d]) {
+        if KeyDebug.enabled, TerminalKeyEncoding.isSubmit(data) {
             KeyDebug.log("sent by:\n" + Thread.callStackSymbols.dropFirst().prefix(20).joined(separator: "\n"))
         }
         super.send(source: source, data: data)
-        if data.elementsEqual([0x0d]) { onSubmit?() }
+        if TerminalKeyEncoding.isSubmit(data) { onSubmit?() }
     }
 
     /// Whether this pane is where typing currently goes — itself, or any view

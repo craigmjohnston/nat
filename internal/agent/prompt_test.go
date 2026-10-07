@@ -1034,6 +1034,32 @@ func TestEveryNamingPromptCarriesTheTitleCap(t *testing.T) {
 	}
 }
 
+// Both gnat planning prompts say a message from the user withdraws the
+// proposal, so every turn answering them proposes the whole plan again; the
+// TUI's, which proposes nothing, does not.
+func TestGnatPlanningPromptsCarryTheWithdrawnRule(t *testing.T) {
+	for _, want := range []string{"withdraws the proposal", "ends with plan-propose run again, the whole plan, even\nunchanged",
+		"never assume your last proposal is still on screen"} {
+		if !strings.Contains(ProposalWithdrawnRule, want) {
+			t.Errorf("the rule does not say %q", want)
+		}
+	}
+	for prompt, text := range map[string]string{
+		"plan gnat":   PlanPrompt(testProjectID, "nat", "/src/nat", "", "", FrontendGnat),
+		"new project": NewProjectPrompt("ws-1", "A todo app."),
+	} {
+		if !strings.Contains(text, ProposalWithdrawnRule) {
+			t.Errorf("the %s prompt does not carry the withdrawn rule", prompt)
+		}
+		if !strings.Contains(text, "send the whole plan again each time rather than a diff") {
+			t.Errorf("the %s prompt does not say to send the whole plan each time", prompt)
+		}
+	}
+	if strings.Contains(PlanPrompt(testProjectID, "nat", "/src/nat", "", "", FrontendTUI), ProposalWithdrawnRule) {
+		t.Error("the TUI plan prompt carries the withdrawn rule")
+	}
+}
+
 // The gnat workshop prompt says a revision replaces only an unaccepted
 // proposal, reaches an accepted one's slices through edit, move and remove,
 // and re-reads the plan first, pinned to the project.

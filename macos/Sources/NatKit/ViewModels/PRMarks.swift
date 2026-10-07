@@ -120,6 +120,24 @@ public struct PRReading: Equatable, Sendable {
         }
     }
 
+    /// The checks the PR section lists for a slice's pull request: the
+    /// reading's — the one the heading and the sidebar marks come from —
+    /// wherever it read the slice's checks, each carrying what only the
+    /// detail (`pr-view`) knows of the check by that name (`rerunnable`,
+    /// `run`); else the detail's own (`detail`), as for an ad hoc session's
+    /// pull request, which the reading lists under no slice, or before any
+    /// reading has landed.
+    public func checkRows(sliceID: String, detail: [PRCheck]) -> [PRCheck] {
+        guard let read = doc.slices.first(where: { $0.sliceID == sliceID })?.checks?.checks else { return detail }
+        let known = Dictionary(detail.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        return read.map { check in
+            let old = known[check.name]
+            return PRCheck(
+                name: check.name, state: check.state, link: check.url.isEmpty ? old?.link ?? "" : check.url,
+                rerunnable: old?.rerunnable ?? false, run: old?.run)
+        }
+    }
+
     /// Every pull request GitHub said conflicts, by slice id.
     public var conflicts: [String: BranchConflict] {
         doc.slices.reduce(into: [:]) { map, slice in
