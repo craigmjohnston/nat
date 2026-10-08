@@ -7,9 +7,12 @@ loaded by hand.
 
 Tested with Claude Code **2.1.294**.
 
-- `hooks/register.ts` — the hooks. Today one: the dim prompt hint under the
-  input (`? for shortcuts`) draws empty, which is also how a load is seen
-  from the pane.
+- `hooks/register.ts` — the hooks, which quiet the pane's chrome by
+  rewriting Claude Code's own render-site props: the prompt hint
+  (`? for shortcuts`, which is also how a load shows in the pane) and the
+  run-in-background pill draw empty, the turn duration line and the notices
+  under the logo draw nothing, and the spinner says `Working`. The session
+  modes are left alone.
 - `tests/` — `claude plugin test` suites.
 
 Check it with `./scripts/mod-check.sh` from the repository root
