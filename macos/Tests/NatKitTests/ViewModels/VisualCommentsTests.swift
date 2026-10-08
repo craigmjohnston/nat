@@ -17,7 +17,7 @@ final class VisualCommentsTests: XCTestCase {
     func testThePromptNamesEachImageOnceAndWhereEachCommentSits() {
         XCTAssertEqual(visualCommentsPrompt(comments, branch: "slice/x", handBack: nil), """
         I have reviewed the visual changes you handed in and left 3 comments on them. \
-        Address every one of them, then push the branch again and tell me it is ready.
+        Address every one of them, commit your changes, and tell me it is ready.
 
         ## Settings, dark (/tmp/dark.png)
 
@@ -40,16 +40,18 @@ final class VisualCommentsTests: XCTestCase {
         let handBack = HandBackInstruction(projectID: "proj", sliceRef: "slice-1")
         XCTAssertEqual(visualCommentsPrompt(one, branch: "slice/x", handBack: handBack), """
         I have reviewed the visual changes you handed in and left 1 comment on them. \
-        Address every one of them, then push the branch again and tell me it is ready.
+        Address every one of them, commit your changes, and tell me it is ready.
 
         ## Settings, dark (/tmp/dark.png)
 
         At (412, 88) in the 1440×900 image:
         This label is clipped.
 
-        When every comment is addressed and the branch is pushed, hand the slice back for review by running exactly:
+        When every comment is addressed and committed, hand the slice back for review by running exactly:
 
         nat complete-slice slice-1 --project proj --branch slice/x --summary '<what you changed for these comments>'
+
+        That hand-back pushes the branch: do not push it yourself.
 
         """)
         XCTAssertTrue(visualCommentsPrompt(one, branch: nil, handBack: handBack).contains("--branch <branch>"))

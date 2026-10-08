@@ -55,7 +55,7 @@ public func commentsPrompt(_ comments: [PendingComment], diff: DiffModel, handBa
 
     var out = "I have reviewed the diff of \(diff.branch) and left \(comments.count) " +
         "\(plural(comments.count, "comment", "comments")) on it. " +
-        "Address every one of them, then push the branch again and tell me it is ready.\n"
+        "Address every one of them, commit your changes, and tell me it is ready.\n"
 
     for comment in comments {
         let rows = anchoredRows(comment, rowsByPath: rowsByPath)
@@ -72,11 +72,13 @@ public func commentsPrompt(_ comments: [PendingComment], diff: DiffModel, handBa
             "--branch \(diff.branch) --summary '<what you changed for these comments>'\n"
         if handBack.opensPullRequest {
             out += "\nI am approving this work once these are fixed, so when every comment is addressed " +
-                "and the branch is pushed, hand the slice back by running exactly:\n\n" + command +
-                "\nThat hand-back opens the pull request — do not stop before you have run it.\n"
+                "and committed, hand the slice back by running exactly:\n\n" + command +
+                "\nThat hand-back pushes the branch and opens the pull request — do not push it yourself, " +
+                "and do not stop before you have run it.\n"
         } else {
-            out += "\nWhen every comment is addressed and the branch is pushed, hand the slice " +
-                "back for review by running exactly:\n\n" + command
+            out += "\nWhen every comment is addressed and committed, hand the slice " +
+                "back for review by running exactly:\n\n" + command +
+                "\nThat hand-back pushes the branch: do not push it yourself.\n"
         }
     }
     return out

@@ -111,9 +111,13 @@ final class DiffCommentsTests: XCTestCase {
         let got = commentsPrompt(comments, diff: diff, handBack: HandBackInstruction(projectID: "p-1", sliceRef: "s-1"))
         XCTAssertTrue(got.contains("nat complete-slice s-1 --project p-1 --branch slice/review --summary"))
         XCTAssertFalse(got.contains("opens the pull request"))
+        XCTAssertTrue(got.contains("When every comment is addressed and committed"))
+        XCTAssertTrue(got.contains("That hand-back pushes the branch: do not push it yourself."))
+        XCTAssertFalse(got.contains("push the branch again"))
         let approving = commentsPrompt(
             comments, diff: diff, handBack: HandBackInstruction(projectID: "p-1", sliceRef: "s-1", opensPullRequest: true))
-        XCTAssertTrue(approving.contains("That hand-back opens the pull request"))
+        XCTAssertTrue(approving.contains("That hand-back pushes the branch and opens the pull request"))
+        XCTAssertTrue(approving.contains("do not push it yourself"))
     }
 
     // MARK: - commentsPrompt, ported from TestCommentPrompt
