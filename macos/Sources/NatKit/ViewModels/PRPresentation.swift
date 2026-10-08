@@ -472,11 +472,15 @@ public func mergeBoxState(for pr: PRDetail) -> MergeBoxState {
 /// CLI's own copy of this rule: the button should not offer what the CLI (and
 /// the Go TUI) would already refuse.
 ///
-/// A failing verdict refuses first, in its own words. Past those the gate
-/// mirrors GitHub's own merge button: only a merge state status of CLEAN,
-/// HAS_HOOKS or UNSTABLE goes through, and BLOCKED, BEHIND, DRAFT and an empty
-/// or unknown status (GitHub still computing) each refuse naming what is still
-/// outstanding. Kept level by hand with the Go copies' `mergeStateRefusal`.
+/// A failing verdict refuses first, in its own words. Past those only what
+/// GitHub positively says stands in the way refuses: a draft, BEHIND, and
+/// BLOCKED by a review or checks still pending (or by nothing it names). A
+/// mergeability GitHub is still working out — UNKNOWN, an empty or
+/// unrecognised merge state, BLOCKED with nothing pending but the
+/// mergeability — refuses nothing: the button is enabled, the click attempts
+/// the merge, and nat's or gh's refusal, if any, is what the user reads.
+/// Checks still running refuse whatever the state, since green checks are the
+/// condition. Kept level by hand with the Go copies' `mergeStateRefusal`.
 public func mergeRefusal(_ pr: PRDetail) -> String? {
     let verdicts = mergeVerdicts(pr)
     for verdict in verdicts where verdict.outcome == .failing {
@@ -492,13 +496,28 @@ public func mergeRefusal(_ pr: PRDetail) -> String? {
     case "BEHIND":
         return "mergeable: behind \(baseOf(pr.baseRefName))"
     case "BLOCKED":
-        if let pending = verdicts.first(where: { $0.outcome == .pending }) {
+        if let pending = pendingBesidesMergeability(pr) {
             return "blocked by \(pending.label): \(pending.word)"
         }
+        let mergeability = mergeableVerdict(
+            mergeable: pr.mergeable, mergeStateStatus: pr.mergeStateStatus, baseRefName: pr.baseRefName)
+        if mergeability.outcome == .pending { return nil }
         return "blocked: required checks or reviews are not yet satisfied"
     default:
-        return "mergeable: mergeability unknown"
+        if let pending = pendingBesidesMergeability(pr) {
+            return "\(pending.label): \(pending.word)"
+        }
+        return nil
     }
+}
+
+/// The first verdict still to come that is not the mergeability itself — a
+/// review GitHub says is required, checks still running — which is GitHub
+/// saying something stands in the way, where a mergeability not yet computed
+/// is GitHub saying nothing yet.
+private func pendingBesidesMergeability(_ pr: PRDetail) -> MergeVerdict? {
+    [reviewVerdict(reviewDecision: pr.reviewDecision), checksVerdict(checks: pr.checks)]
+        .first { $0.outcome == .pending }
 }
 
 // MARK: - Relative time

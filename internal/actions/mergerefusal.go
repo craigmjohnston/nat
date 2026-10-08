@@ -184,12 +184,14 @@ func mergeVerdicts(pr gh.PR) []mergeVerdict {
 // hand — see the doc comment there — and a change to either's wording belongs
 // in both.
 //
-// A failing verdict refuses first, in its own words. Past those the gate
-// mirrors GitHub's own merge button: only a merge state status of CLEAN,
-// HAS_HOOKS or UNSTABLE goes through, and BLOCKED, BEHIND, DRAFT and an empty or
-// unknown status (GitHub still computing) each refuse naming what is still
-// outstanding — so a merge is never attempted before GitHub's button would be
-// there to press.
+// A failing verdict refuses first, in its own words. Past those only what
+// GitHub positively says stands in the way refuses: a draft, BEHIND, and
+// BLOCKED by a review or checks still pending (or by nothing it names).
+// A mergeability GitHub is still working out — UNKNOWN, an empty or
+// unrecognised merge state, BLOCKED with nothing pending but the mergeability
+// — refuses nothing: the merge is attempted, and gh's own refusal, if any, is
+// what the user reads. Checks still running refuse whatever the state, since
+// green checks are the condition.
 func MergeRefusal(pr gh.PR) (string, bool) {
 	for _, v := range mergeVerdicts(pr) {
 		if v.outcome == mergeFailing {
@@ -200,9 +202,8 @@ func MergeRefusal(pr gh.PR) (string, bool) {
 }
 
 // mergeStateRefusal is the half of the gate that reads merge state status: what
-// still stands between the pull request and GitHub's merge button, when it is
-// not yet there. DIRTY never reaches it — the mergeable verdict has already
-// refused it as conflicting.
+// GitHub says still stands in the way, when it says anything. DIRTY never
+// reaches it — the mergeable verdict has already refused it as conflicting.
 func mergeStateRefusal(pr gh.PR) (string, bool) {
 	state := strings.ToUpper(strings.TrimSpace(pr.MergeStateStatus))
 	switch {
@@ -213,13 +214,30 @@ func mergeStateRefusal(pr gh.PR) (string, bool) {
 	case state == mergeStateBehind:
 		return "mergeable: behind " + baseOf(pr), true
 	case state == "BLOCKED":
-		for _, v := range mergeVerdicts(pr) {
-			if v.outcome == mergePending {
-				return "blocked by " + v.label + ": " + v.word, true
-			}
+		if v, ok := pendingBesidesMergeability(pr); ok {
+			return "blocked by " + v.label + ": " + v.word, true
+		}
+		if mergeableVerdict(pr).outcome == mergePending {
+			return "", false
 		}
 		return "blocked: required checks or reviews are not yet satisfied", true
 	default:
-		return "mergeable: mergeability unknown", true
+		if v, ok := pendingBesidesMergeability(pr); ok {
+			return v.label + ": " + v.word, true
+		}
+		return "", false
 	}
+}
+
+// pendingBesidesMergeability is the first verdict still to come that is not
+// the mergeability itself — a review GitHub says is required, checks still
+// running — which is GitHub saying something stands in the way, where a
+// mergeability not yet computed is GitHub saying nothing yet.
+func pendingBesidesMergeability(pr gh.PR) (mergeVerdict, bool) {
+	for _, v := range []mergeVerdict{reviewVerdict(pr), checksVerdict(pr)} {
+		if v.outcome == mergePending {
+			return v, true
+		}
+	}
+	return mergeVerdict{}, false
 }

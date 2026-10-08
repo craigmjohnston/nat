@@ -292,6 +292,45 @@ func TestPRMergeReportsAMergeFailure(t *testing.T) {
 	}
 }
 
+// A mergeability GitHub is still working out refuses nothing on nat's side:
+// the merge is attempted, and gh's own refusal, if it makes one, is what the
+// caller reads, verbatim.
+func TestPRMergeAttemptsAMergeOfUnknownMergeability(t *testing.T) {
+	const unknownMergeabilityPRJSON = `{
+  "number": 7,
+  "title": "Still computing",
+  "state": "OPEN",
+  "headRefName": "slice/computing",
+  "baseRefName": "main",
+  "url": "https://github.test/craig/nat/pull/7",
+  "reviewDecision": "APPROVED",
+  "mergeable": "UNKNOWN",
+  "mergeStateStatus": "UNKNOWN"
+}`
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithPR(testSliceID, "Write the UI", notion.SliceInProgress,
+				"https://github.test/craig/nat/pull/7")},
+		},
+	}
+	env, _ := testEnv(testConfig(t), api)
+	const refusal = "Pull request craig/nat#7 is not mergeable: the merge commit cannot be cleanly created."
+	runner := &multiRunner{viewOut: unknownMergeabilityPRJSON, mergeErr: &gh.ExitError{Code: 1, Stderr: refusal}}
+	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
+
+	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+
+	if len(runner.mergeArgs) != 1 {
+		t.Fatalf("gh pr merge calls = %v, want the merge attempted once", runner.mergeArgs)
+	}
+	if err == nil || !strings.Contains(err.Error(), refusal) {
+		t.Errorf("err = %v, want gh's refusal verbatim", err)
+	}
+	if len(api.updates) != 0 {
+		t.Errorf("updates = %+v, want nothing written for a merge gh refused", api.updates)
+	}
+}
+
 // A pull request the reading could not find — a URL that names none, or one
 // GitHub could not resolve — is refused before any merge is tried.
 func TestPRMergeRefusesAnUnreadPullRequest(t *testing.T) {

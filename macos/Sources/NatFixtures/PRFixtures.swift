@@ -279,6 +279,21 @@ extension Fixtures {
             mergeStateStatus: prGreen.mergeStateStatus)
     }
 
+    /// The green pull request read just after its checks finished, GitHub
+    /// still working out its mergeability: every check green, `mergeable`
+    /// UNKNOWN and merge state BLOCKED on nothing else — which no longer greys
+    /// Merge PR.
+    public static var prMergeabilityUnknown: PRDetail {
+        PRDetail(
+            number: prGreen.number, title: prGreen.title, body: prGreen.body, state: prGreen.state,
+            isDraft: false, author: prGreen.author, baseRefName: prGreen.baseRefName,
+            headRefName: prGreen.headRefName, url: prGreen.url, checks: prGreen.checks, reviews: prGreen.reviews,
+            comments: prGreen.comments, reviewDecision: prGreen.reviewDecision, mergeable: "UNKNOWN",
+            mergeStateStatus: "BLOCKED", additions: prGreen.additions, deletions: prGreen.deletions,
+            changedFiles: prGreen.changedFiles, commits: prGreen.commits, reviewRequests: prGreen.reviewRequests,
+            headRefOid: prGreen.headRefOid)
+    }
+
     /// The approved slice's own pull request closed without a merge.
     public static var prGreenClosed: PRDetail {
         PRDetail(

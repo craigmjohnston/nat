@@ -156,5 +156,11 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   to either's wording belongs in **both**; `mergerefusal.go`'s doc comment
   says so at the definition. The one exception is which GitHub check word
   means what: both read `gh.Check.Outcome`, the single table, also behind
-  the board's checks verdict. `internal/cli/difftokens.go` is the same pattern
+  the board's checks verdict. The gate refuses only what GitHub positively
+  says stands in the way — a failing verdict, a draft, `BEHIND`, `BLOCKED`
+  by a pending review or running checks, running checks or a required
+  review whatever the state — never a mergeability still being worked out
+  (`UNKNOWN`, an empty or unknown merge state, `BLOCKED` on that alone):
+  the merge is attempted and gh's refusal, if any, is relayed.
+  `internal/cli/difftokens.go` is the same pattern
   again, for `internal/tui/diffsyntax.go`'s lexing rules.

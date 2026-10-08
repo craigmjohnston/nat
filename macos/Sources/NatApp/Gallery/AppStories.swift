@@ -697,6 +697,18 @@ enum AppStories {
         },
 
         Story(
+            name: "action-bar-merge-mergeability-unknown",
+            summary: "An approved slice with no agent, its checks green and GitHub still working out "
+                + "mergeability (UNKNOWN, BLOCKED on nothing else): Merge PR enabled — only what GitHub positively "
+                + "says stands in the way greys it.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.approveSliceID, agents: [], pr: Fixtures.prMergeabilityUnknown,
+                focus: NavigatorFocus(open: [.pr], main: .pr))
+        },
+
+        Story(
             name: "action-bar-split-menu",
             summary: "The action bar's Fix split button's menu, drawn on its own as a popover's content: the action "
                 + "Fix took the place of — Approve changes — to press instead.",
