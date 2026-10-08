@@ -576,6 +576,28 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(appModel.projectTabs.filter { $0.id != "proj-1" }.map(\.name), [AppModel.untitledName])
     }
 
+    /// Open in Notion is offered only for a project whose plan is in Notion:
+    /// a local or source project's page-shaped ID names no page.
+    @MainActor
+    func testAppModel_notionPageOnlyForANotionProject() async {
+        let notion = "3b738308-f654-811c-948d-e1fb36f71df3"
+        let local = "4c738308-f654-811c-948d-e1fb36f71df3"
+        let source = "5d738308-f654-811c-948d-e1fb36f71df3"
+        let config = NatProjectConfig(projects: [
+            notion: ProjectConfig(name: "N", slicesDSID: "ds", workingDir: "/n"),
+            local: ProjectConfig(name: "L", workingDir: "/l", backend: .local),
+            source: ProjectConfig(name: "", workingDir: "", backend: .source, source: "shortcut"),
+        ])
+        let appModel = AppModel(configReader: MockConfigReader(response: .success(config)))
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        XCTAssertEqual(appModel.notionPage(ofProject: notion), NotionPageURL.forPage(notion))
+        XCTAssertNotNil(appModel.notionPage(ofProject: notion))
+        XCTAssertNil(appModel.notionPage(ofProject: local))
+        XCTAssertNil(appModel.notionPage(ofProject: source))
+        XCTAssertNil(appModel.notionPage(ofProject: "6e738308-f654-811c-948d-e1fb36f71df3"), "no entry, no page")
+    }
+
     @MainActor
     func testAppModel_reloadConfigBeforeStartDoesNothing() async {
         let mockReader = MockConfigReader(response: .success(NatProjectConfig(projects: [:])))

@@ -1262,6 +1262,15 @@ public final class AppModel {
         }
     }
 
+    /// The Notion page a project's plan is kept on, for its menu's Open in
+    /// Notion: nil unless its config entry puts the plan in Notion — a local
+    /// project's ID is page-shaped too, but names no page — and nil for an
+    /// ID that is no page ID (`NotionPageURL.forPage`).
+    public func notionPage(ofProject projectID: String) -> URL? {
+        guard config?.projects[projectID]?.backend == .notion else { return nil }
+        return NotionPageURL.forPage(projectID)
+    }
+
     /// The colour a project's config entry holds — its badge's — nil for one
     /// nat has not coloured yet, for an Untitled tab, which has no entry, and
     /// for the scratch and source projects, which take none.
