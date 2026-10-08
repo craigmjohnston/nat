@@ -541,6 +541,19 @@ sheet offers the closed ones first (`AppModel.closedProjects`, read off
 config, not `project-list`) and opens one straight into `addProject`, writing
 nothing. Tests: `ClosedTabTests`.
 
+## Reaping finished agents
+
+`AppModel.reapFinishedAgents` ends sessions whose work is over. Candidates
+(`agentSessionsToReap`) are sessions whose slice reads other than In
+progress in an **open plan** (every tab's, merged slice id → project and
+slice), the selected slice and one still under its visit hold excepted. Each
+is verified with a fresh `slice-status` and killed with `agent-kill` on
+**the slice's own project** — never the active one, where `slice-status`
+cannot find another project's slice and answers gone. A session no open plan
+lists is never touched: there is no project to ask on. `closeProject` sweeps
+before its tab goes, so the closing plan still counts. Tests:
+`AgentReapingTests`, `AppModelReapTests`, `SessionReapingTests`.
+
 ## Release build quirks
 
 - Bundled `nat` and `gnat` itself are both **arm64 only** — Intel is not
