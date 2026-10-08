@@ -29,8 +29,11 @@ Each project's entry in `config.json` may carry `runs`, omitted until set:
 A label is offered once in each place, case ignored: once scopeless, or once
 per scope. An empty label or command, a label offered twice in one place, or
 an unknown scope word is refused where it is written. Runs live in the
-project's config entry alone — there is no settings screen for them. Write
-the whole list at once with
+project's config entry alone. In gnat, the project's settings sheet (the
+project menu's Project settings…) edits them under Run commands: a row per
+run — label, command, scope (Both, Global or Slice) — added, removed and
+dragged into order, the first of each scope being its default. Its Save, or
+anything else, writes the whole list at once with
 
     nat config-set project.<id>.runs '[{"label":"Run","command":"make run"}]'
 

@@ -1418,7 +1418,7 @@ struct SidebarView: View {
             addItems(project)
             Divider()
         }
-        if project.kind == .project, let url = NotionPageURL.forPage(project.id) {
+        if project.kind == .project, let url = appModel.notionPage(ofProject: project.id) {
             Button("Open in Notion", systemImage: "arrow.up.right.square") { NSWorkspace.shared.open(url) }
         }
         if let directory = workingDirectory(of: project.id) {

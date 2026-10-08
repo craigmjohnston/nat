@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"reflect"
@@ -386,5 +387,48 @@ func TestConfigSetProjectColorRefusesScratchAndSourceProjects(t *testing.T) {
 				t.Errorf("%s %s: err = %v, want it refused", id, value, err)
 			}
 		}
+	}
+}
+
+func TestConfigSetProjectName(t *testing.T) {
+	env, saved := savingEnv(testConfig(t))
+	out := env.Out.(*bytes.Buffer)
+
+	err := Run(context.Background(), []string{"config-set", "project.project-1.name", "  gnat  "}, env)
+	if err != nil {
+		t.Fatalf("config-set: %v", err)
+	}
+	if got := saved.Projects["project-1"].Name; got != "gnat" {
+		t.Errorf("saved name = %q, want it trimmed to gnat", got)
+	}
+	if got := saved.Projects["project-1"].WorkingDir; got != "/tmp/nat" {
+		t.Errorf("working dir = %q, want it untouched", got)
+	}
+	if !strings.Contains(out.String(), "project.project-1.name:") {
+		t.Errorf("output = %q, want the key reported", out.String())
+	}
+}
+
+// A project always has a name, and a source project's is its plugin's.
+func TestConfigSetProjectNameRefusals(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Projects["work"] = config.ProjectConfig{Backend: config.BackendSource, Source: "demo"}
+	for _, value := range []string{"", "   "} {
+		env, _ := savingEnv(cfg)
+		err := Run(context.Background(), []string{"config-set", "project.project-1.name", value}, env)
+		var usage *UsageError
+		if !errors.As(err, &usage) || !strings.Contains(err.Error(), "wants a name") {
+			t.Errorf("%q: err = %v, want a usage error asking for a name", value, err)
+		}
+	}
+	env, _ := savingEnv(cfg)
+	err := Run(context.Background(), []string{"config-set", "project.work.name", "Work"}, env)
+	if err == nil || !strings.Contains(err.Error(), "named by its plugin") {
+		t.Errorf("err = %v, want a source project refused", err)
+	}
+	env, _ = savingEnv(cfg)
+	err = Run(context.Background(), []string{"config-set", "project.nope.name", "Nope"}, env)
+	if err == nil || !strings.Contains(err.Error(), "no project nope") {
+		t.Errorf("err = %v, want the unknown project named", err)
 	}
 }

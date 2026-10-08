@@ -324,6 +324,12 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await answer("0.48.0")
     }
 
+    /// A local project's plan file where nat's data directory keeps it; none
+    /// for any other project.
+    public func planFile(projectID: String) async throws -> String? {
+        try await answer(Fixtures.planFile(projectID: projectID))
+    }
+
     /// The listing, with every field `source-setup` has set reading `set`
     /// from then on — as the plugin's describe would.
     public func pluginList() async throws -> PluginListing {

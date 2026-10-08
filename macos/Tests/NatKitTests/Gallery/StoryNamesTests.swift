@@ -97,7 +97,7 @@ final class StoryNamesTests: XCTestCase {
         let names = try shippedNames()
         for name in [
             "sidebar-project-colours", "sidebar-project-colours-light", "titlebar-band-project-colour",
-            "project-settings-colour-chosen", "project-badges", "project-badges-light",
+            "project-settings-colour-chosen", "project-settings-runs", "project-settings-source", "project-badges", "project-badges-light",
         ] {
             XCTAssertTrue(names.contains(name), "no story \(name)")
         }

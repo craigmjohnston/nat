@@ -68,6 +68,7 @@ public protocol NatClientProtocol: Sendable {
     func natVersion() async throws -> String
     func claudeVersion() async throws -> ClaudeVersion
     func claudeUpdate() async throws -> String
+    func planFile(projectID: String) async throws -> String?
 }
 
 extension NatClientProtocol {
@@ -86,6 +87,12 @@ extension NatClientProtocol {
 
     public func claudeUpdate() async throws -> String {
         throw NatError.commandFailed("claude-update: not supported by this client")
+    }
+
+    /// The project settings sheet's Plan row: only `NatClient` and the
+    /// fixture client implement it, the same reasoning as `natVersion`.
+    public func planFile(projectID: String) async throws -> String? {
+        throw NatError.commandFailed("paths --project: not supported by this client")
     }
 
     /// A plan read that may refresh the replica first: a conformer with no

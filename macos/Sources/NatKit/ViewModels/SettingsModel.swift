@@ -75,6 +75,18 @@ public enum SettingsModel {
         "project.\(projectID).color"
     }
 
+    /// The `config-set` key for one project's name — refused by nat on a
+    /// source project, which its plugin names.
+    public static func nameKey(projectID: String) -> String {
+        "project.\(projectID).name"
+    }
+
+    /// The `config-set` key for one project's run commands: the whole list
+    /// as a JSON array, the empty string for none.
+    public static func runsKey(projectID: String) -> String {
+        "project.\(projectID).runs"
+    }
+
     /// The `config-set` writes that would carry `edited` onto `original` —
     /// one per field that actually changed, nothing for a field left alone.
     /// Order is fixed so a save always writes in the same order twice.

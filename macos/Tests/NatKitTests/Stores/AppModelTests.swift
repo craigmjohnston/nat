@@ -555,6 +555,49 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(mockReader.lastPath, "/fake/config.json")
     }
 
+    /// A project renamed in its settings sheet is called its new name on its
+    /// tab, which the sidebar row and breadcrumb read, as soon as config is
+    /// re-read; a tab config does not name keeps its own.
+    @MainActor
+    func testAppModel_reloadConfigRenamesTheTab() async {
+        let original = NatProjectConfig(
+            projects: ["proj-1": ProjectConfig(name: "Project 1", slicesDSID: "ds-1", workingDir: "/path/1")])
+        let mockReader = MockConfigReader(response: .success(original))
+        let appModel = AppModel(configReader: mockReader)
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        appModel.openUntitledTab()
+
+        mockReader.setResponse(.success(NatProjectConfig(
+            projects: ["proj-1": ProjectConfig(name: "Renamed", slicesDSID: "ds-1", workingDir: "/path/1")])))
+        await appModel.reloadConfig()
+
+        XCTAssertEqual(appModel.projectTabs.first { $0.id == "proj-1" }?.name, "Renamed")
+        XCTAssertEqual(appModel.tabName("proj-1"), "Renamed")
+        XCTAssertEqual(appModel.projectTabs.filter { $0.id != "proj-1" }.map(\.name), [AppModel.untitledName])
+    }
+
+    /// Open in Notion is offered only for a project whose plan is in Notion:
+    /// a local or source project's page-shaped ID names no page.
+    @MainActor
+    func testAppModel_notionPageOnlyForANotionProject() async {
+        let notion = "3b738308-f654-811c-948d-e1fb36f71df3"
+        let local = "4c738308-f654-811c-948d-e1fb36f71df3"
+        let source = "5d738308-f654-811c-948d-e1fb36f71df3"
+        let config = NatProjectConfig(projects: [
+            notion: ProjectConfig(name: "N", slicesDSID: "ds", workingDir: "/n"),
+            local: ProjectConfig(name: "L", workingDir: "/l", backend: .local),
+            source: ProjectConfig(name: "", workingDir: "", backend: .source, source: "shortcut"),
+        ])
+        let appModel = AppModel(configReader: MockConfigReader(response: .success(config)))
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+
+        XCTAssertEqual(appModel.notionPage(ofProject: notion), NotionPageURL.forPage(notion))
+        XCTAssertNotNil(appModel.notionPage(ofProject: notion))
+        XCTAssertNil(appModel.notionPage(ofProject: local))
+        XCTAssertNil(appModel.notionPage(ofProject: source))
+        XCTAssertNil(appModel.notionPage(ofProject: "6e738308-f654-811c-948d-e1fb36f71df3"), "no entry, no page")
+    }
+
     @MainActor
     func testAppModel_reloadConfigBeforeStartDoesNothing() async {
         let mockReader = MockConfigReader(response: .success(NatProjectConfig(projects: [:])))

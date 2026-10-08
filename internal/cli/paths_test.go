@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/store"
 )
 
 func TestPathsPrintsConfigLogDirAndNudgePath(t *testing.T) {
@@ -134,5 +138,69 @@ func TestPathsHandlesUnresolvableNudgePath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "nudge path") {
 		t.Errorf("error should mention nudge path: %v", err)
+	}
+}
+
+// With --project, a local project's plan file is in nat's data directory,
+// or the one its entry chose; a source project's likewise.
+func TestPathsPrintsAProjectsPlanFile(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Projects["Local-1"] = config.ProjectConfig{Name: "Here", Backend: config.BackendLocal}
+	cfg.Projects["chosen"] = config.ProjectConfig{Name: "There", Backend: config.BackendLocal, PlanDir: "/plans"}
+	cfg.Projects["work"] = config.ProjectConfig{Backend: config.BackendSource, Source: "demo", PlanDir: "/src"}
+	dataDir, err := store.LocalDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{
+		"local1": filepath.Join(dataDir, "local-1.db"),
+		"chosen": "/plans/chosen.db",
+		"work":   "/src/work.db",
+	} {
+		env, out := testEnv(cfg, &fakeAPI{})
+		if err := Run(context.Background(), []string{"paths", "--json", "--project", id}, env); err != nil {
+			t.Fatalf("%s: paths: %v", id, err)
+		}
+		var got pathsJSON
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatalf("%s: not JSON: %v", id, err)
+		}
+		if got.Plan != want {
+			t.Errorf("%s: plan = %q, want %q", id, got.Plan, want)
+		}
+	}
+
+	env, out := testEnv(cfg, &fakeAPI{})
+	if err := Run(context.Background(), []string{"paths", "--project", "chosen"}, env); err != nil {
+		t.Fatalf("paths: %v", err)
+	}
+	if !strings.Contains(out.String(), "Plan:    /plans/chosen.db\n") {
+		t.Errorf("output = %q, want a Plan line", out.String())
+	}
+}
+
+// A project in Notion has no plan file, so nothing is said of one.
+func TestPathsPrintsNoPlanFileForANotionProject(t *testing.T) {
+	env, out := testEnv(testConfig(t), &fakeAPI{})
+	if err := Run(context.Background(), []string{"paths", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("paths: %v", err)
+	}
+	if strings.Contains(out.String(), `"plan"`) {
+		t.Errorf("output = %s, want no plan", out.String())
+	}
+	env, out = testEnv(testConfig(t), &fakeAPI{})
+	if err := Run(context.Background(), []string{"paths", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("paths: %v", err)
+	}
+	if strings.Contains(out.String(), "Plan:") {
+		t.Errorf("output = %q, want no Plan line", out.String())
+	}
+}
+
+func TestPathsRefusesAnUnknownProject(t *testing.T) {
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
+	err := Run(context.Background(), []string{"paths", "--project", "nope"}, env)
+	if err == nil || !strings.Contains(err.Error(), "no project nope") {
+		t.Errorf("err = %v, want the unknown project named", err)
 	}
 }

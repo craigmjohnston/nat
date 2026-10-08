@@ -270,7 +270,10 @@ usage, claude-version and claude-update, which are this machine's.
 usage:
   nat                 open the board
   nat setup [--json]  install the agent skills into ~/.claude/skills
-  nat paths [--json]  print the paths to config, log dir and nudge marker file
+  nat paths [--project <id>] [--json]
+                      print the paths to config, log dir and nudge marker
+                      file, and with --project that project's plan file
+                      (none for a project in Notion)
   nat status [--json] read live tmux sessions and agent activity
   nat usage [--json]  probe Claude Code's own statusline for the account's
                       current Pro/Max rate-limit usage, via a throwaway
@@ -663,7 +666,9 @@ usage:
                       array of {label, command, scope}, scope global, slice or
                       none for both), or project.<id>.color (red, orange,
                       yellow, green, teal, blue, purple, pink, or auto for
-                      nat to choose); an empty value unsets the rest
+                      nat to choose), or project.<id>.name (not empty, and
+                      not on a source project, named by its plugin); an
+                      empty value unsets the rest
   nat help            show this message
 `
 

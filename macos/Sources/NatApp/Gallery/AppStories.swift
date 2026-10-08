@@ -2976,33 +2976,96 @@ enum AppStories {
 
         Story(
             name: "project-settings",
-            summary: "A project's settings sheet (the project menu's Project settings\u{2026}): titled with the "
-                + "project's name, one grouped form holding its working directory \u{2014} the field "
-                + "and Choose\u{2026} beside it \u{2014} and its Colour, a swatch per colour with the "
-                + "project's own ringed and its badge (NOT, in its teal) after them, then Cancel and Save.",
-            size: CGSize(width: 520, height: 260),
+            summary: "A project's settings sheet (the project menu's Project settings\u{2026}): one grouped, "
+                + "scrolling form headed by the project's Name field, then its working directory \u{2014} the "
+                + "field and Choose\u{2026} beside it \u{2014}, its Colour, a swatch per colour with the "
+                + "project's own ringed and its badge (NOT, in its teal) after them, its Plan (Notion, with "
+                + "Open in Notion) and Run commands (none yet, Add Run), Cancel and Save pinned at the foot.",
+            size: CGSize(width: 560, height: 580),
             colorScheme: .light
         ) {
-            ProjectSettingsView(
-                appModel: await Fixtures.startedAppModel(), projectID: Fixtures.projectID,
-                projectName: "notion-agent-tracker", projectTag: "NOT", client: FixtureNatClient())
+            // The fixture project's ID is no Notion page ID, which would drop
+            // Open in Notion; the row is drawn for a real page's.
+            let appModel = await Fixtures.startedAppModel()
+            let model = ProjectSettingsModel(
+                projectID: Fixtures.projectID,
+                fields: ProjectSettingsFields(projectID: Fixtures.projectID, config: appModel.config),
+                plan: .notion(page: NotionPageURL.forPage("3b738308-f654-811c-948d-e1fb36f71df3")),
+                write: { _ in }, reload: {})
+            return ProjectSettingsView(projectName: "notion-agent-tracker", projectTag: "NOT", model: model)
         },
 
         Story(
             name: "project-settings-refused",
-            summary: "The project settings sheet after a Save nat refused: the edited path kept in the "
-                + "field and nat's message under it, nothing written.",
-            size: CGSize(width: 520, height: 280),
+            summary: "The project settings sheet after a Save nat refused: the emptied name and the edited "
+                + "path kept in their fields with nat's message under each, nothing written.",
+            size: CGSize(width: 560, height: 580),
             colorScheme: .light
         ) {
             let appModel = await Fixtures.startedAppModel()
+            let nameKey = SettingsModel.nameKey(projectID: Fixtures.projectID)
             let model = ProjectSettingsModel(
-                projectID: Fixtures.projectID, config: appModel.config,
-                client: FixtureNatClient(behaviour: .refusing("working_dir: /Users/craig/nowhere is not a directory")),
+                projectID: Fixtures.projectID,
+                fields: ProjectSettingsFields(projectID: Fixtures.projectID, config: appModel.config),
+                write: { change in
+                    throw NatError.commandFailed(change.key == nameKey
+                        ? "config-set: \(nameKey) wants a name, given none"
+                        : "working_dir: /Users/craig/nowhere is not a directory")
+                },
                 reload: {})
+            model.edited.name = ""
             model.edited.workingDir = "/Users/craig/nowhere"
             _ = await model.save()
             return ProjectSettingsView(projectName: "notion-agent-tracker", projectTag: "NOT", model: model)
+        },
+
+        Story(
+            name: "project-settings-runs",
+            summary: "The settings sheet of a local project with several run commands \u{2014} global, slice "
+                + "and scopeless, each a label, a command in the mono face, a scope menu and remove, a grip to "
+                + "drag \u{2014} after a Save nat refused for a label offered twice: the rows kept as typed and "
+                + "nat's message under the section. Its Plan is Local, the plan file's path under Reveal in Finder.",
+            size: CGSize(width: 560, height: 580),
+            colorScheme: .light
+        ) {
+            let runs = [
+                RunCommand(label: "Run", command: "swift run --package-path macos gnat", scope: .global),
+                RunCommand(label: "Run", command: "NAT_BIN=$PWD/nat swift run --package-path macos gnat", scope: .slice),
+                RunCommand(label: "Gallery", command: "swift run --package-path macos gnat --all --out /tmp/gallery"),
+                RunCommand(label: "Test", command: "go test ./..."),
+            ]
+            let model = ProjectSettingsModel(
+                projectID: Fixtures.projectID,
+                fields: ProjectSettingsFields(
+                    name: "notion-agent-tracker", workingDir: "/Users/craig/Projects/notion-agent-tracker",
+                    color: .teal, runs: runs),
+                plan: .local(file: Fixtures.planFile(projectID: Fixtures.projectID)),
+                write: { _ in
+                    throw NatError.commandFailed(
+                        "config-set: run 4: the label \"Gallery\" is offered twice in the titlebar")
+                },
+                reload: {})
+            model.edited.runs[3].label = "Gallery"
+            _ = await model.save()
+            // Scrolled to the foot, where the refusal is.
+            return ProjectSettingsView(projectName: "notion-agent-tracker", projectTag: "NOT", model: model)
+                .defaultScrollAnchor(.bottom)
+        },
+
+        Story(
+            name: "project-settings-source",
+            summary: "A source project's settings sheet: its plugin's title as its Name, read-only, with a "
+                + "note that the plugin names it; the working directory; Plan, Source via the plugin; no Colour "
+                + "and no Run commands.",
+            size: CGSize(width: 560, height: 580),
+            colorScheme: .light
+        ) {
+            let model = ProjectSettingsModel(
+                projectID: Fixtures.projectID,
+                fields: ProjectSettingsFields(workingDir: ""),
+                takesColor: false, isSource: true, plan: .source(plugin: "shortcut"),
+                write: { _ in }, reload: {})
+            return ProjectSettingsView(projectName: "Shortcut", projectTag: "", model: model)
         },
 
         Story(

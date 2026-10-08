@@ -968,7 +968,8 @@ public final class AppModel {
     }
 
     /// Re-read config from wherever it was last successfully loaded, without
-    /// touching project tabs, the active project or any timer: the settings
+    /// opening or closing a tab or touching the active project or any timer
+    /// — only each open project's name is taken afresh: the settings
     /// scene calls this after a successful save so poll cadence, the model
     /// pairs and a project's working directory pick up the new values on
     /// their own next use, without restarting the app.
@@ -980,6 +981,11 @@ public final class AppModel {
         guard let path = loadedConfigPath else { return }
         guard let reloaded = try? await configReader.readConfig(from: path) else { return }
         self.config = reloaded
+        // A project renamed in its settings sheet is called its new name on
+        // its tab, sidebar row and breadcrumb at once — each reads the tab's.
+        projectTabs = projectTabs.map { tab in
+            reloaded.projects[tab.id] == nil ? tab : (id: tab.id, name: tabName(tab.id, fallback: tab.name))
+        }
     }
 
     /// gnat never picks a colour: every config project that takes one
@@ -1254,6 +1260,15 @@ public final class AppModel {
                 isSource: config?.projects[tab.id]?.backend == .source,
                 color: projectColor(ofProject: tab.id))
         }
+    }
+
+    /// The Notion page a project's plan is kept on, for its menu's Open in
+    /// Notion: nil unless its config entry puts the plan in Notion — a local
+    /// project's ID is page-shaped too, but names no page — and nil for an
+    /// ID that is no page ID (`NotionPageURL.forPage`).
+    public func notionPage(ofProject projectID: String) -> URL? {
+        guard config?.projects[projectID]?.backend == .notion else { return nil }
+        return NotionPageURL.forPage(projectID)
     }
 
     /// The colour a project's config entry holds — its badge's — nil for one

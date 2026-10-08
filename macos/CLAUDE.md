@@ -101,19 +101,32 @@ reads `Bundle.main` (`AppVersion`, `dev` where unset) and `nat --version`
 `settings-sources*`, `settings-about`. **Per-project settings are not
 here**: the project menu's Project settings… (a project row's right-click
 or its hover-only three-dot) opens `ProjectSettingsView`, a sheet on the
-main window titled with the project's name — one grouped `Form`, no
-sidebar or tabs — holding the working directory (field + Choose…) and, under it, Colour:
+main window — one grouped `Form` that scrolls, no sidebar or tabs, Cancel
+and Save pinned at its foot — headed by Name (a field; a source project's
+plugin title as text, `ProjectSettingsModel.isSource`, nat refusing a
+rename there), then the working directory (field + Choose…), then Colour:
 one swatch per `ProjectColor` in nat's order (the picked one ringed in the
 accent, its name its tooltip and accessibility label) then the project's
 badge in the pick (`ProjectBadgeView`, the tag given by whoever opens the
 sheet) — no "auto", a colour is always set; no row at all for the
-scratch or a source project (`ProjectSettingsModel.takesColor`). Its
-logic is `ProjectSettingsModel` (NatKit, tested): the same one `config-set`
-per changed key (`SettingsModel.workingDirKey`, `colorKey`), a refusal kept under its
-row with the baseline as read, `AppModel.reloadConfig` after any write so
-Reveal and launches use the new path, and every badge its new colour, at once. A further per-project row is
+scratch or a source project (`ProjectSettingsModel.takesColor`); then a
+read-only Plan row (`ProjectPlanLocation`: Notion with Open in Notion,
+Local with Reveal in Finder and the plan file `nat paths --project` gives
+— `NatClient.planFile`, read once the sheet is up — or Source via the
+plugin; nothing here moves a plan); then Run commands (not for a source
+project) — a row per `RunCommand`, label, command in the mono face, a
+Both/Global/Slice scope menu, remove, a grip whose row dropped on another
+takes its place (`moveRun`), and Add Run — written whole as one
+`project.<id>.runs`. Its logic is `ProjectSettingsModel` (NatKit, tested):
+the same one `config-set` per changed key (`SettingsModel.nameKey`,
+`workingDirKey`, `colorKey`, `runsKey`), a refusal kept under its row (the
+runs' under the section, the rows as typed) with the baseline as read,
+`AppModel.reloadConfig` after any write so Reveal and launches use the new
+path, every badge its new colour and every tab, sidebar row and breadcrumb
+the new name (it takes each open tab's name afresh), at once. A further per-project row is
 a `ProjectSettingsFields` field and a row in the sheet. Stories:
-`project-settings`, `project-settings-refused`, `project-settings-colour-chosen`. Project, milestone and task
+`project-settings`, `project-settings-refused`, `project-settings-colour-chosen`,
+`project-settings-runs`, `project-settings-source`. Project, milestone and task
 rows in the sidebar tree each carry that hover-only three-dot
 (`RowMenuButton`), opening exactly the row's right-click menu — beside a
 project's `+`, in a milestone's count slot, in a kept slot at a task's
@@ -768,7 +781,8 @@ keep it so. Stories: `window-visuals`, `window-visuals-comments`,
 `visuals-pair-size-mismatch`.
 
 **Run commands** (`docs/run-commands.md`): a project's `runs` live in its
-config entry alone (`ProjectConfig.runs`, `RunCommand`) — no settings screen.
+config entry alone (`ProjectConfig.runs`, `RunCommand`), edited in the
+project settings sheet's Run commands (see **Settings and Done means merged**).
 The titlebar's play button (`TitlebarRunButton`, beside Settings) opens
 `RunTreePicker`, `CrumbTreePicker`'s shape — every project with runs
 (`AppModel.runProjects`), then the open one's runs; a handed-back slice's

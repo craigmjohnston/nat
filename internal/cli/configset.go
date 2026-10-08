@@ -13,7 +13,7 @@ import (
 )
 
 // The keys config-set answers to: the settings form's own fields, plus one
-// project's working directory, run commands and colour, addressed by its page ID. Nothing else in the
+// project's working directory, run commands, colour and name, addressed by its page ID. Nothing else in the
 // file is reachable this way — see configShow's doc comment for why.
 const (
 	keySplitPercent     = "agent_split_percent"
@@ -26,6 +26,7 @@ const (
 	workingDirKeySuffix = ".working_dir"
 	runsKeySuffix       = ".runs"
 	colorKeySuffix      = ".color"
+	nameKeySuffix       = ".name"
 	// autoColor is the value that clears a project's colour, so the save that
 	// follows picks one afresh ([config.Config.AssignColors]).
 	autoColor = "auto"
@@ -121,6 +122,8 @@ func applyConfigSet(cfg *config.Config, key, value string) error {
 		return applyProjectRuns(cfg, key, value)
 	case strings.HasPrefix(key, projectKeyPrefix) && strings.HasSuffix(key, colorKeySuffix):
 		return applyProjectColor(cfg, key, value)
+	case strings.HasPrefix(key, projectKeyPrefix) && strings.HasSuffix(key, nameKeySuffix):
+		return applyProjectName(cfg, key, value)
 	default:
 		return usageErrorf("config-set: unknown key %q", key)
 	}
@@ -199,6 +202,31 @@ func applyProjectColor(cfg *config.Config, key, value string) error {
 	if value == autoColor {
 		p.Color = ""
 	}
+	cfg.Projects[pid] = p
+	return nil
+}
+
+// applyProjectName writes value, trimmed, as the name of the project
+// project.<id>.name names, by [applyProjectWorkingDir]'s addressing. The
+// empty string is refused rather than unsetting it — a project is never left
+// with no name to be called by — and so is any name for a source project,
+// which is called what its plugin's describe calls itself and never what its
+// entry says.
+func applyProjectName(cfg *config.Config, key, value string) error {
+	id := strings.TrimSuffix(strings.TrimPrefix(key, projectKeyPrefix), nameKeySuffix)
+	pid, err := projectKeyFor(*cfg, id)
+	if err != nil {
+		return err
+	}
+	p := cfg.Projects[pid]
+	if p.IsSource() {
+		return fmt.Errorf("config-set: %s is a source project, named by its plugin, not its config entry", id)
+	}
+	name := strings.TrimSpace(value)
+	if name == "" {
+		return usageErrorf("config-set: %s wants a name, given none", key)
+	}
+	p.Name = name
 	cfg.Projects[pid] = p
 	return nil
 }
