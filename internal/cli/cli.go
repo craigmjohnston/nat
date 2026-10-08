@@ -191,6 +191,9 @@ type Env struct {
 	NewPlugins NewPluginsFunc
 	// Out is where a command writes its output.
 	Out io.Writer
+	// Err is where a command writes a warning that is not its output — stderr
+	// in production; nil drops them.
+	Err io.Writer
 	// In is where a command reads input a flag was not given for; it is stdin
 	// in production, and may be nil where nothing is ever piped in.
 	In io.Reader

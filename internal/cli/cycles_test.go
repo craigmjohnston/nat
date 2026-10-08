@@ -145,26 +145,111 @@ func TestSliceDependsWritesADependencyOnASliceOutsideThePlan(t *testing.T) {
 	}
 }
 
-// A cycle the plan already holds is one the document would leave behind, so it
-// is refused too — adding work to a plan nobody can finish only buries the
-// mistake deeper, and this is the last moment anybody is looking.
-func TestPlanApplyRefusesACycleTheBoardAlreadyHas(t *testing.T) {
-	api := planAPI(1)
+// standingCycle puts a cycle on the board that no nat command made: Depends on
+// is an ordinary property, and Notion's own UI writes it with nothing checked.
+func standingCycle(api *fakeAPI) {
 	boardSlices(api)
 	dependsOn(api, depBlocker, depSpare)
 	dependsOn(api, depSpare, depBlocker)
+}
+
+// A cycle already on the board that the document adds no edge to is not the
+// document's: it is filed, and the cycle is named on stderr as still standing,
+// rather than every plan on the project being refused until somebody breaks it.
+func TestPlanApplyFilesUnrelatedWorkBesideACycleTheBoardAlreadyHas(t *testing.T) {
+	api := planAPI(1)
+	standingCycle(api)
+	env, _ := testEnv(testConfig(t), api)
+	var stderr strings.Builder
+	env.Err = &stderr
+	env.In = strings.NewReader(`{"slices": [{"title": "Frame the board", "milestone": "M2: Board"}]}`)
+
+	if err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+	if len(api.creates) != 1 {
+		t.Errorf("creates = %+v, want the one slice filed", api.creates)
+	}
+	want := "warning: the plan leaves 1 cycle of dependencies already on the board as it found them, " +
+		"and no slice in a cycle can ever be unblocked: " +
+		`"Style the board" → "Queued work" → "Style the board" — nat slice-depends --clear breaks one` + "\n"
+	if stderr.String() != want {
+		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+// Waiting on a slice in a standing cycle puts the new slice behind it, not in
+// it: no edge the document adds goes round, so it is filed as well.
+func TestPlanApplyFilesADependencyOnACycleTheBoardAlreadyHas(t *testing.T) {
+	api := planAPI(1)
+	standingCycle(api)
 	doc := `{
 	  "slices": [{"title": "Frame the board", "milestone": "M2: Board", "depends_on": ["Style the board"]}]
 	}`
 
-	_, err := runPlan(t, api, doc)
+	if _, err := runPlan(t, api, doc); err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+	if len(api.creates) != 1 {
+		t.Errorf("creates = %+v, want the slice filed", api.creates)
+	}
+}
 
-	if err == nil || !strings.Contains(err.Error(),
-		`"Style the board" → "Queued work" → "Style the board"`) {
-		t.Fatalf("err = %v, want the cycle already on the board named", err)
+// Restating a dependency the cycle already goes round leaves the board exactly
+// as the document found it, so it is no edge of the document's.
+func TestPlanApplyFilesARestatedEdgeOfAStandingCycle(t *testing.T) {
+	api := planAPI(0)
+	standingCycle(api)
+	doc := `{"dependencies": [{"slice": "Queued work", "on": ["Style the board"]}]}`
+
+	if _, err := runPlan(t, api, doc); err != nil {
+		t.Fatalf("plan-apply: %v", err)
+	}
+}
+
+// A cycle the document closes through a standing one is the document's all the
+// same — even where a depth-first walk would only ever meet the standing one —
+// and is refused naming the way round the document's own edges take.
+func TestPlanApplyRefusesACycleClosedThroughAStandingOne(t *testing.T) {
+	api := planAPI(1)
+	standingCycle(api)
+	env, _ := testEnv(testConfig(t), api)
+	var stderr strings.Builder
+	env.Err = &stderr
+	env.In = strings.NewReader(`{
+	  "slices": [{"title": "Frame the board", "milestone": "M2: Board", "depends_on": ["Queued work"]}],
+	  "dependencies": [{"slice": "Style the board", "on": ["Frame the board"]}]
+	}`)
+
+	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
+
+	if err == nil || !strings.Contains(err.Error(), "would leave 1 cycle of dependencies") ||
+		!strings.Contains(err.Error(), `"Frame the board" → "Queued work" → "Style the board" → "Frame the board"`) {
+		t.Fatalf("err = %v, want the document's cycle alone named", err)
 	}
 	if len(api.creates) != 0 || len(api.updates) != 0 {
 		t.Errorf("creates = %+v, updates = %+v, want nothing written", api.creates, api.updates)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want no warning beside a refusal", stderr.String())
+	}
+}
+
+// A document can close a cycle among slices already on the board alone,
+// through the dependencies list, and that cycle is its own to be refused over.
+func TestPlanApplyRefusesACycleItClosesAmongBoardSlices(t *testing.T) {
+	api := planAPI(0)
+	boardSlices(api)
+	dependsOn(api, depBlocker, depSpare)
+	doc := `{"dependencies": [{"slice": "Queued work", "on": ["Style the board"]}]}`
+
+	_, err := runPlan(t, api, doc)
+
+	if err == nil || !strings.Contains(err.Error(), `"Queued work" → "Style the board" → "Queued work"`) {
+		t.Fatalf("err = %v, want the cycle the document closes named", err)
+	}
+	if len(api.updates) != 0 {
+		t.Errorf("updates = %+v, want nothing written", api.updates)
 	}
 }
 

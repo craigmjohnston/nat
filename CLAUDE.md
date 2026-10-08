@@ -288,7 +288,9 @@ unread reciprocal, there only so Notion has somewhere to mirror the far end
 read as a mutual block). A slice is blocked while anything it names isn't
 Done; an unreadable dependency is logged and never counted, so a trashed
 page can't wedge the plan forever. A write that would leave a cycle is
-refused before it happens (`plan-apply`, `slice-depends --on`); a cycle
+refused before it happens (`plan-apply`, `slice-depends --on`) — `plan-apply`
+only over a cycle an edge it adds goes round, a standing one it leaves as it
+found warned of on stderr (`Env.Err`); a cycle
 already on the board is reported as one, not an ordinary wait, everywhere it
 matters (status line, launch refusal, `next-slice`). `next-slice` steps over
 a blocked slice; `start-slice`, pointed at one slice, refuses it by name.

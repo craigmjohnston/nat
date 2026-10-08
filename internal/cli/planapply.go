@@ -77,6 +77,7 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	warnStandingCycles(env.Err, targets.standing)
 
 	applied, err := applyPlan(ctx, st, sp, shape, p, targets, shape.Milestones)
 	// A run that failed partway has still written what it wrote — the error
@@ -253,6 +254,10 @@ type planTargets struct {
 	slices  []sliceTarget
 	filed   []filedDeps
 	changes planChanges
+	// standing is every cycle already on the board that the plan leaves as it
+	// found it, read out — not the plan's to refuse over, but still a tangle
+	// somebody has to break.
+	standing []string
 }
 
 // validateAgainstProject reads a project's current shape — and, only if the
@@ -363,10 +368,11 @@ func validatePlan(p plan, existing []domain.Milestone, existingSlices []domain.S
 	if err != nil {
 		return planTargets{}, err
 	}
-	if err := checkPlanCycles(p, board, targets, filed); err != nil {
+	standing, err := checkPlanCycles(p, board, targets, filed)
+	if err != nil {
 		return planTargets{}, err
 	}
-	return planTargets{slices: targets, filed: filed, changes: changes}, nil
+	return planTargets{slices: targets, filed: filed, changes: changes, standing: standing}, nil
 }
 
 // resolveDependencies turns every depends_on title into the slice it names,
@@ -876,6 +882,19 @@ func pageRef(id, url string) string {
 	return id
 }
 
+// warnStandingCycles tells whoever ran plan-apply of the cycles already on the
+// board that the plan was let through beside: nothing the document did, but
+// no slice in one can ever be unblocked until somebody clears an edge of it.
+// A warning that will not write is nothing to fail a filed plan over.
+func warnStandingCycles(w io.Writer, standing []string) {
+	if w == nil || len(standing) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "warning: the plan leaves %d %s of dependencies already on the board as it found them, "+
+		"and no slice in a cycle can ever be unblocked: %s — nat slice-depends --clear breaks one\n",
+		len(standing), plural("cycle", len(standing)), strings.Join(standing, "; "))
+}
+
 // planNodeKey names one slice of the graph a plan is checked over. A slice the
 // plan has yet to create has no page ID to key it by, so it is keyed by its
 // place in the document; a normalised ID is hex, so the two can never collide.
@@ -893,10 +912,17 @@ func planNodeKey(d planDep) string {
 // those — because a plan closes a cycle just as easily through work already on
 // the board as through its own.
 //
+// Only a cycle some edge the document adds goes round is the document's: one
+// entirely among slices already on the board — Depends on is an ordinary
+// property, so one can arrive from Notion with no nat command consulted — is
+// left exactly as the plan found it, and refusing over it would stop every
+// plan on the project, however unrelated, until somebody broke it. Those are
+// returned instead, read out, for the caller to warn of.
+//
 // It runs as part of validation, so a cyclic document is refused before the
 // first page is written: half a plan is bad enough without half of it being
 // unworkable.
-func checkPlanCycles(p plan, existingSlices []domain.Slice, targets []sliceTarget, filed []filedDeps) error {
+func checkPlanCycles(p plan, existingSlices []domain.Slice, targets []sliceTarget, filed []filedDeps) ([]string, error) {
 	edges := map[string][]string{}
 	names := map[string]string{}
 	for i, s := range p.Slices {
@@ -912,6 +938,9 @@ func checkPlanCycles(p plan, existingSlices []domain.Slice, targets []sliceTarge
 	// A dependency naming a page the project cannot see leads nowhere: it has no
 	// dependencies here, so it can be in no cycle, and Blockers passes over it
 	// for the same reason.
+	// added is every edge the document asks for, in the order it asks: what a
+	// cycle has to go round to be the document's.
+	var added [][2]string
 	edge := func(from, to string) {
 		if _, ok := edges[to]; ok {
 			edges[from] = append(edges[from], to)
@@ -920,7 +949,9 @@ func checkPlanCycles(p plan, existingSlices []domain.Slice, targets []sliceTarge
 	for i, t := range targets {
 		from := planNodeKey(planDep{newIndex: i})
 		for _, d := range t.dependsOn {
-			edge(from, planNodeKey(d))
+			to := planNodeKey(d)
+			edge(from, to)
+			added = append(added, [2]string{from, to})
 		}
 	}
 	for _, s := range existingSlices {
@@ -931,20 +962,85 @@ func checkPlanCycles(p plan, existingSlices []domain.Slice, targets []sliceTarge
 	for _, f := range filed {
 		from := domain.NormaliseID(f.slice.ID)
 		for _, d := range f.add {
-			edge(from, planNodeKey(d))
+			// A dependency the slice already has is no edge the document adds:
+			// restating one leaves the board as it was.
+			to := planNodeKey(d)
+			edge(from, to)
+			if !dependsOnKey(f.slice, to) {
+				added = append(added, [2]string{from, to})
+			}
 		}
 	}
 
-	cycles := domain.GraphCycles(edges)
+	var cycles [][]string
+	gone := map[[2]string]bool{}
+	for _, e := range added {
+		if gone[e] {
+			continue
+		}
+		back := wayBack(edges, e[1], e[0])
+		if back == nil {
+			continue
+		}
+		cycle := append([]string{e[0]}, back[:len(back)-1]...)
+		for i, from := range cycle {
+			gone[[2]string{from, cycle[(i+1)%len(cycle)]}] = true
+		}
+		cycles = append(cycles, cycle)
+	}
+
+	var standing []string
+	for _, cycle := range domain.Cycles(existingSlices) {
+		standing = append(standing, domain.CyclePath(quoteAll(domain.SliceNames(cycle))))
+	}
 	if len(cycles) == 0 {
-		return nil
+		return standing, nil
 	}
 	read := make([]string, len(cycles))
 	for i, cycle := range cycles {
 		read[i] = domain.CyclePath(quoteAll(cycleNames(newestFirst(cycle), names)))
 	}
-	return fmt.Errorf("the plan would leave %d %s of dependencies, and no slice in a cycle can ever be unblocked: %s",
+	return nil, fmt.Errorf("the plan would leave %d %s of dependencies, and no slice in a cycle can ever be unblocked: %s",
 		len(cycles), plural("cycle", len(cycles)), strings.Join(read, "; "))
+}
+
+// dependsOnKey reports whether a slice already waits on the node a graph key
+// names.
+func dependsOnKey(s domain.Slice, key string) bool {
+	for _, id := range s.DependsOn {
+		if domain.NormaliseID(id) == key {
+			return true
+		}
+	}
+	return false
+}
+
+// wayBack is the shortest way through the graph from one node to another —
+// from first, to last, one node where they are the same — or nil where there
+// is none. An edge u → v closes a cycle exactly when there is a way from v
+// back to u.
+func wayBack(edges map[string][]string, from, to string) []string {
+	prev := map[string]string{from: from}
+	queue := []string{from}
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+		if node == to {
+			path := []string{node}
+			for node != from {
+				node = prev[node]
+				path = append([]string{node}, path...)
+			}
+			return path
+		}
+		for _, next := range edges[node] {
+			if _, seen := prev[next]; !seen {
+				prev[next] = node
+				queue = append(queue, next)
+			}
+		}
+	}
+	return nil
 }
 
 // newestFirst reads a cycle out from a slice the plan itself creates where one
