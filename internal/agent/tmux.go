@@ -482,14 +482,16 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 
 // Launch starts a detached tmux session named session, with workdir as its
 // working directory, running an agent seeded with the prompt in promptFile for
-// the slice with page ID sliceID, as the model and effort m asks for.
+// the slice with page ID sliceID, as the model and effort m asks for. opening
+// is the one line the pane shows in the brief's place where the embedded mod
+// carries the brief ([agentCommand]).
 //
 // The pane the session starts in is tagged with sliceID, which is what
 // [Tmux.LiveSlices] reads the running agents back out of. A session whose pane
 // could not be tagged is left running — its agent is already working — but the
 // failure is reported, because until it is tagged nothing will find it again.
-func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel) error {
-	out, err := t.run(launchArgs(session, workdir, promptFile, m, t.supportsSessionEnv(), prepareStatusSink(session, m), prepareMod())...)
+func (t *Tmux) Launch(session, workdir, promptFile, opening, sliceID string, m config.AgentModel) error {
+	out, err := t.run(launchArgs(session, workdir, promptFile, opening, m, t.supportsSessionEnv(), prepareStatusSink(session, m), prepareMod())...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -508,13 +510,14 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.Age
 // the prompt reaches it — in a single spot, ready for per-project agent
 // definitions to vary it later.
 //
-// The prompt is passed as a positional argument read back from the file rather
-// than inlined, so a long prompt cannot run into the argv size limit. The new
+// The prompt reaches the agent from the file rather than inlined — by path to
+// the mod, else as a positional argument read back from it ([agentCommand]) —
+// so a long prompt cannot run into the argv size limit. The new
 // session prints its pane's ID, which is the handle the slice tag goes on:
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
-func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, sessionEnv bool) []string {
-	return launchArgs(session, workdir, promptFile, m, sessionEnv, "", prepareMod())
+func LaunchArgs(session, workdir, promptFile, opening string, m config.AgentModel, sessionEnv bool) []string {
+	return launchArgs(session, workdir, promptFile, opening, m, sessionEnv, "", prepareMod())
 }
 
 // noUpdates is the variable every Claude Code session nat launches is started
@@ -551,7 +554,7 @@ func agentEnvArgs(session string, sessionEnv bool) []string {
 // launchArgs is [LaunchArgs] with the file the session's statusline is teed
 // into (see [prepareStatusSink]) and the mod folder it loads (see
 // [prepareMod]); "" launches without that statusline or that mod.
-func launchArgs(session, workdir, promptFile string, m config.AgentModel, sessionEnv bool, sink, mod string) []string {
+func launchArgs(session, workdir, promptFile, opening string, m config.AgentModel, sessionEnv bool, sink, mod string) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
@@ -560,7 +563,7 @@ func launchArgs(session, workdir, promptFile string, m config.AgentModel, sessio
 	args = append(args, agentEnvArgs(session, sessionEnv)...)
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", agentCommand(workdir, promptFile, m, sink, mod),
+		"sh", "-c", agentCommand(workdir, promptFile, opening, m, sink, mod),
 	)
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
@@ -839,9 +842,23 @@ func modelFlags(m config.AgentModel, sink, mod string) string {
 // Either half of the model may be unset, and an unset one contributes no flag
 // at all rather than an empty value: Claude Code then decides for itself,
 // which is what it did before there was anywhere to say otherwise.
-func agentCommand(workdir, promptFile string, m config.AgentModel, sink, mod string) string {
-	return inWorkdir(workdir, fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m, sink, mod), shellQuote(promptFile)))
+//
+// Where the mod was written (mod non-empty), the brief goes by path, not
+// argv: `NAT_BRIEF=<promptFile>`, set in this command so no tmux -e is
+// involved, and the mod appends the file to the first message's context
+// blocks, which the pane never draws; claude's positional prompt is opening
+// alone. With no mod there is nothing to read the variable, so the brief is
+// the positional prompt, read back from the file. Verified live on 2.1.294:
+// a compaction re-reads the file, so it stays where [WritePromptFile] put it.
+func agentCommand(workdir, promptFile, opening string, m config.AgentModel, sink, mod string) string {
+	if mod == "" {
+		return inWorkdir(workdir, fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m, sink, mod), shellQuote(promptFile)))
+	}
+	return inWorkdir(workdir, briefEnv+"="+shellQuote(promptFile)+" claude"+modelFlags(m, sink, mod)+" "+shellQuote(opening))
 }
+
+// briefEnv is the variable the embedded mod reads a session's brief file from.
+const briefEnv = "NAT_BRIEF"
 
 // inWorkdir prefixes command with a cd into workdir, so the shell a session
 // runs moves there itself rather than trusting new-session's -c alone. On a

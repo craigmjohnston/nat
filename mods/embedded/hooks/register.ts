@@ -94,6 +94,25 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // The session's brief, which nat leaves in a file (`NAT_BRIEF`) rather than
+  // in argv, rides the first user message as a context block beside
+  // CLAUDE.md's: the model reads it, the pane never draws it, and a
+  // compaction or `/clear` re-reads it here. The pane shows only nat's one
+  // opening line. A brief that cannot be read is logged and left out — the
+  // agent then has the opening line alone and asks, a visible failure.
+  on('prompt.context', async ($, e, next) => {
+    const path = await $.env.get('NAT_BRIEF')
+    if (!path) return next(e)
+    let text: string
+    try {
+      text = await $.fs.read(path)
+    } catch (err) {
+      $.ui.log(`agent brief not read: ${String(err)}`, { to: 'debug' })
+      return next(e)
+    }
+    return next({ ...e, blocks: [...e.blocks, { name: 'natBrief', text }] })
+  })
+
   // The dim `? for shortcuts` / `esc to interrupt` line under the prompt
   // draws empty. It is also the one visible mark that a session loaded this
   // mod.
