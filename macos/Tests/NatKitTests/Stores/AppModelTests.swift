@@ -555,6 +555,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(mockReader.lastPath, "/fake/config.json")
     }
 
+    /// A project renamed in its settings sheet is called its new name on its
+    /// tab, which the sidebar row and breadcrumb read, as soon as config is
+    /// re-read; a tab config does not name keeps its own.
+    @MainActor
+    func testAppModel_reloadConfigRenamesTheTab() async {
+        let original = NatProjectConfig(
+            projects: ["proj-1": ProjectConfig(name: "Project 1", slicesDSID: "ds-1", workingDir: "/path/1")])
+        let mockReader = MockConfigReader(response: .success(original))
+        let appModel = AppModel(configReader: mockReader)
+        await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
+        appModel.openUntitledTab()
+
+        mockReader.setResponse(.success(NatProjectConfig(
+            projects: ["proj-1": ProjectConfig(name: "Renamed", slicesDSID: "ds-1", workingDir: "/path/1")])))
+        await appModel.reloadConfig()
+
+        XCTAssertEqual(appModel.projectTabs.first { $0.id == "proj-1" }?.name, "Renamed")
+        XCTAssertEqual(appModel.tabName("proj-1"), "Renamed")
+        XCTAssertEqual(appModel.projectTabs.filter { $0.id != "proj-1" }.map(\.name), [AppModel.untitledName])
+    }
+
     @MainActor
     func testAppModel_reloadConfigBeforeStartDoesNothing() async {
         let mockReader = MockConfigReader(response: .success(NatProjectConfig(projects: [:])))

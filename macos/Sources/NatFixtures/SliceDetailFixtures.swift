@@ -451,6 +451,12 @@ extension Fixtures {
         )
     }
 
+    /// Where nat's data directory keeps a local project's plan file, as `nat
+    /// paths --project` would say it.
+    public static func planFile(projectID: String) -> String {
+        "/Users/craig/Library/Application Support/notion-agent-tracker/plans/\(projectID.lowercased()).db"
+    }
+
     /// The same config with a second project on it. One project draws no
     /// close button at all (`ProjectTabRules.showsClose`), so this is what a
     /// story needs to show the tab strip as the user usually has it: a ✕ on

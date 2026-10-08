@@ -968,7 +968,8 @@ public final class AppModel {
     }
 
     /// Re-read config from wherever it was last successfully loaded, without
-    /// touching project tabs, the active project or any timer: the settings
+    /// opening or closing a tab or touching the active project or any timer
+    /// — only each open project's name is taken afresh: the settings
     /// scene calls this after a successful save so poll cadence, the model
     /// pairs and a project's working directory pick up the new values on
     /// their own next use, without restarting the app.
@@ -980,6 +981,11 @@ public final class AppModel {
         guard let path = loadedConfigPath else { return }
         guard let reloaded = try? await configReader.readConfig(from: path) else { return }
         self.config = reloaded
+        // A project renamed in its settings sheet is called its new name on
+        // its tab, sidebar row and breadcrumb at once — each reads the tab's.
+        projectTabs = projectTabs.map { tab in
+            reloaded.projects[tab.id] == nil ? tab : (id: tab.id, name: tabName(tab.id, fallback: tab.name))
+        }
     }
 
     /// gnat never picks a colour: every config project that takes one

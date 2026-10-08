@@ -44,7 +44,9 @@ where the caller meant.
   array, `config.ValidRuns`) and `.color` (a `config.ProjectColors` name, or
   `auto` to clear it so the save picks one; anything else, the empty string
   included, a usage error; the report names what auto chose; refused for the
-  scratch project and a source project, which take none — `Config.Colorable`) — do their own
+  scratch project and a source project, which take none — `Config.Colorable`)
+  and `.name` (trimmed; empty a usage error, refused on a source project,
+  which its plugin names) — do their own
   copy of this match (`projectKeyFor`) against the config already in memory,
   rather than calling `namedProject` and re-reading the file they write back.
 
@@ -133,7 +135,9 @@ comment, never shared by refactoring into a common import:
 ## Command reference
 
 Reads only, no `--project` needed: `setup` (installs skills, talks to
-neither Notion nor config), `paths` (prints config/log/nudge paths),
+neither Notion nor config), `paths` (prints config/log/nudge paths; with
+`--project`, matched by `namedProject`, also that project's plan file —
+`store.PlanPath`, `plan` in JSON — none for a Notion project),
 `status` (live tmux sessions + activity, no Notion at all; `--json` also gives each agent's `model`, `effort` and `context_percent` from its teed statusline — see `internal/agent/CLAUDE.md` — each omitted when unknown), `usage` (see
 below — a property of the logged-in Claude account, not of any project),
 `claude-version` (`claudeversion.go`: `installed` the first token of `claude

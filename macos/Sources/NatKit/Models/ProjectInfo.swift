@@ -204,17 +204,21 @@ public struct NatPaths: Codable, Equatable, Sendable {
     public let config: String
     public let logDir: String
     public let nudge: String
+    /// A project's plan file, where `--project` named one that has a file.
+    public let plan: String?
 
     enum CodingKeys: String, CodingKey {
         case config
         case logDir = "log_dir"
         case nudge
+        case plan
     }
 
-    public init(config: String, logDir: String, nudge: String) {
+    public init(config: String, logDir: String, nudge: String, plan: String? = nil) {
         self.config = config
         self.logDir = logDir
         self.nudge = nudge
+        self.plan = plan
     }
 }
 

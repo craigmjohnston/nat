@@ -207,6 +207,14 @@ public final class NatClient: Sendable {
         return try decodeJSON(NatPaths.self, from: output)
     }
 
+    /// Where a project's plan file is kept — `nat paths --project <id>`'s
+    /// `plan`, the plan directory its entry chose or else nat's own data
+    /// directory — and nil for a project in Notion, which has none.
+    public func planFile(projectID: String) async throws -> String? {
+        let output = try await runNat(arguments: ["paths", "--project", projectID, "--json"])
+        return try decodeJSON(NatPaths.self, from: output).plan
+    }
+
     /// Get the live status of all running agents.
     ///
     /// - Returns: Array of AgentStatus for all running agents (gone agents omitted)
