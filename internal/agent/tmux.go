@@ -489,8 +489,7 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 // could not be tagged is left running — its agent is already working — but the
 // failure is reported, because until it is tagged nothing will find it again.
 func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel) error {
-	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
-	out, err := t.run(launchArgs(session, workdir, promptFile, m, carryEnv, prepareStatusSink(session, m), prepareMod())...)
+	out, err := t.run(launchArgs(session, workdir, promptFile, m, t.supportsSessionEnv(), prepareStatusSink(session, m), prepareMod())...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -514,22 +513,49 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.Age
 // session prints its pane's ID, which is the handle the slice tag goes on:
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
-func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, carryEnv bool) []string {
-	return launchArgs(session, workdir, promptFile, m, carryEnv, "", prepareMod())
+func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, sessionEnv bool) []string {
+	return launchArgs(session, workdir, promptFile, m, sessionEnv, "", prepareMod())
+}
+
+// noUpdates is the variable every Claude Code session nat launches is started
+// with. It blocks Claude Code's own update paths in that session, and with
+// them the "Update available! Run: brew upgrade …" line that otherwise shows
+// in every agent pane at once — gnat says once instead that a newer Claude
+// Code exists (`nat claude-version`), and updates it from nat's own process,
+// which this does not reach. Verified live on 2.1.290 under a Homebrew cask:
+// the line shows without it and not with it. DISABLE_AUTOUPDATER leaves the
+// line up, and CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, which also hides
+// it, turns off feature flags and with them Remote Control. Only sessions nat
+// launches carry it: the user's own terminals are untouched.
+const noUpdates = "DISABLE_UPDATES=1"
+
+// agentEnvArgs is the -e flags an agent session's new-session carries where
+// sessionEnv says this tmux takes them ([Tmux.supportsSessionEnv]): the
+// launching process's PATH — so the agent's nat commands resolve whoever
+// started the tmux server; an empty one writes nothing rather than clobbering
+// the server's — and [noUpdates]. An older tmux gets neither: it loses the
+// quiet, never the launch.
+func agentEnvArgs(sessionEnv bool) []string {
+	if !sessionEnv {
+		return nil
+	}
+	var args []string
+	if path := os.Getenv("PATH"); path != "" {
+		args = append(args, "-e", "PATH="+path)
+	}
+	return append(args, "-e", noUpdates)
 }
 
 // launchArgs is [LaunchArgs] with the file the session's statusline is teed
 // into (see [prepareStatusSink]) and the mod folder it loads (see
 // [prepareMod]); "" launches without that statusline or that mod.
-func launchArgs(session, workdir, promptFile string, m config.AgentModel, carryEnv bool, sink, mod string) []string {
+func launchArgs(session, workdir, promptFile string, m config.AgentModel, sessionEnv bool, sink, mod string) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
 		"-c", workdir,
 	}
-	if carryEnv {
-		args = append(args, "-e", "PATH="+os.Getenv("PATH"))
-	}
+	args = append(args, agentEnvArgs(sessionEnv)...)
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", agentCommand(workdir, promptFile, m, sink, mod),
@@ -740,8 +766,7 @@ const terminalFeaturesSlot = "terminal-features[99]"
 // tagging [Tmux.Launch] does and for the same reason: it is what
 // [Tmux.LiveSlices] finds the running session back by.
 func (t *Tmux) LaunchBare(session, workdir, tag string, m config.AgentModel) error {
-	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
-	out, err := t.run(bareLaunchArgs(session, workdir, m, carryEnv, prepareStatusSink(session, m), prepareMod())...)
+	out, err := t.run(bareLaunchArgs(session, workdir, m, t.supportsSessionEnv(), prepareStatusSink(session, m), prepareMod())...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -756,15 +781,13 @@ func (t *Tmux) LaunchBare(session, workdir, tag string, m config.AgentModel) err
 
 // bareLaunchArgs is [LaunchArgs] with no prompt file to read the agent's
 // opening turn from — an ad hoc session's whole point is that there is none.
-func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool, sink, mod string) []string {
+func bareLaunchArgs(session, workdir string, m config.AgentModel, sessionEnv bool, sink, mod string) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
 		"-c", workdir,
 	}
-	if carryEnv {
-		args = append(args, "-e", "PATH="+os.Getenv("PATH"))
-	}
+	args = append(args, agentEnvArgs(sessionEnv)...)
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", inWorkdir(workdir, "claude"+modelFlags(m, sink, mod)),

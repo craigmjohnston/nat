@@ -23,6 +23,20 @@ public enum Fixtures {
         now.addingTimeInterval(-minutes * 60)
     }
 
+    // MARK: - Claude Code version
+
+    /// Up to date: no notice — every story but the notice's own.
+    public static let claudeVersionCurrent = ClaudeVersion(
+        installed: "2.1.295", latest: "2.1.295", updateAvailable: false)
+
+    /// A newer Claude Code released: the status bar's notice.
+    public static let claudeVersionBehind = ClaudeVersion(
+        installed: "2.1.294", latest: "2.1.295", updateAvailable: true)
+
+    /// What `claude update` prints on success.
+    public static let claudeUpdateOutput = "Current version: 2.1.294\nChecking for updates...\n"
+        + "Successfully updated from 2.1.294 to version 2.1.295\n"
+
     // MARK: - Usage
 
     /// `now` plus the given number of hours: a usage window's reset. The

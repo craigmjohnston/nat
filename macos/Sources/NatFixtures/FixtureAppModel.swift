@@ -77,6 +77,7 @@ extension Fixtures {
             // which is a state the board really has.
             activityStoreFactory: { ActivityStore(client: client) },
             usageStoreFactory: { UsageStore(client: client, cache: NullUsageCache()) },
+            claudeVersionStoreFactory: { ClaudeVersionStore(client: client) },
             // The live clock unless a story pins it — what the GitHub
             // reading's launch time, and so Diagnostics' session length, read.
             now: now,

@@ -109,19 +109,34 @@ func TestLaunchUsageProbe(t *testing.T) {
 	if err := NewTmuxWithRunner(r).LaunchUsageProbe(UsageProbeSession, "/tmp/probe", "/tmp/probe/settings.json"); err != nil {
 		t.Fatalf("LaunchUsageProbe: %v", err)
 	}
-	if len(r.calls) != 1 {
-		t.Fatalf("calls = %v, want exactly one", r.calls)
+	// The version is asked first: -e is said only to a tmux that takes it.
+	if len(r.calls) != 2 || !slices.Equal(r.calls[0].args, []string{"-u", "-V"}) {
+		t.Fatalf("calls = %v, want -V then the launch", r.calls)
 	}
 	want := []string{
 		"-u",
 		"new-session", "-d",
 		"-s", UsageProbeSession,
 		"-c", "/tmp/probe",
+		// The probe is a Claude Code session too: no update line in it.
+		"-e", "DISABLE_UPDATES=1",
 		"sh", "-c", usageProbeCommand("/tmp/probe", "/tmp/probe/settings.json"),
 		";", "set-option", "-t", UsageProbeSession, "status", "off",
 	}
-	if r.calls[0].name != TmuxBinary || !slices.Equal(r.calls[0].args, want) {
-		t.Errorf("call = %v %v, want tmux %v", r.calls[0].name, r.calls[0].args, want)
+	if r.calls[1].name != TmuxBinary || !slices.Equal(r.calls[1].args, want) {
+		t.Errorf("call = %v %v, want tmux %v", r.calls[1].name, r.calls[1].args, want)
+	}
+}
+
+// A tmux older than 3.2 refuses -e outright, so the probe launches there
+// without it rather than not at all.
+func TestLaunchUsageProbeOldTmuxDropsTheEnv(t *testing.T) {
+	r := &fakeRunner{outs: map[string]string{"-V": "tmux 3.0a\n"}}
+	if err := NewTmuxWithRunner(r).LaunchUsageProbe(UsageProbeSession, "/tmp/probe", "/tmp/probe/settings.json"); err != nil {
+		t.Fatalf("LaunchUsageProbe: %v", err)
+	}
+	if slices.Contains(r.calls[1].args, "-e") {
+		t.Errorf("args = %v, want no -e on tmux 3.0", r.calls[1].args)
 	}
 }
 

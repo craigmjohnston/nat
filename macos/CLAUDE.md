@@ -73,6 +73,19 @@ fuller structure and theme system.
 - `PathBootstrap.bootstrap()` composes PATH at startup for the **agent tmux
   sessions nat spawns**, not for finding `nat` itself (`NatBinary`'s job).
 
+**Claude Code update notice.** `ClaudeVersionStore` (`AppModel.claudeVersionStore`,
+started and stopped beside `usageStore`) reads `nat claude-version` at launch
+and hourly; where `update_available`, the status bar draws
+`ClaudeUpdateNotice` after the usage windows (and any GitHub budget) — a small
+accent `Chip`, "Claude Code 2.1.295 available". A click runs `nat
+claude-update` (`runUpdate`, one at a time) and `ClaudeUpdateSheet` shows it
+running, then the output (and that running agents keep their version, new
+launches get the new one) or the refusal; a success re-reads the version.
+Agent panes show none of Claude Code's own update line: nat launches every
+session with `DISABLE_UPDATES=1` (see `internal/agent/CLAUDE.md`). Stories:
+`status-bar-claude-update`, `claude-update-sheet-running`, `-finished`,
+`-failed`.
+
 ## Settings and Done means merged
 
 `SettingsView` (⌘,) is laid out as 1Password's settings are: a sidebar of

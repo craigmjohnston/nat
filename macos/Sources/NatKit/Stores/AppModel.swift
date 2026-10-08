@@ -285,6 +285,11 @@ public final class AppModel {
     /// of any one tracked project).
     public private(set) var usageStore: UsageStore?
 
+    /// Whether a newer Claude Code exists, and the update the user asked for
+    /// (app-wide, like `usageStore`) — the status bar's one update notice.
+    /// Nil until `start()`, alongside `usageStore`.
+    public private(set) var claudeVersionStore: ClaudeVersionStore?
+
     /// Each handed-back slice's branch diff totals, for the review
     /// rail's "+N −N" (app-wide, spans all projects, keyed by slice id —
     /// mirrors how `activityStore` is one store rather than one per project).
@@ -553,6 +558,10 @@ public final class AppModel {
     /// of its own here.
     private let usageStoreFactory: @MainActor @Sendable () -> UsageStore
 
+    /// How the Claude Code version store is made — injectable for the same
+    /// reason `usageStoreFactory` is.
+    private let claudeVersionStoreFactory: @MainActor @Sendable () -> ClaudeVersionStore
+
     /// How `launchWorkshop(request:)` waits between askings, while a launched
     /// session has yet to show up in the activity poll's reading. Injectable
     /// so a test never waits a quarter of a second for anything.
@@ -596,6 +605,7 @@ public final class AppModel {
         clientFactory: @escaping @Sendable () -> NatClientProtocol = { NatClient() },
         activityStoreFactory: @escaping @MainActor @Sendable () -> ActivityStore = { ActivityStore() },
         usageStoreFactory: @escaping @MainActor @Sendable () -> UsageStore = { UsageStore() },
+        claudeVersionStoreFactory: @escaping @MainActor @Sendable () -> ClaudeVersionStore = { ClaudeVersionStore() },
         launchSettleWait: @escaping @MainActor @Sendable () async -> Void = {
             try? await Task.sleep(nanoseconds: 250_000_000)
         },
@@ -634,6 +644,7 @@ public final class AppModel {
         self.workshopLauncher = workshopLauncher
         self.activityStoreFactory = activityStoreFactory
         self.usageStoreFactory = usageStoreFactory
+        self.claudeVersionStoreFactory = claudeVersionStoreFactory
         self.launchSettleWait = launchSettleWait
         self.now = now
         self.newWorkspaceID = newWorkspaceID
@@ -2985,10 +2996,16 @@ public final class AppModel {
     /// and `addProject(id:name:)` both reach this while still setting up the
     /// rest of the app, and neither should wait out one probe's own timeout
     /// to finish doing so.
+    ///
+    /// The Claude Code version store starts beside it, on the same terms: it
+    /// is the other app-wide reading of this machine's Claude.
     private func startUsageStore() {
         let store = usageStoreFactory()
         self.usageStore = store
         Task { await store.start() }
+        let versions = claudeVersionStoreFactory()
+        self.claudeVersionStore = versions
+        Task { await versions.start() }
     }
 
     // MARK: - Private Helpers
@@ -3070,6 +3087,8 @@ public final class AppModel {
         activityStore = nil
         usageStore?.stop()
         usageStore = nil
+        claudeVersionStore?.stop()
+        claudeVersionStore = nil
         reviewStatsStore = nil
         githubReadingStore?.stop()
         githubReadingStore = nil

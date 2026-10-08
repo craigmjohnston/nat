@@ -2637,6 +2637,47 @@ enum AppStories {
             )
         },
 
+        Story(
+            name: "status-bar-claude-update",
+            summary: "A newer Claude Code released: one accent chip after the usage windows, "
+                + "\u{201C}Claude Code 2.1.295 available\u{201D} \u{2014} a click runs the update.",
+            size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
+        ) {
+            StatusBarView(
+                appModel: await Fixtures.startedAppModel(
+                    client: FixtureNatClient(
+                        plan: statusBarPlan, agents: Fixtures.agentStatuses, usage: Fixtures.usageReading,
+                        claudeVersion: Fixtures.claudeVersionBehind))
+            )
+        },
+
+        Story(
+            name: "claude-update-sheet-running",
+            summary: "The update sheet while claude update runs: a spinner, Done disabled.",
+            size: CGSize(width: 420, height: 160)
+        ) {
+            ClaudeUpdateSheet(state: .running) {}
+        },
+
+        Story(
+            name: "claude-update-sheet-finished",
+            summary: "The update sheet once it has run: claude update\u{2019}s own output, then that agents "
+                + "already running keep their version and ones launched from now on get the new one.",
+            size: CGSize(width: 420, height: 230)
+        ) {
+            ClaudeUpdateSheet(state: .finished(output: Fixtures.claudeUpdateOutput)) {}
+        },
+
+        Story(
+            name: "claude-update-sheet-failed",
+            summary: "The update sheet when claude update failed: nat\u{2019}s refusal, carrying claude\u{2019}s "
+                + "own words, and no note about agents \u{2014} nothing changed.",
+            size: CGSize(width: 420, height: 160)
+        ) {
+            ClaudeUpdateSheet(state: .failed(
+                message: "nat: claude update: exit status 1: Error: could not write to the install directory")) {}
+        },
+
         // MARK: - The header
 
         // MARK: - Pieces
