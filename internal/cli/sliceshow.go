@@ -349,7 +349,7 @@ func sliceBase(env Env, s domain.Slice, project config.ProjectConfig) string {
 	if dir == "" {
 		return ""
 	}
-	return env.NewGit().Base(dir)
+	return env.gitFor(project).Base(dir)
 }
 
 func sliceRepo(s domain.Slice, project config.ProjectConfig) string {

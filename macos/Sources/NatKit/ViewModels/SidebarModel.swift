@@ -527,11 +527,16 @@ public struct SidebarProjectInput: Sendable {
     public let isSource: Bool
     /// The colour its config entry holds, nil where it holds none.
     public let color: ProjectColor?
+    /// The tag its config entry holds, nil where it holds none — the derived
+    /// one stands in then (`sidebarTags`).
+    public let tag: String?
 
     public init(
         id: String, name: String, kind: SidebarProjectKind = .project, plan: ProjectInfo?,
-        isLoading: Bool = false, errorMessage: String? = nil, isSource: Bool = false, color: ProjectColor? = nil
+        isLoading: Bool = false, errorMessage: String? = nil, isSource: Bool = false, color: ProjectColor? = nil,
+        tag: String? = nil
     ) {
+        self.tag = tag
         self.id = id
         self.name = name
         self.kind = kind
@@ -601,13 +606,22 @@ public struct SidebarModel: Equatable, Sendable {
     }
 }
 
-/// Every project's tag as Active rows and the titlebar carry it: a source
-/// project's is its plugin's own `tag` where it has one, every other
-/// project's `projectTags`'.
+/// Every project's tag as Active rows and the titlebar carry it: the tag its
+/// config entry holds where it holds one, else a source project's plugin's
+/// own `tag` where it has one, else `projectTags`' — derived, and de-clashed,
+/// among the projects with no configured tag alone.
 public func sidebarTags(_ projects: [SidebarProjectInput]) -> [String: String] {
-    var tags = projectTags(projects.map { (id: $0.id, name: $0.name) })
+    func configured(_ project: SidebarProjectInput) -> String? {
+        guard let tag = project.tag, !tag.isEmpty else { return nil }
+        return tag
+    }
+    var tags = projectTags(projects.filter { configured($0) == nil }.map { (id: $0.id, name: $0.name) })
     for project in projects {
-        if let tag = project.plan?.source?.tag, !tag.isEmpty { tags[project.id] = tag }
+        if let tag = configured(project) {
+            tags[project.id] = tag
+        } else if let tag = project.plan?.source?.tag, !tag.isEmpty {
+            tags[project.id] = tag
+        }
     }
     return tags
 }

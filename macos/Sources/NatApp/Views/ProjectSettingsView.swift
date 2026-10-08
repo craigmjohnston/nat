@@ -6,8 +6,8 @@ import NatKit
 /// sheet on the main window: one grouped `Form` of stock controls — no
 /// sidebar, no tabs, no app chrome, as the Settings window is — headed by the
 /// project's name (a field, or a source project's plugin title as text),
-/// then the working directory, Colour, where the plan lives and the run
-/// commands. The form scrolls; Cancel and Save stay pinned at the foot. A
+/// then the working directory, Colour (and tag), the agents' models, merging
+/// and the base branch, where the plan lives and the run commands. The form scrolls; Cancel and Save stay pinned at the foot. A
 /// further per-project row is another `Section` (or row) here over another
 /// `ProjectSettingsFields` field.
 ///
@@ -20,6 +20,8 @@ struct ProjectSettingsView: View {
     /// The project's short tag, the word on the Colour row's badge.
     let projectTag: String
     @State private var model: ProjectSettingsModel
+    /// The model and effort choices, as Settings ▸ Agents offers them.
+    @State private var agentOptions = AgentOptions.fallback
     @Environment(\.dismiss) private var dismiss
 
     init(projectName: String, projectTag: String, model: ProjectSettingsModel) {
@@ -60,6 +62,8 @@ struct ProjectSettingsView: View {
                         colorRow
                     }
                 }
+                agentsSection
+                mergeSection
                 Section {
                     planRow
                     if case .local(let file?) = model.plan {
@@ -90,8 +94,10 @@ struct ProjectSettingsView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .frame(width: 560, height: 580)
+        .frame(width: 560, height: 640)
         .task { await model.loadPlanFile() }
+        .task { await model.loadDefaultBase() }
+        .task { agentOptions = await AgentOptionsCache.shared.resolve() }
     }
 
     /// The sheet's heading: the project's name as a field, or — a source
@@ -287,12 +293,122 @@ struct ProjectSettingsView: View {
                         }
                     }
                     if let color = model.edited.color {
-                        ProjectBadgeView(tag: projectTag, color: color, name: projectName)
+                        ProjectBadgeView(tag: model.previewTag(shown: projectTag), color: color, name: projectName)
                             .padding(.leading, 6)
                     }
+                    TextField("Tag", text: $model.edited.tag, prompt: Text(projectTag))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .font(Typo.mono(size: Typo.input))
+                        .frame(width: 52)
+                        .help("1 to 3 letters or digits; empty takes the one its name gives.")
+                        .onSubmit { save() }
                 }
                 refusal(model.colorKey)
+                refusal(model.tagKey)
             }
+        }
+    }
+
+    /// The slice and planning agents' model and effort, the pickers Settings
+    /// ▸ Agents uses, each led by a Default that names the global value it
+    /// falls through to.
+    private var agentsSection: some View {
+        Section {
+            agentRows(title: "Slice agent", model: $model.edited.sliceModel, effort: $model.edited.sliceEffort,
+                      global: model.globalSliceAgent, modelKey: model.sliceModelKey, effortKey: model.sliceEffortKey)
+            agentRows(title: "Planning agent", model: $model.edited.workshopModel, effort: $model.edited.workshopEffort,
+                      global: model.globalWorkshopAgent, modelKey: model.workshopModelKey,
+                      effortKey: model.workshopEffortKey)
+        } header: {
+            Text("Agents")
+        } footer: {
+            footnote("Over Settings ▸ Agents for this project alone. Applies at the next launch.")
+        }
+    }
+
+    @ViewBuilder
+    private func agentRows(
+        title: String, model modelValue: Binding<String>, effort: Binding<String>, global: AgentModel,
+        modelKey: String, effortKey: String
+    ) -> some View {
+        LabeledContent("\(title) model") {
+            VStack(alignment: .trailing, spacing: 4) {
+                ModelPicker(value: modelValue, options: agentOptions.models,
+                            defaultTitle: ProjectSettingsModel.defaultTitle(global.model)) { text in
+                    TextField("Model ID", text: text)
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: Typo.input))
+                }
+                .frame(width: 200, alignment: .trailing)
+                refusal(modelKey)
+            }
+        }
+        LabeledContent("\(title) effort") {
+            VStack(alignment: .trailing, spacing: 4) {
+                Picker("", selection: effort) {
+                    Text(ProjectSettingsModel.defaultTitle(global.effort)).tag("")
+                    ForEach(withStored(effort.wrappedValue, in: agentOptions.efforts), id: \.self) { option in
+                        Text(option).tag(option)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(width: 200, alignment: .trailing)
+                refusal(effortKey)
+            }
+        }
+    }
+
+    /// The stored value is a choice too where it is none of the known ones:
+    /// nat takes any word, and a picker without it would lose it.
+    private func withStored(_ stored: String, in options: [String]) -> [String] {
+        guard !stored.isEmpty, !options.contains(stored) else { return options }
+        return options + [stored]
+    }
+
+    /// How the project's pull requests merge, whether the branch goes with
+    /// the merge, and the branch they are cut from and merge into.
+    private var mergeSection: some View {
+        Section {
+            LabeledContent("Merge method") {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Picker("", selection: $model.edited.shownMergeMethod) {
+                        ForEach(ProjectMergeMethod.allCases) { method in
+                            Text(method.title).tag(method)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    refusal(model.mergeMethodKey)
+                }
+            }
+            LabeledContent("Delete branch") {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Toggle("Delete the branch after merging", isOn: $model.edited.deleteBranch)
+                        .toggleStyle(.checkbox)
+                    refusal(model.deleteBranchKey)
+                }
+            }
+            LabeledContent("Base branch") {
+                VStack(alignment: .trailing, spacing: 4) {
+                    TextField("Base branch", text: $model.edited.baseBranch,
+                              prompt: Text(model.baseBranchPlaceholder))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .font(Typo.mono(size: Typo.input))
+                        .multilineTextAlignment(.leading)
+                        .frame(width: 200)
+                        .onSubmit { save() }
+                    refusal(model.baseBranchKey)
+                }
+            }
+        } header: {
+            Text("Merging")
+        } footer: {
+            footnote("Tasks are cut from, reviewed against and opened as pull requests into the base branch; empty is the repository's own default.")
         }
     }
 

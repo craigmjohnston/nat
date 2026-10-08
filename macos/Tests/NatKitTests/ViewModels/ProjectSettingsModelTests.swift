@@ -467,4 +467,181 @@ final class ProjectSettingsModelTests: XCTestCase {
         await model.loadPlanFile()
         XCTAssertEqual(model.plan, .local(file: Fixtures.planFile(projectID: "l")))
     }
+
+    // MARK: - Agents, merging, base branch and tag
+
+    func testThePerProjectSettingsAreReadFromTheProjectsEntry() {
+        let config = NatProjectConfig(projects: ["p1": ProjectConfig(
+            name: "n", workingDir: "/", sliceAgent: AgentModel(model: "opus"),
+            workshopAgent: AgentModel(effort: "low"), mergeMethod: "squash", deleteBranch: true,
+            baseBranch: "develop", tag: "NT")])
+        let fields = ProjectSettingsFields(projectID: "p1", config: config)
+        XCTAssertEqual(fields.sliceModel, "opus")
+        XCTAssertEqual(fields.sliceEffort, "")
+        XCTAssertEqual(fields.workshopModel, "")
+        XCTAssertEqual(fields.workshopEffort, "low")
+        XCTAssertEqual(fields.mergeMethod, "squash")
+        XCTAssertTrue(fields.deleteBranch)
+        XCTAssertEqual(fields.baseBranch, "develop")
+        XCTAssertEqual(fields.tag, "NT")
+        let none = ProjectSettingsFields(projectID: "p1", config: nil)
+        XCTAssertEqual(none, ProjectSettingsFields(workingDir: ""))
+    }
+
+    func testEachPerProjectFieldWritesItsOwnKey() async {
+        let calls = Calls()
+        let model = model(fields: ProjectSettingsFields(workingDir: "/repo"), calls: calls)
+        model.edited.sliceModel = "opus"
+        model.edited.sliceEffort = "high"
+        model.edited.workshopModel = "haiku"
+        model.edited.workshopEffort = "low"
+        model.edited.shownMergeMethod = .rebase
+        model.edited.deleteBranch = true
+        model.edited.baseBranch = " develop "
+        model.edited.tag = " nt "
+
+        let closed = await model.save()
+
+        XCTAssertTrue(closed)
+        XCTAssertEqual(calls.writes, [
+            ConfigChange(key: "project.p1.slice_agent.model", value: "opus"),
+            ConfigChange(key: "project.p1.slice_agent.effort", value: "high"),
+            ConfigChange(key: "project.p1.workshop_agent.model", value: "haiku"),
+            ConfigChange(key: "project.p1.workshop_agent.effort", value: "low"),
+            ConfigChange(key: "project.p1.merge_method", value: "rebase"),
+            ConfigChange(key: "project.p1.delete_branch", value: "true"),
+            ConfigChange(key: "project.p1.base_branch", value: "develop"),
+            ConfigChange(key: "project.p1.tag", value: "NT"),
+        ])
+        XCTAssertEqual(model.original.sliceModel, "opus")
+        XCTAssertEqual(model.original.mergeMethod, "rebase")
+        XCTAssertTrue(model.original.deleteBranch)
+        XCTAssertEqual(model.original.baseBranch, "develop")
+        XCTAssertEqual(model.original.tag, "NT")
+        XCTAssertEqual(calls.reloads, 1)
+    }
+
+    func testUnsettingWritesTheEmptyStringAndFalse() {
+        let fields = ProjectSettingsFields(workingDir: "/", sliceModel: "opus", mergeMethod: "squash",
+                                           deleteBranch: true, baseBranch: "develop", tag: "NT")
+        let model = model(fields: fields, calls: Calls())
+        model.edited.sliceModel = ""
+        model.edited.shownMergeMethod = .merge
+        model.edited.deleteBranch = false
+        model.edited.baseBranch = ""
+        model.edited.tag = ""
+        XCTAssertEqual(model.changes, [
+            ConfigChange(key: model.sliceModelKey, value: ""),
+            ConfigChange(key: model.mergeMethodKey, value: ""),
+            ConfigChange(key: model.deleteBranchKey, value: "false"),
+            ConfigChange(key: model.baseBranchKey, value: ""),
+            ConfigChange(key: model.tagKey, value: ""),
+        ])
+        let applied = ProjectSettingsModel.applying(model.changes, projectID: "p1", to: fields)
+        XCTAssertEqual(applied, ProjectSettingsFields(workingDir: "/"))
+    }
+
+    func testApplyingMovesEachPerProjectField() {
+        let keys = ["slice_agent.model", "slice_agent.effort", "workshop_agent.model", "workshop_agent.effort",
+                    "merge_method", "delete_branch", "base_branch", "tag"]
+        let values = ["opus", "high", "haiku", "low", "squash", "true", "develop", "NT"]
+        let changes = zip(keys, values).map { ConfigChange(key: "project.p1.\($0)", value: $1) }
+        let applied = ProjectSettingsModel.applying(changes, projectID: "p1", to: ProjectSettingsFields(workingDir: "/"))
+        XCTAssertEqual(applied, ProjectSettingsFields(
+            workingDir: "/", sliceModel: "opus", sliceEffort: "high", workshopModel: "haiku", workshopEffort: "low",
+            mergeMethod: "squash", deleteBranch: true, baseBranch: "develop", tag: "NT"))
+    }
+
+    /// nat refuses a tag that is not 1–3 letters or digits, and a merge word
+    /// it has no flag for; each refusal stays under its row, the rest lands.
+    func testARefusedTagKeepsItsEditAndMessage() async {
+        let calls = Calls()
+        let model = ProjectSettingsModel(
+            projectID: "p1", fields: ProjectSettingsFields(workingDir: "/repo"),
+            write: { change in
+                if change.key == "project.p1.tag" {
+                    throw NatError.commandFailed("config-set: project.p1.tag: a tag is 1 to 3 letters or digits")
+                }
+                calls.writes.append(change)
+            },
+            reload: { calls.reloads += 1 })
+        model.edited.tag = "ABCD"
+        model.edited.baseBranch = "develop"
+
+        let closed = await model.save()
+
+        XCTAssertFalse(closed)
+        XCTAssertEqual(model.errors, [model.tagKey: "config-set: project.p1.tag: a tag is 1 to 3 letters or digits"])
+        XCTAssertEqual(model.original.tag, "")
+        XCTAssertEqual(model.edited.tag, "ABCD")
+        XCTAssertEqual(model.original.baseBranch, "develop")
+        XCTAssertEqual(calls.reloads, 1)
+    }
+
+    func testAShownMergeMethodOfMergeIsTheDefault() {
+        var fields = ProjectSettingsFields(workingDir: "/")
+        XCTAssertEqual(fields.shownMergeMethod, .merge)
+        fields.shownMergeMethod = .squash
+        XCTAssertEqual(fields.mergeMethod, "squash")
+        fields.mergeMethod = "octopus"
+        XCTAssertEqual(fields.shownMergeMethod, .merge, "a word this build does not know shows as the default")
+        XCTAssertEqual(ProjectMergeMethod.allCases.map(\.title), ["Merge commit", "Squash and merge", "Rebase and merge"])
+        XCTAssertEqual(ProjectMergeMethod.squash.id, "squash")
+    }
+
+    func testDefaultTitleNamesTheGlobalValue() {
+        XCTAssertEqual(ProjectSettingsModel.defaultTitle("sonnet"), "Default (sonnet)")
+        XCTAssertEqual(ProjectSettingsModel.defaultTitle(""), "Default")
+        XCTAssertEqual(ProjectSettingsModel.defaultTitle(nil), "Default")
+    }
+
+    func testThePreviewTagIsTheEditedOneElseTheShownOrDerivedOne() {
+        let model = model(fields: ProjectSettingsFields(name: "gnat", workingDir: "/"), calls: Calls())
+        XCTAssertEqual(model.previewTag(shown: "GNA"), "GNA")
+        model.edited.tag = " x1 "
+        XCTAssertEqual(model.previewTag(shown: "GNA"), "X1")
+
+        let tagged = self.model(fields: ProjectSettingsFields(name: "gnat", workingDir: "/", tag: "GT"), calls: Calls())
+        tagged.edited.tag = ""
+        XCTAssertEqual(tagged.previewTag(shown: "GT"), "GNA", "clearing a configured tag previews the derived one")
+        tagged.edited.name = ""
+        XCTAssertEqual(tagged.previewTag(shown: "GT"), "GNA", "an emptied name derives from the name as read")
+    }
+
+    func testTheDefaultBaseIsReadOnceAndAFailedReadKeepsTheWord() async {
+        final class Reads: @unchecked Sendable { var count = 0 }
+        let reads = Reads()
+        let model = ProjectSettingsModel(
+            projectID: "p1", fields: ProjectSettingsFields(workingDir: "/"),
+            write: { _ in }, reload: {}, readDefaultBase: { reads.count += 1; return "trunk" })
+        XCTAssertEqual(model.baseBranchPlaceholder, "Repository default")
+        await model.loadDefaultBase()
+        await model.loadDefaultBase()
+        XCTAssertEqual(model.baseBranchPlaceholder, "trunk")
+        XCTAssertEqual(reads.count, 1)
+
+        let failing = ProjectSettingsModel(
+            projectID: "p1", fields: ProjectSettingsFields(workingDir: "/"),
+            write: { _ in }, reload: {}, readDefaultBase: { throw NatError.missingOutput })
+        await failing.loadDefaultBase()
+        XCTAssertNil(failing.defaultBase)
+        let defaulted = ProjectSettingsModel(
+            projectID: "p1", fields: ProjectSettingsFields(workingDir: "/"), write: { _ in }, reload: {})
+        await defaulted.loadDefaultBase()
+        XCTAssertNil(defaulted.defaultBase)
+    }
+
+    func testOverAClientTheGlobalPairsAndDefaultBaseAreConfigsAndNats() async {
+        let config = NatProjectConfig(
+            projects: ["p1": ProjectConfig(name: "n", workingDir: "/")],
+            workshopAgent: AgentModel(model: "sonnet"), sliceAgent: AgentModel(model: "opus", effort: "high"))
+        let model = ProjectSettingsModel(projectID: "p1", config: config, client: FixtureNatClient(), reload: {})
+        XCTAssertEqual(model.globalSliceAgent, AgentModel(model: "opus", effort: "high"))
+        XCTAssertEqual(model.globalWorkshopAgent, AgentModel(model: "sonnet"))
+        await model.loadDefaultBase()
+        XCTAssertEqual(model.defaultBase, "main")
+        XCTAssertEqual(model.workshopModelKey, "project.p1.workshop_agent.model")
+        XCTAssertEqual(model.workshopEffortKey, "project.p1.workshop_agent.effort")
+        XCTAssertEqual(model.sliceEffortKey, "project.p1.slice_agent.effort")
+    }
 }

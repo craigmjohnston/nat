@@ -14,7 +14,7 @@ import (
 // interface so the flow can be driven without gh — or a network, or a GitHub
 // account.
 type PRCreator interface {
-	CreatePR(dir, branch, title, body string) (string, error)
+	CreatePR(dir, branch, base, title, body string) (string, error)
 }
 
 // OpenPR runs gh in the slice's repository and returns the pull request it
@@ -29,14 +29,15 @@ type PRCreator interface {
 // the approve rather than falling back, since a pull request opened with the
 // wrong title is not one this can open again. Claude Code's attribution footer
 // is stripped first ([StripAgentAttribution]), so a hand-back filed before
-// complete-slice stripped it still opens a clean pull request.
-func OpenPR(ctx context.Context, st Store, prs PRCreator, s domain.Slice, dir string) (string, error) {
+// complete-slice stripped it still opens a clean pull request. The base is
+// the project's configured base branch, empty leaving it to gh.
+func OpenPR(ctx context.Context, st Store, prs PRCreator, s domain.Slice, dir, base string) (string, error) {
 	description, err := st.PRDescription(ctx, s.ID)
 	if err != nil {
 		return "", fmt.Errorf("read the pull request description: %w", err)
 	}
 	title, body := PRTitleBody(StripAgentAttribution(description))
-	return prs.CreatePR(dir, s.Branch, title, body)
+	return prs.CreatePR(dir, s.Branch, base, title, body)
 }
 
 // PRTitleBody splits a recorded description into what gh is given: its first

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -97,11 +98,11 @@ func (f *fakePRBase) ViewPR(dir, ref string) (gh.PR, error) {
 	}
 	return gh.PR{BaseRefName: f.base}, nil
 }
-func (f *fakePRBase) CreatePR(dir, branch, title, body string) (string, error) { return "", nil }
-func (f *fakePRBase) MergePR(dir, ref string) error                            { return nil }
-func (f *fakePRBase) CommentPR(dir, ref, body string) (string, error)          { return "", nil }
-func (f *fakePRBase) OpenPRs(dir string) (map[string]gh.PRStatus, error)       { return nil, nil }
-func (f *fakePRBase) ListPRsForHead(dir, branch string) ([]gh.HeadPR, error)   { return nil, nil }
+func (f *fakePRBase) CreatePR(dir, branch, base, title, body string) (string, error) { return "", nil }
+func (f *fakePRBase) MergePR(dir, ref string, opts gh.MergeOptions) error            { return nil }
+func (f *fakePRBase) CommentPR(dir, ref, body string) (string, error)                { return "", nil }
+func (f *fakePRBase) OpenPRs(dir string) (map[string]gh.PRStatus, error)             { return nil, nil }
+func (f *fakePRBase) ListPRsForHead(dir, branch string) ([]gh.HeadPR, error)         { return nil, nil }
 
 func TestSliceDiffRefusesNotHandedBack(t *testing.T) {
 	api := &fakeAPI{
@@ -710,3 +711,18 @@ func (f *fakePRBase) Collaborators(dir string) ([]string, error)                
 func (f *fakePRBase) FailedLog(dir string, ref gh.ActionsRef) (string, error) { return "", nil }
 func (f *fakePRBase) ReviewComments(dir, ref string) (string, error)          { return "", nil }
 func (f *fakePRBase) Checks(dir, ref string) (string, error)                  { return "", nil }
+
+// gitFor gives the real git driver a project's configured base, so its Base
+// answers with it before origin/HEAD; with none configured it is NewGit's own.
+func TestGitForAppliesTheConfiguredBase(t *testing.T) {
+	env, _ := testEnv(testConfig(t), &fakeAPI{})
+	runner := &fakeGitRunner{base: "origin/main", knownRefs: []string{"refs/remotes/origin/develop"}}
+	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
+
+	if got := env.gitFor(config.ProjectConfig{BaseBranch: "develop"}).Base("/r"); got != "origin/develop" {
+		t.Errorf("configured: Base = %q, want origin/develop", got)
+	}
+	if got := env.gitFor(config.ProjectConfig{}).Base("/r"); got != "origin/main" {
+		t.Errorf("unconfigured: Base = %q, want origin/HEAD's", got)
+	}
+}

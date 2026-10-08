@@ -87,6 +87,29 @@ public enum SettingsModel {
         "project.\(projectID).runs"
     }
 
+    /// The `config-set` keys of one project's own model pairs, each half
+    /// over the global pair's; the empty string unsets one.
+    public static func sliceModelKey(projectID: String) -> String { "project.\(projectID).slice_agent.model" }
+    public static func sliceEffortKey(projectID: String) -> String { "project.\(projectID).slice_agent.effort" }
+    public static func workshopModelKey(projectID: String) -> String { "project.\(projectID).workshop_agent.model" }
+    public static func workshopEffortKey(projectID: String) -> String { "project.\(projectID).workshop_agent.effort" }
+
+    /// The `config-set` key for how a project's pull requests merge: merge,
+    /// squash or rebase, the empty string for nat's default (merge).
+    public static func mergeMethodKey(projectID: String) -> String { "project.\(projectID).merge_method" }
+
+    /// The `config-set` key for whether a merge deletes the branch: true or
+    /// false.
+    public static func deleteBranchKey(projectID: String) -> String { "project.\(projectID).delete_branch" }
+
+    /// The `config-set` key for a project's base branch by name, the empty
+    /// string for the repository's own default.
+    public static func baseBranchKey(projectID: String) -> String { "project.\(projectID).base_branch" }
+
+    /// The `config-set` key for a project's tag: 1–3 letters or digits, nat
+    /// uppercasing it and refusing anything else; empty derives it.
+    public static func tagKey(projectID: String) -> String { "project.\(projectID).tag" }
+
     /// The `config-set` writes that would carry `edited` onto `original` —
     /// one per field that actually changed, nothing for a field left alone.
     /// Order is fixed so a save always writes in the same order twice.

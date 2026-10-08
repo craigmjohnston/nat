@@ -112,6 +112,41 @@ func TestDiffFallsBackToTheRemoteDefaultBranch(t *testing.T) {
 	}
 }
 
+// TestBaseReturnsTheConfiguredBranchFirst pins a project's configured base:
+// origin's copy of it, read before origin/HEAD is ever asked.
+func TestBaseReturnsTheConfiguredBranchFirst(t *testing.T) {
+	runner := &fakeRunner{}
+	if base := NewWithRunner(runner).WithBase(" develop ").Base("/repos/nat"); base != "origin/develop" {
+		t.Errorf("Base() = %q, want origin/develop", base)
+	}
+	want := []string{"rev-parse", "--verify", "--quiet", "refs/remotes/origin/develop"}
+	if len(runner.calls) != 1 || !reflect.DeepEqual(runner.calls[0].args, want) {
+		t.Errorf("calls = %v, want only %v", runner.calls, want)
+	}
+}
+
+// TestBaseTakesTheLocalConfiguredBranchWithNoOrigin: no origin copy, so the
+// local branch of the configured name.
+func TestBaseTakesTheLocalConfiguredBranchWithNoOrigin(t *testing.T) {
+	runner := &fakeRunner{errs: []error{&ExitError{Code: 1}}}
+	if base := NewWithRunner(runner).WithBase("develop").Base("/repos/nat"); base != "develop" {
+		t.Errorf("Base() = %q, want develop", base)
+	}
+}
+
+// TestBaseFallsBackWhenTheConfiguredBranchIsNowhere: a configured base that
+// resolves to nothing falls through to origin/HEAD, logged.
+func TestBaseFallsBackWhenTheConfiguredBranchIsNowhere(t *testing.T) {
+	runner := &fakeRunner{outs: []string{"", "", "origin/trunk\n"},
+		errs: []error{&ExitError{Code: 1}, &ExitError{Code: 1}}}
+	if base := NewWithRunner(runner).WithBase("gone").Base("/repos/nat"); base != "origin/trunk" {
+		t.Errorf("Base() = %q, want origin/trunk", base)
+	}
+	if len(runner.calls) != 3 {
+		t.Errorf("made %d calls, want the two ref checks and origin/HEAD", len(runner.calls))
+	}
+}
+
 // TestBaseFallsBackToTheLocalBranchWithNoOrigin covers the one repository the
 // remote ref cannot serve: no origin at all, so origin/main is no more readable
 // than origin/HEAD was and the local branch is all there is.

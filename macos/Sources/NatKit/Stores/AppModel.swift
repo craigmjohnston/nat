@@ -1258,7 +1258,8 @@ public final class AppModel {
                 isLoading: state?.isLoading ?? (kind != .untitled),
                 errorMessage: state?.errorMessage,
                 isSource: config?.projects[tab.id]?.backend == .source,
-                color: projectColor(ofProject: tab.id))
+                color: projectColor(ofProject: tab.id),
+                tag: config?.projects[tab.id]?.tag)
         }
     }
 
@@ -2424,8 +2425,8 @@ public final class AppModel {
             } else {
                 _ = try await workshopLauncher(
                     projectID,
-                    config?.workshopAgent?.model,
-                    config?.workshopAgent?.effort,
+                    config?.workshopAgent(for: projectID).model,
+                    config?.workshopAgent(for: projectID).effort,
                     description
                 )
             }
@@ -2833,7 +2834,7 @@ public final class AppModel {
         newSessionLaunching = true
         newSessionError = nil
         do {
-            let agent = config?.sliceAgent
+            let agent = config?.sliceAgent(for: projectID)
             let result = try await clientFactory().sessionLaunch(
                 projectID: projectID, dir: dir, model: agent?.model, effort: agent?.effort
             )

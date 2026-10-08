@@ -51,7 +51,7 @@ func runCmd(ctx context.Context, args []string, env Env) error {
 
 	var dir string
 	if *sliceRef == "" {
-		dir, err = actions.GlobalRunDir(env.NewWorktrees(), env.NewGit(), project.WorkingDir)
+		dir, err = actions.GlobalRunDir(env.NewWorktrees(), env.gitFor(project), project.WorkingDir)
 	} else {
 		dir, scopeID, err = sliceRunDir(ctx, env, projectID, project, *sliceRef)
 	}

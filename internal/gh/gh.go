@@ -150,12 +150,16 @@ func (c CLI) WithBudget(b *Budget) CLI {
 // none — every one written before there was a flag for it — and gh fills the
 // pull request from the branch's commits instead (--fill), which is what it
 // always did; either way nothing is asked for at a prompt, since a prompt is not
-// something a board key can answer. The base is left to gh, which uses the
+// something a board key can answer. The base is the project's configured base
+// branch where it has one (--base), and otherwise left to gh, which uses the
 // repository's own default branch.
-func (c CLI) CreatePR(dir, branch, title, body string) (string, error) {
+func (c CLI) CreatePR(dir, branch, base, title, body string) (string, error) {
 	args := []string{"pr", "create", "--head", branch, "--fill"}
 	if title != "" {
 		args = []string{"pr", "create", "--head", branch, "--title", title, "--body", body}
+	}
+	if base != "" {
+		args = append(args, "--base", base)
 	}
 	out, err := c.runner.Run(dir, Binary, args...)
 	if err != nil {

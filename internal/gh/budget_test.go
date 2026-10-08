@@ -157,7 +157,7 @@ func TestRefusalLines(t *testing.T) {
 			reset := now.Add(46 * time.Minute)
 			b.record(&RateLimit{Limit: 5000, Remaining: 0, ResetAt: reset})
 			runner := &stderrRunner{err: &ExitError{Code: 1, Stderr: line + "\n"}}
-			err := NewWithRunner(runner).WithBudget(b).MergePR("/repo", "https://github.com/craig/nat/pull/1")
+			err := NewWithRunner(runner).WithBudget(b).MergePR("/repo", "https://github.com/craig/nat/pull/1", MergeOptions{})
 			var limited *LimitError
 			if !errors.As(err, &limited) || !limited.Until.Equal(reset) {
 				t.Fatalf("MergePR() = %v, want a LimitError until %v", err, reset)

@@ -15,7 +15,7 @@ import (
 )
 
 // prCall is one pull request the approve flow asked gh for.
-type prCall struct{ dir, branch, title, body string }
+type prCall struct{ dir, branch, title, body, base string }
 
 // fakePRs stands in for the GitHub CLI: it records what it was asked to open
 // and answers with the URL — or the refusal — the test wants gh to have given.
@@ -27,8 +27,8 @@ type fakePRs struct {
 
 var _ PRCreator = (*fakePRs)(nil)
 
-func (f *fakePRs) CreatePR(dir, branch, title, body string) (string, error) {
-	f.made = append(f.made, prCall{dir, branch, title, body})
+func (f *fakePRs) CreatePR(dir, branch, base, title, body string) (string, error) {
+	f.made = append(f.made, prCall{dir, branch, title, body, base})
 	return f.url, f.err
 }
 
@@ -147,7 +147,7 @@ func TestApproveOpensThePullRequestAndRecordsIt(t *testing.T) {
 
 	approve(t, app)
 
-	want := []prCall{{workdir, "slice/approve", "", ""}}
+	want := []prCall{{workdir, "slice/approve", "", "", ""}}
 	if len(prs.made) != 1 || prs.made[0] != want[0] {
 		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
 	}
@@ -196,7 +196,7 @@ func TestApproveOpensThePullRequestWithTheRecordedDescription(t *testing.T) {
 	approve(t, app)
 
 	want := prCall{workdir, "slice/approve",
-		"Open the PR with the recorded description", "What it does, and why."}
+		"Open the PR with the recorded description", "What it does, and why.", ""}
 	if len(prs.made) != 1 || prs.made[0] != want {
 		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
 	}
@@ -214,7 +214,7 @@ func TestApproveWithoutARecordedDescription(t *testing.T) {
 
 	approve(t, app)
 
-	want := prCall{workdir, "slice/approve", "", ""}
+	want := prCall{workdir, "slice/approve", "", "", ""}
 	if len(prs.made) != 1 || prs.made[0] != want {
 		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
 	}
@@ -536,4 +536,19 @@ func bindsKey(bindings []key.Binding, want string) bool {
 		}
 	}
 	return false
+}
+
+// A project with a configured base opens its pull request into it.
+func TestApproveOpensIntoTheConfiguredBase(t *testing.T) {
+	app, prs, _, _ := approveApp(t)
+	p := app.cfg.Projects[app.cfg.ActiveProjectID]
+	p.BaseBranch = "develop"
+	app.cfg.Projects[app.cfg.ActiveProjectID] = p
+	cursorOn(t, app, handedBack)
+
+	approve(t, app)
+
+	if len(prs.made) != 1 || prs.made[0].base != "develop" {
+		t.Fatalf("gh was asked for %v, want the pull request into develop", prs.made)
+	}
 }

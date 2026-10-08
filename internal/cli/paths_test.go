@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
@@ -202,5 +203,42 @@ func TestPathsRefusesAnUnknownProject(t *testing.T) {
 	err := Run(context.Background(), []string{"paths", "--project", "nope"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
+	}
+}
+
+// With --project, paths names the repository's own default branch by name —
+// the settings sheet's base placeholder — and nothing for a project with no
+// working directory.
+func TestPathsPrintsTheRepositorysDefaultBase(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.Projects["work"] = config.ProjectConfig{Backend: config.BackendSource, Source: "demo"}
+	env, out := testEnv(cfg, &fakeAPI{})
+	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{base: "origin/trunk"}) }
+	if err := Run(context.Background(), []string{"paths", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("paths: %v", err)
+	}
+	var got pathsJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.DefaultBase != "trunk" {
+		t.Errorf("default_base = %q, want trunk", got.DefaultBase)
+	}
+
+	env, out = testEnv(cfg, &fakeAPI{})
+	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{base: "origin/trunk"}) }
+	if err := Run(context.Background(), []string{"paths", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("paths: %v", err)
+	}
+	if !strings.Contains(out.String(), "Base:    trunk\n") {
+		t.Errorf("output = %q, want a Base line", out.String())
+	}
+
+	env, out = testEnv(cfg, &fakeAPI{})
+	if err := Run(context.Background(), []string{"paths", "--json", "--project", "work"}, env); err != nil {
+		t.Fatalf("paths: %v", err)
+	}
+	if strings.Contains(out.String(), "default_base") {
+		t.Errorf("output = %s, want no default base with no working directory", out.String())
 	}
 }

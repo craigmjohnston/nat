@@ -261,7 +261,7 @@ func (run *projectReading) settle(ctx context.Context, env Env, tmux *agent.Tmux
 		marked = true
 	}
 	actions.SweepLanded(run.worktrees, tmux.LiveSlices, run.project, landed(run.slices, read))
-	run.branches = branchReadings(env.NewGit(), run.slices, run.project)
+	run.branches = branchReadings(env.gitFor(run.project), run.slices, run.project)
 	return marked
 }
 

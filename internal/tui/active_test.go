@@ -462,7 +462,7 @@ func TestApproveFromAnActiveEntry(t *testing.T) {
 
 	approve(t, app)
 
-	want := prCall{workdir, "slice/approve", "", ""}
+	want := prCall{workdir, "slice/approve", "", "", ""}
 	if len(prs.made) != 1 || prs.made[0] != want {
 		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
 	}

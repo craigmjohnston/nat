@@ -266,6 +266,19 @@ final class SidebarModelTests: XCTestCase {
             ["a": "NO1", "b": "GNA", "c": "NO2", "d": "NO3"])
     }
 
+    /// A configured tag wins; the derived tags de-clash among themselves
+    /// alone — a configured tag takes no part in their numbering.
+    func testAConfiguredTagWinsAndTheDerivedOnesStillDeclash() {
+        let tags = sidebarTags([
+            SidebarProjectInput(id: "a", name: "notion", plan: nil),
+            SidebarProjectInput(id: "b", name: "nothing", plan: nil, tag: "NT"),
+            SidebarProjectInput(id: "c", name: "Notes app", plan: nil),
+            SidebarProjectInput(id: "d", name: "notary", plan: nil),
+            SidebarProjectInput(id: "e", name: "gnat", plan: nil, tag: ""),
+        ])
+        XCTAssertEqual(tags, ["a": "NO1", "b": "NT", "c": "NO2", "d": "NO3", "e": "GNA"])
+    }
+
     func testActiveRowsCarryTheirProjectsTag() {
         let model = buildSidebarModel(
             projects: [

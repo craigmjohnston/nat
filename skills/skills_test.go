@@ -166,7 +166,7 @@ func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
 	}
 	text := string(body)
 	for _, want := range []string{
-		"git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <origin's default branch>",
+		"git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <base>",
 		"git worktree list --porcelain",
 		"git rev-parse --path-format=absolute --git-common-dir",
 		"`slice/` followed by the name lowercased",
@@ -526,6 +526,28 @@ func TestQueueWorkCarriesTheAcceptedProposalPassage(t *testing.T) {
 		`"title": "Its new title"`, "No two slices may answer to one title."} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the queue-work skill does not say %q", want)
+		}
+	}
+}
+
+// The next-slice skill cuts from the base nat info names where the project
+// configures one, else origin's default — the prose copy of the base rule the
+// slice prompt's repo passage also carries.
+func TestNextSliceCutsFromTheConfiguredBase(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the next-slice skill: %v", err)
+	}
+	text := unwrapped(string(body))
+	for _, want := range []string{
+		"-b slice/<slug> <base>",
+		"the `base_branch` that `nat info --project <project> --json` names",
+		"`origin/<base_branch>` where origin has it, else the local `<base_branch>`",
+		"With none configured, it is origin's default branch",
+		"git symbolic-ref --short refs/remotes/origin/HEAD",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the next-slice skill does not say %q", want)
 		}
 	}
 }

@@ -81,13 +81,7 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	}
 	prompt := agent.PlanPrompt(projectID, project.Name, workdir, request, plan, frontend)
 
-	agentModel := config.AgentModel{Model: *model, Effort: *effort}
-	if agentModel.Model == "" {
-		agentModel.Model = cfg.WorkshopAgent.Model
-	}
-	if agentModel.Effort == "" {
-		agentModel.Effort = cfg.WorkshopAgent.Effort
-	}
+	agentModel := config.AgentModel{Model: *model, Effort: *effort}.Over(cfg.WorkshopAgentFor(project))
 	agentModel = actions.TrimModel(agentModel)
 
 	session := agent.PlanSessionName(projectID)
@@ -151,13 +145,7 @@ func workshopLaunchWorkspace(env Env, workspace, request, model, effort string, 
 	// A config that will not load is no reason to refuse: the model pair is
 	// the only thing read from it, and unset halves contribute no flag.
 	cfg, _, _ := env.Load()
-	agentModel := config.AgentModel{Model: model, Effort: effort}
-	if agentModel.Model == "" {
-		agentModel.Model = cfg.WorkshopAgent.Model
-	}
-	if agentModel.Effort == "" {
-		agentModel.Effort = cfg.WorkshopAgent.Effort
-	}
+	agentModel := config.AgentModel{Model: model, Effort: effort}.Over(cfg.WorkshopAgent)
 	agentModel = actions.TrimModel(agentModel)
 
 	session := agent.PlanSessionName(workspace)

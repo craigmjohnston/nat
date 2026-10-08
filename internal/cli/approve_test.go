@@ -15,13 +15,15 @@ import (
 
 // fakeGHRunner is a fake gh runner for testing.
 type fakeGHRunner struct {
-	out string
-	err error
-	dir string
+	out  string
+	err  error
+	dir  string
+	args []string
 }
 
 func (f *fakeGHRunner) Run(dir, name string, args ...string) (string, error) {
 	f.dir = dir
+	f.args = args
 	return f.out, f.err
 }
 
@@ -316,5 +318,30 @@ func TestSliceApproveJSON(t *testing.T) {
 	}
 	if want := (approveJSON{URL: "https://github.test/craig/nat/pull/42"}); got != want {
 		t.Errorf("json = %+v, want %+v", got, want)
+	}
+}
+
+// A project with a configured base opens its pull request into it.
+func TestSliceApproveOpensIntoTheConfiguredBase(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithBranch(testSliceID, "Write the UI", notion.SliceInProgress, "m1", "main")},
+		},
+		blocksByID: map[string][]notion.Block{testSliceID: {}},
+	}
+	cfg := testClaimConfig(t)
+	p := cfg.Projects["project-1"]
+	p.BaseBranch = "develop"
+	cfg.Projects["project-1"] = p
+	env, _ := testEnv(cfg, api)
+	runner := &fakeGHRunner{out: "https://github.test/craig/nat/pull/42\n"}
+	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
+	env.Out = &strings.Builder{}
+
+	if err := Run(context.Background(), []string{"slice-approve", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-approve: %v", err)
+	}
+	if got := strings.Join(runner.args, " "); !strings.HasSuffix(got, "--base develop") {
+		t.Errorf("gh args = %q, want --base develop", got)
 	}
 }

@@ -47,7 +47,7 @@ func sliceFile(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("slice-file: --from is 1 or more, and --to, when given, is not before it")
 	}
 
-	s, workdir, err := handedBackSlice(ctx, "slice-file", rest[0], *projectRef, env)
+	s, workdir, _, err := handedBackSlice(ctx, "slice-file", rest[0], *projectRef, env)
 	if err != nil {
 		return err
 	}

@@ -125,9 +125,11 @@ func (f *fakePRReader) ViewPR(dir, ref string) (gh.PR, error) {
 
 // The rest of [GH] pr-status never calls; stubbed so *fakePRReader can stand
 // in for the whole seam.
-func (f *fakePRReader) CreatePR(dir, branch, title, body string) (string, error) { return "", nil }
-func (f *fakePRReader) MergePR(dir, ref string) error                            { return nil }
-func (f *fakePRReader) CommentPR(dir, ref, body string) (string, error)          { return "", nil }
+func (f *fakePRReader) CreatePR(dir, branch, base, title, body string) (string, error) {
+	return "", nil
+}
+func (f *fakePRReader) MergePR(dir, ref string, opts gh.MergeOptions) error { return nil }
+func (f *fakePRReader) CommentPR(dir, ref, body string) (string, error)     { return "", nil }
 
 // withDoneWorktree gives env a worktree on the agent branch of each named
 // slice — what makes a Done slice worth asking about.

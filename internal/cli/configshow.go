@@ -12,7 +12,8 @@ import (
 
 // configShow prints local configuration: the fields the settings form edits
 // and nothing else — the agent split, the poll interval, the two model pairs
-// and each tracked project's working directory, runs and colour. It touches neither Notion nor
+// and each tracked project's working directory, runs, colour, tag, model
+// pairs, merge method, delete-branch switch and base branch. It touches neither Notion nor
 // a project: the workspace's databases, the assignee and a project's Slices
 // data source ID are the wizard's own writes rather than something meant to be
 // typed over, so they are left off exactly as internal/tui/settings.go leaves
@@ -75,6 +76,26 @@ type configProjectJSON struct {
 	// Color is the project's colour by palette name; omitted until one is
 	// assigned.
 	Color string `json:"color,omitempty"`
+	// SliceAgent and WorkshopAgent are the project's own model pairs as
+	// written — not resolved against the global ones — each omitted while
+	// both its halves are unset.
+	SliceAgent    *agentModelJSON `json:"slice_agent,omitempty"`
+	WorkshopAgent *agentModelJSON `json:"workshop_agent,omitempty"`
+	// MergeMethod, DeleteBranch, BaseBranch and Tag are as written, each
+	// omitted while unset.
+	MergeMethod  string `json:"merge_method,omitempty"`
+	DeleteBranch bool   `json:"delete_branch,omitempty"`
+	BaseBranch   string `json:"base_branch,omitempty"`
+	Tag          string `json:"tag,omitempty"`
+}
+
+// projectModelJSON is a project's own model pair, nil while it sets neither
+// half.
+func projectModelJSON(m config.AgentModel) *agentModelJSON {
+	if m == (config.AgentModel{}) {
+		return nil
+	}
+	return &agentModelJSON{Model: m.Model, Effort: m.Effort}
 }
 
 // configDoc is the structured form of local config.
@@ -104,7 +125,9 @@ func configShowJSON(cfg config.Config) configDoc {
 		ScratchProject:    cfg.ScratchProject,
 	}
 	for id, p := range cfg.Projects {
-		doc.Projects[id] = configProjectJSON{Name: p.Name, WorkingDir: p.WorkingDir, Backend: p.BackendName(), PlanDir: p.PlanDir, Source: p.Source, Runs: p.Runs, Color: p.Color}
+		doc.Projects[id] = configProjectJSON{Name: p.Name, WorkingDir: p.WorkingDir, Backend: p.BackendName(), PlanDir: p.PlanDir, Source: p.Source, Runs: p.Runs, Color: p.Color,
+			SliceAgent: projectModelJSON(p.SliceAgent), WorkshopAgent: projectModelJSON(p.WorkshopAgent),
+			MergeMethod: p.MergeMethod, DeleteBranch: p.DeleteBranch, BaseBranch: p.BaseBranch, Tag: p.Tag}
 	}
 	return doc
 }
@@ -142,6 +165,24 @@ func configShowMarkdown(cfg config.Config) string {
 		}
 		if p.Color != "" {
 			out += fmt.Sprintf(" color=%s", p.Color)
+		}
+		if p.Tag != "" {
+			out += fmt.Sprintf(" tag=%s", p.Tag)
+		}
+		if p.SliceAgent != (config.AgentModel{}) {
+			out += fmt.Sprintf(" slice_agent=model=%q,effort=%q", p.SliceAgent.Model, p.SliceAgent.Effort)
+		}
+		if p.WorkshopAgent != (config.AgentModel{}) {
+			out += fmt.Sprintf(" workshop_agent=model=%q,effort=%q", p.WorkshopAgent.Model, p.WorkshopAgent.Effort)
+		}
+		if p.MergeMethod != "" {
+			out += fmt.Sprintf(" merge_method=%s", p.MergeMethod)
+		}
+		if p.DeleteBranch {
+			out += " delete_branch=true"
+		}
+		if p.BaseBranch != "" {
+			out += fmt.Sprintf(" base_branch=%q", p.BaseBranch)
 		}
 		out += "\n"
 		for _, r := range p.Runs {

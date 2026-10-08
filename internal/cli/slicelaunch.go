@@ -86,13 +86,7 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 		}
 	}
 
-	agentModel := config.AgentModel{Model: *model, Effort: *effort}
-	if agentModel.Model == "" {
-		agentModel.Model = cfg.SliceAgent.Model
-	}
-	if agentModel.Effort == "" {
-		agentModel.Effort = cfg.SliceAgent.Effort
-	}
+	agentModel := config.AgentModel{Model: *model, Effort: *effort}.Over(cfg.SliceAgentFor(project))
 	agentModel = actions.TrimModel(agentModel)
 
 	// The plan is read for the milestone digest alone: [actions.Launch] reads
@@ -122,7 +116,7 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 	if s.PRURL != "" {
 		reviewer = env.NewGH()
 	}
-	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.NewGit(), st, reviewer,
+	result, err := actions.Launch(ctx, env.NewTmux(), env.NewWorktrees(), env.gitFor(project), st, reviewer,
 		cfg.AssigneeUserID, promptContext, agentModel)
 	if err != nil {
 		return err

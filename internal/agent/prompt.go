@@ -198,6 +198,11 @@ func repoPassage(c PromptContext) string {
 	b.WriteString("  slice/<slug>`. Otherwise run `git fetch origin` (a fetch that fails is\n")
 	b.WriteString("  no reason to stop) and cut it from the base:\n")
 	b.WriteString("  `git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <base>`.\n")
+	if base := c.Project.BaseBranch; base != "" {
+		fmt.Fprintf(&b, "- The base is this project's configured base branch, `%s`: `origin/%s`\n", base, base)
+		fmt.Fprintf(&b, "  where origin has it, else the local `%s`.\n", base)
+		return b.String()
+	}
 	b.WriteString("- The base is whatever `git symbolic-ref --short refs/remotes/origin/HEAD`\n")
 	b.WriteString("  names (`origin/main`, `origin/master`); with no such ref, `origin/main`\n")
 	b.WriteString("  if the repository has one; and only a repository with no origin at all\n")

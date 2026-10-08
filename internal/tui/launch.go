@@ -270,7 +270,7 @@ func (a *App) startAgent(s domain.Slice, workdir string, m config.AgentModel, at
 	// Who works the slice is the project's own answer: a workspace user for a plan
 	// in Notion, a bare name for one of nat's own.
 	assigneeID, assigneeName := a.cfg.AssigneeFor(project)
-	return launchAgent(a.launcher, newWorktrees(), newRepo(), st, a.reviewReader, assigneeID, agent.PromptContext{
+	return launchAgent(a.launcher, newWorktrees(), withBase(newRepo(), project.BaseBranch), st, a.reviewReader, assigneeID, agent.PromptContext{
 		Slice:           s,
 		Project:         project,
 		ProjectID:       a.cfg.ActiveProjectID,
@@ -449,13 +449,13 @@ func (a *App) launchAgentFlow() tea.Cmd {
 // past it.
 func (a *App) launchChosen(s domain.Slice, workdir string, project config.ProjectConfig, choice int) tea.Cmd {
 	if choice == choiceConfigure {
-		return a.openForm(newLaunchForm(a.styles.FormTheme, s, workdir, a.cfg.SliceAgent, project))
+		return a.openForm(newLaunchForm(a.styles.FormTheme, s, workdir, a.cfg.SliceAgentFor(project), project))
 	}
 	if err := actions.LaunchDir(workdir, project); err != nil {
 		return a.showConfirm(fmt.Sprintf("Cannot launch an agent for %q: %v.", s.Name, err), sevError)
 	}
 	a.busy, a.note = true, launchNote
-	return a.startAgent(s, workdir, a.cfg.SliceAgent, true)
+	return a.startAgent(s, workdir, a.cfg.SliceAgentFor(project), true)
 }
 
 // launchable reports whether a slice is one an agent can be started on: not

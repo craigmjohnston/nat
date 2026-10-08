@@ -26,6 +26,17 @@ in argv), after describing the plugin and refusing an id its `setup` list
 doesn't name; an empty value is refused too, all before `Client.Setup` is
 called. `--json` → `{"message"}`.
 
+## Per-project base branch
+
+Every git driver a project-scoped command builds is `Env.gitFor(project)` —
+`NewGit()` given the project's `base_branch` (`git.CLI.WithBase`, through the
+`baseConfigurable` assertion; a fake that is not a `git.CLI` keeps its own
+base) — so worktrees (`slice-launch`, `session-launch`), `slice-diff`,
+`session-diff`, `slice-show`'s `base`, `pr-status`'s branch conflict test and
+`run`'s checkout all read it. `slice-approve` passes it to `gh pr create
+--base`; `pr-merge` passes `merge_method`/`delete_branch`; `info --json`
+carries it as `project.base_branch`.
+
 ## `--project` pinning
 
 Every command that touches a tracked project requires `--project <page ID>`
@@ -46,7 +57,13 @@ where the caller meant.
   included, a usage error; the report names what auto chose; refused for the
   scratch project and a source project, which take none — `Config.Colorable`)
   and `.name` (trimmed; empty a usage error, refused on a source project,
-  which its plugin names) — do their own
+  which its plugin names), and `projectFieldSetters`' keys —
+  `.slice_agent.model`/`.effort` and `.workshop_agent.model`/`.effort`
+  (written as given, each half over the global pair through
+  `Config.SliceAgentFor`/`WorkshopAgentFor` at every launch), `.merge_method`
+  (merge/squash/rebase, else a usage error), `.delete_branch` (true/false),
+  `.base_branch` (trimmed) and `.tag` (`config.NormaliseTag`: 1–3 letters or
+  digits, uppercased, reported as stored) — do their own
   copy of this match (`projectKeyFor`) against the config already in memory,
   rather than calling `namedProject` and re-reading the file they write back.
 
@@ -137,7 +154,9 @@ comment, never shared by refactoring into a common import:
 Reads only, no `--project` needed: `setup` (installs skills, talks to
 neither Notion nor config), `paths` (prints config/log/nudge paths; with
 `--project`, matched by `namedProject`, also that project's plan file —
-`store.PlanPath`, `plan` in JSON — none for a Notion project),
+`store.PlanPath`, `plan` in JSON — none for a Notion project — and
+`default_base`, its working directory's `Base` with no configured base, by
+name: gnat's base-branch placeholder),
 `status` (live tmux sessions + activity, no Notion at all; `--json` also gives each agent's `model`, `effort` and `context_percent` from its teed statusline — see `internal/agent/CLAUDE.md` — each omitted when unknown), `usage` (see
 below — a property of the logged-in Claude account, not of any project),
 `claude-version` (`claudeversion.go`: `installed` the first token of `claude

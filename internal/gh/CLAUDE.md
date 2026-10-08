@@ -26,10 +26,11 @@ human has read the diff.
 
 ## Calls
 
-- `CreatePR(dir, branch, title, body)` — `gh pr create --head <branch>
+- `CreatePR(dir, branch, base, title, body)` — `gh pr create --head <branch>
   --title <title> --body <body>`, or `--fill` when `title` is empty (a
-  hand-back written before `--pr-description` existed). No `--base`: gh's own
-  default-branch answer is correct. Returns the **last** `https://` line gh
+  hand-back written before `--pr-description` existed). `--base <base>` only
+  where the project configures a `base_branch` (`OpenPR`'s `base`); otherwise
+  gh's own default-branch answer is correct. Returns the **last** `https://` line gh
   printed (`prURL`), not the first — gh sometimes prepends a line about the
   branch it pushed.
 - `CommentPR(dir, ref, body)` — `gh pr comment <ref> --body-file -`, body on
@@ -65,9 +66,12 @@ human has read the diff.
   Never the triggering event — gh's rollup doesn't carry `(pull_request)`.
   The list is sorted by that final name, case-insensitively and stably,
   which is GitHub's own checks-list order (gh returns creation order).
-- `MergePR(dir, ref)` — `gh pr merge <ref> --merge`. The strategy flag is
-  mandatory: a `Runner` subprocess has nothing on stdin, so without it gh
-  prompts for a strategy and the merge hangs.
+- `MergePR(dir, ref, MergeOptions)` — `gh pr merge <ref> --<method>`, the
+  project's `merge_method` (`merge` where unset; a word outside merge/squash/
+  rebase refused before gh runs), plus `--delete-branch` only where
+  `delete_branch` is set. The strategy flag is mandatory: a `Runner`
+  subprocess has nothing on stdin, so without it gh prompts for a strategy and
+  the merge hangs.
 - `EditReviewers(dir, ref, add, remove)` — `gh pr edit <ref> --add-reviewer
   a,b --remove-reviewer c`; an edit naming nobody is refused before gh runs
   (gh would prompt). `Collaborators(dir)` — `gh api

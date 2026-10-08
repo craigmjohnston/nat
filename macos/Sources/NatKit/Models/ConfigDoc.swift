@@ -62,6 +62,15 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
     /// The project's colour; nil until nat has given it one, from an older
     /// `nat`, and for a word this build does not know.
     public let color: ProjectColor?
+    /// The project's own model pairs as written — empty where unset.
+    public let sliceAgent: AgentModel
+    public let workshopAgent: AgentModel
+    /// Merge method, delete-branch switch, base branch and tag as written;
+    /// nil (false) where unset.
+    public let mergeMethod: String?
+    public let deleteBranch: Bool
+    public let baseBranch: String?
+    public let tag: String?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -71,11 +80,19 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
         case source
         case runs
         case color
+        case sliceAgent = "slice_agent"
+        case workshopAgent = "workshop_agent"
+        case mergeMethod = "merge_method"
+        case deleteBranch = "delete_branch"
+        case baseBranch = "base_branch"
+        case tag
     }
 
     public init(
         name: String, workingDir: String, backend: PlanBackend = .notion, planDir: String? = nil, source: String? = nil,
-        runs: [RunCommand] = [], color: ProjectColor? = nil
+        runs: [RunCommand] = [], color: ProjectColor? = nil,
+        sliceAgent: AgentModel = AgentModel(), workshopAgent: AgentModel = AgentModel(),
+        mergeMethod: String? = nil, deleteBranch: Bool = false, baseBranch: String? = nil, tag: String? = nil
     ) {
         self.name = name
         self.workingDir = workingDir
@@ -84,6 +101,12 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
         self.source = source
         self.runs = runs
         self.color = color
+        self.sliceAgent = sliceAgent
+        self.workshopAgent = workshopAgent
+        self.mergeMethod = mergeMethod
+        self.deleteBranch = deleteBranch
+        self.baseBranch = baseBranch
+        self.tag = tag
     }
 
     public init(from decoder: Decoder) throws {
@@ -95,6 +118,12 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
         source = try c.decodeIfPresent(String.self, forKey: .source)
         runs = try c.decodeIfPresent([RunCommand].self, forKey: .runs) ?? []
         color = ProjectColor(word: try? c.decodeIfPresent(String.self, forKey: .color))
+        sliceAgent = try c.decodeIfPresent(AgentModel.self, forKey: .sliceAgent) ?? AgentModel()
+        workshopAgent = try c.decodeIfPresent(AgentModel.self, forKey: .workshopAgent) ?? AgentModel()
+        mergeMethod = try c.decodeIfPresent(String.self, forKey: .mergeMethod)
+        deleteBranch = try c.decodeIfPresent(Bool.self, forKey: .deleteBranch) ?? false
+        baseBranch = try c.decodeIfPresent(String.self, forKey: .baseBranch)
+        tag = try c.decodeIfPresent(String.self, forKey: .tag)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -106,5 +135,11 @@ public struct ConfigDocProject: Codable, Equatable, Sendable {
         try c.encodeIfPresent(source, forKey: .source)
         if !runs.isEmpty { try c.encode(runs, forKey: .runs) }
         try c.encodeIfPresent(color?.rawValue, forKey: .color)
+        if !sliceAgent.isEmpty { try c.encode(sliceAgent, forKey: .sliceAgent) }
+        if !workshopAgent.isEmpty { try c.encode(workshopAgent, forKey: .workshopAgent) }
+        try c.encodeIfPresent(mergeMethod, forKey: .mergeMethod)
+        if deleteBranch { try c.encode(deleteBranch, forKey: .deleteBranch) }
+        try c.encodeIfPresent(baseBranch, forKey: .baseBranch)
+        try c.encodeIfPresent(tag, forKey: .tag)
     }
 }

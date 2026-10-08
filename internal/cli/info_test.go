@@ -658,3 +658,23 @@ func TestInfoLeavesAnEmptyMilestoneOutOfTheSlices(t *testing.T) {
 		t.Errorf("output =\n%s\nwant no slices section for a milestone with none", out.String())
 	}
 }
+
+// info --json names the project's configured base branch, for gnat's launch
+// card and the next-slice skill.
+func TestInfoJSONCarriesTheBaseBranch(t *testing.T) {
+	cfg := testConfig(t)
+	p := cfg.Projects["project-1"]
+	p.BaseBranch = "develop"
+	cfg.Projects["project-1"] = p
+	env, out := testEnv(cfg, populatedAPI(t))
+	if err := Run(context.Background(), []string{"info", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("info --json: %v", err)
+	}
+	var got infoJSON
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Project.BaseBranch != "develop" {
+		t.Errorf("base_branch = %q, want develop", got.Project.BaseBranch)
+	}
+}

@@ -2981,7 +2981,7 @@ enum AppStories {
                 + "field and Choose\u{2026} beside it \u{2014}, its Colour, a swatch per colour with the "
                 + "project's own ringed and its badge (NOT, in its teal) after them, its Plan (Notion, with "
                 + "Open in Notion) and Run commands (none yet, Add Run), Cancel and Save pinned at the foot.",
-            size: CGSize(width: 560, height: 580),
+            size: CGSize(width: 560, height: 640),
             colorScheme: .light
         ) {
             // The fixture project's ID is no Notion page ID, which would drop
@@ -2999,7 +2999,7 @@ enum AppStories {
             name: "project-settings-refused",
             summary: "The project settings sheet after a Save nat refused: the emptied name and the edited "
                 + "path kept in their fields with nat's message under each, nothing written.",
-            size: CGSize(width: 560, height: 580),
+            size: CGSize(width: 560, height: 640),
             colorScheme: .light
         ) {
             let appModel = await Fixtures.startedAppModel()
@@ -3025,7 +3025,7 @@ enum AppStories {
                 + "and scopeless, each a label, a command in the mono face, a scope menu and remove, a grip to "
                 + "drag \u{2014} after a Save nat refused for a label offered twice: the rows kept as typed and "
                 + "nat's message under the section. Its Plan is Local, the plan file's path under Reveal in Finder.",
-            size: CGSize(width: 560, height: 580),
+            size: CGSize(width: 560, height: 640),
             colorScheme: .light
         ) {
             let runs = [
@@ -3057,7 +3057,7 @@ enum AppStories {
             summary: "A source project's settings sheet: its plugin's title as its Name, read-only, with a "
                 + "note that the plugin names it; the working directory; Plan, Source via the plugin; no Colour "
                 + "and no Run commands.",
-            size: CGSize(width: 560, height: 580),
+            size: CGSize(width: 560, height: 640),
             colorScheme: .light
         ) {
             let model = ProjectSettingsModel(
@@ -3082,6 +3082,48 @@ enum AppStories {
             // none, so the story gives it the system's, dark.
             return ProjectSettingsView(projectName: "notion-agent-tracker", projectTag: "NOT", model: model)
                 .background(.background)
+        },
+
+        Story(
+            name: "project-settings-agents",
+            summary: "The project settings sheet scrolled to Agents: the slice agent's model set for this "
+                + "project alone (opus) over the global pair, its effort left to the global one — "
+                + "\"Default (high)\" — and the planning agent's effort set, its model \"Default (sonnet)\".",
+            size: CGSize(width: 560, height: 640),
+            colorScheme: .light
+        ) {
+            let model = ProjectSettingsModel(
+                projectID: Fixtures.projectID,
+                fields: ProjectSettingsFields(
+                    name: "notion-agent-tracker", workingDir: "/Users/craig/Projects/notion-agent-tracker",
+                    color: .teal, sliceModel: "opus", workshopEffort: "low"),
+                globalSliceAgent: AgentModel(model: "sonnet", effort: "high"),
+                globalWorkshopAgent: AgentModel(model: "sonnet"),
+                write: { _ in }, reload: {})
+            return ProjectSettingsView(projectName: "notion-agent-tracker", projectTag: "NOT", model: model)
+                .defaultScrollAnchor(.center)
+        },
+
+        Story(
+            name: "project-settings-merge",
+            summary: "The project settings sheet scrolled to Merging: squash and merge, the branch deleted "
+                + "after merging, develop as the base branch; and beside the colour a tag of its own, NT, the "
+                + "badge preview wearing it.",
+            size: CGSize(width: 560, height: 640),
+            colorScheme: .light
+        ) {
+            let model = ProjectSettingsModel(
+                projectID: Fixtures.projectID,
+                fields: ProjectSettingsFields(
+                    name: "notion-agent-tracker", workingDir: "/Users/craig/Projects/notion-agent-tracker",
+                    color: .teal),
+                write: { _ in }, reload: {}, readDefaultBase: { "main" })
+            model.edited.mergeMethod = "squash"
+            model.edited.deleteBranch = true
+            model.edited.baseBranch = "develop"
+            model.edited.tag = "nt"
+            return ProjectSettingsView(projectName: "notion-agent-tracker", projectTag: "NOT", model: model)
+                .defaultScrollAnchor(.center)
         },
 
         Story(
