@@ -133,6 +133,10 @@ func TestLaunchHandsTheBriefToTheModByPath(t *testing.T) {
 // positional prompt, read back from the file as it always was, and the
 // opening line goes nowhere.
 func TestLaunchWithoutTheModPassesTheBriefInArgv(t *testing.T) {
+	// A suite run inside a session nat launched inherits that session's own
+	// NAT_BRIEF; this asserts what the command sets, not what it inherited.
+	t.Setenv(briefEnv, "")
+	_ = os.Unsetenv(briefEnv)
 	prompt := filepath.Join(t.TempDir(), "nat-1.md")
 	write(t, prompt, briefText)
 	command := agentCommand(t.TempDir(), prompt, "Work the slice.", config.AgentModel{}, "", "")
