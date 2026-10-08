@@ -159,12 +159,12 @@ might not be.
   run the gate once more. Batch a stage's edits and build once per batch, not
   once per edit.
 - **If the work is code**: the worktree is already on the slice's branch, so
-  keep the change to exactly ONE branch's worth of work, commit there, and
-  push the branch — do not create a branch of your own and do not switch to
-  another. (Where you fell back to branching in place, that one branch is
-  yours in the same way.) Do not run `gh` and do not open a pull request — you
-  hand the branch back, and the user opens the pull request from the board once
-  they have reviewed it.
+  keep the change to exactly ONE branch's worth of work and commit there — do
+  not create a branch of your own and do not switch to another. Do not push it
+  yourself: handing back pushes it. (Where you fell back to branching in place,
+  that one branch is yours in the same way.) Do not run `gh` and
+  do not open a pull request — you hand the branch back, and the user opens the
+  pull request from the board once they have reviewed it.
 - **If the work is not code** (docs, research, written-up findings): produce
   the deliverable the brief asks for and link it in the summary below.
 
@@ -284,7 +284,7 @@ as a message.
 Record the outcome with the slice's page ID or URL, as printed in the brief:
 
 ```
-nat complete-slice <slice> --project <project> --branch <branch> \
+nat complete-slice <slice> --project <project> \
     --summary '- <what changed>
 - <key decision>' \
     --pr-description '<title line>
@@ -292,8 +292,12 @@ nat complete-slice <slice> --project <project> --branch <branch> \
 <what the PR does and why>'
 ```
 
-That records the branch you pushed and hands the slice back for review, writing
-the summary onto the slice page. `--summary` is quoted back to a future agent
+nat reads the branch off the slice's worktree; where you branched in place
+instead, there is no worktree to read, so add `--branch <branch>`. It refuses
+while the worktree holds anything uncommitted — commit it first — then pushes
+the branch itself (with a lease, so a rebased branch goes too), records it and
+hands the slice back for review, writing the summary onto the slice page. A
+push it reports refused is yours to sort out before handing back again. `--summary` is quoted back to a future agent
 in its milestone's digest, not read by a person, so keep it a handful of terse
 bullet points — what changed and key decisions — never a narrative of the
 session. It leaves the slice in progress deliberately — approving it on the
@@ -328,11 +332,11 @@ nat slice-resume <slice> --project <project> --note '<what they asked for>'
 ```
 
 That takes the slice back out of review, so the user's board reads it as work
-in progress again. Then do the work, push, and hand back again with the same
-`complete-slice --branch` command. If it refuses because the slice is Done, the
+in progress again. Then do the work, commit, and hand back again with the same
+`complete-slice` command. If it refuses because the slice is Done, the
 work is merged: say so to the user and stop.
 
-Leave `--branch` off when there was no branch — a docs or research slice — and
+Pass `--no-branch` when there was no branch — a docs or research slice — and
 the slice is marked Done there and then, with no pull request to describe. Pipe
 the summary in on stdin when it is too long for an argument.
 

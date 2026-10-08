@@ -74,6 +74,15 @@ request.
   apart. `MergeUnknown` is the zero value and never reads as conflicted;
   nothing is returned as an error.
 
+## Hand-back (`handback.go`)
+
+- `DirtyPaths(dir)` is `git status --porcelain --untracked-files=normal`,
+  each entry's path (a rename as `old -> new`); none is a clean tree.
+- `Push(dir, branch)` is `git push --force-with-lease -u origin <branch>` —
+  the lease lets a rebased branch go while refusing a remote that moved past
+  the last fetch. A refusal returns git's **whole** stderr, not
+  `ExitError`'s first line: a rejected push explains itself over several.
+
 ## Conventions
 
 - `Runner` is `internal/git`'s own type, not `gh.Runner` — a package about

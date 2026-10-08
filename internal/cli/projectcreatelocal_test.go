@@ -15,6 +15,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/config"
+	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
 )
@@ -40,7 +41,9 @@ func noNotionEnv(t *testing.T, cfg config.Config, found bool) (Env, *bytes.Buffe
 		NewTmux:   DefaultNewTmux,
 		// No worktree anywhere, as in testEnv.
 		NewWorktrees: func() actions.Worktrees { return &fakeSessionWorktrees{} },
-		Out:          &out,
+		// A git that pushes a hand-back without running the real one.
+		NewGit: func() GitCLI { return git.NewWithRunner(&fakeGitRunner{}) },
+		Out:    &out,
 	}, &out, state
 }
 

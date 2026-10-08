@@ -30,10 +30,11 @@ public func sendBackPrompt(note: String, branch: String?, handBack: HandBackInst
     let branchArgument = branch.flatMap { $0.isEmpty ? nil : $0 } ?? "<your branch>"
     return "I am sending this task back to you for more work:\n\n"
         + note.trimmingCharacters(in: .whitespacesAndNewlines) + "\n\n"
-        + "Make the change on the same branch. When it is done and the branch is pushed, "
+        + "Make the change on the same branch. When it is done and committed, "
         + "hand the slice back for review by running exactly:\n\n"
         + "nat complete-slice \(handBack.sliceRef) --project \(handBack.projectID) "
         + "--branch \(branchArgument) --summary '<what you changed>'\n"
+        + "\nThat hand-back pushes the branch: do not push it yourself.\n"
 }
 
 /// The trouble the action bar offers to fix in place of Approve or Merge: a

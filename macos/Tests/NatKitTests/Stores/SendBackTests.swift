@@ -36,8 +36,10 @@ final class SendBackTests: XCTestCase {
         let handBack = HandBackInstruction(projectID: "p", sliceRef: "s")
         let prompt = sendBackPrompt(note: "  Rename the helper.\n", branch: "slice/x", handBack: handBack)
         XCTAssertTrue(prompt.hasPrefix("I am sending this task back to you for more work:\n\nRename the helper.\n\n"))
+        XCTAssertTrue(prompt.contains("When it is done and committed, hand the slice back"))
         XCTAssertTrue(prompt.hasSuffix(
-            "nat complete-slice s --project p --branch slice/x --summary '<what you changed>'\n"))
+            "nat complete-slice s --project p --branch slice/x --summary '<what you changed>'\n"
+                + "\nThat hand-back pushes the branch: do not push it yourself.\n"))
         XCTAssertTrue(
             sendBackPrompt(note: "x", branch: nil, handBack: handBack).contains("--branch <your branch>"),
             "no branch recorded: the agent fills it in")

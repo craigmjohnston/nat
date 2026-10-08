@@ -369,37 +369,40 @@ func Prompt(c PromptContext) string {
 		fmt.Fprintf(&b, "the branch %s and shared with nobody, and the work an earlier\n", c.Branch)
 		b.WriteString("session pushed is already on it. Read what is there before adding to\n")
 		b.WriteString("it — the commits on the branch, and the summary the slice page carries\n")
-		fmt.Fprintf(&b, "of what that session did. Commit your own work there and push %s\n", c.Branch)
-		b.WriteString("again: the same branch, which is the one the review is against. Do not\n")
-		b.WriteString("create a branch of your own and do not switch to another; this one is\n")
+		b.WriteString("of what that session did. Commit your own work there, on the same\n")
+		b.WriteString("branch, which is the one the review is against; the hand-back below\n")
+		b.WriteString("pushes it, so do not push it yourself. Do not create a branch of your\n")
+		b.WriteString("own and do not switch to another; this one is yours and is what you\n")
 		if c.Slice.PRURL != "" {
-			b.WriteString("yours and is what you hand back. Its pull request is open already, and\n")
-			b.WriteString("pushing the branch updates it: there is no other to open.\n\n")
+			b.WriteString("hand back. Its pull request is open already, and the hand-back's push\n")
+			b.WriteString("updates it: there is no other to open.\n\n")
 		} else {
-			b.WriteString("yours and is what you hand back. Do not run `gh`, and do not open a\n")
-			b.WriteString("pull request: you hand the branch back and the user opens the pull\n")
-			b.WriteString("request from the board once they have reviewed it.\n\n")
+			b.WriteString("hand back. Do not run `gh`, and do not open a pull request: you hand\n")
+			b.WriteString("the branch back and the user opens the pull request from the board\n")
+			b.WriteString("once they have reviewed it.\n\n")
 		}
 	case c.RepoUnknown:
 		b.WriteString("Once the worktree above is cut, it is yours alone. If the work is code:\n")
-		b.WriteString("commit there — exactly ONE change, this slice's — and push its branch.\n")
-		b.WriteString("Do not create another branch and do not switch away; that one is what\n")
-		b.WriteString("you hand back. Do not run `gh`, and do not open a pull request: you hand\n")
-		b.WriteString("the branch back and the user opens the pull request from the board once\n")
-		b.WriteString("they have reviewed it.\n\n")
+		b.WriteString("commit there — exactly ONE change, this slice's. The hand-back below\n")
+		b.WriteString("pushes its branch: do not push it yourself. Do not create another branch\n")
+		b.WriteString("and do not switch away; that one is what you hand back. Do not run\n")
+		b.WriteString("`gh`, and do not open a pull request: you hand the branch back and the\n")
+		b.WriteString("user opens the pull request from the board once they have reviewed it.\n\n")
 	case c.Branch != "":
 		fmt.Fprintf(&b, "That directory is a git worktree cut for this slice alone, already on\n")
 		fmt.Fprintf(&b, "the branch %s and shared with nobody. If the work is code: commit\n", c.Branch)
-		fmt.Fprintf(&b, "there — exactly ONE change, this slice's — and push %s. Do not\n", c.Branch)
-		b.WriteString("create a branch of your own and do not switch to another; this one is\n")
-		b.WriteString("yours and is what you hand back. Do not run `gh`, and do not open a\n")
-		b.WriteString("pull request: you hand the branch back and the user opens the pull\n")
-		b.WriteString("request from the board once they have reviewed it.\n\n")
+		b.WriteString("there — exactly ONE change, this slice's. The hand-back below pushes\n")
+		b.WriteString("the branch, so do not push it yourself. Do not create a branch of your\n")
+		b.WriteString("own and do not switch to another; this one is yours and is what you\n")
+		b.WriteString("hand back. Do not run `gh`, and do not open a pull request: you hand\n")
+		b.WriteString("the branch back and the user opens the pull request from the board\n")
+		b.WriteString("once they have reviewed it.\n\n")
 	default:
 		b.WriteString("If the work is code: branch for the slice — one branch, and exactly ONE\n")
-		b.WriteString("change on it — commit, and push the branch. Do not run `gh`, and do not\n")
-		b.WriteString("open a pull request: you hand the branch back and the user opens the\n")
-		b.WriteString("pull request from the board once they have reviewed it.\n\n")
+		b.WriteString("change on it — and commit; the hand-back below pushes the branch, so do\n")
+		b.WriteString("not push it yourself. Do not run `gh`, and do not open a pull request:\n")
+		b.WriteString("you hand the branch back and the user opens the pull request from the\n")
+		b.WriteString("board once they have reviewed it.\n\n")
 	}
 	b.WriteString("If the work is not code — docs, research, written-up findings — produce\n")
 	b.WriteString("the deliverable the brief asks for and link it in the summary below.\n")
@@ -414,11 +417,18 @@ func Prompt(c PromptContext) string {
 	b.WriteString(visualsPassage(c, "before `complete-slice`"))
 	b.WriteString("On completion, record the outcome:\n\n")
 	fmt.Fprintf(&b, "    nat complete-slice %s --project %s \\\n", c.Slice.ID, c.ProjectID)
-	fmt.Fprintf(&b, "        --branch %s --summary '- <what changed>\\n- <key decision>' \\\n", branchArg(c))
+	if c.Branch == "" && !c.RepoUnknown {
+		// No worktree for nat to read the branch off: the agent names it.
+		b.WriteString("        --branch <branch> \\\n")
+	}
+	b.WriteString("        --summary '- <what changed>\\n- <key decision>' \\\n")
 	b.WriteString("        --pr-description '<title line>\n\n<what the PR does and why>'\n\n")
-	b.WriteString("That records the branch you pushed and hands the slice back for review,\n")
-	b.WriteString("writing the summary onto its page. `--summary` is quoted back to a future\n")
-	b.WriteString("agent in its milestone's digest, not read by a person, so keep it a\n")
+	b.WriteString("That refuses while the worktree holds anything uncommitted — commit it\n")
+	b.WriteString("first — then pushes the branch, records it and hands the slice back for\n")
+	b.WriteString("review, writing the summary onto its page; a push it reports refused is\n")
+	b.WriteString("yours to sort out before handing back again. `--summary` is quoted back\n")
+	b.WriteString("to a future agent in its milestone's digest, not read by a person, so\n")
+	b.WriteString("keep it a ")
 	if c.Frontend == FrontendGnat {
 		b.WriteString("handful of terse bullet points — what changed and key decisions — never\n")
 		b.WriteString("a narrative of the session. It leaves the slice in progress on purpose —\n")
@@ -446,7 +456,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString("line that costs somebody else an hour redoing the work to find out it\n")
 	b.WriteString("was wrong.\n\n")
 	b.WriteString(resumePassage(c))
-	b.WriteString("Leave `--branch` off when the slice produced no branch — a docs or\n")
+	b.WriteString("Pass `--no-branch` when the slice produced no branch — a docs or\n")
 	b.WriteString("research slice — and it is marked Done there and then, with no pull\n")
 	b.WriteString("request to describe. A summary too long for one argument can be piped in\n")
 	b.WriteString("on stdin instead of passing `--summary`.\n\n")
@@ -640,8 +650,8 @@ func Resuming(c PromptContext) bool {
 }
 
 // pullRequestPassage tells an agent launched on a slice with a pull request
-// recorded that its work is out: the pull request is open, pushing the branch
-// updates it, and the review as it stood at launch is carried inline. It
+// recorded that its work is out: the pull request is open, the hand-back's
+// push updates it, and the review as it stood at launch is carried inline. It
 // relaxes the standing ban on `gh` for the one read the review needs and no
 // other — the checks are read with `nat slice-checks`, as every agent reads
 // CI — and keeps every pull request write the user's. Empty for a slice with
@@ -654,7 +664,7 @@ func pullRequestPassage(c PromptContext) string {
 	var b strings.Builder
 	b.WriteString("\n## The pull request\n\n")
 	b.WriteString("This slice's work was handed back and approved, and its pull request is\n")
-	fmt.Fprintf(&b, "open: %s. Pushing the branch updates it. The\n", pr)
+	fmt.Fprintf(&b, "open: %s. Handing the branch back pushes it, which updates it. The\n", pr)
 	b.WriteString("user has taken the work back up — the slice's task log ends in why — so\n")
 	b.WriteString("finish what they asked for and hand it back, as below; it returns to its\n")
 	b.WriteString("pull request.\n\n")
@@ -667,7 +677,7 @@ func pullRequestPassage(c PromptContext) string {
 			fmt.Fprintf(&b, "The pull request's checks:\n\n```\n%s\n```\n\n", c.ReviewChecks)
 		}
 	}
-	b.WriteString("Re-read the review before you push, since it can have moved since launch:\n\n")
+	b.WriteString("Re-read the review before you hand back, since it can have moved since launch:\n\n")
 	fmt.Fprintf(&b, "    gh pr view %s --comments\n\n", pr)
 	b.WriteString("That is the only `gh` you may run — read CI with the `slice-checks` command\nbelow.\n")
 	b.WriteString("Never open, merge, close or reopen a pull request: merging this one is\n")
@@ -682,11 +692,11 @@ func pullRequestPassage(c PromptContext) string {
 // conflictPassage tells an agent relaunched on a handed-back branch that no
 // longer merges into its base — found by the launch's own test, there being no
 // pull request for GitHub to say so of — that bringing the branch up to date
-// comes first: rebase it onto the base, resolve the conflicts, run the gate,
-// push and hand back. The push has to be a forced one, since a rebase
-// rewrites the branch, and is the lease form so it can never overwrite
-// anything it has not seen; with no pull request open, nobody has reviewed
-// those commits anywhere but here. Empty where the launch found no conflict.
+// comes first: rebase it onto the base, resolve the conflicts, run the gate
+// and hand back. The hand-back's own push is the lease form, which is what
+// lets a rebased branch go over its old self while never overwriting anything
+// it has not seen, so the agent pushes nothing itself. Empty where the launch
+// found no conflict.
 func conflictPassage(c PromptContext) string {
 	base := c.ConflictBase
 	if base == "" {
@@ -703,10 +713,8 @@ func conflictPassage(c PromptContext) string {
 	fmt.Fprintf(&b, "2. Resolve every conflict, keeping what both sides meant: %s's side\n", base)
 	b.WriteString("   is merged work, never to be undone to make the branch fit.\n")
 	b.WriteString("3. Run the project's verification gate on the result.\n")
-	fmt.Fprintf(&b, "4. Push with `git push --force-with-lease origin %s`:\n", c.Branch)
-	b.WriteString("   the rebase rewrote the branch's commits, and no pull request has been\n")
-	b.WriteString("   opened from them.\n")
-	b.WriteString("5. Hand the slice back with `complete-slice --branch`, as below.\n")
+	b.WriteString("4. Hand the slice back with `complete-slice`, as below. Do not push\n")
+	b.WriteString("   yourself: the hand-back pushes the rebased branch with a lease.\n")
 	return b.String()
 }
 
@@ -721,8 +729,8 @@ func resumePassage(c PromptContext) string {
 	b.WriteString("If the user asks for more or different work after you have handed back,\n")
 	b.WriteString("say so on the record before changing anything:\n\n")
 	fmt.Fprintf(&b, "    nat slice-resume %s --project %s --note '<what they asked for>'\n\n", c.Slice.ID, c.ProjectID)
-	b.WriteString("then do the work, push, and hand back again with the same\n")
-	b.WriteString("`complete-slice --branch` command. If it refuses because the slice is\n")
+	b.WriteString("then do the work, commit, and hand back again with the same\n")
+	b.WriteString("`complete-slice` command. If it refuses because the slice is\n")
 	b.WriteString("Done, the work is merged: say so to the user and stop.\n\n")
 	return b.String()
 }
@@ -969,15 +977,6 @@ const followUpBriefPassage = "Write each one as a slice brief: if the user queue
 	"at\". If saying what to change needs a look at the code, take that look\n" +
 	"now — it is usually one read; if it genuinely needs investigation, the\n" +
 	"investigation is the deliverable and `Done when:` says what it produces.\n\n"
-
-// branchArg is what the hand-back command names: the branch the session's
-// worktree is already on, or the placeholder for an agent that will make one.
-func branchArg(c PromptContext) string {
-	if c.Branch != "" {
-		return c.Branch
-	}
-	return "<branch>"
-}
 
 // repoOverridden reports whether the agent is being sent somewhere other than
 // the project's default working directory, which is worth calling out in the

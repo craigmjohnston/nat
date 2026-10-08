@@ -212,7 +212,7 @@ func TestCompleteSliceDoneRemovesTheWorktree(t *testing.T) {
 	w := withWorktree(&env)
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--summary", "Wrote the docs.", "--project", "project-1",
+		"complete-slice", sliceID, "--no-branch", "--summary", "Wrote the docs.", "--project", "project-1",
 	}, env)
 	if err != nil {
 		t.Fatalf("complete-slice: %v", err)

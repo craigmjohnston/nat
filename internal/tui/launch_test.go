@@ -1342,7 +1342,7 @@ func TestAppLaunchResumesAHandedBackSlice(t *testing.T) {
 	for _, want := range []string{
 		"- Branch: slice/board-screen-take-two",
 		"an earlier session pushed it and",
-		"push slice/board-screen-take-two\nagain",
+		"Commit your own work there, on the same\nbranch",
 	} {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("prompt does not say %q:\n%s", want, prompt)
@@ -1435,7 +1435,7 @@ func TestAppLaunchResumesAPublishedSlice(t *testing.T) {
 		"## The pull request",
 		"- Branch: " + publishedBranch,
 		"gh pr view https://example.test/pr/1 --comments",
-		"nat complete-slice s3 --project " + testProjectID + " \\\n        --branch " + publishedBranch,
+		"nat complete-slice s3 --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("prompt does not say %q:\n%s", want, prompt)

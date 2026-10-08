@@ -914,7 +914,8 @@ final class DiffStoreTests: XCTestCase {
         XCTAssertFalse(client.reworkComments[0].contains("complete-slice"))
         let prompt = client.sentPrompts[0].text
         XCTAssertTrue(prompt.hasSuffix(
-            "nat complete-slice slice-1 --project proj-1 --branch nat/example --summary '<what you changed for these comments>'\n"))
+            "nat complete-slice slice-1 --project proj-1 --branch nat/example --summary '<what you changed for these comments>'\n"
+                + "\nThat hand-back pushes the branch: do not push it yourself.\n"))
         XCTAssertFalse(prompt.contains("opens the pull request"))
         XCTAssertEqual(store.pendingCommentCount, 0)
     }

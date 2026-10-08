@@ -32,12 +32,12 @@ Go, Bubble Tea v2, 100% coverage of new code.
 ## The pull request
 
 This slice's work was handed back and approved, and its pull request is
-open: https://github.test/craig/nat/pull/12. Pushing the branch updates it. The
+open: https://github.test/craig/nat/pull/12. Handing the branch back pushes it, which updates it. The
 user has taken the work back up — the slice's task log ends in why — so
 finish what they asked for and hand it back, as below; it returns to its
 pull request.
 
-Re-read the review before you push, since it can have moved since launch:
+Re-read the review before you hand back, since it can have moved since launch:
 
     gh pr view https://github.test/craig/nat/pull/12 --comments
 
@@ -95,11 +95,12 @@ That directory is a git worktree cut for this slice alone, already on
 the branch slice/tmux-integration-agent-prompt-template and shared with nobody, and the work an earlier
 session pushed is already on it. Read what is there before adding to
 it — the commits on the branch, and the summary the slice page carries
-of what that session did. Commit your own work there and push slice/tmux-integration-agent-prompt-template
-again: the same branch, which is the one the review is against. Do not
-create a branch of your own and do not switch to another; this one is
-yours and is what you hand back. Its pull request is open already, and
-pushing the branch updates it: there is no other to open.
+of what that session did. Commit your own work there, on the same
+branch, which is the one the review is against; the hand-back below
+pushes it, so do not push it yourself. Do not create a branch of your
+own and do not switch to another; this one is yours and is what you
+hand back. Its pull request is open already, and the hand-back's push
+updates it: there is no other to open.
 
 If the work is not code — docs, research, written-up findings — produce
 the deliverable the brief asks for and link it in the summary below.
@@ -207,15 +208,17 @@ any, arrive here as a message.
 On completion, record the outcome:
 
     nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
-        --branch slice/tmux-integration-agent-prompt-template --summary '- <what changed>\n- <key decision>' \
+        --summary '- <what changed>\n- <key decision>' \
         --pr-description '<title line>
 
 <what the PR does and why>'
 
-That records the branch you pushed and hands the slice back for review,
-writing the summary onto its page. `--summary` is quoted back to a future
-agent in its milestone's digest, not read by a person, so keep it a
-handful of terse bullet points — what changed, key decisions, follow-ups
+That refuses while the worktree holds anything uncommitted — commit it
+first — then pushes the branch, records it and hands the slice back for
+review, writing the summary onto its page; a push it reports refused is
+yours to sort out before handing back again. `--summary` is quoted back
+to a future agent in its milestone's digest, not read by a person, so
+keep it a handful of terse bullet points — what changed, key decisions, follow-ups
 worth queueing — never a narrative of the session. It leaves the slice in
 progress on purpose — approving it on the board is what opens the pull
 request and marks it Done.
@@ -243,11 +246,11 @@ say so on the record before changing anything:
 
     nat slice-resume 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 --note '<what they asked for>'
 
-then do the work, push, and hand back again with the same
-`complete-slice --branch` command. If it refuses because the slice is
+then do the work, commit, and hand back again with the same
+`complete-slice` command. If it refuses because the slice is
 Done, the work is merged: say so to the user and stop.
 
-Leave `--branch` off when the slice produced no branch — a docs or
+Pass `--no-branch` when the slice produced no branch — a docs or
 research slice — and it is marked Done there and then, with no pull
 request to describe. A summary too long for one argument can be piped in
 on stdin instead of passing `--summary`.

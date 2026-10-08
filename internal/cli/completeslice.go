@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -20,15 +21,21 @@ import (
 // and the note says what stopped it, so the work is not lost and nobody else
 // picks the slice up either.
 //
-// --branch is another, and the one an agent ends on now: the branch the work
-// was pushed to is recorded and the slice is left in progress, which on the
-// board is a slice handed back and waiting to be reviewed. Approving it there
-// is what opens the pull request. The --pr ending stays for whoever already
-// has a pull request to record, and it too leaves the slice in progress:
-// Done means the work is on main, so the merge is what writes it — nat's own,
-// or the reading that finds GitHub already made one. Only a slice closed out
-// with none of the three goes straight to Done, since work with no pull
-// request has no merge coming.
+// Handing a branch back is the one an agent ends on, and the default: the
+// branch its worktree is on (or --branch) is pushed and recorded and the
+// slice is left in progress, which on the board is a slice handed back and
+// waiting to be reviewed. Approving it there is what opens the pull request.
+// nat does the git work rather than the agent: a worktree with anything
+// uncommitted is refused, path by path, since a hand-back is a claim that the
+// branch holds the work; then the branch is pushed with a lease — all before
+// the page is written, so a refusal or a failed push leaves it untouched.
+// The --pr ending stays for whoever already has a pull request to record, and
+// it too leaves the slice in progress: Done means the work is on main, so the
+// merge is what writes it — nat's own, or the reading that finds GitHub
+// already made one. Only a slice closed out with --no-branch goes straight to
+// Done, since work with no pull request has no merge coming; it is a flag of
+// its own so that a slice with no worktree to read a branch off is never
+// closed Done by an agent that only forgot --branch.
 //
 // Only a slice this user already holds can be finished. An agent that never
 // claimed the slice has no business saying it is done, and a slice held by
@@ -37,7 +44,9 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("complete-slice", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	pr := flags.String("pr", "", "URL of the pull request this slice produced")
-	branch := flags.String("branch", "", "the branch this slice's work was pushed to, handed back for review")
+	branch := flags.String("branch", "",
+		"the branch this slice's work is on, pushed and handed back for review; the worktree's own when absent")
+	noBranch := flags.Bool("no-branch", false, "the slice produced no branch (docs, research): close it Done")
 	summary := flags.String("summary", "", "the note to append; read from stdin when absent")
 	description := flags.String("pr-description", "",
 		"the pull request description for the branch handed back; `-` reads it from stdin")
@@ -51,7 +60,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("complete-slice: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
 	*branch = strings.TrimSpace(*branch)
-	if err := endings(*branch, *pr, *description, *blocked); err != nil {
+	if err := endings(*branch, *pr, *description, *blocked, *noBranch); err != nil {
 		return err
 	}
 	pageID, err := pageID("complete-slice", rest[0])
@@ -99,11 +108,14 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	// A branch nothing can hold is a hand-back that would be silently lost, so
-	// it is refused here — before the note is written — rather than written
-	// nowhere. Every project the app has loaded since has the column; one whose
-	// column of that name is something other than text is the case left.
-	if *branch != "" && !shape.HasBranch {
-		return fmt.Errorf("this project's %s table has no %s text column to hand a branch back on: add one in Notion",
+	// it is refused here — before anything is pushed or written — rather than
+	// written nowhere. Every project the app has loaded since has the column;
+	// one whose column of that name is something other than text is the case
+	// left.
+	handingBack := !*blocked && *pr == "" && !*noBranch
+	if handingBack && !shape.HasBranch {
+		return fmt.Errorf("this project's %s table has no %s text column to hand a branch back on: "+
+			"add one in Notion, or pass --no-branch for a slice that produced none",
 			notion.SlicesDBTitle, notion.PropBranch)
 	}
 	s, pageShape, err := loadSlice(ctx, st, pageID)
@@ -129,6 +141,18 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 			}
 			return fmt.Errorf("%s %s the user's decision; hand back once it has arrived", counted(n, "follow-up"), verb)
 		}
+	}
+	if handingBack {
+		pushed, err := actions.PushHandBack(env.NewWorktrees(), env.gitFor(project), s, project, *branch)
+		if errors.Is(err, actions.ErrNoWorktree) {
+			return usageErrorf("complete-slice: %q has no worktree to read its branch off: "+
+				"pass --branch with the branch the work is committed on, "+
+				"or --no-branch for a slice that produced none (docs, research)", s.Name)
+		}
+		if err != nil {
+			return err
+		}
+		*branch = pushed
 	}
 
 	// The status is written in the shape the page was read in rather than the
@@ -172,18 +196,28 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 // slice closed out with neither is Done — none of the three has one coming, so
 // a description given alongside any of them would be written where nothing ever
 // reads it.
-func endings(branch, pr, description string, blocked bool) error {
-	if description != "" && branch == "" {
+func endings(branch, pr, description string, blocked, noBranch bool) error {
+	if description != "" {
 		switch {
-		case pr != "":
-			return usageErrorf("complete-slice: --pr-description is for the pull request --branch has yet to open: " +
+		case pr != "" && branch == "":
+			return usageErrorf("complete-slice: --pr-description is for the pull request a hand-back has yet to open: " +
 				"--pr records one that is already open")
-		case blocked:
+		case blocked && branch == "":
 			return usageErrorf("complete-slice: --pr-description is for a branch handed back, not for stopped work: " +
 				"say what stopped it in --summary")
-		default:
-			return usageErrorf("complete-slice: --pr-description needs the --branch it describes: " +
-				"a slice closed out without one opens no pull request")
+		case noBranch && branch == "":
+			return usageErrorf("complete-slice: --pr-description needs a branch to describe: " +
+				"a slice closed out with --no-branch opens no pull request")
+		}
+	}
+	if noBranch {
+		if branch != "" {
+			return usageErrorf("complete-slice: --branch and --no-branch contradict each other: " +
+				"hand the branch back, or close out a slice that produced none")
+		}
+		if pr != "" || blocked {
+			return usageErrorf("complete-slice: --no-branch is its own ending: " +
+				"--pr and --blocked already hand no branch back")
 		}
 	}
 	if branch == "" {

@@ -60,7 +60,7 @@ public func visualCommentsPrompt(
 ) -> String {
     var out = "I have reviewed the visual changes you handed in and left \(comments.count) " +
         "\(plural(comments.count, "comment", "comments")) on them. " +
-        "Address every one of them, then push the branch again and tell me it is ready.\n"
+        "Address every one of them, commit your changes, and tell me it is ready.\n"
     var heading: (Int, String)?
     for comment in comments {
         if heading == nil || heading! != (comment.index, comment.uri) {
@@ -76,10 +76,11 @@ public func visualCommentsPrompt(
         out += "\(comment.text)\n"
     }
     if let handBack {
-        out += "\nWhen every comment is addressed and the branch is pushed, hand the slice " +
+        out += "\nWhen every comment is addressed and committed, hand the slice " +
             "back for review by running exactly:\n\n" +
             "nat complete-slice \(handBack.sliceRef) --project \(handBack.projectID) " +
-            "--branch \(branch ?? "<branch>") --summary '<what you changed for these comments>'\n"
+            "--branch \(branch ?? "<branch>") --summary '<what you changed for these comments>'\n" +
+            "\nThat hand-back pushes the branch: do not push it yourself.\n"
     }
     return out
 }

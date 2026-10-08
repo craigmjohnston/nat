@@ -32,19 +32,20 @@ func TestPromptOnAPublishedSliceOnGnat(t *testing.T) {
 
 // A relaunch on a slice with a pull request recorded is an ordinary relaunch
 // — told it is continuing, claimed like any other — and told besides that the
-// pull request is open and a push updates it, never to open another.
+// pull request is open and the hand-back's push updates it, never to open
+// another.
 func TestPromptTellsAPublishedSliceItsPullRequestIsOpen(t *testing.T) {
 	c := publishedContext()
 	got := Prompt(c)
 	for _, want := range []string{
 		"There is work on that branch already",
 		"## The pull request",
-		"its pull request is\nopen: " + c.Slice.PRURL + ". Pushing the branch updates it.",
-		"Its pull request is open already, and\npushing the branch updates it",
+		"its pull request is\nopen: " + c.Slice.PRURL + ". Handing the branch back pushes it, which updates it.",
+		"Its pull request is open already, and the hand-back's push\nupdates it",
 		"    gh pr view " + c.Slice.PRURL + " --comments\n",
 		"That is the only `gh` you may run",
 		"Never open, merge, close or reopen a pull request",
-		"--branch " + c.Branch + " --summary",
+		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
@@ -133,7 +134,7 @@ func TestEverySlicePromptCarriesTheResumePassage(t *testing.T) {
 		for _, want := range []string{
 			"If the user asks for more or different work after you have handed back",
 			"    nat slice-resume " + c.Slice.ID + " --project " + testProjectID + " --note '<what they asked for>'\n",
-			"same\n`complete-slice --branch` command",
+			"commit, and hand back again with the same\n`complete-slice` command",
 			"Done, the work is merged: say so to the user and stop.",
 		} {
 			if !strings.Contains(got, want) {
@@ -158,8 +159,8 @@ func TestPromptOnAConflictedHandBack(t *testing.T) {
 }
 
 // A conflicted hand-back is told to rebase onto the base it conflicts with,
-// resolve, push the rewritten branch with a lease, and hand back — on top of
-// the ordinary relaunch, which still says it is continuing.
+// resolve, and hand back — nat's push of the rewritten branch carries the
+// lease — on top of the ordinary relaunch, which still says it is continuing.
 func TestPromptTasksAConflictedHandBackWithARebase(t *testing.T) {
 	c := conflictedContext()
 	got := Prompt(c)
@@ -168,8 +169,8 @@ func TestPromptTasksAConflictedHandBackWithARebase(t *testing.T) {
 		"## The branch conflicts with origin/main",
 		"on " + c.Branch + ":\n   `git rebase origin/main`",
 		"Resolve every conflict",
-		"`git push --force-with-lease origin " + c.Branch + "`",
-		"--branch " + c.Branch + " --summary",
+		"Do not push\n   yourself: the hand-back pushes the rebased branch with a lease.",
+		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
