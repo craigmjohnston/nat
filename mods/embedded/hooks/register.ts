@@ -1,4 +1,36 @@
-import type { Register } from 'claude-code'
+import { atom, update } from 'claude-code'
+import type { EngineInterface, Register, StateDollar } from 'claude-code'
+
+import type { Wait } from '../types'
+
+type Engine = StateDollar & Pick<EngineInterface, 'process' | 'ui'>
+
+// What the mod last wrote on the pane, held by the host so a hot reload (a
+// fresh module) neither forgets a wait it marked nor writes the flag again.
+const wait = atom({ plugin: 'nat-embedded', key: 'wait' } as const, null)
+
+// Sets the pane's waiting flag to `to` — what the agent's own `nat
+// agent-waiting` / `nat agent-working` set — only where it changes; a wait
+// for one thing becoming a wait for another rewrites nothing. `from` limits a
+// clear to the waits it names. The session carries nat's PATH and the pane's
+// TMUX_PANE, which is how the command finds the pane. Nothing here throws: a
+// failure goes to the debug log, never the transcript, and never costs the
+// hook calling it — the flag is a hint, not the work.
+async function mark($: Engine, to: Wait | null, from?: readonly Wait[]): Promise<void> {
+  try {
+    let was: Wait | null = null
+    const now = await update($, wait, value => {
+      was = value
+      return to !== null || !from || (value !== null && from.includes(value)) ? to : value
+    })
+    if ((was === null) === (now === null)) return
+    const command = now === null ? 'agent-working' : 'agent-waiting'
+    const { exitCode, stderr } = await $.process.run(['nat', command], { timeoutMs: 10_000 })
+    if (exitCode !== 0) $.ui.log(`nat ${command} exited ${exitCode}: ${stderr.trim()}`, { to: 'debug' })
+  } catch (err) {
+    $.ui.log(`waiting flag (${to ?? 'working'}) not written: ${String(err)}`, { to: 'debug' })
+  }
+}
 
 // nat's hooks into the Claude Code sessions it launches. Written against the
 // public mods reference and the declarations the installed build writes beside
@@ -44,4 +76,75 @@ export const register: Register = on => {
   on('ui.render', { component: 'Spinner' }, ($, e, next) =>
     next({ ...e, props: { ...e.props, word: 'Working' } }),
   )
+
+  // The waiting flag gnat's star, dock badge and Active rail read, set and
+  // cleared at the moments the engine itself knows are a wait on the user.
+  // The agent's own `nat agent-waiting` stays for what the engine cannot
+  // see — a question asked in prose at the end of a turn — so a plain
+  // finished turn (`answer`) and an `idle_prompt` notification mark nothing:
+  // that is a hand-back or a planning agent between prompts.
+  on('turn.start', async ($, e, next) => {
+    await mark($, null)
+    return next(e)
+  })
+
+  on('prompt.submit', async ($, e, next) => {
+    await mark($, null)
+    return next(e)
+  })
+
+  // An AskUserQuestion dialog waits from before it is drawn until it is
+  // answered, however it ends.
+  on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
+    await mark($, 'ask')
+    try {
+      return await next(e)
+    } finally {
+      await mark($, null, ['ask'])
+    }
+  })
+
+  // A permission prompt is over once a tool call settles or the model is
+  // asked again.
+  on('tool.call', async ($, e, next) => {
+    try {
+      return await next(e)
+    } finally {
+      await mark($, null, ['permission'])
+    }
+  })
+
+  on('turn.step', async function* ($, e, next) {
+    await mark($, null, ['permission'])
+    return yield* next(e)
+  })
+
+  // A permission dialog is shown only where nothing beneath decided it.
+  on('classic.PermissionRequest', async ($, e, next) => {
+    const decided = await next(e)
+    if (!decided.decision) await mark($, 'permission')
+    return decided
+  })
+
+  on('classic.Notification', async ($, e, next) => {
+    if (e.notification_type === 'permission_prompt') await mark($, 'permission')
+    return next(e)
+  })
+
+  on('classic.Elicitation', async ($, e, next) => {
+    await mark($, 'elicitation')
+    return next(e)
+  })
+
+  on('classic.ElicitationResult', async ($, e, next) => {
+    await mark($, null, ['elicitation'])
+    return next(e)
+  })
+
+  // A main-loop turn that died on an API error or a refusal leaves the agent
+  // stuck until the user steps in; a subagent's is its spawner's to handle.
+  on('turn.complete', async ($, e, next) => {
+    if (!e.agentId && (e.reason === 'error' || e.reason === 'refusal')) await mark($, 'stuck')
+    return next(e)
+  })
 }

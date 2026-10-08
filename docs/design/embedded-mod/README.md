@@ -7,10 +7,11 @@ every agent session it launches. This page is the contract.
 
 `mods/embedded/` in this repository: `.claude-plugin/plugin.json`,
 `hooks/hooks.json` (`{ "modules": ["./register.ts"] }`), `hooks/register.ts`,
+`types/index.d.ts` (the `$.state` contract the manifest names as `types`),
 `tests/*.test.ts` and a README naming the Claude Code version it was tested
 with. No `node_modules`, no build step: Claude Code loads `.ts` directly.
 
-Package `mods` (`mods/mods.go`) embeds the manifest and `hooks/` with
+Package `mods` (`mods/mods.go`) embeds the manifest, `hooks/` and `types/` with
 `go:embed`, as package `skills` embeds the skills — a `go install`ed nat has
 no checkout to read from. The tests and README stay out, as do the
 `.claude-plugin/types/` and `tsconfig.json` a build lays beside a loaded mod

@@ -2,5 +2,6 @@
   "name": "nat-embedded",
   "version": "0.0.0",
   "description": "nat's own mod, loaded into every Claude Code session nat launches with --plugin-dir and nowhere else.",
-  "author": { "name": "Craig Johnston" }
+  "author": { "name": "Craig Johnston" },
+  "types": "./types/index.d.ts"
 }
