@@ -52,6 +52,9 @@ any one package does it.
   `plugins/shortcut/CLAUDE.md`.
 - `skills/` — `/queue-work`, `/queue-project`, `/next-slice`, embedded via
   `go:embed`, installed by `nat setup`.
+- `mods/embedded/` — `nat-embedded`, the Claude Code mod every session nat
+  launches loads with `--plugin-dir` (embedded by `mods/`, written to the
+  state dir by `internal/mods`). See `docs/design/embedded-mod/README.md`.
 - `macos/` — `gnat`, the native macOS app (SwiftPM; `NatKit` logic, `NatApp`
   views), released as a signed dmg with Sparkle updates. `NatClient` is its
   one seam onto the CLI: it shells out to `nat <command> --json` and nothing
@@ -441,7 +444,8 @@ about the right PR).
   statements and refusals.
 - Gate before claiming done: `go vet ./... && go test -race
   -coverprofile=coverage.out ./... && ./scripts/no-uncovered.sh &&
-  golangci-lint run`. Use the profile, not `-cover`'s rounded percentage —
+  golangci-lint run && ./scripts/mod-check.sh` (the last validates and
+  tests `mods/embedded` with `claude` on PATH; no sign-in or network). Use the profile, not `-cover`'s rounded percentage —
   `scripts/no-uncovered.sh` reads it exactly and prints any block nothing
   ran; one `go test ./...` writes it, since coverage merges across packages.
   `brew install golangci-lint` if missing.

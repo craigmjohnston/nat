@@ -5,3 +5,6 @@ dist/
 coverage.out
 /plugins/shortcut/nat-source-shortcut
 /plugins/shortcut/fakeshortcut
+# Laid beside a loaded mod by the Claude Code build that loaded it.
+/mods/embedded/.claude-plugin/types/
+/mods/embedded/tsconfig.json
