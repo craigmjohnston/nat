@@ -57,6 +57,9 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     private let pr: PRDetail
     private let config: ConfigDoc
     private let usageReading: UsageReading
+    private let claudeVersionReading: ClaudeVersion
+    /// What `claude-update` answers: its output, or nil to refuse.
+    private let claudeUpdateOutput: String?
     private let sessionsList: [Session]
     /// What `slice-show` answers, by slice — `Fixtures.sliceDetails` unless a
     /// story wants another reading of one (a slice with follow-ups pending).
@@ -142,6 +145,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         pr: PRDetail = Fixtures.prGreen,
         config: ConfigDoc = Fixtures.configDoc,
         usage: UsageReading = Fixtures.usageReading,
+        claudeVersion: ClaudeVersion = Fixtures.claudeVersionCurrent,
+        claudeUpdateOutput: String? = Fixtures.claudeUpdateOutput,
         sessions: [Session] = Fixtures.sessions,
         details: [String: SliceDetail] = Fixtures.sliceDetails,
         plugins: PluginListing = Fixtures.pluginListing,
@@ -161,6 +166,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         self.pr = pr
         self.config = config
         self.usageReading = usage
+        self.claudeVersionReading = claudeVersion
+        self.claudeUpdateOutput = claudeUpdateOutput
         self.sessionsList = sessions
         self.details = details
     }
@@ -384,6 +391,20 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public func usage() async throws -> UsageReading {
         try await answer(usageReading)
+    }
+
+    public func claudeVersion() async throws -> ClaudeVersion {
+        try await answer(claudeVersionReading)
+    }
+
+    /// Recorded as `claude-update`; refused, with claude's own words, where
+    /// the fixture was given no output.
+    public func claudeUpdate() async throws -> String {
+        try await record("claude-update")
+        guard let claudeUpdateOutput else {
+            throw NatError.commandFailed("claude update: exit status 1: Error: could not write to the install directory")
+        }
+        return claudeUpdateOutput
     }
 
     public func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {

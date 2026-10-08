@@ -322,6 +322,9 @@ func TestLaunch(t *testing.T) {
 			// The launcher's PATH, carried into the session so the agent's
 			// own nat commands resolve against it whoever started the server.
 			"-e", "PATH=/Applications/gnat.app/Contents/MacOS:/opt/homebrew/bin:/usr/bin",
+			// No "Update available!" line in an agent's pane: gnat says
+			// once that a newer Claude Code exists.
+			"-e", "DISABLE_UPDATES=1",
 			"-P", "-F", "#{pane_id}",
 			"sh", "-c", `cd '/Users/craig/Projects/x' && claude --settings ` + shellQuote(statuslineSettings(sink)) + modFlag(t) + ` "$(cat '/tmp/prompt.md')"`,
 			// Chained onto the creation, so the session never shows a status
@@ -347,20 +350,44 @@ func TestLaunch(t *testing.T) {
 }
 
 // A launcher with no PATH at all says nothing about the session's, rather
-// than writing an empty variable over whatever the tmux server has — and
-// asks tmux nothing either, there being nothing to carry.
+// than writing an empty variable over whatever the tmux server has — the
+// update block is carried all the same.
 func TestLaunchNoPATH(t *testing.T) {
 	t.Setenv("PATH", "")
 	r := &fakeRunner{outs: map[string]string{"new-session": "%7\n"}}
 	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
-	if r.calls[0].args[1] != "new-session" {
-		t.Errorf("first call = %v, want new-session with no version asked for", r.calls[0].args)
+	launch := r.calls[1].args
+	for _, arg := range launch {
+		if strings.HasPrefix(arg, "PATH=") {
+			t.Errorf("args = %v, want no PATH with PATH unset", launch)
+		}
 	}
-	for _, arg := range r.calls[0].args {
-		if arg == "-e" || strings.HasPrefix(arg, "PATH=") {
-			t.Errorf("args = %v, want no -e PATH with PATH unset", r.calls[0].args)
+	if !slices.Contains(launch, "DISABLE_UPDATES=1") {
+		t.Errorf("args = %v, want DISABLE_UPDATES carried", launch)
+	}
+}
+
+// An ad hoc session is a Claude Code nat launches like any agent's, so it
+// carries the update block beside the PATH — and, on a tmux too old for -e,
+// neither.
+func TestLaunchBareCarriesTheEnv(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin")
+	for _, tt := range []struct {
+		version string
+		want    bool
+	}{{"tmux 3.5a\n", true}, {"tmux 3.0a\n", false}} {
+		r := &fakeRunner{outs: map[string]string{"-V": tt.version, "new-session": "%7\n"}}
+		if err := NewTmuxWithRunner(r).LaunchBare("nat-session-x", "/tmp", "session:p:s", config.AgentModel{}); err != nil {
+			t.Fatalf("LaunchBare: %v", err)
+		}
+		launch := r.calls[1].args
+		if got := slices.Contains(launch, "DISABLE_UPDATES=1"); got != tt.want {
+			t.Errorf("%s: DISABLE_UPDATES carried = %v, want %v (args %v)", tt.version, got, tt.want, launch)
+		}
+		if got := slices.Contains(launch, "PATH=/usr/bin"); got != tt.want {
+			t.Errorf("%s: PATH carried = %v, want %v (args %v)", tt.version, got, tt.want, launch)
 		}
 	}
 }
@@ -379,8 +406,8 @@ func TestLaunchOldTmuxDropsTheEnv(t *testing.T) {
 	}
 	launch := r.calls[1].args
 	for _, arg := range launch {
-		if arg == "-e" || strings.HasPrefix(arg, "PATH=") {
-			t.Errorf("args = %v, want no -e PATH on tmux 3.0", launch)
+		if arg == "-e" || strings.HasPrefix(arg, "PATH=") || strings.HasPrefix(arg, "DISABLE_") {
+			t.Errorf("args = %v, want no -e at all on tmux 3.0", launch)
 		}
 	}
 }

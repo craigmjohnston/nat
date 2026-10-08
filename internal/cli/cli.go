@@ -264,7 +264,8 @@ projects this machine tracks. There is no fallback to the project the board is
 on: that is the board's own, and the user moves it while an agent works. setup,
 paths, project-create, source-list, source-setup and the plugin-* commands take
 no such flag: none acts on a project already tracked. Nor do status,
-agent-waiting and agent-working, which read or mark tmux panes alone.
+agent-waiting and agent-working, which read or mark tmux panes alone, nor
+usage, claude-version and claude-update, which are this machine's.
 
 usage:
   nat                 open the board
@@ -275,6 +276,15 @@ usage:
                       current Pro/Max rate-limit usage, via a throwaway
                       detached session; prints nothing read where no window
                       is available
+  nat claude-version [--json]
+                      the installed Claude Code and the newest released on
+                      its own channel (latest or stable), read at most
+                      hourly; a side not read is left out
+  nat claude-update [--json]
+                      update Claude Code — brew upgrade <cask> for a
+                      Homebrew install, else claude update — and print what
+                      it said; sessions already running keep the binary they
+                      started with
   nat info [--json] [--refresh] [--expand GROUP]... --project ID
                       print the project's conventions, milestones and slices;
                       reads the replica as it stands by default, --refresh
@@ -710,6 +720,10 @@ func runCommand(ctx context.Context, args []string, env Env) error {
 		return status(args[1:], env)
 	case "usage":
 		return usage(args[1:], env)
+	case "claude-version":
+		return claudeVersion(ctx, args[1:], env)
+	case "claude-update":
+		return claudeUpdate(ctx, args[1:], env)
 	case "info":
 		return info(ctx, args[1:], env)
 	case "next-slice":

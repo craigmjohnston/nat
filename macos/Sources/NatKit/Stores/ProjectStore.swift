@@ -66,6 +66,8 @@ public protocol NatClientProtocol: Sendable {
     func projectCreate(name: String, repo: String?, description: String?, source: String?) async throws -> CreatedProject
     func run(projectID: String, sliceRef: String?, label: String?) async throws -> RunResult
     func natVersion() async throws -> String
+    func claudeVersion() async throws -> ClaudeVersion
+    func claudeUpdate() async throws -> String
 }
 
 extension NatClientProtocol {
@@ -73,6 +75,17 @@ extension NatClientProtocol {
     /// fixture client implement it, the same reasoning as `workspaceLaunch`.
     public func natVersion() async throws -> String {
         throw NatError.commandFailed("--version: not supported by this client")
+    }
+
+    /// The Claude Code update notice's read and its action: only `NatClient`
+    /// and the fixture client implement these, the same reasoning as
+    /// `natVersion`.
+    public func claudeVersion() async throws -> ClaudeVersion {
+        throw NatError.commandFailed("claude-version: not supported by this client")
+    }
+
+    public func claudeUpdate() async throws -> String {
+        throw NatError.commandFailed("claude-update: not supported by this client")
     }
 
     /// A plan read that may refresh the replica first: a conformer with no

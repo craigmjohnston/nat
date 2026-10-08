@@ -98,13 +98,20 @@ func usageProbeCommand(workdir, settingsPath string) string {
 // running Claude Code with the given --settings file. Unlike [Tmux.Launch]
 // the pane is left untagged with no [SlicePaneOption]: a probe is not an
 // agent working a slice, and nothing goes looking for one under this name.
+//
+// The probe is a Claude Code session like any agent's, so it carries
+// [noUpdates] too, under the same -e gate; it carries no PATH, never having
+// needed one.
 func (t *Tmux) LaunchUsageProbe(session, workdir, settingsPath string) error {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
 		"-c", workdir,
-		"sh", "-c", usageProbeCommand(workdir, settingsPath),
 	}
+	if t.supportsSessionEnv() {
+		args = append(args, "-e", noUpdates)
+	}
+	args = append(args, "sh", "-c", usageProbeCommand(workdir, settingsPath))
 	args = append(args, statusOffArgs(session)...)
 	if _, err := t.run(args...); err != nil {
 		return fmt.Errorf("launch usage probe session %s: %w", session, err)

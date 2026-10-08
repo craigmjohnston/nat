@@ -140,6 +140,15 @@ running agent's state.
   `supportsSessionEnv` (`tmux -V` read as ≥ 3.2) gates whether `-e` is even
   passed — an older tmux refuses the whole launch over an unsupported flag,
   and a version that can't be read is treated as "don't know," not "old."
+- The same `-e` gate carries `DISABLE_UPDATES=1` (`noUpdates`,
+  `agentEnvArgs`) into every Claude Code session nat makes — `Launch`,
+  `LaunchBare`, `LaunchUsageProbe` (the probe carries no PATH) — PATH or no
+  PATH. It hides the pane's "Update available! Run: brew upgrade …" line
+  (verified live on 2.1.290 under a Homebrew cask), since gnat shows the one
+  notice (`nat claude-version`) and updates from nat's own process.
+  `DISABLE_AUTOUPDATER` leaves the line up;
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` hides it but turns off feature
+  flags and with them Remote Control — don't swap to either.
 - Every session's shell `cd`s into its workdir itself (`inWorkdir`, in
   `agentCommand`, `bareLaunchArgs` and `usageProbeCommand`) — `-c` alone is
   not enough. A tmux server keeps the working directory it started in; one

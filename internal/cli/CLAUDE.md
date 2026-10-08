@@ -135,7 +135,21 @@ comment, never shared by refactoring into a common import:
 Reads only, no `--project` needed: `setup` (installs skills, talks to
 neither Notion nor config), `paths` (prints config/log/nudge paths),
 `status` (live tmux sessions + activity, no Notion at all; `--json` also gives each agent's `model`, `effort` and `context_percent` from its teed statusline — see `internal/agent/CLAUDE.md` — each omitted when unknown), `usage` (see
-below — a property of the logged-in Claude account, not of any project).
+below — a property of the logged-in Claude account, not of any project),
+`claude-version` (`claudeversion.go`: `installed` the first token of `claude
+--version`, `latest` the newest on the install's own channel
+(`claudeChannel`: a Homebrew cask by name — `claude-code` stable,
+`claude-code@latest` latest — else `autoUpdatesChannel` in
+`~/.claude/settings.json`, default latest): latest from GitHub's
+`anthropics/claude-code` release feed, stable from the
+`downloads.claude.ai/claude-code-releases/stable` pointer, each one
+unauthenticated HTTPS read — no gh — kept per channel in `<state
+dir>/claude-version-<channel>.json` for an hour; either side unread is absent and
+`update_available` false, never a failure) and `claude-update` (`brew upgrade
+<cask>` where claude's real path holds `/Caskroom/<cask>/` — there `claude
+update` installs nothing, only printing the brew command and exiting 0 —
+else `claude update`; output relayed, `--json` `{output}`, a failure the
+command's error carrying it).
 
 Project-scoped reads: `info` (reads the replica as it stands —
 `store.StoredPlan`, never [`Mirrored`]'s staleness pull, since every `nat`

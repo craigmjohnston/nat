@@ -231,6 +231,27 @@ public final class NatClient: Sendable {
         return try decodeJSON(UsageReading.self, from: output)
     }
 
+    /// The installed Claude Code and the newest released — `nat
+    /// claude-version --json`, the release feed read at most hourly by nat
+    /// itself. Takes no `--project`: it is this machine's.
+    ///
+    /// - Returns: The reading; a side nat could not read is absent
+    /// - Throws: NatError if `nat` itself fails (an unreadable side is not
+    ///   an error)
+    public func claudeVersion() async throws -> ClaudeVersion {
+        let output = try await runNat(arguments: ["claude-version", "--json"])
+        return try decodeJSON(ClaudeVersion.self, from: output)
+    }
+
+    /// Runs `claude update` — `nat claude-update --json` — and answers what
+    /// it printed. Agents already running keep the binary they started with.
+    ///
+    /// - Throws: NatError if the update failed, carrying claude's own words
+    public func claudeUpdate() async throws -> String {
+        let output = try await runNat(arguments: ["claude-update", "--json"])
+        return try decodeJSON(ClaudeUpdateResult.self, from: output).output
+    }
+
     /// Get full details of a slice including its brief.
     ///
     /// - Parameters:
