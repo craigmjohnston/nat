@@ -8,9 +8,10 @@ import (
 	"strings"
 )
 
-// agentSend types a prompt at a live agent session and submits it — the same
-// paste [agent.Tmux.SendPrompt] makes for the diff screen's review comments,
-// reached headlessly rather than from the board.
+// agentSend hands a prompt to a live agent session — the same send
+// [agent.Tmux.SendPrompt] makes for the diff screen's review comments
+// (through the session's inbox, else a paste), reached headlessly rather than
+// from the board.
 func agentSend(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("agent-send", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)

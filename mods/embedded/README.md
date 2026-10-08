@@ -16,6 +16,10 @@ Tested with Claude Code **2.1.294**.
   (`nat agent-waiting` / `nat agent-working`) while an AskUserQuestion
   dialog, a permission prompt or an MCP elicitation waits on the user, or a
   turn ended on an error or a refusal; a plain finished turn marks nothing.
+  And they deliver what nat sends the session: from `session.start`, once a
+  second, each file in the inbox `NAT_INBOX` names, in name order, is
+  removed and then submitted with `$.prompt.submit({ text, asUser: true })`
+  — a turn of its own once idle, no composer involved.
 - `types/index.d.ts` — the `$.state` contract: the wait last written, so a
   hot reload neither forgets it nor writes the flag again.
 - `tests/` — `claude plugin test` suites.

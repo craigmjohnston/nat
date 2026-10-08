@@ -301,6 +301,10 @@ func TestLaunch(t *testing.T) {
 		t.Fatalf("AgentStatusDir: %v", err)
 	}
 	sink := filepath.Join(statusDir, "nat-b4463d8f.json")
+	inbox, err := InboxDir("nat-b4463d8f")
+	if err != nil {
+		t.Fatalf("InboxDir: %v", err)
+	}
 	t.Setenv("PATH", "/Applications/gnat.app/Contents/MacOS:/opt/homebrew/bin:/usr/bin")
 	r := &fakeRunner{outs: map[string]string{
 		"-V":          "tmux 3.5a\n",
@@ -322,6 +326,9 @@ func TestLaunch(t *testing.T) {
 			// The launcher's PATH, carried into the session so the agent's
 			// own nat commands resolve against it whoever started the server.
 			"-e", "PATH=/Applications/gnat.app/Contents/MacOS:/opt/homebrew/bin:/usr/bin",
+			// The session's inbox, which the embedded mod submits nat's
+			// sends from.
+			"-e", "NAT_INBOX=" + inbox,
 			// No "Update available!" line in an agent's pane: gnat says
 			// once that a newer Claude Code exists.
 			"-e", "DISABLE_UPDATES=1",
@@ -1227,10 +1234,10 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 	}
 }
 
-// TestSendPrompt covers a prompt typed at a running agent: staged in a buffer
-// of its own, pasted into the session bracketed, and submitted with an enter of
-// its own — which is what keeps a prompt of several lines one turn rather than
-// one turn per line.
+// TestSendPrompt covers a prompt typed at a running agent with no inbox:
+// staged in a buffer of its own, pasted into the session bracketed, and
+// submitted with an enter of its own — which is what keeps a prompt of several
+// lines one turn rather than one turn per line.
 func TestSendPrompt(t *testing.T) {
 	runner := &fakeRunner{}
 	session := "nat-b4463d8f"
@@ -1238,11 +1245,12 @@ func TestSendPrompt(t *testing.T) {
 	if err := NewTmuxWithRunner(runner).SendPrompt(session, text); err != nil {
 		t.Fatalf("SendPrompt: %v", err)
 	}
-	if len(runner.calls) != 4 {
-		t.Fatalf("calls = %v, want a set-buffer, a paste-buffer, a send-keys and a pane read", runner.calls)
+	if len(runner.calls) != 5 {
+		t.Fatalf("calls = %v, want an inbox read, a set-buffer, a paste-buffer, a send-keys and a pane read", runner.calls)
 	}
 	buffer := promptBuffer(session)
 	want := [][]string{
+		{"-u", "show-environment", "-t", session, inboxEnv},
 		{"-u", "set-buffer", "-b", buffer, "--", text},
 		{"-u", "paste-buffer", "-d", "-p", "-b", buffer, "-t", session},
 		{"-u", "send-keys", "-t", session, "Enter"},
@@ -1300,7 +1308,7 @@ func TestSendPromptClearsTheWaitingFlag(t *testing.T) {
 	if err := NewTmuxWithRunner(runner).SendPrompt(agentApart.session, "go on"); err != nil {
 		t.Fatalf("SendPrompt: %v", err)
 	}
-	got := runner.calls[3:]
+	got := runner.calls[4:]
 	want := []call{
 		{name: TmuxBinary, args: []string{"-u", "list-panes", "-s", "-t", agentApart.session, "-F", listPanesFormat()}},
 		{name: TmuxBinary, args: []string{"-u", "display-message", "-p", "-t", waiting.id, "#{pane_id}\t#{@nat_slice}"}},
