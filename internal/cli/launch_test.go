@@ -348,9 +348,9 @@ func TestSliceLaunchWritesTheFullPromptContext(t *testing.T) {
 	}
 
 	argv := strings.Join(runner.launchArgs, " ")
-	m := regexp.MustCompile(`\$\(cat '([^']+)'\)`).FindStringSubmatch(argv)
+	m := regexp.MustCompile(`NAT_BRIEF='([^']+)'`).FindStringSubmatch(argv)
 	if m == nil {
-		t.Fatalf("launch argv = %q, want the prompt file read back with $(cat ...)", argv)
+		t.Fatalf("launch argv = %q, want the prompt file handed over as NAT_BRIEF", argv)
 	}
 	prompt, readErr := os.ReadFile(m[1])
 	if readErr != nil {
@@ -393,9 +393,9 @@ func TestSliceLaunchWritesTheFrontendIntoThePrompt(t *testing.T) {
 	}
 
 	argv := strings.Join(runner.launchArgs, " ")
-	m := regexp.MustCompile(`\$\(cat '([^']+)'\)`).FindStringSubmatch(argv)
+	m := regexp.MustCompile(`NAT_BRIEF='([^']+)'`).FindStringSubmatch(argv)
 	if m == nil {
-		t.Fatalf("launch argv = %q, want the prompt file read back with $(cat ...)", argv)
+		t.Fatalf("launch argv = %q, want the prompt file handed over as NAT_BRIEF", argv)
 	}
 	prompt, readErr := os.ReadFile(m[1])
 	if readErr != nil {

@@ -18,8 +18,8 @@ import (
 
 // launchCall is one session a fakeLauncher was asked to start.
 type launchCall struct {
-	session, workdir, promptFile, sliceID string
-	model                                 config.AgentModel
+	session, workdir, promptFile, opening, sliceID string
+	model                                          config.AgentModel
 }
 
 // fakeLauncher stands in for tmux: only the one method Launch itself calls.
@@ -30,8 +30,8 @@ type fakeLauncher struct {
 
 var _ Launcher = (*fakeLauncher)(nil)
 
-func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error {
-	f.launches = append(f.launches, launchCall{session, workdir, promptFile, sliceID, model})
+func (f *fakeLauncher) Launch(session, workdir, promptFile, opening, sliceID string, model config.AgentModel) error {
+	f.launches = append(f.launches, launchCall{session, workdir, promptFile, opening, sliceID, model})
 	return f.launchErr
 }
 
@@ -75,6 +75,9 @@ func TestLaunchStartsTheAgentInAWorktree(t *testing.T) {
 	}
 	if prompt, err := os.ReadFile(got.promptFile); err != nil || !strings.Contains(string(prompt), "Info view") {
 		t.Errorf("prompt file = %q (err %v), want the slice's own prompt", prompt, err)
+	}
+	if want := agent.OpeningLine(res.Context); got.opening != want {
+		t.Errorf("opening = %q, want the slice's opening line %q", got.opening, want)
 	}
 	if len(client.updated) != 1 || client.updated[0].pageID != "s5" {
 		t.Fatalf("writes = %+v, want exactly the launched slice claimed", client.updated)

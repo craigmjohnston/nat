@@ -61,7 +61,7 @@ func TestSliceLaunchRelaunchesAPublishedSlice(t *testing.T) {
 	if _, ok := got["fix"]; ok {
 		t.Errorf("json = %s, want no fix key", out.String())
 	}
-	m := regexp.MustCompile(`\$\(cat '([^']+)'\)`).FindStringSubmatch(strings.Join(runner.launchArgs, " "))
+	m := regexp.MustCompile(`NAT_BRIEF='([^']+)'`).FindStringSubmatch(strings.Join(runner.launchArgs, " "))
 	if m == nil {
 		t.Fatalf("launch argv = %v, want the prompt file", runner.launchArgs)
 	}

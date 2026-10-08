@@ -113,7 +113,43 @@ a session with no `NAT_INBOX` (a tmux too old for `-e`) is pasted to at once.
 The transcript labels each such prompt as from the `nat-embedded` plugin; the
 model reads it bare, as the user's own words.
 
+## The brief
+
+A slice, fix, planning or new-project session is not started with its brief
+as `claude`'s positional prompt, which the pane would draw in full. Where
+`prepareMod` wrote the mod, `agentCommand` runs
+`NAT_BRIEF=<prompt file> claude ... '<opening line>'` (the variable set in the
+`sh -c` command, no tmux `-e`), leaving the file `WritePromptFile` wrote where
+it is. The opening line is one sentence per prompt kind
+(`agent.OpeningLine`, `PlanOpeningLine`, `NewProjectOpeningLine`) — `Work the
+slice "<title>": your brief is the natBrief block of this message.`,
+`Continue …` for a session resuming work — and is all the pane shows.
+
+The mod's `prompt.context` hook, which fires when the engine computes the
+context blocks of a conversation's first user message (`claudeMd`,
+`currentDate`, …), reads `NAT_BRIEF` and appends `{ name: 'natBrief', text }`
+after the engine's blocks. A read that fails is logged to debug and the
+blocks pass through: the agent has the opening line alone and asks.
+
+Checked live on Claude Code 2.1.294 (haiku, a private tmux socket):
+
+- the pane shows the opening line and the agent's reply, never the block —
+  under ctrl+o either;
+- the agent starts on the brief without asking;
+- `/compact` re-runs the hook and re-reads the file: the brief file was
+  changed after launch, and after the compaction the block held the new
+  text, so the file must stay where it is for the session's life;
+- `claude --resume` of the session keeps the block **as the transcript
+  recorded it** — it is not re-read on resume (the file had changed again,
+  and the resumed session still answered from the old text).
+
+Degrade: where no mod could be written, the brief stays the positional prompt
+exactly as before. A session whose mod is written but never loads (an older
+Claude Code with no mods) starts on the opening line alone and asks what to
+work — visible, not silent.
+
 ## Agents never know
 
 Nothing in any agent prompt or embedded skill mentions the mod. It changes
-what the session looks like and does, not what the agent is asked to do.
+what the session looks like and does, not what the agent is asked to do —
+the opening line names the `natBrief` block, not where it came from.

@@ -20,6 +20,13 @@ Tested with Claude Code **2.1.294**.
   second, each file in the inbox `NAT_INBOX` names, in name order, is
   removed and then submitted with `$.prompt.submit({ text, asUser: true })`
   — a turn of its own once idle, no composer involved.
+  And they hand the session its brief: `prompt.context` appends the file
+  `NAT_BRIEF` names as a `natBrief` context block, which the model reads
+  and the pane never draws; nat starts the session on one opening line
+  pointing at it. Checked live on 2.1.294: hidden in the pane and under
+  ctrl+o, re-read from the file on `/compact`, kept as recorded (not
+  re-read) on `claude --resume`. A session whose mod never loads (an older
+  Claude Code) has the opening line alone and asks what to work.
 - `types/index.d.ts` — the `$.state` contract: the wait last written, so a
   hot reload neither forgets it nor writes the flag again.
 - `tests/` — `claude plugin test` suites.

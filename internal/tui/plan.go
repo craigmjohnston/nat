@@ -218,7 +218,7 @@ func launchPlanAgent(l AgentLauncher, st actions.PlanReader, sp store.Project, p
 		if err != nil {
 			return agentLaunchedMsg{err: fmt.Errorf("launch planning agent: %w", err)}
 		}
-		if err := l.Launch(session, workdir, file, tag, m); err != nil {
+		if err := l.Launch(session, workdir, file, agent.PlanOpeningLine(), tag, m); err != nil {
 			return agentLaunchedMsg{err: err}
 		}
 		// A planning launch always attaches: the user has just said what they

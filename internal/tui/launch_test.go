@@ -135,8 +135,8 @@ func TestMain(m *testing.M) {
 
 // launchCall is one session the launcher was asked to start.
 type launchCall struct {
-	session, workdir, promptFile, sliceID string
-	model                                 config.AgentModel
+	session, workdir, promptFile, opening, sliceID string
+	model                                          config.AgentModel
 }
 
 // sendCall is one prompt the launcher was asked to type at a session.
@@ -189,8 +189,8 @@ func (f *fakeLauncher) Activity() (map[string]agent.Activity, error) {
 	return f.activity, nil
 }
 
-func (f *fakeLauncher) Launch(session, workdir, promptFile, sliceID string, model config.AgentModel) error {
-	f.launches = append(f.launches, launchCall{session, workdir, promptFile, sliceID, model})
+func (f *fakeLauncher) Launch(session, workdir, promptFile, opening, sliceID string, model config.AgentModel) error {
+	f.launches = append(f.launches, launchCall{session, workdir, promptFile, opening, sliceID, model})
 	return f.launchErr
 }
 

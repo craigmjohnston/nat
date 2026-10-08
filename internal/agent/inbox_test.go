@@ -96,7 +96,7 @@ func TestLaunchesCarryTheInbox(t *testing.T) {
 		want    bool
 	}{{"tmux 3.5a\n", true}, {"tmux 3.0a\n", false}} {
 		for name, launch := range map[string]func(*Tmux) error{
-			"Launch":     func(tm *Tmux) error { return tm.Launch("nat-1", "/tmp", "/tmp/p.md", "3b73", config.AgentModel{}) },
+			"Launch":     func(tm *Tmux) error { return tm.Launch("nat-1", "/tmp", "/tmp/p.md", "go", "3b73", config.AgentModel{}) },
 			"LaunchBare": func(tm *Tmux) error { return tm.LaunchBare("nat-1", "/tmp", "session:p:s", config.AgentModel{}) },
 		} {
 			r := &fakeRunner{outs: map[string]string{"-V": tt.version, "new-session": "%7\n"}}
@@ -108,7 +108,7 @@ func TestLaunchesCarryTheInbox(t *testing.T) {
 			}
 		}
 	}
-	if args := LaunchArgs("nat-1", "/tmp", "/tmp/p.md", config.AgentModel{}, true); !slices.Contains(args, want) {
+	if args := LaunchArgs("nat-1", "/tmp", "/tmp/p.md", "Work the slice.", config.AgentModel{}, true); !slices.Contains(args, want) {
 		t.Errorf("LaunchArgs = %v, want the inbox carried", args)
 	}
 }

@@ -209,7 +209,7 @@ func TestEveryTmuxCallRunsAsAUTF8Client(t *testing.T) {
 	if _, err := tm.LiveSlices(); err != nil {
 		t.Fatalf("LiveSlices: %v", err)
 	}
-	if err := tm.Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73", config.AgentModel{}); err != nil {
+	if err := tm.Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	if err := tm.SendPrompt("nat-b4463d8f", "hello"); err != nil {
@@ -311,7 +311,7 @@ func TestLaunch(t *testing.T) {
 		"new-session": "%7\n",
 	}}
 	id := "3b738308-f654-8170-8c99-eccab4463d8f"
-	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/Users/craig/Projects/x", "/tmp/prompt.md", id, config.AgentModel{}); err != nil {
+	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/Users/craig/Projects/x", "/tmp/prompt.md", "Work the slice.", id, config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 
@@ -333,7 +333,7 @@ func TestLaunch(t *testing.T) {
 			// once that a newer Claude Code exists.
 			"-e", "DISABLE_UPDATES=1",
 			"-P", "-F", "#{pane_id}",
-			"sh", "-c", `cd '/Users/craig/Projects/x' && claude --settings ` + shellQuote(statuslineSettings(sink)) + modFlag(t) + ` "$(cat '/tmp/prompt.md')"`,
+			"sh", "-c", `cd '/Users/craig/Projects/x' && NAT_BRIEF='/tmp/prompt.md' claude --settings ` + shellQuote(statuslineSettings(sink)) + modFlag(t) + ` 'Work the slice.'`,
 			// Chained onto the creation, so the session never shows a status
 			// bar — not even to someone attaching straight away.
 			";", "set-option", "-t", "nat-b4463d8f", "status", "off",
@@ -362,7 +362,7 @@ func TestLaunch(t *testing.T) {
 func TestLaunchNoPATH(t *testing.T) {
 	t.Setenv("PATH", "")
 	r := &fakeRunner{outs: map[string]string{"new-session": "%7\n"}}
-	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73", config.AgentModel{}); err != nil {
+	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	launch := r.calls[1].args
@@ -408,7 +408,7 @@ func TestLaunchOldTmuxDropsTheEnv(t *testing.T) {
 		"-V":          "tmux 3.0a\n",
 		"new-session": "%7\n",
 	}}
-	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73", config.AgentModel{}); err != nil {
+	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	launch := r.calls[1].args
@@ -449,7 +449,7 @@ func TestVersionAtLeast(t *testing.T) {
 
 func TestLaunchError(t *testing.T) {
 	inner := &ExitError{Code: 1, Stderr: "duplicate session: nat-b4463d8f"}
-	err := NewTmuxWithRunner(&fakeRunner{err: inner}).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73", config.AgentModel{})
+	err := NewTmuxWithRunner(&fakeRunner{err: inner}).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", config.AgentModel{})
 	if err == nil {
 		t.Fatal("Launch: want error, got nil")
 	}
@@ -470,7 +470,7 @@ func TestLaunchTagError(t *testing.T) {
 		errs: map[string]error{"set-option": inner},
 	}
 
-	err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "3b73", config.AgentModel{})
+	err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", config.AgentModel{})
 	if err == nil {
 		t.Fatal("Launch: want error, got nil")
 	}
@@ -742,14 +742,14 @@ func TestHostPane(t *testing.T) {
 }
 
 func TestLaunchArgsQuotesThePromptPath(t *testing.T) {
-	args := LaunchArgs("nat-1", "/tmp", "/tmp/craig's prompt.md", config.AgentModel{}, false)
+	args := LaunchArgs("nat-1", "/tmp", "/tmp/craig's prompt.md", "Work the slice.", config.AgentModel{}, false)
 	// The command is the argument after "sh -c", wherever the argv puts it.
 	sh := slices.Index(args, "sh")
 	if sh < 0 || sh+2 >= len(args) {
 		t.Fatalf("args = %v, want an sh -c command in there", args)
 	}
 	got := args[sh+2]
-	want := `cd '/tmp' && claude --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/craig'\''s prompt.md')"`
+	want := `cd '/tmp' && NAT_BRIEF='/tmp/craig'\''s prompt.md' claude --settings '{"theme":"auto"}'` + modFlag(t) + ` 'Work the slice.'`
 	if got != want {
 		t.Errorf("command = %q, want %q", got, want)
 	}
@@ -765,21 +765,21 @@ func TestLaunchArgsCarryTheModelFlags(t *testing.T) {
 		model config.AgentModel
 		want  string
 	}{
-		{"unset", config.AgentModel{}, `cd '/tmp' && claude --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`},
+		{"unset", config.AgentModel{}, `cd '/tmp' && NAT_BRIEF='/tmp/p.md' claude --settings '{"theme":"auto"}'` + modFlag(t) + ` 'Work the slice.'`},
 		{"both", config.AgentModel{Model: "sonnet", Effort: "medium"},
-			`cd '/tmp' && claude --model 'sonnet' --effort 'medium' --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && NAT_BRIEF='/tmp/p.md' claude --model 'sonnet' --effort 'medium' --settings '{"theme":"auto"}'` + modFlag(t) + ` 'Work the slice.'`},
 		{"model only", config.AgentModel{Model: "opus"},
-			`cd '/tmp' && claude --model 'opus' --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && NAT_BRIEF='/tmp/p.md' claude --model 'opus' --settings '{"theme":"auto"}'` + modFlag(t) + ` 'Work the slice.'`},
 		{"effort only", config.AgentModel{Effort: "high"},
-			`cd '/tmp' && claude --effort 'high' --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && NAT_BRIEF='/tmp/p.md' claude --effort 'high' --settings '{"theme":"auto"}'` + modFlag(t) + ` 'Work the slice.'`},
 		// Whatever the value is, the shell reads it as one word: a model name
 		// is not a place to let a stray quote start a command.
 		{"quoted", config.AgentModel{Model: "cra'ig"},
-			`cd '/tmp' && claude --model 'cra'\''ig' --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && NAT_BRIEF='/tmp/p.md' claude --model 'cra'\''ig' --settings '{"theme":"auto"}'` + modFlag(t) + ` 'Work the slice.'`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			args := LaunchArgs("nat-1", "/tmp", "/tmp/p.md", tt.model, false)
+			args := LaunchArgs("nat-1", "/tmp", "/tmp/p.md", "Work the slice.", tt.model, false)
 			sh := slices.Index(args, "sh")
 			if sh < 0 || sh+2 >= len(args) {
 				t.Fatalf("args = %v, want an sh -c command in there", args)
@@ -799,12 +799,12 @@ func TestLaunchArgsCarryTheModelFlags(t *testing.T) {
 // re-theme a running session at all, so there is no longer a choice of
 // palette here — every launch carries the same flag.
 func TestLaunchArgsCarryTheThemeFlag(t *testing.T) {
-	args := LaunchArgs("nat-1", "/tmp", "/tmp/p.md", config.AgentModel{}, false)
+	args := LaunchArgs("nat-1", "/tmp", "/tmp/p.md", "Work the slice.", config.AgentModel{}, false)
 	sh := slices.Index(args, "sh")
 	if sh < 0 || sh+2 >= len(args) {
 		t.Fatalf("args = %v, want an sh -c command in there", args)
 	}
-	want := `cd '/tmp' && claude --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`
+	want := `cd '/tmp' && NAT_BRIEF='/tmp/p.md' claude --settings '{"theme":"auto"}'` + modFlag(t) + ` 'Work the slice.'`
 	if got := args[sh+2]; got != want {
 		t.Errorf("command = %q, want %q", got, want)
 	}
@@ -815,7 +815,7 @@ func TestLaunchArgsCarryTheThemeFlag(t *testing.T) {
 // no test of its own: nat itself makes no session — it runs in the terminal it
 // was started in — so a launch is the only place one is made.
 func TestAgentSessionsChainStatusOff(t *testing.T) {
-	launch := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{}, false)
+	launch := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", "Work the slice.", config.AgentModel{}, false)
 	chained := append(statusOffArgs("nat-1"), mouseOnArgs("nat-1")...)
 	chained = append(chained, inputFeatureArgs()...)
 	chained = append(chained, hyperlinkClickArgs()...)
@@ -852,7 +852,7 @@ func TestSessionsNatCreatesEnableExtendedKeysAndHyperlinks(t *testing.T) {
 	}
 	suffix = append(suffix, hyperlinkClickArgs()...)
 	suffix = append(suffix, copyModeDragEndArgs()...)
-	args := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", config.AgentModel{}, false)
+	args := LaunchArgs("nat-1", "/tmp", "/tmp/prompt.md", "Work the slice.", config.AgentModel{}, false)
 	if !reflect.DeepEqual(args[len(args)-len(suffix):], suffix) {
 		t.Errorf("args = %v, want them to end with %v", args, suffix)
 	}
@@ -1164,7 +1164,7 @@ func TestLaunchCommandsMoveIntoTheWorkdir(t *testing.T) {
 	}
 	bare := bareLaunchArgs("nat-1", workdir, config.AgentModel{}, false, "", "")
 	commands := map[string]string{
-		"slice": agentCommand(workdir, prompt, config.AgentModel{}, "", ""),
+		"slice": agentCommand(workdir, prompt, "go", config.AgentModel{}, "", ""),
 		"bare":  bare[slices.Index(bare, "sh")+2],
 		"usage": usageProbeCommand(workdir, "/tmp/settings.json"),
 	}
@@ -1207,7 +1207,7 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 	session := SessionName(id)
 
 	launch := &fakeRunner{outs: map[string]string{"new-session": "%7"}}
-	if err := NewTmuxWithRunner(launch).Launch(session, "/tmp", "/tmp/prompt.md", id, config.AgentModel{}); err != nil {
+	if err := NewTmuxWithRunner(launch).Launch(session, "/tmp", "/tmp/prompt.md", "Work the slice.", id, config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	// The tagging call sets the slice tag, and is the launch's last word but

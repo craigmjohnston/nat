@@ -95,7 +95,7 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return fmt.Errorf("launch planning agent: %w", err)
 	}
-	if err := env.NewTmux().Launch(session, workdir, file, agent.PlanTag(projectID), agentModel); err != nil {
+	if err := env.NewTmux().Launch(session, workdir, file, agent.PlanOpeningLine(), agent.PlanTag(projectID), agentModel); err != nil {
 		return err
 	}
 
@@ -165,7 +165,7 @@ func workshopLaunchWorkspace(env Env, workspace, request, model, effort string, 
 	if err != nil {
 		return fmt.Errorf("launch planning agent: %w", err)
 	}
-	if err := env.NewTmux().Launch(session, workdir, file, agent.PlanTag(workspace), agentModel); err != nil {
+	if err := env.NewTmux().Launch(session, workdir, file, agent.NewProjectOpeningLine(), agent.PlanTag(workspace), agentModel); err != nil {
 		return err
 	}
 

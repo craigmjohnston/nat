@@ -186,7 +186,13 @@ running agent's state.
   none. After the pane is tagged, `sweepMods` reads every pane's
   `#{pane_start_command}` and `mods.Sweep` removes hash folders nothing
   live names: deleting a loaded folder unloads the mod from that session,
-  so a failed read removes nothing. No prompt or skill mentions the mod. Contract:
+  so a failed read removes nothing. No prompt or skill mentions the mod.
+  With the mod, `agentCommand` hands the brief over by path —
+  `NAT_BRIEF=<prompt file> claude … '<opening line>'` (`OpeningLine`/
+  `PlanOpeningLine`/`NewProjectOpeningLine`, `opening.go`) — and the mod
+  appends it as the `natBrief` context block; without one, the brief is the
+  positional prompt as before. A compaction re-reads the file, so it is
+  never removed under a live session. Contract:
   `docs/design/embedded-mod/README.md`.
 - `Activity()` is one `list-panes` scan, no screen read: a dead pane is
   gone, a pane carrying `@nat_waiting` (`WaitingPaneOption`, a field of
