@@ -330,6 +330,11 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await answer(Fixtures.planFile(projectID: projectID))
     }
 
+    /// Every fixture repository's default branch is main.
+    public func defaultBase(projectID: String) async throws -> String? {
+        try await answer("main")
+    }
+
     /// The listing, with every field `source-setup` has set reading `set`
     /// from then on — as the plugin's describe would.
     public func pluginList() async throws -> PluginListing {

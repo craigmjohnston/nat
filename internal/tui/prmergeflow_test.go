@@ -10,7 +10,10 @@ import (
 )
 
 // mergeCall is one pull request the screen asked gh to merge.
-type mergeCall struct{ dir, ref string }
+type mergeCall struct {
+	dir, ref string
+	opts     gh.MergeOptions
+}
 
 // fakePRMerger stands in for the GitHub CLI: it records what it was asked to
 // merge and answers with the refusal — or the silence — the test wants gh to
@@ -22,8 +25,8 @@ type fakePRMerger struct {
 
 var _ PRMerger = (*fakePRMerger)(nil)
 
-func (f *fakePRMerger) MergePR(dir, ref string) error {
-	f.made = append(f.made, mergeCall{dir, ref})
+func (f *fakePRMerger) MergePR(dir, ref string, opts gh.MergeOptions) error {
+	f.made = append(f.made, mergeCall{dir, ref, opts})
 	return f.err
 }
 
@@ -80,7 +83,7 @@ func TestMergeKeyAsksBeforeMerging(t *testing.T) {
 		t.Error("the merge is in flight, so the app should be busy")
 	}
 	msg := first[prMergedMsg](t, run(cmd))
-	want := mergeCall{workdir, "https://github.test/craig/nat/pull/12"}
+	want := mergeCall{workdir, "https://github.test/craig/nat/pull/12", gh.MergeOptions{}}
 	if len(merger.made) != 1 || merger.made[0] != want {
 		t.Fatalf("gh was asked to merge %+v, want %+v", merger.made, want)
 	}
@@ -451,4 +454,20 @@ func TestPRViewMergeableIsEmptyUntilOneIsRead(t *testing.T) {
 		t.Error("an empty screen has a prompt on it")
 	}
 	view.MovePrompt(1) // nothing to move, and nothing to panic over
+}
+
+// m merges as the project's config says: its strategy, and --delete-branch
+// only where it is set.
+func TestMergeKeyUsesTheProjectsMergeSettings(t *testing.T) {
+	app, merger, _, _ := mergeApp(t, mergeablePR())
+	p := app.cfg.Projects[app.cfg.ActiveProjectID]
+	p.MergeMethod, p.DeleteBranch = "rebase", true
+	app.cfg.Projects[app.cfg.ActiveProjectID] = p
+
+	press(app, "m")
+	run(press(app, "enter"))
+	want := gh.MergeOptions{Method: "rebase", DeleteBranch: true}
+	if len(merger.made) != 1 || merger.made[0].opts != want {
+		t.Fatalf("gh was asked to merge %+v, want options %+v", merger.made, want)
+	}
 }

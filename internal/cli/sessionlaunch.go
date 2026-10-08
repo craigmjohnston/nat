@@ -60,17 +60,11 @@ func sessionLaunch(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("session-launch: %w", err)
 	}
 
-	agentModel := config.AgentModel{Model: *model, Effort: *effort}
-	if agentModel.Model == "" {
-		agentModel.Model = cfg.SliceAgent.Model
-	}
-	if agentModel.Effort == "" {
-		agentModel.Effort = cfg.SliceAgent.Effort
-	}
+	agentModel := config.AgentModel{Model: *model, Effort: *effort}.Over(cfg.SliceAgentFor(project))
 	agentModel = actions.TrimModel(agentModel)
 
 	id := store.NewSessionID()
-	placed := actions.PlaceSession(env.NewWorktrees(), env.NewGit(), dir, actions.SessionBranch(id))
+	placed := actions.PlaceSession(env.NewWorktrees(), env.gitFor(project), dir, actions.SessionBranch(id))
 	if !placed.OK {
 		return fmt.Errorf("session-launch: %s", placed.Toast)
 	}

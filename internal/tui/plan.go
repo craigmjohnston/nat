@@ -261,5 +261,5 @@ func (a *App) planAgentFlow() tea.Cmd {
 	if a.busy {
 		return nil
 	}
-	return a.openForm(newPlanForm(a.styles.FormTheme, a.cfg.WorkshopAgent))
+	return a.openForm(newPlanForm(a.styles.FormTheme, a.cfg.WorkshopAgentFor(a.cfg.Projects[a.cfg.ActiveProjectID])))
 }

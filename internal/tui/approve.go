@@ -85,21 +85,21 @@ func (a *App) startApprove(s domain.Slice, dir string) tea.Cmd {
 	if err := existingDir(dir); err != nil {
 		return a.showConfirm(fmt.Sprintf("Cannot open a pull request for %q: %v.", s.Name, err), sevError)
 	}
-	st, _, ok := a.activeStore()
+	st, project, ok := a.activeStore()
 	if !ok {
 		return nil
 	}
 	a.busy, a.note = true, approveNote
-	return openPR(a.prs, st, s, dir)
+	return openPR(a.prs, st, s, dir, project.BaseBranch)
 }
 
 // openPR runs gh in the slice's repository and reports the pull request it
 // opened — [actions.OpenPR], which reads the description the agent wrote at
 // hand-back off the slice page and gives gh its first line as the title and
-// the rest as the body.
-func openPR(prs PRCreator, st store.Store, s domain.Slice, dir string) tea.Cmd {
+// the rest as the body, opened into base where the project configures one.
+func openPR(prs PRCreator, st store.Store, s domain.Slice, dir, base string) tea.Cmd {
 	return func() tea.Msg {
-		url, err := actions.OpenPR(context.Background(), st, prs, s, dir)
+		url, err := actions.OpenPR(context.Background(), st, prs, s, dir, base)
 		if err != nil {
 			return prOpenedMsg{slice: s, err: err}
 		}

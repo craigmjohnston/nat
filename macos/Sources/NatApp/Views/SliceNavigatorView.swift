@@ -667,8 +667,9 @@ struct SliceNavigatorView: View {
     }
 
     private func resetLaunchForm() {
-        model = appModel.config?.sliceAgent?.model ?? ""
-        effort = appModel.config?.sliceAgent?.effort ?? ""
+        let agent = appModel.config?.sliceAgent(for: projectID)
+        model = agent?.model ?? ""
+        effort = agent?.effort ?? ""
         launchWarning = nil
     }
 

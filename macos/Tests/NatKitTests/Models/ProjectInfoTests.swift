@@ -261,4 +261,42 @@ final class ProjectInfoTests: XCTestCase {
         let info2 = ProjectInfo(project: project2, milestones: [], slices: [])
         XCTAssertEqual(info1, info2)
     }
+
+    // The per-project settings decode as written and encode only where set,
+    // so an entry setting none round-trips unchanged (the test above).
+    func testProjectConfigPerProjectSettingsRoundTrip() throws {
+        let json = #"{"name":"P","working_dir":"/w","slice_agent":{"model":"opus"},"workshop_agent":{"effort":"low"},"merge_method":"squash","delete_branch":true,"base_branch":"develop","tag":"PX"}"#
+        let config = try JSONDecoder().decode(ProjectConfig.self, from: Data(json.utf8))
+        XCTAssertEqual(config.sliceAgent, AgentModel(model: "opus"))
+        XCTAssertEqual(config.workshopAgent, AgentModel(effort: "low"))
+        XCTAssertEqual(config.mergeMethod, "squash")
+        XCTAssertTrue(config.deleteBranch)
+        XCTAssertEqual(config.baseBranch, "develop")
+        XCTAssertEqual(config.tag, "PX")
+        let again = try JSONDecoder().decode(ProjectConfig.self, from: JSONEncoder().encode(config))
+        XCTAssertEqual(again, config)
+    }
+
+    // A project's pair over the global one, half by half — nat's resolver.
+    func testTheAgentForAProjectIsItsPairOverTheGlobalOne() {
+        let config = NatProjectConfig(
+            projects: ["p": ProjectConfig(name: "P", workingDir: "/", sliceAgent: AgentModel(model: "opus", effort: ""),
+                                          workshopAgent: AgentModel(effort: "max"))],
+            workshopAgent: AgentModel(model: "sonnet", effort: "low"),
+            sliceAgent: AgentModel(model: "sonnet", effort: "high"))
+        XCTAssertEqual(config.sliceAgent(for: "p"), AgentModel(model: "opus", effort: "high"))
+        XCTAssertEqual(config.workshopAgent(for: "p"), AgentModel(model: "sonnet", effort: "max"))
+        XCTAssertEqual(config.sliceAgent(for: "elsewhere"), AgentModel(model: "sonnet", effort: "high"))
+        XCTAssertEqual(AgentModel(model: "x").over(nil), AgentModel(model: "x"))
+    }
+
+    func testPathsCarryTheDefaultBaseAndTheProjectItsBaseBranch() throws {
+        let paths = try JSONDecoder().decode(NatPaths.self, from: Data(
+            #"{"config":"c","log_dir":"l","nudge":"n","default_base":"trunk"}"#.utf8))
+        XCTAssertEqual(paths.defaultBase, "trunk")
+        XCTAssertNil(try JSONDecoder().decode(NatPaths.self, from: Data(#"{"config":"c","log_dir":"l","nudge":"n"}"#.utf8)).defaultBase)
+        let project = try JSONDecoder().decode(Project.self, from: Data(
+            #"{"id":"p","name":"P","conventions":"","base_branch":"develop"}"#.utf8))
+        XCTAssertEqual(project.baseBranch, "develop")
+    }
 }

@@ -58,6 +58,72 @@ type ProjectConfig struct {
 	// until the next [Save] picks one ([Config.AssignColors]) or the user does,
 	// and always for a project that takes none ([Config.Colorable]).
 	Color string `json:"color,omitempty"`
+	// SliceAgent and WorkshopAgent are this project's own model pairs: each
+	// half set here wins over the global [Config.SliceAgent] or
+	// [Config.WorkshopAgent], and each half left empty falls through to it —
+	// read through [Config.SliceAgentFor] and [Config.WorkshopAgentFor].
+	// Omitted until set.
+	SliceAgent    AgentModel `json:"slice_agent,omitzero"`
+	WorkshopAgent AgentModel `json:"workshop_agent,omitzero"`
+	// MergeMethod is how the project's pull requests are merged, one of
+	// [MergeMethods]; empty is [MergeMethodMerge]. DeleteBranch adds gh's
+	// --delete-branch to the merge. Both omitted until set.
+	MergeMethod  string `json:"merge_method,omitempty"`
+	DeleteBranch bool   `json:"delete_branch,omitempty"`
+	// BaseBranch is the branch slices are cut from, diffed and tested against
+	// and opened as pull requests into, by name ("develop"); empty is the
+	// repository's own default, read off origin/HEAD. Omitted until set.
+	BaseBranch string `json:"base_branch,omitempty"`
+	// Tag is the project's short badge, 1–3 letters or digits, uppercase
+	// ([NormaliseTag]); empty leaves gnat to derive one from the name.
+	// Omitted until set.
+	Tag string `json:"tag,omitempty"`
+}
+
+// The three ways a pull request can be merged, as gh pr merge's own flags
+// name them; the empty string is [MergeMethodMerge].
+const (
+	MergeMethodMerge  = "merge"
+	MergeMethodSquash = "squash"
+	MergeMethodRebase = "rebase"
+)
+
+// MergeMethods are the merge words a project may name, in the order a picker
+// offers them.
+var MergeMethods = []string{MergeMethodMerge, MergeMethodSquash, MergeMethodRebase}
+
+// ValidMergeMethod says whether name is a merge word the config would keep:
+// one of [MergeMethods], or empty for the default.
+func ValidMergeMethod(name string) bool {
+	return name == "" || slices.Contains(MergeMethods, name)
+}
+
+// MergeMethodName is the merge word in force for the project: the configured
+// one, else [MergeMethodMerge].
+func (p ProjectConfig) MergeMethodName() string {
+	if p.MergeMethod == "" {
+		return MergeMethodMerge
+	}
+	return p.MergeMethod
+}
+
+// maxTagLen is the most characters a project tag holds.
+const maxTagLen = 3
+
+// NormaliseTag is a tag as the config keeps it: trimmed and uppercased. One
+// that is empty after trimming is no tag; one longer than three characters, or
+// holding anything but ASCII letters and digits, is refused.
+func NormaliseTag(tag string) (string, error) {
+	t := strings.ToUpper(strings.TrimSpace(tag))
+	if len(t) > maxTagLen {
+		return "", fmt.Errorf("a tag is 1 to %d letters or digits, given %q", maxTagLen, tag)
+	}
+	for _, r := range t {
+		if (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return "", fmt.Errorf("a tag is 1 to %d letters or digits, given %q", maxTagLen, tag)
+		}
+	}
+	return t, nil
 }
 
 // ProjectColors is the palette a project's colour is named from, in the order
@@ -304,6 +370,27 @@ func loggedIn() string {
 type AgentModel struct {
 	Model  string `json:"model,omitempty"`
 	Effort string `json:"effort,omitempty"`
+}
+
+// Over is m with each empty half filled from fallback: the half set here wins.
+func (m AgentModel) Over(fallback AgentModel) AgentModel {
+	if m.Model == "" {
+		m.Model = fallback.Model
+	}
+	if m.Effort == "" {
+		m.Effort = fallback.Effort
+	}
+	return m
+}
+
+// SliceAgentFor is what a slice agent of project p is launched as: p's own
+// pair over the global one, half by half.
+func (c Config) SliceAgentFor(p ProjectConfig) AgentModel { return p.SliceAgent.Over(c.SliceAgent) }
+
+// WorkshopAgentFor is what a planning agent of project p is launched as: p's
+// own pair over the global one, half by half.
+func (c Config) WorkshopAgentFor(p ProjectConfig) AgentModel {
+	return p.WorkshopAgent.Over(c.WorkshopAgent)
 }
 
 // Config is the local configuration persisted as JSON in the XDG config dir.

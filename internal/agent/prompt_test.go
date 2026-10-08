@@ -1076,3 +1076,22 @@ func TestGnatPlanPromptCarriesTheAcceptedProposalPassage(t *testing.T) {
 		}
 	}
 }
+
+// A project with a configured base branch tells an agent cutting its own
+// worktree to cut it from that, not from origin's default.
+func TestPromptRepoPassageNamesTheConfiguredBase(t *testing.T) {
+	c := repoUnknownContext()
+	c.Project.BaseBranch = "develop"
+	got := Prompt(c)
+	for _, want := range []string{
+		"- The base is this project's configured base branch, `develop`: `origin/develop`",
+		"where origin has it, else the local `develop`.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("prompt does not say %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "git symbolic-ref --short refs/remotes/origin/HEAD") {
+		t.Error("prompt still sends the agent to origin/HEAD with a base configured")
+	}
+}

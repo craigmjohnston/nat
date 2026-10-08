@@ -19,7 +19,7 @@ import (
 // without gh, without a network and without a GitHub account, which is what
 // keeps a test of it from merging anything.
 type PRMerger interface {
-	MergePR(dir, ref string) error
+	MergePR(dir, ref string, opts gh.MergeOptions) error
 }
 
 // The merge flow's edge, held as a variable so the tests can stand in for it:
@@ -92,14 +92,15 @@ func (a *App) mergeChosen(pr gh.PR, choice int) tea.Cmd {
 	if choice != choiceMerge {
 		return nil
 	}
-	st, _, ok := a.activeStore()
+	st, project, ok := a.activeStore()
 	if !ok {
 		return nil
 	}
 	name, ref, dir := a.prview.Target()
 	s := domain.Slice{ID: a.prview.SliceID(), Name: name}
 	a.busy, a.note = true, mergeNote
-	return mergePR(a.prMerger, st, s, pr.Number, ref, dir)
+	opts := gh.MergeOptions{Method: project.MergeMethod, DeleteBranch: project.DeleteBranch}
+	return mergePR(a.prMerger, st, s, pr.Number, ref, dir, opts)
 }
 
 // mergePR runs gh in the slice's repository and reports what came of it. The
@@ -107,10 +108,11 @@ func (a *App) mergeChosen(pr gh.PR, choice int) tea.Cmd {
 // so the pull request merged is the one that was read. A merge that lands is
 // followed by the status write that says so — [actions.MarkDone] — and a
 // write that fails is reported as itself rather than as a merge that never
-// was, since the pull request is in whatever Notion heard about it.
-func mergePR(merger PRMerger, st store.Store, s domain.Slice, number int, ref, dir string) tea.Cmd {
+// was, since the pull request is in whatever Notion heard about it. The merge
+// is made as the project's config says (opts).
+func mergePR(merger PRMerger, st store.Store, s domain.Slice, number int, ref, dir string, opts gh.MergeOptions) tea.Cmd {
 	return func() tea.Msg {
-		if err := merger.MergePR(dir, ref); err != nil {
+		if err := merger.MergePR(dir, ref, opts); err != nil {
 			return prMergedMsg{number: number, sliceID: s.ID, err: err}
 		}
 		if err := actions.MarkDone(context.Background(), st, s); err != nil {

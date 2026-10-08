@@ -69,6 +69,7 @@ public protocol NatClientProtocol: Sendable {
     func claudeVersion() async throws -> ClaudeVersion
     func claudeUpdate() async throws -> String
     func planFile(projectID: String) async throws -> String?
+    func defaultBase(projectID: String) async throws -> String?
 }
 
 extension NatClientProtocol {
@@ -92,6 +93,12 @@ extension NatClientProtocol {
     /// The project settings sheet's Plan row: only `NatClient` and the
     /// fixture client implement it, the same reasoning as `natVersion`.
     public func planFile(projectID: String) async throws -> String? {
+        throw NatError.commandFailed("paths --project: not supported by this client")
+    }
+
+    /// The project settings sheet's base placeholder: only `NatClient` and
+    /// the fixture client implement it, the same reasoning as `planFile`.
+    public func defaultBase(projectID: String) async throws -> String? {
         throw NatError.commandFailed("paths --project: not supported by this client")
     }
 

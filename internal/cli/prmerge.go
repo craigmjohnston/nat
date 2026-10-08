@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/craigmjohnston/nat/internal/actions"
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/gh"
 )
 
@@ -15,7 +16,12 @@ import (
 // in the repository the slice belongs to. It names exactly the one gh call
 // this command makes, the way [PRViewer] does for pr-view.
 type PRMerger interface {
-	MergePR(dir, ref string) error
+	MergePR(dir, ref string, opts gh.MergeOptions) error
+}
+
+// mergeOptions is how project's pull requests are merged, off its config.
+func mergeOptions(project config.ProjectConfig) gh.MergeOptions {
+	return gh.MergeOptions{Method: project.MergeMethod, DeleteBranch: project.DeleteBranch}
 }
 
 // prMerge merges a slice's recorded pull request: the board's merge key
@@ -78,7 +84,7 @@ func prMerge(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("cannot merge #%d — %s", pr.Number, reason)
 	}
 
-	if err := ghClient.MergePR(workdir, s.PRURL); err != nil {
+	if err := ghClient.MergePR(workdir, s.PRURL, mergeOptions(project)); err != nil {
 		return fmt.Errorf("merge #%d: %w", pr.Number, err)
 	}
 

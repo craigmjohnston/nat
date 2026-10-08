@@ -7,6 +7,11 @@ request.
 
 ## Base resolution — read this before touching `Diff`/`Commits`/`Base`
 
+- A project's configured `base_branch` comes first: `CLI.WithBase(name)`
+  (`internal/cli`'s `Env.gitFor`, the TUI's `withBase`) makes `Base` answer
+  `origin/<name>`, else the local `<name>` (`resolveNamed`), before reading
+  origin/HEAD at all; a configured name that resolves to nothing is logged
+  and falls through to the chain below.
 - `Base(dir)` reads `refs/remotes/origin/HEAD` (the repo's default branch as
   the clone last recorded it) and falls back to `fallbackBase` — first
   `origin/main`, then a bare `main` — only where that's unreadable too. Both

@@ -14,12 +14,38 @@ public struct ProjectSettingsFields: Equatable, Sendable {
     /// The project's run commands in the order written: the first of each
     /// scope is that scope's default, so the order is part of the value.
     public var runs: [RunCommand]
+    /// The project's own model pairs, each half empty for the global one's.
+    public var sliceModel: String
+    public var sliceEffort: String
+    public var workshopModel: String
+    public var workshopEffort: String
+    /// How its pull requests merge — empty for nat's default, a merge commit
+    /// (`ProjectMergeMethod`).
+    public var mergeMethod: String
+    /// Whether a merge also deletes the branch.
+    public var deleteBranch: Bool
+    /// The base branch by name, empty for the repository's own default.
+    public var baseBranch: String
+    /// The project's tag, empty for the one derived from its name.
+    public var tag: String
 
-    public init(name: String = "", workingDir: String, color: ProjectColor? = nil, runs: [RunCommand] = []) {
+    public init(
+        name: String = "", workingDir: String, color: ProjectColor? = nil, runs: [RunCommand] = [],
+        sliceModel: String = "", sliceEffort: String = "", workshopModel: String = "", workshopEffort: String = "",
+        mergeMethod: String = "", deleteBranch: Bool = false, baseBranch: String = "", tag: String = ""
+    ) {
         self.name = name
         self.workingDir = workingDir
         self.color = color
         self.runs = runs
+        self.sliceModel = sliceModel
+        self.sliceEffort = sliceEffort
+        self.workshopModel = workshopModel
+        self.workshopEffort = workshopEffort
+        self.mergeMethod = mergeMethod
+        self.deleteBranch = deleteBranch
+        self.baseBranch = baseBranch
+        self.tag = tag
     }
 
     /// The project's entry as config holds it — empty for a project config
@@ -30,6 +56,38 @@ public struct ProjectSettingsFields: Equatable, Sendable {
         workingDir = entry?.workingDir ?? ""
         color = entry?.color
         runs = entry?.runs ?? []
+        sliceModel = entry?.sliceAgent.model ?? ""
+        sliceEffort = entry?.sliceAgent.effort ?? ""
+        workshopModel = entry?.workshopAgent.model ?? ""
+        workshopEffort = entry?.workshopAgent.effort ?? ""
+        mergeMethod = entry?.mergeMethod ?? ""
+        deleteBranch = entry?.deleteBranch ?? false
+        baseBranch = entry?.baseBranch ?? ""
+        tag = entry?.tag ?? ""
+    }
+
+    /// The merge method as the sheet's picker shows it: the unset one is
+    /// nat's default, a merge commit — and picking that writes it unset.
+    public var shownMergeMethod: ProjectMergeMethod {
+        get { ProjectMergeMethod(rawValue: mergeMethod) ?? .merge }
+        set { mergeMethod = newValue == .merge ? "" : newValue.rawValue }
+    }
+}
+
+/// The three ways nat merges a pull request — `gh pr merge`'s own flags —
+/// as the sheet offers them.
+public enum ProjectMergeMethod: String, CaseIterable, Identifiable, Sendable {
+    case merge, squash, rebase
+
+    public var id: String { rawValue }
+
+    /// The picker's words for it.
+    public var title: String {
+        switch self {
+        case .merge: "Merge commit"
+        case .squash: "Squash and merge"
+        case .rebase: "Rebase and merge"
+        }
     }
 }
 
@@ -82,34 +140,50 @@ public final class ProjectSettingsModel {
     public let isSource: Bool
     /// Where the plan lives — a local plan's file filled in by `loadPlanFile`.
     public private(set) var plan: ProjectPlanLocation
+    /// The global model pairs a project's unset half falls through to — what
+    /// each picker's Default names.
+    public let globalSliceAgent: AgentModel
+    public let globalWorkshopAgent: AgentModel
+    /// The repository's own default branch, the base field's placeholder —
+    /// nil until `loadDefaultBase` has read it, and where it could not.
+    public private(set) var defaultBase: String?
 
     private let write: @Sendable (ConfigChange) async throws -> Void
     private let reload: @MainActor () async -> Void
     private let readPlanFile: @Sendable () async throws -> String?
+    private let readDefaultBase: @Sendable () async throws -> String?
 
     /// - Parameters:
     ///   - write: one `config-set` — `NatClient.configSet` in the app.
     ///   - reload: re-reads the app's config (`AppModel.reloadConfig`).
     ///   - readPlanFile: a local plan's file — `NatClient.planFile` in the app.
+    ///   - readDefaultBase: the repository's default branch —
+    ///     `NatClient.defaultBase` in the app.
     public init(
         projectID: String,
         fields: ProjectSettingsFields,
         takesColor: Bool = true,
         isSource: Bool = false,
         plan: ProjectPlanLocation = .notion(page: nil),
+        globalSliceAgent: AgentModel = AgentModel(),
+        globalWorkshopAgent: AgentModel = AgentModel(),
         write: @escaping @Sendable (ConfigChange) async throws -> Void,
         reload: @escaping @MainActor () async -> Void,
-        readPlanFile: @escaping @Sendable () async throws -> String? = { nil }
+        readPlanFile: @escaping @Sendable () async throws -> String? = { nil },
+        readDefaultBase: @escaping @Sendable () async throws -> String? = { nil }
     ) {
         self.takesColor = takesColor
         self.isSource = isSource
         self.plan = plan
+        self.globalSliceAgent = globalSliceAgent
+        self.globalWorkshopAgent = globalWorkshopAgent
         self.projectID = projectID
         self.original = fields
         self.edited = fields
         self.write = write
         self.reload = reload
         self.readPlanFile = readPlanFile
+        self.readDefaultBase = readDefaultBase
     }
 
     /// The sheet over `client`, reading the project's fields from `config`.
@@ -125,9 +199,12 @@ public final class ProjectSettingsModel {
             takesColor: config?.takesColor(projectID) ?? false,
             isSource: config?.projects[projectID]?.backend == .source,
             plan: ProjectPlanLocation(projectID: projectID, entry: config?.projects[projectID]),
+            globalSliceAgent: config?.sliceAgent ?? AgentModel(),
+            globalWorkshopAgent: config?.workshopAgent ?? AgentModel(),
             write: { try await client.configSet(key: $0.key, value: $0.value) },
             reload: reload,
-            readPlanFile: { try await client.planFile(projectID: projectID) })
+            readPlanFile: { try await client.planFile(projectID: projectID) },
+            readDefaultBase: { try await client.defaultBase(projectID: projectID) })
     }
 
     /// The working directory's `config-set` key.
@@ -141,6 +218,51 @@ public final class ProjectSettingsModel {
 
     /// The run commands' `config-set` key.
     public var runsKey: String { SettingsModel.runsKey(projectID: projectID) }
+
+    /// The per-project settings' `config-set` keys.
+    public var sliceModelKey: String { SettingsModel.sliceModelKey(projectID: projectID) }
+    public var sliceEffortKey: String { SettingsModel.sliceEffortKey(projectID: projectID) }
+    public var workshopModelKey: String { SettingsModel.workshopModelKey(projectID: projectID) }
+    public var workshopEffortKey: String { SettingsModel.workshopEffortKey(projectID: projectID) }
+    public var mergeMethodKey: String { SettingsModel.mergeMethodKey(projectID: projectID) }
+    public var deleteBranchKey: String { SettingsModel.deleteBranchKey(projectID: projectID) }
+    public var baseBranchKey: String { SettingsModel.baseBranchKey(projectID: projectID) }
+    public var tagKey: String { SettingsModel.tagKey(projectID: projectID) }
+
+    /// A picker's first choice: Default, naming the global value it falls
+    /// through to where there is one — "Default (sonnet)".
+    public static func defaultTitle(_ global: String?) -> String {
+        guard let global, !global.isEmpty else { return "Default" }
+        return "Default (\(global))"
+    }
+
+    /// The base field's placeholder: the repository's default where it has
+    /// been read, else a word for it.
+    public var baseBranchPlaceholder: String { defaultBase ?? "Repository default" }
+
+    /// The tag the badge preview shows: the edited one as nat would store it;
+    /// with none, `shown` — the tag the project wears now — where its entry
+    /// holds none either, else the one its name derives.
+    public func previewTag(shown: String) -> String {
+        let tag = Self.normalisedTag(edited.tag)
+        if !tag.isEmpty { return tag }
+        if original.tag.isEmpty { return shown }
+        return projectTags([(id: projectID, name: edited.name.isEmpty ? original.name : edited.name)])[projectID] ?? shown
+    }
+
+    /// A tag as nat stores it: trimmed and uppercased. nat refuses one that
+    /// is not 1–3 letters or digits, and that refusal is kept under the row.
+    static func normalisedTag(_ tag: String) -> String {
+        tag.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
+    /// Reads the repository's default branch into `defaultBase`, once; a
+    /// failed read leaves the placeholder's word.
+    public func loadDefaultBase() async {
+        guard defaultBase == nil else { return }
+        guard let base = try? await readDefaultBase(), !base.isEmpty else { return }
+        defaultBase = base
+    }
 
     /// Reads a local plan's file into `plan`, once; a failed read leaves it
     /// unknown — the row then says Local with no path to reveal.
@@ -199,6 +321,21 @@ public final class ProjectSettingsModel {
         if original.runs != edited.runs {
             changes.append(ConfigChange(key: SettingsModel.runsKey(projectID: projectID), value: runsValue(edited.runs)))
         }
+        func addIfChanged(_ key: String, _ old: String, _ new: String) {
+            if old != new { changes.append(ConfigChange(key: key, value: new)) }
+        }
+        addIfChanged(SettingsModel.sliceModelKey(projectID: projectID), original.sliceModel, edited.sliceModel)
+        addIfChanged(SettingsModel.sliceEffortKey(projectID: projectID), original.sliceEffort, edited.sliceEffort)
+        addIfChanged(SettingsModel.workshopModelKey(projectID: projectID), original.workshopModel, edited.workshopModel)
+        addIfChanged(SettingsModel.workshopEffortKey(projectID: projectID), original.workshopEffort, edited.workshopEffort)
+        addIfChanged(SettingsModel.mergeMethodKey(projectID: projectID), original.mergeMethod, edited.mergeMethod)
+        if original.deleteBranch != edited.deleteBranch {
+            changes.append(ConfigChange(key: SettingsModel.deleteBranchKey(projectID: projectID),
+                                        value: edited.deleteBranch ? "true" : "false"))
+        }
+        addIfChanged(SettingsModel.baseBranchKey(projectID: projectID), original.baseBranch,
+                     edited.baseBranch.trimmingCharacters(in: .whitespacesAndNewlines))
+        addIfChanged(SettingsModel.tagKey(projectID: projectID), original.tag, normalisedTag(edited.tag))
         return changes
     }
 
@@ -231,6 +368,14 @@ public final class ProjectSettingsModel {
             case SettingsModel.colorKey(projectID: projectID): result.color = ProjectColor(rawValue: change.value)
             case SettingsModel.nameKey(projectID: projectID): result.name = change.value
             case SettingsModel.runsKey(projectID: projectID): result.runs = Self.runs(fromValue: change.value)
+            case SettingsModel.sliceModelKey(projectID: projectID): result.sliceModel = change.value
+            case SettingsModel.sliceEffortKey(projectID: projectID): result.sliceEffort = change.value
+            case SettingsModel.workshopModelKey(projectID: projectID): result.workshopModel = change.value
+            case SettingsModel.workshopEffortKey(projectID: projectID): result.workshopEffort = change.value
+            case SettingsModel.mergeMethodKey(projectID: projectID): result.mergeMethod = change.value
+            case SettingsModel.deleteBranchKey(projectID: projectID): result.deleteBranch = change.value == "true"
+            case SettingsModel.baseBranchKey(projectID: projectID): result.baseBranch = change.value
+            case SettingsModel.tagKey(projectID: projectID): result.tag = change.value
             default: break
             }
         }

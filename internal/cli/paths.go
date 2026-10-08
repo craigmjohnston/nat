@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/nudge"
@@ -40,6 +42,7 @@ func paths(args []string, env Env) error {
 		if paths.Plan, err = planFileOf(env, *projectID); err != nil {
 			return err
 		}
+		paths.DefaultBase = defaultBaseOf(env, *projectID)
 	}
 
 	if *asJSON {
@@ -66,6 +69,21 @@ func planFileOf(env Env, id string) (string, error) {
 	return store.PlanPath(store.Project{ID: key, PlanDir: project.PlanDir})
 }
 
+// defaultBaseOf is the branch the repository at the project's working
+// directory names as its default (origin/HEAD, by [git.CLI.Base]'s chain with
+// no configured base), as a branch name — what the project settings sheet
+// shows as its base field's placeholder. Empty for a project with no working
+// directory (a source project); the project itself is already known good, as
+// planFileOf matched it first.
+func defaultBaseOf(env Env, id string) string {
+	_, _, project, _ := env.namedProject(id)
+	dir := actions.ExpandHome(strings.TrimSpace(project.WorkingDir))
+	if dir == "" {
+		return ""
+	}
+	return strings.TrimPrefix(env.NewGit().Base(dir), "origin/")
+}
+
 // pathsForPrinting resolves all three system paths used by the app.
 type printPaths struct {
 	Config string
@@ -74,6 +92,9 @@ type printPaths struct {
 	// Plan is a project's plan file, where --project asked for one that has
 	// a file; empty otherwise.
 	Plan string
+	// DefaultBase is a --project's repository's own default branch by name
+	// ([defaultBaseOf]); empty otherwise.
+	DefaultBase string
 }
 
 func pathsForPrinting() (*printPaths, error) {
@@ -102,6 +123,9 @@ type pathsJSON struct {
 	LogDir string `json:"log_dir"`
 	Nudge  string `json:"nudge"`
 	Plan   string `json:"plan,omitempty"`
+	// DefaultBase is --project's repository's default branch by name — not
+	// a path, but read here as the settings sheet reads the plan file, once.
+	DefaultBase string `json:"default_base,omitempty"`
 }
 
 // writePathsJSON encodes the paths as JSON, indented.
@@ -111,6 +135,8 @@ func writePathsJSON(out io.Writer, paths *printPaths) error {
 		LogDir: paths.LogDir,
 		Nudge:  paths.Nudge,
 		Plan:   paths.Plan,
+
+		DefaultBase: paths.DefaultBase,
 	}
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
@@ -129,6 +155,9 @@ func pathsMarkdown(paths *printPaths) string {
 		maxLen, "Nudge:", paths.Nudge)
 	if paths.Plan != "" {
 		text += fmt.Sprintf("%-*s %s\n", maxLen, "Plan:", paths.Plan)
+	}
+	if paths.DefaultBase != "" {
+		text += fmt.Sprintf("%-*s %s\n", maxLen, "Base:", paths.DefaultBase)
 	}
 	return text
 }

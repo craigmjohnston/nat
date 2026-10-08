@@ -53,7 +53,7 @@ func sliceApprove(ctx context.Context, args []string, env Env) error {
 		return fmt.Errorf("%q is already Done: approve is for handed-back work", s.Name)
 	}
 
-	url, err := actions.OpenPR(ctx, st, env.NewGH(), s, actions.WorkdirFor(s, project))
+	url, err := actions.OpenPR(ctx, st, env.NewGH(), s, actions.WorkdirFor(s, project), project.BaseBranch)
 	if err != nil {
 		return err
 	}

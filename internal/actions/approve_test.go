@@ -12,7 +12,7 @@ import (
 )
 
 // prCall is one pull request a fakePRs was asked to open.
-type prCall struct{ dir, branch, title, body string }
+type prCall struct{ dir, branch, title, body, base string }
 
 // fakePRs stands in for the GitHub CLI: it records what it was asked to open
 // and answers with the URL — or the refusal — the test wants gh to have
@@ -25,8 +25,8 @@ type fakePRs struct {
 
 var _ PRCreator = (*fakePRs)(nil)
 
-func (f *fakePRs) CreatePR(dir, branch, title, body string) (string, error) {
-	f.made = append(f.made, prCall{dir, branch, title, body})
+func (f *fakePRs) CreatePR(dir, branch, base, title, body string) (string, error) {
+	f.made = append(f.made, prCall{dir, branch, title, body, base})
 	return f.url, f.err
 }
 
@@ -69,7 +69,7 @@ func TestOpenPR(t *testing.T) {
 	prs := &fakePRs{url: "https://github.test/craig/nat/pull/9"}
 	s := domain.Slice{ID: "hb", Name: "Approve action", Branch: "slice/approve"}
 
-	url, err := OpenPR(context.Background(), client.store(), prs, s, "/repo")
+	url, err := OpenPR(context.Background(), client.store(), prs, s, "/repo", "")
 
 	if err != nil {
 		t.Fatalf("OpenPR() = %v, want it to go through", err)
@@ -77,7 +77,7 @@ func TestOpenPR(t *testing.T) {
 	if url != prs.url {
 		t.Errorf("url = %q, want %q", url, prs.url)
 	}
-	want := prCall{"/repo", "slice/approve", "Open the PR with the recorded description", "What it does, and why."}
+	want := prCall{"/repo", "slice/approve", "Open the PR with the recorded description", "What it does, and why.", ""}
 	if len(prs.made) != 1 || prs.made[0] != want {
 		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
 	}
@@ -98,10 +98,10 @@ func TestOpenPRStripsTheAgentAttribution(t *testing.T) {
 	prs := &fakePRs{}
 	s := domain.Slice{ID: "hb", Branch: "slice/approve"}
 
-	if _, err := OpenPR(context.Background(), client.store(), prs, s, "/repo"); err != nil {
+	if _, err := OpenPR(context.Background(), client.store(), prs, s, "/repo", ""); err != nil {
 		t.Fatalf("OpenPR() = %v, want it to go through", err)
 	}
-	want := prCall{"/repo", "slice/approve", "Open a clean PR", "What it does."}
+	want := prCall{"/repo", "slice/approve", "Open a clean PR", "What it does.", ""}
 	if len(prs.made) != 1 || prs.made[0] != want {
 		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
 	}
@@ -117,10 +117,10 @@ func TestOpenPRWithoutARecordedDescription(t *testing.T) {
 	prs := &fakePRs{}
 	s := domain.Slice{ID: "hb", Branch: "slice/approve"}
 
-	if _, err := OpenPR(context.Background(), client.store(), prs, s, "/repo"); err != nil {
+	if _, err := OpenPR(context.Background(), client.store(), prs, s, "/repo", ""); err != nil {
 		t.Fatalf("OpenPR() = %v, want it to go through", err)
 	}
-	want := prCall{"/repo", "slice/approve", "", ""}
+	want := prCall{"/repo", "slice/approve", "", "", ""}
 	if len(prs.made) != 1 || prs.made[0] != want {
 		t.Fatalf("gh was asked for %v, want %v", prs.made, want)
 	}
@@ -133,7 +133,7 @@ func TestOpenPRWithAnUnreadableDescription(t *testing.T) {
 	client := &fakeClient{blocks: func(string) ([]notion.Block, error) { return nil, errors.New("notion is down") }}
 	prs := &fakePRs{}
 
-	_, err := OpenPR(context.Background(), client.store(), prs, domain.Slice{ID: "hb"}, "/repo")
+	_, err := OpenPR(context.Background(), client.store(), prs, domain.Slice{ID: "hb"}, "/repo", "")
 
 	if err == nil || !strings.Contains(err.Error(), "read the pull request description") {
 		t.Errorf("err = %v, want the read's failure named", err)
@@ -150,7 +150,7 @@ func TestOpenPRReportsAGhFailure(t *testing.T) {
 	client := &fakeClient{}
 	prs := &fakePRs{err: errors.New(`a pull request for branch "slice/approve" already exists`)}
 
-	_, err := OpenPR(context.Background(), client.store(), prs, domain.Slice{ID: "hb", Branch: "slice/approve"}, "/repo")
+	_, err := OpenPR(context.Background(), client.store(), prs, domain.Slice{ID: "hb", Branch: "slice/approve"}, "/repo", "")
 
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("err = %v, want gh's own reason", err)

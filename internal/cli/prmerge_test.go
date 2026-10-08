@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -405,5 +406,31 @@ func TestPRMergeReportsAFailedLocalMarkDone(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "could not mark") {
 		t.Errorf("err = %v, want the failed local MarkDone write named", err)
+	}
+}
+
+// The merge is made as the project's config says: its strategy and, only
+// where asked, --delete-branch.
+func TestPRMergeUsesTheProjectsMergeSettings(t *testing.T) {
+	api := &fakeAPI{
+		pages: map[string][]notion.Page{
+			"slices-ds": {slicePageWithPR(testSliceID, "Write the UI", notion.SliceInProgress,
+				"https://github.test/craig/nat/pull/7")},
+		},
+	}
+	cfg := testConfig(t)
+	p := cfg.Projects["project-1"]
+	p.MergeMethod, p.DeleteBranch = "squash", true
+	cfg.Projects["project-1"] = p
+	env, _ := testEnv(cfg, api)
+	runner := &multiRunner{viewOut: readyToMergePRJSON}
+	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
+
+	if err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr-merge: %v", err)
+	}
+	want := []string{"pr", "merge", "https://github.test/craig/nat/pull/7", "--squash", "--delete-branch"}
+	if len(runner.mergeArgs) != 1 || !reflect.DeepEqual(runner.mergeArgs[0], want) {
+		t.Errorf("merge args = %v, want %v", runner.mergeArgs, want)
 	}
 }

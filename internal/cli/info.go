@@ -75,7 +75,7 @@ func info(ctx context.Context, args []string, env Env) error {
 				return holdsHandBack(log)
 			})
 		}
-		return writeInfoJSON(env.Out, p, conventions, projectID == cfg.ScratchProject, src, plan.Shape.HasBranch, taken, fixing)
+		return writeInfoJSON(env.Out, p, conventions, project.BaseBranch, projectID == cfg.ScratchProject, src, plan.Shape.HasBranch, taken, fixing)
 	}
 	_, err = io.WriteString(env.Out, infoMarkdown(p, conventions))
 	return err
@@ -137,6 +137,9 @@ type projectJSON struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Conventions string `json:"conventions"`
+	// BaseBranch is the project's configured base branch by name, omitted
+	// where it configures none (the repository's own default).
+	BaseBranch string `json:"base_branch,omitempty"`
 }
 
 type milestoneJSON struct {
@@ -183,10 +186,10 @@ type sliceJSON struct {
 // resumed work from a pull request recorded on a project that has none.
 // taken names the slices taken back to work after a hand-back — see
 // [takenBack]; fixing, the checks each of those has to fix — see
-// [fixingChecks].
-func writeInfoJSON(out io.Writer, p domain.Project, conventions string, scratch bool, src *sourceInfoJSON, hasBranch bool, taken map[string]bool, fixing map[string][]string) error {
+// [fixingChecks]. base is the project's configured base branch, if any.
+func writeInfoJSON(out io.Writer, p domain.Project, conventions, base string, scratch bool, src *sourceInfoJSON, hasBranch bool, taken map[string]bool, fixing map[string][]string) error {
 	doc := infoJSON{
-		Project:    projectJSON{ID: p.ID, Name: p.Name, Conventions: conventions},
+		Project:    projectJSON{ID: p.ID, Name: p.Name, Conventions: conventions, BaseBranch: base},
 		Milestones: make([]milestoneJSON, 0, len(p.Milestones)),
 		Slices:     make([]sliceJSON, 0, len(p.Slices)),
 		Source:     src,

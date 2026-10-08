@@ -1552,7 +1552,7 @@ struct SidebarView: View {
     }
 
     private func launch(_ row: SidebarSliceRow) {
-        let agent = appModel.config?.sliceAgent
+        let agent = appModel.config?.sliceAgent(for: row.projectID)
         run {
             _ = try await NatClient().sliceLaunch(
                 projectID: row.projectID, sliceRef: row.sliceID, model: agent?.model, effort: agent?.effort)

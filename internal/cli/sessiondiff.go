@@ -57,7 +57,7 @@ func sessionDiff(ctx context.Context, args []string, env Env) error {
 		return noSessionError(id)
 	}
 
-	gitCLI := env.NewGit()
+	gitCLI := env.gitFor(project)
 	branch := *branchFlag
 	current, currentErr := gitCLI.CurrentBranch(sess.Dir)
 	if branch == "" {

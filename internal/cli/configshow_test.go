@@ -221,3 +221,47 @@ func TestConfigShowSaysEachColor(t *testing.T) {
 		t.Errorf("an empty color was written:\n%s", out.String())
 	}
 }
+
+// Each per-project setting is shown as written, in both forms, and a project
+// that sets none of them carries none.
+func TestConfigShowSaysEachProjectSetting(t *testing.T) {
+	cfg := fullConfig()
+	cfg.Projects["set-1"] = config.ProjectConfig{Name: "set", WorkingDir: "/s", Tag: "ST",
+		SliceAgent: config.AgentModel{Model: "opus"}, WorkshopAgent: config.AgentModel{Effort: "low"},
+		MergeMethod: "squash", DeleteBranch: true, BaseBranch: "develop"}
+	env, out := testEnv(cfg, &fakeAPI{})
+	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
+		t.Fatal(err)
+	}
+	want := `set-1 (set): backend=notion working_dir="/s" tag=ST slice_agent=model="opus",effort="" ` +
+		`workshop_agent=model="",effort="low" merge_method=squash delete_branch=true base_branch="develop"` + "\n"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("output missing %q:\n%s", want, out.String())
+	}
+
+	env, out = testEnv(cfg, &fakeAPI{})
+	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Projects map[string]map[string]any `json:"projects"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	got := doc.Projects["set-1"]
+	for key, value := range map[string]any{
+		"tag": "ST", "merge_method": "squash", "delete_branch": true, "base_branch": "develop",
+		"slice_agent":    map[string]any{"model": "opus"},
+		"workshop_agent": map[string]any{"effort": "low"},
+	} {
+		if !reflect.DeepEqual(got[key], value) {
+			t.Errorf("%s = %#v, want %#v", key, got[key], value)
+		}
+	}
+	for _, key := range []string{"tag", "merge_method", "delete_branch", "base_branch", "slice_agent", "workshop_agent"} {
+		if _, ok := doc.Projects["project-1"][key]; ok {
+			t.Errorf("project-1 carries %s, want it omitted while unset", key)
+		}
+	}
+}

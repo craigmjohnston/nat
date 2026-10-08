@@ -108,6 +108,17 @@ func firstLine(stderr string) string {
 // CLI reads diffs through the git binary.
 type CLI struct {
 	runner Runner
+	// base is the project's configured base branch by name, empty where it
+	// configures none ([CLI.WithBase]).
+	base string
+}
+
+// WithBase is c with a project's configured base branch: where name is set,
+// [CLI.Base] answers with it before reading origin/HEAD — so every worktree,
+// diff and conflict test this CLI makes is against it.
+func (c CLI) WithBase(name string) CLI {
+	c.base = strings.TrimSpace(name)
+	return c
 }
 
 // New returns a CLI driving the real git on PATH.
@@ -160,20 +171,29 @@ func (c CLI) baseNamed(dir, name string) string {
 	if name == "" {
 		return c.Base(dir)
 	}
+	if ref, ok := c.resolveNamed(dir, name); ok {
+		return ref
+	}
+	logging.Action("a named base resolves to nothing; using the default",
+		"dir", dir, "base", name)
+	return c.Base(dir)
+}
+
+// resolveNamed is the freshest ref answering to a branch name — origin's copy,
+// else the local branch — and false where neither exists.
+func (c CLI) resolveNamed(dir, name string) (string, bool) {
 	// The full refs rather than short names, for the reason fallbackBase
 	// uses one: a local branch called origin/main would answer for the
 	// remote's.
 	if _, err := c.runner.Run(dir, Binary, "rev-parse", "--verify", "--quiet",
 		"refs/remotes/origin/"+name); err == nil {
-		return "origin/" + name
+		return "origin/" + name, true
 	}
 	if _, err := c.runner.Run(dir, Binary, "rev-parse", "--verify", "--quiet",
 		"refs/heads/"+name); err == nil {
-		return name
+		return name, true
 	}
-	logging.Action("a named base resolves to nothing; using the default",
-		"dir", dir, "base", name)
-	return c.Base(dir)
+	return "", false
 }
 
 // DiffWorkingTreeFrom is [CLI.DiffFrom] with no branch to name at all: dir's
@@ -217,7 +237,9 @@ func (c CLI) Show(dir, branch, path string) ([]string, error) {
 }
 
 // Base is the branch a diff is taken against, and the one a slice's worktree is
-// cut from: whatever origin's HEAD points at, which is the repository's default
+// cut from: the project's configured base ([CLI.WithBase]) where it has one and
+// it resolves — origin's copy first, as [CLI.baseNamed] resolves a name — else
+// whatever origin's HEAD points at, which is the repository's default
 // branch as the clone last recorded it, and [CLI.fallbackBase] when there is no
 // such ref to read. A failure here is logged and swallowed rather than returned:
 // the fallback is right for every repository this project works on, and refusing
@@ -228,6 +250,13 @@ func (c CLI) Show(dir, branch, path string) ([]string, error) {
 // was pruned from — has none, and only `git remote set-head origin --auto` puts
 // it back.
 func (c CLI) Base(dir string) string {
+	if c.base != "" {
+		if ref, ok := c.resolveNamed(dir, c.base); ok {
+			return ref
+		}
+		logging.Action("the configured base resolves to nothing; using the default",
+			"dir", dir, "base", c.base)
+	}
 	out, err := c.runner.Run(dir, Binary, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
 	if err != nil {
 		logging.Action("could not read the repository's default branch", "dir", dir, "error", err)

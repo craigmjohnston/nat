@@ -100,4 +100,22 @@ final class ConfigDocTests: XCTestCase {
         XCTAssertEqual(a, b)
         XCTAssertNotEqual(a, c)
     }
+
+    func testDecodingReadsEachProjectsOwnSettings() throws {
+        let json = """
+        {"agent_split_percent": 0, "poll_seconds": 0, "workshop_agent": {}, "slice_agent": {},
+         "projects": {"p": {"name": "P", "working_dir": "/w", "slice_agent": {"model": "opus"},
+          "workshop_agent": {"effort": "low"}, "merge_method": "rebase", "delete_branch": true,
+          "base_branch": "develop", "tag": "PX"}, "q": {"name": "Q", "working_dir": "/q"}}}
+        """
+        let doc = try JSONDecoder().decode(ConfigDoc.self, from: Data(json.utf8))
+        let p = try XCTUnwrap(doc.projects["p"])
+        XCTAssertEqual(p, ConfigDocProject(
+            name: "P", workingDir: "/w", sliceAgent: AgentModel(model: "opus"), workshopAgent: AgentModel(effort: "low"),
+            mergeMethod: "rebase", deleteBranch: true, baseBranch: "develop", tag: "PX"))
+        XCTAssertEqual(try JSONDecoder().decode(ConfigDocProject.self, from: JSONEncoder().encode(p)), p)
+        let q = try XCTUnwrap(doc.projects["q"])
+        let keys = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(q)) as? [String: Any]).keys
+        XCTAssertEqual(Set(keys), ["name", "working_dir", "backend"])
+    }
 }

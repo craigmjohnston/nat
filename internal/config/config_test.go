@@ -901,3 +901,79 @@ func TestAssignColorsSkipsScratchAndSourceProjects(t *testing.T) {
 		t.Error("Colorable disagrees with the entries")
 	}
 }
+
+// A project's pair is laid over the global one half by half.
+func TestAgentFor(t *testing.T) {
+	c := Config{SliceAgent: AgentModel{Model: "sonnet", Effort: "low"}, WorkshopAgent: AgentModel{Model: "haiku", Effort: "high"}}
+	p := ProjectConfig{SliceAgent: AgentModel{Model: "opus"}, WorkshopAgent: AgentModel{Effort: "max"}}
+	if got := c.SliceAgentFor(p); got != (AgentModel{Model: "opus", Effort: "low"}) {
+		t.Errorf("SliceAgentFor = %+v", got)
+	}
+	if got := c.WorkshopAgentFor(p); got != (AgentModel{Model: "haiku", Effort: "max"}) {
+		t.Errorf("WorkshopAgentFor = %+v", got)
+	}
+	if got := c.SliceAgentFor(ProjectConfig{}); got != c.SliceAgent {
+		t.Errorf("no override: SliceAgentFor = %+v, want the global pair", got)
+	}
+}
+
+func TestMergeMethods(t *testing.T) {
+	for _, ok := range []string{"", "merge", "squash", "rebase"} {
+		if !ValidMergeMethod(ok) {
+			t.Errorf("ValidMergeMethod(%q) = false", ok)
+		}
+	}
+	if ValidMergeMethod("Squash") || ValidMergeMethod("ff") {
+		t.Error("ValidMergeMethod took a word gh has no flag for")
+	}
+	if got := (ProjectConfig{}).MergeMethodName(); got != MergeMethodMerge {
+		t.Errorf("unset MergeMethodName = %q", got)
+	}
+	if got := (ProjectConfig{MergeMethod: "rebase"}).MergeMethodName(); got != "rebase" {
+		t.Errorf("MergeMethodName = %q", got)
+	}
+}
+
+func TestNormaliseTag(t *testing.T) {
+	for in, want := range map[string]string{"nat": "NAT", " a1 ": "A1", "x": "X", "": "", "  ": ""} {
+		if got, err := NormaliseTag(in); err != nil || got != want {
+			t.Errorf("NormaliseTag(%q) = %q, %v; want %q", in, got, err, want)
+		}
+	}
+	for _, bad := range []string{"ABCD", "A B", "A-", "É"} {
+		if _, err := NormaliseTag(bad); err == nil {
+			t.Errorf("NormaliseTag(%q) = nil error, want a refusal", bad)
+		}
+	}
+}
+
+// Every per-project setting survives a round trip, and an entry setting none
+// writes none of their keys, so an older config is written back unchanged.
+func TestProjectSettingsRoundTrip(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	in := Config{Projects: map[string]ProjectConfig{
+		"a": {WorkingDir: "/w", Color: "red", SliceAgent: AgentModel{Model: "opus"}, WorkshopAgent: AgentModel{Effort: "low"},
+			MergeMethod: "squash", DeleteBranch: true, BaseBranch: "develop", Tag: "AB"},
+	}}
+	if err := Save(in); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := out.Projects["a"]; !reflect.DeepEqual(got, in.Projects["a"]) {
+		t.Fatalf("round trip: %+v", got)
+	}
+
+	if err := Save(Config{Projects: map[string]ProjectConfig{"b": {WorkingDir: "/w"}}}); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := Path()
+	data, _ := os.ReadFile(path)
+	for _, key := range []string{`"slice_agent"`, `"workshop_agent"`, `"merge_method"`, `"delete_branch"`, `"base_branch"`, `"tag"`} {
+		if strings.Count(string(data), key) > 0 {
+			t.Errorf("a project setting nothing wrote %s:\n%s", key, data)
+		}
+	}
+}

@@ -13,7 +13,8 @@ import (
 )
 
 // The keys config-set answers to: the settings form's own fields, plus one
-// project's working directory, run commands, colour and name, addressed by its page ID. Nothing else in the
+// project's working directory, run commands, colour, name, model pairs, merge
+// method, delete-branch switch, base branch and tag, addressed by its page ID. Nothing else in the
 // file is reachable this way — see configShow's doc comment for why.
 const (
 	keySplitPercent     = "agent_split_percent"
@@ -27,6 +28,16 @@ const (
 	runsKeySuffix       = ".runs"
 	colorKeySuffix      = ".color"
 	nameKeySuffix       = ".name"
+	// The per-project keys this slice's fields answer to, each written by
+	// [projectFieldSetters].
+	sliceModelKeySuffix     = ".slice_agent.model"
+	sliceEffortKeySuffix    = ".slice_agent.effort"
+	workshopModelKeySuffix  = ".workshop_agent.model"
+	workshopEffortKeySuffix = ".workshop_agent.effort"
+	mergeMethodKeySuffix    = ".merge_method"
+	deleteBranchKeySuffix   = ".delete_branch"
+	baseBranchKeySuffix     = ".base_branch"
+	tagKeySuffix            = ".tag"
 	// autoColor is the value that clears a project's colour, so the save that
 	// follows picks one afresh ([config.Config.AssignColors]).
 	autoColor = "auto"
@@ -74,8 +85,12 @@ func configSet(args []string, env Env) error {
 
 // reportedValue is what config-set says it wrote: the value given, except a
 // colour set to auto, which says the name the save chose — read off cfg, whose
-// map the save filled in.
+// map the save filled in — and a tag, which says it as stored, uppercased.
 func reportedValue(cfg config.Config, key, value string) string {
+	if strings.HasPrefix(key, projectKeyPrefix) && strings.HasSuffix(key, tagKeySuffix) {
+		pid, _ := projectKeyFor(cfg, strings.TrimSuffix(strings.TrimPrefix(key, projectKeyPrefix), tagKeySuffix))
+		return cfg.Projects[pid].Tag
+	}
 	if value != autoColor || !strings.HasPrefix(key, projectKeyPrefix) || !strings.HasSuffix(key, colorKeySuffix) {
 		return value
 	}
@@ -124,6 +139,13 @@ func applyConfigSet(cfg *config.Config, key, value string) error {
 		return applyProjectColor(cfg, key, value)
 	case strings.HasPrefix(key, projectKeyPrefix) && strings.HasSuffix(key, nameKeySuffix):
 		return applyProjectName(cfg, key, value)
+	case strings.HasPrefix(key, projectKeyPrefix):
+		for _, f := range projectFieldSetters {
+			if strings.HasSuffix(key, f.suffix) {
+				return applyProjectField(cfg, key, f.suffix, value, f.set)
+			}
+		}
+		return usageErrorf("config-set: unknown key %q", key)
 	default:
 		return usageErrorf("config-set: unknown key %q", key)
 	}
@@ -227,6 +249,81 @@ func applyProjectName(cfg *config.Config, key, value string) error {
 		return usageErrorf("config-set: %s wants a name, given none", key)
 	}
 	p.Name = name
+	cfg.Projects[pid] = p
+	return nil
+}
+
+// projectFieldSetter writes one per-project key's value onto its entry, or
+// refuses it — the value as given, the key for a refusal to name.
+type projectFieldSetter struct {
+	suffix string
+	set    func(p *config.ProjectConfig, key, value string) error
+}
+
+// projectFieldSetters are the per-project keys that need no more than the
+// entry itself. A model or effort is written as given — an unknown one is
+// Claude Code's to refuse at launch, as the global pair's is — and the empty
+// string unsets every one of them.
+var projectFieldSetters = []projectFieldSetter{
+	{sliceModelKeySuffix, func(p *config.ProjectConfig, _, v string) error { p.SliceAgent.Model = v; return nil }},
+	{sliceEffortKeySuffix, func(p *config.ProjectConfig, _, v string) error { p.SliceAgent.Effort = v; return nil }},
+	{workshopModelKeySuffix, func(p *config.ProjectConfig, _, v string) error { p.WorkshopAgent.Model = v; return nil }},
+	{workshopEffortKeySuffix, func(p *config.ProjectConfig, _, v string) error { p.WorkshopAgent.Effort = v; return nil }},
+	{mergeMethodKeySuffix, setMergeMethod},
+	{deleteBranchKeySuffix, setDeleteBranch},
+	{baseBranchKeySuffix, func(p *config.ProjectConfig, _, v string) error { p.BaseBranch = strings.TrimSpace(v); return nil }},
+	{tagKeySuffix, setTag},
+}
+
+// setMergeMethod writes a merge word, refusing one gh pr merge has no flag for.
+func setMergeMethod(p *config.ProjectConfig, key, value string) error {
+	if !config.ValidMergeMethod(value) {
+		return usageErrorf("config-set: %s wants one of %s, or nothing for the default, given %q",
+			key, strings.Join(config.MergeMethods, ", "), value)
+	}
+	p.MergeMethod = value
+	return nil
+}
+
+// setDeleteBranch writes the delete-branch switch: true or false, the empty
+// string being false — the field's unset.
+func setDeleteBranch(p *config.ProjectConfig, key, value string) error {
+	if strings.TrimSpace(value) == "" {
+		p.DeleteBranch = false
+		return nil
+	}
+	b, err := strconv.ParseBool(strings.TrimSpace(value))
+	if err != nil {
+		return usageErrorf("config-set: %s wants true or false, given %q", key, value)
+	}
+	p.DeleteBranch = b
+	return nil
+}
+
+// setTag writes a tag uppercased, refusing one that is not 1–3 letters or
+// digits ([config.NormaliseTag]); the empty string unsets it.
+func setTag(p *config.ProjectConfig, key, value string) error {
+	tag, err := config.NormaliseTag(value)
+	if err != nil {
+		return usageErrorf("config-set: %s: %v", key, err)
+	}
+	p.Tag = tag
+	return nil
+}
+
+// applyProjectField writes value onto the project key names through set, by
+// [applyProjectWorkingDir]'s addressing.
+func applyProjectField(cfg *config.Config, key, suffix, value string,
+	set func(p *config.ProjectConfig, key, value string) error) error {
+	id := strings.TrimSuffix(strings.TrimPrefix(key, projectKeyPrefix), suffix)
+	pid, err := projectKeyFor(*cfg, id)
+	if err != nil {
+		return err
+	}
+	p := cfg.Projects[pid]
+	if err := set(&p, key, value); err != nil {
+		return err
+	}
 	cfg.Projects[pid] = p
 	return nil
 }

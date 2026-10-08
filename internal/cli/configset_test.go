@@ -432,3 +432,73 @@ func TestConfigSetProjectNameRefusals(t *testing.T) {
 		t.Errorf("err = %v, want the unknown project named", err)
 	}
 }
+
+// Every per-project key this slice added round-trips: written by config-set
+// onto the one project, read back by config-show --json, and unset by the
+// empty string.
+func TestConfigSetProjectFields(t *testing.T) {
+	for _, tt := range []struct {
+		key, value string
+		check      func(config.ProjectConfig) any
+		want       any
+	}{
+		{"project.project-1.slice_agent.model", "opus", func(p config.ProjectConfig) any { return p.SliceAgent.Model }, "opus"},
+		{"project.project-1.slice_agent.effort", "high", func(p config.ProjectConfig) any { return p.SliceAgent.Effort }, "high"},
+		{"project.project-1.workshop_agent.model", "haiku", func(p config.ProjectConfig) any { return p.WorkshopAgent.Model }, "haiku"},
+		{"project.project-1.workshop_agent.effort", "low", func(p config.ProjectConfig) any { return p.WorkshopAgent.Effort }, "low"},
+		{"project.project-1.slice_agent.model", "not-a-model", func(p config.ProjectConfig) any { return p.SliceAgent.Model }, "not-a-model"},
+		{"project.project-1.merge_method", "squash", func(p config.ProjectConfig) any { return p.MergeMethod }, "squash"},
+		{"project.project-1.merge_method", "", func(p config.ProjectConfig) any { return p.MergeMethod }, ""},
+		{"project.project-1.delete_branch", "true", func(p config.ProjectConfig) any { return p.DeleteBranch }, true},
+		{"project.project-1.delete_branch", "", func(p config.ProjectConfig) any { return p.DeleteBranch }, false},
+		{"project.project-1.base_branch", " develop ", func(p config.ProjectConfig) any { return p.BaseBranch }, "develop"},
+		{"project.project-1.tag", "ab1", func(p config.ProjectConfig) any { return p.Tag }, "AB1"},
+		{"project.project-1.tag", "", func(p config.ProjectConfig) any { return p.Tag }, ""},
+	} {
+		env, saved := savingEnv(testConfig(t))
+		env.Out = &strings.Builder{}
+		if err := Run(context.Background(), []string{"config-set", tt.key, tt.value}, env); err != nil {
+			t.Fatalf("config-set %s %q: %v", tt.key, tt.value, err)
+		}
+		p := saved.Projects["project-1"]
+		if got := tt.check(p); got != tt.want {
+			t.Errorf("%s %q: got %v, want %v", tt.key, tt.value, got, tt.want)
+		}
+		if p.Name != "nat" {
+			t.Errorf("%s: name = %q, want it untouched", tt.key, p.Name)
+		}
+	}
+}
+
+// A tag is reported as stored, uppercased.
+func TestConfigSetProjectTagReportsTheStoredTag(t *testing.T) {
+	env, _ := savingEnv(testConfig(t))
+	var out strings.Builder
+	env.Out = &out
+	if err := Run(context.Background(), []string{"config-set", "project.project-1.tag", "nt"}, env); err != nil {
+		t.Fatalf("config-set: %v", err)
+	}
+	if want := "# Config updated\n\n- project.project-1.tag: NT\n"; out.String() != want {
+		t.Errorf("output = %q, want %q", out.String(), want)
+	}
+}
+
+func TestConfigSetProjectFieldRefusals(t *testing.T) {
+	for _, tt := range []struct{ key, value, want string }{
+		{"project.project-1.merge_method", "fast-forward", `wants one of merge, squash, rebase`},
+		{"project.project-1.delete_branch", "sometimes", "wants true or false"},
+		{"project.project-1.tag", "ABCD", "1 to 3 letters or digits"},
+		{"project.project-1.tag", "A-B", "1 to 3 letters or digits"},
+		{"project.nope.tag", "AB", "no project nope"},
+		{"project.project-1.frobnicate", "x", `unknown key "project.project-1.frobnicate"`},
+	} {
+		env, saved := savingEnv(testConfig(t))
+		err := Run(context.Background(), []string{"config-set", tt.key, tt.value}, env)
+		if err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s=%s: err = %v, want %q", tt.key, tt.value, err, tt.want)
+		}
+		if saved.Projects != nil {
+			t.Errorf("%s=%s: saved %v, want nothing written", tt.key, tt.value, saved.Projects)
+		}
+	}
+}

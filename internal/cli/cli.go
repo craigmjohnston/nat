@@ -113,6 +113,23 @@ type NewGitFunc func() GitCLI
 // DefaultNewGit returns a git.CLI that drives the real git binary on PATH.
 func DefaultNewGit() GitCLI { return git.New() }
 
+// baseConfigurable is a git driver that can be given a project's configured
+// base branch — [git.CLI]; a fake that is not one answers with its own base.
+type baseConfigurable interface {
+	WithBase(name string) git.CLI
+}
+
+// gitFor is the git driver for project: [Env.NewGit]'s, given the project's
+// configured base branch where it has one, so every base it reads — a
+// worktree's, a diff's, a conflict test's, a run checkout's — is that branch.
+func (e Env) gitFor(project config.ProjectConfig) GitCLI {
+	g := e.NewGit()
+	if b, ok := g.(baseConfigurable); ok && project.BaseBranch != "" {
+		return b.WithBase(project.BaseBranch)
+	}
+	return g
+}
+
 // NewWorktreesFunc builds the git worktrees driver slice-launch places an
 // agent's checkout through.
 type NewWorktreesFunc func() actions.Worktrees
@@ -273,7 +290,8 @@ usage:
   nat paths [--project <id>] [--json]
                       print the paths to config, log dir and nudge marker
                       file, and with --project that project's plan file
-                      (none for a project in Notion)
+                      (none for a project in Notion) and its repository's
+                      default branch (none with no working directory)
   nat status [--json] read live tmux sessions and agent activity
   nat usage [--json]  probe Claude Code's own statusline for the account's
                       current Pro/Max rate-limit usage, via a throwaway
@@ -657,7 +675,8 @@ usage:
   nat config-show [--json]
                       print local config: the agent split, the poll interval,
                       the two model pairs and each project's working directory,
-                      runs and colour
+                      runs, colour, tag, model pairs, merge method and base
+                      branch
   nat config-set <key> <value>
                       set one local config key: agent_split_percent,
                       poll_seconds, workshop_agent.model, workshop_agent.effort,
@@ -667,8 +686,13 @@ usage:
                       none for both), or project.<id>.color (red, orange,
                       yellow, green, teal, blue, purple, pink, or auto for
                       nat to choose), or project.<id>.name (not empty, and
-                      not on a source project, named by its plugin); an
-                      empty value unsets the rest
+                      not on a source project, named by its plugin), or
+                      project.<id>.slice_agent.model, .slice_agent.effort,
+                      .workshop_agent.model, .workshop_agent.effort (over the
+                      global pair, half by half), .merge_method (merge, squash
+                      or rebase), .delete_branch (true or false),
+                      .base_branch (a branch name) or .tag (1 to 3 letters or
+                      digits, uppercased); an empty value unsets the rest
   nat help            show this message
 `
 

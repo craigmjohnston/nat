@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"testing"
 
 	"github.com/craigmjohnston/nat/internal/git"
 )
@@ -94,3 +95,39 @@ func (f *fakeRepo) DiffStat(dir, base, branch string) (string, error) { return f
 func (f *fakeRepo) Base(string) string { return f.base }
 
 func (f *fakeRepo) ConflictsWithBase(dir, branch string) git.MergeState { return git.MergeUnknown }
+
+// withBase gives the real git a project's configured base, and leaves a fake
+// — or a project with none — as it is.
+func TestWithBase(t *testing.T) {
+	var real Repo = git.New()
+	if got := withBase(real, "develop"); got == real {
+		t.Error("withBase left the real git without the configured base")
+	}
+	if got := withBase(real, ""); got != real {
+		t.Error("withBase changed the git of a project with no base")
+	}
+	fake := &fakeRepo{}
+	if got := withBase[Repo](fake, "develop"); got != Repo(fake) {
+		t.Error("withBase replaced a fake")
+	}
+}
+
+// wantsMore is a driver interface git.CLI does not satisfy, held by something
+// that can still be given a base.
+type wantsMore interface {
+	WithBase(string) git.CLI
+	More()
+}
+
+type basedButMore struct{}
+
+func (basedButMore) WithBase(string) git.CLI { return git.New() }
+func (basedButMore) More()                   {}
+
+// A driver whose based copy is no longer the type asked for is kept as it is.
+func TestWithBaseKeepsADriverItCannotRetype(t *testing.T) {
+	var r wantsMore = basedButMore{}
+	if got := withBase(r, "develop"); got != r {
+		t.Error("withBase replaced a driver its based copy could not stand in for")
+	}
+}

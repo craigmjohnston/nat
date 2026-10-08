@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/craigmjohnston/nat/internal/actions"
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/gh"
 	"github.com/craigmjohnston/nat/internal/git"
@@ -41,11 +42,11 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("slice-diff: --commits and --commit are two different reads: " +
 			"list the branch's commits, or diff one of them, not both")
 	}
-	s, workdir, err := handedBackSlice(ctx, "slice-diff", rest[0], *projectRef, env)
+	s, workdir, project, err := handedBackSlice(ctx, "slice-diff", rest[0], *projectRef, env)
 	if err != nil {
 		return err
 	}
-	gitCLI := env.NewGit()
+	gitCLI := env.gitFor(project)
 
 	// The base is whatever base the branch actually has: the branch its pull
 	// request records, where there is one — a pull request against anything
@@ -83,24 +84,24 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 // relaunch places its agent on, so the review keeps a reading while the work
 // is redone; the slice comes back with that branch filled in. Only a slice
 // never handed back at all (no Handed back in its task log) is refused.
-func handedBackSlice(ctx context.Context, command, ref, projectRef string, env Env) (domain.Slice, string, error) {
+func handedBackSlice(ctx context.Context, command, ref, projectRef string, env Env) (domain.Slice, string, config.ProjectConfig, error) {
 	id, err := pageID(command, ref)
 	if err != nil {
-		return domain.Slice{}, "", err
+		return domain.Slice{}, "", config.ProjectConfig{}, err
 	}
 
 	_, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
-		return domain.Slice{}, "", err
+		return domain.Slice{}, "", config.ProjectConfig{}, err
 	}
 	st, err := env.storeFor(ctx, projectID, project)
 	if err != nil {
-		return domain.Slice{}, "", err
+		return domain.Slice{}, "", config.ProjectConfig{}, err
 	}
 
 	s, _, err := st.Slice(ctx, id)
 	if err != nil {
-		return domain.Slice{}, "", fmt.Errorf("load the slice: %w", err)
+		return domain.Slice{}, "", config.ProjectConfig{}, fmt.Errorf("load the slice: %w", err)
 	}
 	// Only a slice with a branch recorded has a diff to read at all. A Done
 	// one is no longer refused: the board marks a slice Done as it opens the
@@ -110,14 +111,14 @@ func handedBackSlice(ctx context.Context, command, ref, projectRef string, env E
 		s.Branch = actions.AgentBranch(s)
 	}
 	if s.Branch == "" {
-		return domain.Slice{}, "", fmt.Errorf("%q is not handed back: only a slice with a branch has a diff to read", s.Name)
+		return domain.Slice{}, "", config.ProjectConfig{}, fmt.Errorf("%q is not handed back: only a slice with a branch has a diff to read", s.Name)
 	}
 
 	workdir := s.Repo
 	if workdir == "" {
 		workdir = project.WorkingDir
 	}
-	return s, workdir, nil
+	return s, workdir, project, nil
 }
 
 // sliceBranchDiff is the plain, whole-branch read: the same call slice-diff

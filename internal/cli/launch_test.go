@@ -580,3 +580,33 @@ func TestSliceLaunchReportsATmuxFailure(t *testing.T) {
 		t.Errorf("updates = %+v, want the claim to have landed before tmux refused", api.updates)
 	}
 }
+
+// A project's own model pair wins over the global one half by half: the
+// model it sets is the one launched, and the effort it leaves unset falls
+// through to the global effort.
+func TestSliceLaunchProjectModelOverridesTheGlobalOne(t *testing.T) {
+	dir := t.TempDir()
+	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {slicePageForLaunch(dir)}}}
+	cfg := testClaimConfig(t)
+	cfg.SliceAgent = config.AgentModel{Model: "sonnet", Effort: "low"}
+	p := cfg.Projects["project-1"]
+	p.SliceAgent = config.AgentModel{Model: "opus"}
+	cfg.Projects["project-1"] = p
+	env, _ := testEnv(cfg, api)
+	runner := &agentTestRunner{}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+	env.NewGit = func() GitCLI { return nil }
+	env.NewWorktrees = func() actions.Worktrees { return nil }
+	env.Out = &strings.Builder{}
+
+	if err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice-launch: %v", err)
+	}
+	argv := strings.Join(runner.launchArgs, " ")
+	if !strings.Contains(argv, "--model 'opus'") || !strings.Contains(argv, "--effort 'low'") {
+		t.Errorf("launch argv = %q, want the project's model and the global effort", argv)
+	}
+	if strings.Contains(argv, "sonnet") {
+		t.Errorf("launch argv = %q, want the project's model over the global one", argv)
+	}
+}

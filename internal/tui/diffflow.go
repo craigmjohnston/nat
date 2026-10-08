@@ -71,7 +71,7 @@ func (a *App) diffSliceFlow() tea.Cmd {
 	}
 	a.diff.Start(s.ID, s.Name, s.Branch, dir)
 	a.setScreen(screenDiff)
-	return tea.Batch(a.spinner.Tick, readDiff(a.differ, s.Branch, dir))
+	return tea.Batch(a.spinner.Tick, readDiff(withBase(a.differ, project.BaseBranch), s.Branch, dir))
 }
 
 // startDiffLoad reads the branch the screen is already showing again, which is
@@ -84,7 +84,8 @@ func (a *App) startDiffLoad() tea.Cmd {
 	}
 	slice, branch, dir := a.diff.Target()
 	a.diff.Start(a.diff.SliceID(), slice, branch, dir)
-	return tea.Batch(a.spinner.Tick, readDiff(a.differ, branch, dir))
+	project, _ := a.activeProject()
+	return tea.Batch(a.spinner.Tick, readDiff(withBase(a.differ, project.BaseBranch), branch, dir))
 }
 
 // readDiff runs git in the slice's repository, splits what it wrote into files,

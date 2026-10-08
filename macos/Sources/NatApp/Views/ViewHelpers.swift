@@ -587,6 +587,9 @@ struct ModelPicker<CustomField: View>: View {
     @Binding var value: String
     let options: [String]
     var commit: () -> Void = {}
+    /// The unset choice's words — "Default (sonnet)" where a project's
+    /// picker falls through to a global value.
+    var defaultTitle = "Default"
     @ViewBuilder var customField: (Binding<String>) -> CustomField
 
     /// Set the moment "Custom…" is picked, so the field shows even before
@@ -616,7 +619,7 @@ struct ModelPicker<CustomField: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Picker("", selection: selection) {
-                Text("Default").tag("")
+                Text(defaultTitle).tag("")
                 ForEach(options, id: \.self) { option in
                     Text(option).tag(option)
                 }

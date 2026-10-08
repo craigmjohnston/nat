@@ -31,6 +31,21 @@ func defaultWorktrees() Worktrees { return worktree.New() }
 // defaultRepo is the real git.
 func defaultRepo() Repo { return git.New() }
 
+// withBase is r given a project's configured base branch, where it has one
+// and r is the real git ([git.CLI.WithBase]) — so the worktree a launch cuts
+// and the diff the review screen reads are both against it. A fake, or a
+// project with none, is r as it is.
+func withBase[T any](r T, base string) T {
+	b, ok := any(r).(interface{ WithBase(string) git.CLI })
+	if !ok || base == "" {
+		return r
+	}
+	if based, ok := any(b.WithBase(base)).(T); ok {
+		return based
+	}
+	return r
+}
+
 // agentBranch is the branch a slice's worktree is on: the one recorded at
 // hand-back where there is one, since what an agent actually pushed is what its
 // worktree is checked out on, whatever the launch that cut it derived — and

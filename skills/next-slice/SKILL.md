@@ -95,13 +95,16 @@ Otherwise cut it:
 
 ```
 git fetch origin
-git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <origin's default branch>
+git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <base>
 ```
 
 The fetch first, and the base explicitly, because otherwise git cuts the branch
 from wherever the repository happens to be — whatever stale state the shared
-checkout was last left in — and the work starts life behind. The base is
-whatever `git symbolic-ref --short refs/remotes/origin/HEAD` names
+checkout was last left in — and the work starts life behind. The base is the
+project's configured base branch where it has one — the `base_branch` that
+`nat info --project <project> --json` names under `project`: `origin/<base_branch>`
+where origin has it, else the local `<base_branch>`. With none configured, it is
+origin's default branch: whatever `git symbolic-ref --short refs/remotes/origin/HEAD` names
 (`origin/main`, `origin/master`); where there is no such ref, `origin/main` if
 the repository has one. Git writes origin/HEAD at clone time and nothing
 maintains it afterwards, so plenty of checkouts have none — and falling back to
@@ -122,7 +125,7 @@ If git is not installed, or the working directory is not a git repository,
 branch in place instead: those are the launch that worked before there were
 worktrees, and the fallback is to make one branch for the slice in the working
 directory the brief names — off the same fetched base, `git fetch origin` and
-then `git switch -c slice/<slug> <origin's default branch>`. A git that ran and
+then `git switch -c slice/<slug> <base>`, the base as above. A git that ran and
 refused is different — something is wrong with the repository — so report what
 it said and stop rather than working half-placed.
 

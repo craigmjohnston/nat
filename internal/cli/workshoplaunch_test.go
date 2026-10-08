@@ -344,3 +344,24 @@ func TestWorkshopLaunchReportsATmuxFailure(t *testing.T) {
 		t.Errorf("err = %v, want tmux's own failure", err)
 	}
 }
+
+// A project's own workshop pair wins over the global one where it sets a
+// half, and the half it leaves unset falls through.
+func TestWorkshopLaunchProjectModelOverridesTheGlobalOne(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.WorkshopAgent = config.AgentModel{Model: "sonnet", Effort: "low"}
+	p := cfg.Projects["project-1"]
+	p.WorkshopAgent = config.AgentModel{Effort: "max"}
+	cfg.Projects["project-1"] = p
+	env, _ := testEnv(cfg, &fakeAPI{})
+	runner := &agentTestRunner{}
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+
+	if err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("workshop-launch: %v", err)
+	}
+	argv := strings.Join(runner.launchArgs, " ")
+	if !strings.Contains(argv, "--model 'sonnet'") || !strings.Contains(argv, "--effort 'max'") {
+		t.Errorf("launch argv = %q, want the global model and the project's effort", argv)
+	}
+}

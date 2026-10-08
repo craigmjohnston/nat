@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/xpty"
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
@@ -742,4 +743,40 @@ func stubWait(t *testing.T, fn func(context.Context, *exec.Cmd) error) {
 // the tests run: the test binary itself, told to run no tests.
 func shortCmd() *exec.Cmd {
 	return exec.Command(os.Args[0], "-test.run=XXXNoSuchTestXXX")
+}
+
+// HangUp holds the child end open while the parent end still has the child's
+// output unread — the last close of the child end would discard it — and
+// gives up after drainTimeout, since nothing reads a closed Session.
+func TestHangUpWaitsForUnreadOutput(t *testing.T) {
+	old := drainTimeout
+	drainTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { drainTimeout = old })
+
+	pty, err := newPty(20, 4)
+	if err != nil {
+		t.Fatalf("newPty: %v", err)
+	}
+	t.Cleanup(func() { _ = pty.Close() })
+	cmd := exec.Command("echo", "unread")
+	if err := pty.Start(cmd); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	_ = cmd.Wait()
+	waitFor(t, "the output to be waiting", func() bool {
+		return readable(pty.(*hangupPty).Pty.(*xpty.UnixPty))
+	})
+
+	began := time.Now()
+	pty.(hangUpper).HangUp()
+	if waited := time.Since(began); waited < drainTimeout {
+		t.Fatalf("HangUp returned after %v, want it to wait out the unread output's %v", waited, drainTimeout)
+	}
+}
+
+// notUnixPty is an xpty PTY of no Unix kind: HangUp has no child end to drop.
+type notUnixPty struct{ xpty.Pty }
+
+func TestHangUpLeavesAPtyOfNoUnixKind(t *testing.T) {
+	(&hangupPty{Pty: notUnixPty{}}).HangUp() // touches nothing: a nil Pty would panic
 }

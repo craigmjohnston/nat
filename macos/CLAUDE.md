@@ -117,7 +117,19 @@ plugin; nothing here moves a plan); then Run commands (not for a source
 project) — a row per `RunCommand`, label, command in the mono face, a
 Both/Global/Slice scope menu, remove, a grip whose row dropped on another
 takes its place (`moveRun`), and Add Run — written whole as one
-`project.<id>.runs`. Its logic is `ProjectSettingsModel` (NatKit, tested):
+`project.<id>.runs`. Between Colour and Plan: a Tag field in the Colour row
+(the badge previews it, `previewTag`; nat uppercases and refuses past 1–3
+letters or digits), Agents (slice and planning model + effort, Settings ▸
+Agents' pickers, each led by "Default (<global value>)",
+`ProjectSettingsModel.defaultTitle`) and Merging (merge method picker,
+`ProjectMergeMethod`, unset shown as Merge commit; Delete branch checkbox; Base
+branch field, its placeholder the repository's default — `nat paths
+--project`'s `default_base`, `NatClient.defaultBase`, read once the sheet is
+up). gnat launches pass the project-resolved pair
+(`NatProjectConfig.sliceAgent(for:)`/`workshopAgent(for:)`, nat's
+`SliceAgentFor`/`WorkshopAgentFor` mirrored, since the pair it shows goes as
+flags); `sidebarTags` prefers a configured `tag`, deriving and de-clashing
+the rest among themselves. Its logic is `ProjectSettingsModel` (NatKit, tested):
 the same one `config-set` per changed key (`SettingsModel.nameKey`,
 `workingDirKey`, `colorKey`, `runsKey`), a refusal kept under its row (the
 runs' under the section, the rows as typed) with the baseline as read,
@@ -126,7 +138,8 @@ path, every badge its new colour and every tab, sidebar row and breadcrumb
 the new name (it takes each open tab's name afresh), at once. A further per-project row is
 a `ProjectSettingsFields` field and a row in the sheet. Stories:
 `project-settings`, `project-settings-refused`, `project-settings-colour-chosen`,
-`project-settings-runs`, `project-settings-source`. Project, milestone and task
+`project-settings-runs`, `project-settings-source`, `project-settings-agents`,
+`project-settings-merge`. Project, milestone and task
 rows in the sidebar tree each carry that hover-only three-dot
 (`RowMenuButton`), opening exactly the row's right-click menu — beside a
 project's `+`, in a milestone's count slot, in a kept slot at a task's

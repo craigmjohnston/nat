@@ -16,6 +16,7 @@ require (
 	github.com/charmbracelet/x/vt v0.0.0-20260816001655-68d539dca504
 	github.com/charmbracelet/x/xpty v0.1.3
 	github.com/ncruces/go-sqlite3 v0.35.0
+	golang.org/x/sys v0.46.0
 )
 
 require (
@@ -50,6 +51,5 @@ require (
 	github.com/yuin/goldmark-emoji v1.0.5 // indirect
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 )

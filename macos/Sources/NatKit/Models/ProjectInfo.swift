@@ -37,17 +37,22 @@ public struct Project: Codable, Equatable, Sendable {
     public let id: String
     public let name: String
     public let conventions: String
+    /// The project's configured base branch by name; nil where it configures
+    /// none (the repository's own default), and from an older `nat`.
+    public let baseBranch: String?
 
     enum CodingKeys: String, CodingKey {
         case id
         case name
         case conventions
+        case baseBranch = "base_branch"
     }
 
-    public init(id: String, name: String, conventions: String) {
+    public init(id: String, name: String, conventions: String, baseBranch: String? = nil) {
         self.id = id
         self.name = name
         self.conventions = conventions
+        self.baseBranch = baseBranch
     }
 }
 
@@ -206,19 +211,24 @@ public struct NatPaths: Codable, Equatable, Sendable {
     public let nudge: String
     /// A project's plan file, where `--project` named one that has a file.
     public let plan: String?
+    /// A `--project`'s repository's own default branch by name — nil with no
+    /// working directory, and from an older `nat`.
+    public let defaultBase: String?
 
     enum CodingKeys: String, CodingKey {
         case config
         case logDir = "log_dir"
         case nudge
         case plan
+        case defaultBase = "default_base"
     }
 
-    public init(config: String, logDir: String, nudge: String, plan: String? = nil) {
+    public init(config: String, logDir: String, nudge: String, plan: String? = nil, defaultBase: String? = nil) {
         self.config = config
         self.logDir = logDir
         self.nudge = nudge
         self.plan = plan
+        self.defaultBase = defaultBase
     }
 }
 
@@ -264,6 +274,19 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
         self.workshopAgent = workshopAgent
         self.sliceAgent = sliceAgent
         self.assigneeUserName = assigneeUserName
+    }
+
+    /// What a slice agent of project `id` launches as: the project's own
+    /// pair over the global one, half by half — nat's `Config.SliceAgentFor`,
+    /// mirrored because gnat passes the pair it shows as launch flags.
+    public func sliceAgent(for id: String) -> AgentModel {
+        (projects[id]?.sliceAgent ?? AgentModel()).over(sliceAgent)
+    }
+
+    /// What a planning agent of project `id` launches as — nat's
+    /// `Config.WorkshopAgentFor`, as `sliceAgent(for:)` mirrors its own.
+    public func workshopAgent(for id: String) -> AgentModel {
+        (projects[id]?.workshopAgent ?? AgentModel()).over(workshopAgent)
     }
 
     /// Whether the project `id` names takes a colour — nat's
@@ -320,6 +343,20 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
     /// The project's colour; nil until nat has given it one (and for a word
     /// this build does not know).
     public let color: ProjectColor?
+    /// The project's own model pairs, each half over the global pair's —
+    /// empty where the entry sets none.
+    public let sliceAgent: AgentModel
+    public let workshopAgent: AgentModel
+    /// How its pull requests merge (`merge`, `squash`, `rebase`); nil is
+    /// nat's default, a merge commit.
+    public let mergeMethod: String?
+    /// Whether a merge also deletes the branch.
+    public let deleteBranch: Bool
+    /// The branch slices are cut from and merge into, by name; nil is the
+    /// repository's own default.
+    public let baseBranch: String?
+    /// The project's configured tag; nil leaves it derived from the name.
+    public let tag: String?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -330,6 +367,12 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         case source
         case runs
         case color
+        case sliceAgent = "slice_agent"
+        case workshopAgent = "workshop_agent"
+        case mergeMethod = "merge_method"
+        case deleteBranch = "delete_branch"
+        case baseBranch = "base_branch"
+        case tag
     }
 
     public init(
@@ -340,7 +383,13 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         planDir: String? = nil,
         source: String? = nil,
         runs: [RunCommand] = [],
-        color: ProjectColor? = nil
+        color: ProjectColor? = nil,
+        sliceAgent: AgentModel = AgentModel(),
+        workshopAgent: AgentModel = AgentModel(),
+        mergeMethod: String? = nil,
+        deleteBranch: Bool = false,
+        baseBranch: String? = nil,
+        tag: String? = nil
     ) {
         self.name = name
         self.slicesDSID = slicesDSID
@@ -350,6 +399,12 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         self.source = source
         self.runs = runs
         self.color = color
+        self.sliceAgent = sliceAgent
+        self.workshopAgent = workshopAgent
+        self.mergeMethod = mergeMethod
+        self.deleteBranch = deleteBranch
+        self.baseBranch = baseBranch
+        self.tag = tag
     }
 
     public init(from decoder: Decoder) throws {
@@ -366,11 +421,17 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         source = try c.decodeIfPresent(String.self, forKey: .source)
         runs = try c.decodeIfPresent([RunCommand].self, forKey: .runs) ?? []
         color = ProjectColor(word: try? c.decodeIfPresent(String.self, forKey: .color))
+        sliceAgent = try c.decodeIfPresent(AgentModel.self, forKey: .sliceAgent) ?? AgentModel()
+        workshopAgent = try c.decodeIfPresent(AgentModel.self, forKey: .workshopAgent) ?? AgentModel()
+        mergeMethod = try c.decodeIfPresent(String.self, forKey: .mergeMethod)
+        deleteBranch = try c.decodeIfPresent(Bool.self, forKey: .deleteBranch) ?? false
+        baseBranch = try c.decodeIfPresent(String.self, forKey: .baseBranch)
+        tag = try c.decodeIfPresent(String.self, forKey: .tag)
     }
 
     /// Written the way nat writes it: the backend, plan directory, source,
-    /// runs and colour only where they mean something, so an entry for a
-    /// Notion project round-trips unchanged.
+    /// runs, colour and the per-project settings only where they mean
+    /// something, so an entry for a Notion project round-trips unchanged.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(name, forKey: .name)
@@ -381,6 +442,12 @@ public struct ProjectConfig: Codable, Equatable, Sendable {
         try c.encodeIfPresent(source, forKey: .source)
         if !runs.isEmpty { try c.encode(runs, forKey: .runs) }
         try c.encodeIfPresent(color?.rawValue, forKey: .color)
+        if !sliceAgent.isEmpty { try c.encode(sliceAgent, forKey: .sliceAgent) }
+        if !workshopAgent.isEmpty { try c.encode(workshopAgent, forKey: .workshopAgent) }
+        try c.encodeIfPresent(mergeMethod, forKey: .mergeMethod)
+        if deleteBranch { try c.encode(deleteBranch, forKey: .deleteBranch) }
+        try c.encodeIfPresent(baseBranch, forKey: .baseBranch)
+        try c.encodeIfPresent(tag, forKey: .tag)
     }
 }
 
@@ -401,5 +468,11 @@ public struct AgentModel: Codable, Equatable, Sendable {
 
     public var isEmpty: Bool {
         model == nil && effort == nil
+    }
+
+    /// This pair with each unset half — nil or empty — taken from `fallback`.
+    public func over(_ fallback: AgentModel?) -> AgentModel {
+        func set(_ value: String?) -> String? { value?.isEmpty == false ? value : nil }
+        return AgentModel(model: set(model) ?? fallback?.model, effort: set(effort) ?? fallback?.effort)
     }
 }

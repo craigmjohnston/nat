@@ -215,6 +215,14 @@ public final class NatClient: Sendable {
         return try decodeJSON(NatPaths.self, from: output).plan
     }
 
+    /// The repository's own default branch at a project's working directory,
+    /// by name — `nat paths --project`'s `default_base`, nil where there is no
+    /// working directory.
+    public func defaultBase(projectID: String) async throws -> String? {
+        let output = try await runNat(arguments: ["paths", "--project", projectID, "--json"])
+        return try decodeJSON(NatPaths.self, from: output).defaultBase
+    }
+
     /// Get the live status of all running agents.
     ///
     /// - Returns: Array of AgentStatus for all running agents (gone agents omitted)
