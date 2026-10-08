@@ -168,33 +168,38 @@ func firstNonEmpty(vs ...string) string {
 
 // ReadStatuses reads every session in live (as [Tmux.LiveSlices] returns it:
 // tag to session name) and answers the status of each by session name, then
-// sweeps any status file belonging to no live session. Only file reads — no
-// subprocess, no network — so it is cheap to poll.
+// sweeps any status file, and any brief ([WritePromptFile]), belonging to no
+// live session. Only file reads — no subprocess, no network — so it is cheap
+// to poll.
 func ReadStatuses(live map[string]string) map[string]AgentStatus {
-	dir, err := AgentStatusDir()
+	state, err := logging.Dir()
 	if err != nil {
 		return nil
 	}
+	dir := filepath.Join(state, agentStatusDirName)
 	out := make(map[string]AgentStatus, len(live))
 	sessions := make(map[string]bool, len(live))
 	for _, session := range live {
 		sessions[session] = true
 		out[session] = readStatus(dir, session)
 	}
-	sweepStatus(dir, sessions)
+	sweepSessionFiles(dir, sessions)
+	sweepSessionFiles(filepath.Join(state, briefDirName), sessions)
 	return out
 }
 
-// sweepStatus removes the files in dir of sessions not in keep, once they are
-// older than [sweepGrace]. Failures are ignored: a leftover is swept next poll.
-func sweepStatus(dir string, keep map[string]bool) {
+// sweepSessionFiles removes the files in dir of sessions not in keep, once
+// they are older than [sweepGrace]. A file belongs to the session its name
+// starts with, up to the first dot: session names have none. Failures are
+// ignored: a leftover is swept next poll.
+func sweepSessionFiles(dir string, keep map[string]bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	for _, e := range entries {
 		name := e.Name()
-		session := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(name, ".tmp"), ".json"), ".launch")
+		session, _, _ := strings.Cut(name, ".")
 		if keep[session] {
 			continue
 		}

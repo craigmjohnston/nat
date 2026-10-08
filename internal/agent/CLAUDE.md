@@ -192,7 +192,11 @@ running agent's state.
   `PlanOpeningLine`/`NewProjectOpeningLine`, `opening.go`) — and the mod
   appends it as the `natBrief` context block; without one, the brief is the
   positional prompt as before. A compaction re-reads the file, so it is
-  never removed under a live session. Contract:
+  never removed under a live session: `WritePromptFile` writes it to
+  `<state dir>/agent-brief/<session>.md` (dir `0700`, file `0600`, temp +
+  rename, overwritten by the session's next launch) — never `$TMPDIR`, which
+  macOS cleans of files left unread for days — and `ReadStatuses` sweeps the
+  briefs of sessions not live, after the same `sweepGrace` as status files. Contract:
   `docs/design/embedded-mod/README.md`.
 - `Activity()` is one `list-panes` scan, no screen read: a dead pane is
   gone, a pane carrying `@nat_waiting` (`WaitingPaneOption`, a field of

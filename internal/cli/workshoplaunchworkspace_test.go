@@ -16,11 +16,11 @@ import (
 const testWorkspace = "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f"
 
 // workspaceLaunchEnv is testEnv with the state directory and the prompt
-// files' temp directory both pointed at directories of the test's own.
+// files' state directory both pointed at directories of the test's own.
 func workspaceLaunchEnv(t *testing.T, cfg config.Config, runner *agentTestRunner) (Env, *strings.Builder, string, string) {
 	t.Helper()
 	state, tmp := t.TempDir(), t.TempDir()
-	t.Setenv("TMPDIR", tmp)
+	pinStateDir(t, tmp)
 	prev := stateDir
 	stateDir = func() (string, error) { return state, nil }
 	t.Cleanup(func() { stateDir = prev })
@@ -61,11 +61,11 @@ func TestWorkshopLaunchWorkspaceLaunchesTheNewProjectPromptOnAScratchDir(t *test
 		t.Errorf("launch argv = %q, want the config's workshop_agent", argv)
 	}
 
-	matches, _ := filepath.Glob(filepath.Join(tmp, "nat-prompt-*", agent.PlanSessionName(testWorkspace)+".md"))
-	if len(matches) != 1 {
-		t.Fatalf("prompt files = %v, want exactly one", matches)
+	briefs, err := agent.BriefDir()
+	if err != nil || !strings.HasPrefix(briefs, tmp) {
+		t.Fatalf("brief dir = %q (err %v), want it under %s", briefs, err, tmp)
 	}
-	b, _ := os.ReadFile(matches[0])
+	b, _ := os.ReadFile(filepath.Join(briefs, agent.PlanSessionName(testWorkspace)+".md"))
 	if want := agent.NewProjectPrompt(testWorkspace, "A habit tracker."); string(b) != want {
 		t.Errorf("prompt = %q, want the new-project prompt seeded with the request", b)
 	}
@@ -195,12 +195,12 @@ func TestWorkshopLaunchWorkspaceReportsAScratchDirItCannotMake(t *testing.T) {
 
 func TestWorkshopLaunchWorkspaceReportsAPromptItCannotWrite(t *testing.T) {
 	env, _, _, tmp := workspaceLaunchEnv(t, testConfig(t), &agentTestRunner{})
-	// TMPDIR is a file, so the prompt's directory cannot be made under it.
+	// The state dir is a file, so the prompt's directory cannot be made under it.
 	file := filepath.Join(tmp, "not-a-dir")
 	if err := os.WriteFile(file, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("TMPDIR", file)
+	pinStateDir(t, file)
 
 	err := Run(context.Background(), []string{"workshop-launch", "--workspace", testWorkspace, "--request", "x"}, env)
 

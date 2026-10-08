@@ -220,6 +220,37 @@ func TestReadStatusesSweepsStale(t *testing.T) {
 	}
 }
 
+func TestReadStatusesSweepsStaleBriefs(t *testing.T) {
+	isolatedStatusDir(t)
+	dir, err := BriefDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A live session's brief stays however old: a compaction reads it again.
+	write(t, filepath.Join(dir, "nat-live.md"), "brief")
+	age(t, filepath.Join(dir, "nat-live.md"), time.Hour)
+	for _, name := range []string{"nat-dead.md", "nat-dead.md.tmp"} {
+		write(t, filepath.Join(dir, name), "brief")
+		age(t, filepath.Join(dir, name), time.Hour)
+	}
+	// Too new to sweep: a launch that tmux has not tagged yet.
+	write(t, filepath.Join(dir, "nat-new.md"), "brief")
+
+	ReadStatuses(map[string]string{"slice-1": "nat-live"})
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if want := "nat-live.md nat-new.md"; strings.Join(names, " ") != want {
+		t.Errorf("briefs = %v, want %s", names, want)
+	}
+}
+
 func TestReadStatusesNoDirectory(t *testing.T) {
 	isolatedStatusDir(t)
 	got := ReadStatuses(map[string]string{"slice-1": "nat-a"})

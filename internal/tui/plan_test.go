@@ -3,7 +3,6 @@ package tui
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -353,7 +352,7 @@ func TestAppPlanLaunchReportsAFailedLaunch(t *testing.T) {
 }
 
 func TestLaunchPlanAgentReportsAFailedPromptFile(t *testing.T) {
-	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
+	unwritableStateDir(t)
 	launcher := &fakeLauncher{}
 
 	msg := runMsg(t, launchPlanAgent(launcher, nil, store.Project{}, "project-1", "tracker", "/tmp", "", config.AgentModel{})).(agentLaunchedMsg)
