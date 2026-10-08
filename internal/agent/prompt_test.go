@@ -219,9 +219,10 @@ func TestPromptNeverTellsTheAgentToRunStartSlice(t *testing.T) {
 func TestPromptTellsTheAgentToHandTheBranchBack(t *testing.T) {
 	got := Prompt(testContext())
 	for _, want := range []string{
-		"push the branch",
+		"the hand-back below pushes the branch",
+		"so do\nnot push it yourself",
 		"Do not run `gh`",
-		"do not\nopen a pull request",
+		"do not open a pull request",
 		"Never open or merge a pull request",
 	} {
 		if !strings.Contains(got, want) {
@@ -522,7 +523,7 @@ func TestPromptWithAWorktree(t *testing.T) {
 }
 
 // A session launched into a worktree is already on the branch it hands back, so
-// the prompt tells it to commit and push that branch rather than to make one —
+// the prompt tells it to commit on that branch rather than to make one —
 // an agent that branched again would hand back a name the board cannot see the
 // diff of, and one that switched would take the worktree off its own work.
 func TestPromptTellsAWorktreeAgentToUseItsBranch(t *testing.T) {
@@ -531,16 +532,15 @@ func TestPromptTellsAWorktreeAgentToUseItsBranch(t *testing.T) {
 	for _, want := range []string{
 		"- Branch: " + c.Branch + " (the working directory is a worktree already on it)",
 		"git worktree cut for this slice alone",
-		"push " + c.Branch,
-		"Do not\ncreate a branch of your own",
-		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID,
-		"--branch " + c.Branch + " --summary",
+		"The hand-back below pushes\nthe branch",
+		"Do not create a branch of your\nown",
+		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
 		}
 	}
-	for _, unwanted := range []string{"branch for the slice", "--branch <branch>"} {
+	for _, unwanted := range []string{"branch for the slice", "--branch"} {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("prompt still tells the agent to make its own branch (%q)", unwanted)
 		}
@@ -548,13 +548,14 @@ func TestPromptTellsAWorktreeAgentToUseItsBranch(t *testing.T) {
 }
 
 // The fallback launch is the one that was there before there were worktrees: no
-// branch is named anywhere, and the agent is told to make one.
+// branch is named anywhere, and the agent is told to make one — and to name it
+// at hand-back, there being no worktree for nat to read it off.
 func TestPromptWithoutAWorktreeStillAsksForABranch(t *testing.T) {
 	got := Prompt(testContext())
 	for _, want := range []string{
 		"If the work is code: branch for the slice",
 		"nat complete-slice " + testContext().Slice.ID + " --project " + testProjectID,
-		"--branch <branch> --summary",
+		"--branch <branch> \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q", want)
@@ -581,7 +582,7 @@ func TestPromptResumingAHandedBackSlice(t *testing.T) {
 
 // A session put back on a branch that already has commits has to be told so:
 // one that read the ordinary prompt would take somebody else's work for its
-// own, and would branch again rather than pushing what it was handed.
+// own, and would branch again rather than committing on what it was handed.
 func TestPromptTellsAResumingAgentTheWorkIsAlreadyThere(t *testing.T) {
 	c := resumeContext()
 	got := Prompt(c)
@@ -589,8 +590,8 @@ func TestPromptTellsAResumingAgentTheWorkIsAlreadyThere(t *testing.T) {
 		"There is work on that branch already",
 		"You are continuing that work, not starting again.",
 		"the work an earlier\nsession pushed is already on it",
-		"push " + c.Branch + "\nagain",
-		"--branch " + c.Branch + " --summary",
+		"Commit your own work there, on the same\nbranch",
+		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
@@ -849,6 +850,52 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 			if !strings.Contains(cmd, "--project "+testProjectID) {
 				t.Errorf("the %s prompt runs %q without naming the project", prompt, cmd)
 			}
+		}
+	}
+}
+
+// pushInstruction is a line telling an agent to push: complete-slice pushes
+// the branch it hands back, so an agent told to push as well would race it,
+// and one told to push in place of handing back would skip the dirty check.
+// skills/skills_test.go carries the same pattern for the skills.
+var pushInstruction = regexp.MustCompile(`(?im)\b(and|then)\s+push\b|,\s*push\b|\bgit push\b|\bpush (the|its|your|this) branch\b|\bpush slice/|^\s*\d+\.\s+push\b`)
+
+// No template tells an agent to push: the hand-back does it, dirty check and
+// lease included.
+func TestNoPromptTellsTheAgentToPush(t *testing.T) {
+	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
+	for prompt, text := range map[string]string{
+		"slice":          Prompt(testContext()),
+		"slice worktree": Prompt(worktreeContext()),
+		"slice gnat":     Prompt(gnatContext()),
+		"slice resume":   Prompt(resumeContext()),
+		"slice no repo":  Prompt(repoUnknownContext()),
+		"published":      Prompt(publishedContext()),
+		"conflicted":     Prompt(conflictedContext()),
+		"taken back":     Prompt(takenBackContext()),
+		"checks":         ChecksPrompt(ChecksContext{SliceID: "s1", ProjectID: testProjectID, Branch: "slice/red"}),
+		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
+		"plan gnat":      PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
+		"new project":    NewProjectPrompt("ws-1", "A todo app."),
+	} {
+		if m := pushInstruction.FindString(text); m != "" {
+			t.Errorf("the %s prompt tells the agent to push: %q", prompt, m)
+		}
+	}
+}
+
+// The walk above would have caught every push instruction the templates
+// carried before the hand-back took the push over.
+func TestPushInstructionCatchesTheOldWording(t *testing.T) {
+	for _, old := range []string{
+		"commit there — exactly ONE change, this slice's — and push slice/x. Do not",
+		"change on it — commit, and push the branch. Do not run `gh`",
+		"4. Push with `git push --force-with-lease origin slice/x`:",
+		"then do the work, push, and hand back again with the same",
+		"then commit and push slice/red — the branch the pull request is built",
+	} {
+		if !pushInstruction.MatchString(old) {
+			t.Errorf("the walk misses %q", old)
 		}
 	}
 }

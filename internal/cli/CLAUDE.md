@@ -186,9 +186,19 @@ tells a legacy Done-with-open-PR row apart, see below), `pr-view`,
 `config-show`.
 
 Plan mutation: `next-slice`/`start-slice` (claim), `complete-slice`
-(mutually exclusive `--branch`/`--pr`/`--blocked` endings — see root
-CLAUDE.md's Domain rules, this package only parses flags and calls
-`store.Store`), `release-slice`, `slice-add`, `milestone-add`/`-rename`/
+(mutually exclusive endings — a hand-back, the default, `--pr`, `--blocked`
+or `--no-branch`, straight to Done; see root CLAUDE.md's Domain rules).
+A hand-back (`--branch` optional) runs `actions.PushHandBack` after the
+holds and follow-ups checks and before any page write: the branch is
+`--branch`, else what the slice's worktree (`WorkdirFor` +
+`AgentBranch`'s `Worktrees.Path`) has checked out; a worktree with anything
+`git status --porcelain --untracked-files=normal` names is refused path by
+path; then `git push --force-with-lease -u origin <branch>` in the worktree
+(or the repository, for a named branch with no worktree), a refusal the
+command's error with git's whole stderr. No worktree and no `--branch` is a
+usage error naming `--branch` and `--no-branch`; a project with no `Branch`
+column refuses a hand-back before any push. `--blocked` and `--pr` neither
+check nor push. `release-slice`, `slice-add`, `milestone-add`/`-rename`/
 `-remove`/`-move`, `slice-depends` (cycle refusal — reads the *whole* plan
 graph before writing, so `--clear` alone never needs to and always
 succeeds), `plan-apply`, `project-create`, `config-set`.
@@ -224,7 +234,7 @@ succeeds), `plan-apply`, `project-create`, `config-set`.
   (Notion's trash is the recovery, not a CLI refusal) — the same asymmetry
   the board's `d` confirm draws with its warning-vs-refusal split. After the
   trash, `actions.RemoveSliceWorktree`; `complete-slice` does the same where
-  it closes a slice Done (no `--branch`/`--pr`/`--blocked`).
+  it closes a slice Done (`--no-branch`).
 
 Agent control (tmux only, no Notion read beyond the claim check):
 `slice-launch` (`actions.Launch`, same flow the board's `l` key and

@@ -76,9 +76,10 @@ and run the gate once more. Batch a stage's edits and build once per
 batch, not once per edit.
 
 If the work is code: branch for the slice — one branch, and exactly ONE
-change on it — commit, and push the branch. Do not run `gh`, and do not
-open a pull request: you hand the branch back and the user opens the
-pull request from the board once they have reviewed it.
+change on it — and commit; the hand-back below pushes the branch, so do
+not push it yourself. Do not run `gh`, and do not open a pull request:
+you hand the branch back and the user opens the pull request from the
+board once they have reviewed it.
 
 If the work is not code — docs, research, written-up findings — produce
 the deliverable the brief asks for and link it in the summary below.
@@ -186,15 +187,18 @@ any, arrive here as a message.
 On completion, record the outcome:
 
     nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
-        --branch <branch> --summary '- <what changed>\n- <key decision>' \
+        --branch <branch> \
+        --summary '- <what changed>\n- <key decision>' \
         --pr-description '<title line>
 
 <what the PR does and why>'
 
-That records the branch you pushed and hands the slice back for review,
-writing the summary onto its page. `--summary` is quoted back to a future
-agent in its milestone's digest, not read by a person, so keep it a
-handful of terse bullet points — what changed, key decisions, follow-ups
+That refuses while the worktree holds anything uncommitted — commit it
+first — then pushes the branch, records it and hands the slice back for
+review, writing the summary onto its page; a push it reports refused is
+yours to sort out before handing back again. `--summary` is quoted back
+to a future agent in its milestone's digest, not read by a person, so
+keep it a handful of terse bullet points — what changed, key decisions, follow-ups
 worth queueing — never a narrative of the session. It leaves the slice in
 progress on purpose — approving it on the board is what opens the pull
 request and marks it Done.
@@ -222,11 +226,11 @@ say so on the record before changing anything:
 
     nat slice-resume 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 --note '<what they asked for>'
 
-then do the work, push, and hand back again with the same
-`complete-slice --branch` command. If it refuses because the slice is
+then do the work, commit, and hand back again with the same
+`complete-slice` command. If it refuses because the slice is
 Done, the work is merged: say so to the user and stop.
 
-Leave `--branch` off when the slice produced no branch — a docs or
+Pass `--no-branch` when the slice produced no branch — a docs or
 research slice — and it is marked Done there and then, with no pull
 request to describe. A summary too long for one argument can be piped in
 on stdin instead of passing `--summary`.

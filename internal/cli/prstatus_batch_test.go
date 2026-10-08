@@ -266,6 +266,8 @@ func (d dirGit) repo(dir string) GitCLI {
 func (d dirGit) CurrentBranch(dir string) (string, error)    { return d.repo(dir).CurrentBranch(dir) }
 func (d dirGit) ReflogBranches(dir string) ([]string, error) { return d.repo(dir).ReflogBranches(dir) }
 func (d dirGit) RemoteURL(dir string) (string, error)        { return d.repo(dir).RemoteURL(dir) }
+func (d dirGit) DirtyPaths(dir string) ([]string, error)     { return nil, nil }
+func (d dirGit) Push(dir, branch string) error               { return nil }
 func (d dirGit) Fetch(dir string)                            {}
 func (d dirGit) Base(dir string) string                      { return "main" }
 func (d dirGit) LogOneline(string, string, string) (string, error) {

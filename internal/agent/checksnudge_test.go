@@ -20,7 +20,8 @@ func TestChecksPrompt(t *testing.T) {
 		"nat slice-checks s1 --log --project " + testProjectID,
 		"shows what a check still running is doing",
 		"nat slice-checks-rerun s1 --check '<check name>' --project " + testProjectID,
-		"push slice/red",
+		"commit on slice/red",
+		"do not push it yourself",
 		"nat complete-slice s1 --branch slice/red --summary '<what you fixed>' --project " + testProjectID,
 		"Never run `gh`",
 	} {

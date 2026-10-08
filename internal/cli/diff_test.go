@@ -43,6 +43,18 @@ type fakeGitRunner struct {
 	showOut  string
 	showErr  error
 	showArgs []string
+	// statusOut answers the porcelain status complete-slice's dirty check
+	// reads (none is a clean tree); pushErr fails a push, and pushes records
+	// every push asked for, with the directory it ran in.
+	statusOut string
+	pushErr   error
+	pushes    []pushCall
+}
+
+// pushCall is one push the fake git saw.
+type pushCall struct {
+	dir  string
+	args []string
 }
 
 func (f *fakeGitRunner) Run(dir, _ string, args ...string) (string, error) {
@@ -62,6 +74,11 @@ func (f *fakeGitRunner) Run(dir, _ string, args ...string) (string, error) {
 		return f.base, nil
 	case "log":
 		return f.logOut, f.logErr
+	case "status":
+		return f.statusOut, nil
+	case "push":
+		f.pushes = append(f.pushes, pushCall{dir: dir, args: args})
+		return "", f.pushErr
 	case "show":
 		f.showArgs = args
 		return f.showOut, f.showErr

@@ -63,8 +63,8 @@ func TestSkillsWriteThroughTheCLI(t *testing.T) {
 }
 
 // The next-slice skill ships inside the binary, so an ending it names wrongly
-// cannot be corrected where it is read. A slice ends handed back on a pushed
-// branch — the board's approve key is what turns that into a pull request —
+// cannot be corrected where it is read. A slice ends handed back on a branch
+// nat pushes — the board's approve key is what turns that into a pull request —
 // and a skill that still told the agent to open one would route the work past
 // the review the hand-back exists for.
 func TestNextSliceHandsTheBranchBack(t *testing.T) {
@@ -74,8 +74,10 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 	}
 	text := string(body)
 	for _, want := range []string{
-		"nat complete-slice <slice> --project <project> --branch <branch>",
-		"push the branch",
+		"nat complete-slice <slice> --project <project> \\\n    --summary",
+		"handing back pushes it",
+		"add `--branch <branch>`",
+		"`--no-branch`",
 		"do not open a pull request",
 		"Never open or merge a pull request",
 		"never push to main",
@@ -88,6 +90,29 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 	// flag: the description the board opens the pull request with.
 	if prEnding.MatchString(text) {
 		t.Error("the next-slice skill still offers the agent the --pr ending")
+	}
+}
+
+// pushInstruction is a line telling an agent to push: complete-slice pushes
+// the branch it hands back, so an agent told to push as well would race it,
+// and one told to push in place of handing back would skip the dirty check.
+// internal/agent's template walk carries the same pattern.
+var pushInstruction = regexp.MustCompile(`(?im)\b(and|then)\s+push\b|,\s*push\b|\bgit push\b|\bpush (the|its|your|this) branch\b|\bpush slice/|^\s*\d+\.\s+push\b`)
+
+// No skill tells its agent to push: the hand-back does it.
+func TestNoSkillTellsTheAgentToPush(t *testing.T) {
+	entries, err := fs.ReadDir(FS(), ".")
+	if err != nil {
+		t.Fatalf("read the embedded skills: %v", err)
+	}
+	for _, e := range entries {
+		body, err := fs.ReadFile(FS(), e.Name()+"/SKILL.md")
+		if err != nil {
+			t.Fatalf("read the %s skill: %v", e.Name(), err)
+		}
+		if m := pushInstruction.FindString(string(body)); m != "" {
+			t.Errorf("the %s skill tells the agent to push: %q", e.Name(), m)
+		}
 	}
 }
 
@@ -488,7 +513,7 @@ func TestNextSliceSkillCarriesTheResumePassage(t *testing.T) {
 	for _, want := range []string{
 		"If the user asks for more or different work after you have handed back",
 		"nat slice-resume <slice> --project <project> --note '<what they asked for>'",
-		"same\n`complete-slice --branch` command",
+		"same\n`complete-slice` command",
 		"the slice is Done, the\nwork is merged",
 	} {
 		if !strings.Contains(text, want) {

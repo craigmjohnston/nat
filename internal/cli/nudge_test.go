@@ -41,7 +41,7 @@ func TestMutatingCommandsNudgeTheBoardOnce(t *testing.T) {
 		},
 		{
 			name: "complete-slice",
-			args: []string{"complete-slice", sliceID, "--summary", "Rendered the board.", "--project", "project-1"},
+			args: []string{"complete-slice", sliceID, "--no-branch", "--summary", "Rendered the board.", "--project", "project-1"},
 			env: func(t *testing.T) Env {
 				env, _ := completeEnv(t, completableAPI())
 				return env

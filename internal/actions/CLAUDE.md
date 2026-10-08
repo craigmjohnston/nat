@@ -93,6 +93,16 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   record-then-`ClearBranch`, shared with `slice-rework`'s `Sent back`.
   `ResumeStore` (`RecordResumed` + `ClearBranch`) is what it needs.
 
+## Hand-back push (`handback.go`)
+
+- `PushHandBack(w, g, s, p, branch)` is `complete-slice`'s git half, run
+  before any page write: the branch is the one named, else
+  `HandBackGit.CurrentBranch` in the worktree `Worktrees.Path` finds for
+  `AgentBranch` in `sliceRepo`'s repository (`ErrNoWorktree` with none, or
+  with no repository; a detached HEAD refused). A worktree's `DirtyPaths`
+  refuse it (`*DirtyError`, every path), then `Push` there; a named branch
+  with no worktree is pushed from the repository with no dirty check.
+
 ## Emptied milestones (`prune.go`)
 
 - `PruneEmptied(st, sp, left...)` is every slice write's tail that takes a

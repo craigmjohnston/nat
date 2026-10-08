@@ -93,8 +93,9 @@ func DefaultNewGH() GH { return gh.New() }
 // GitCLI is what a headless command needs of git: the remote's news and
 // default branch, for placing a launch's worktree, and the diff of a branch
 // already pushed — the whole of it, its commits alone, or one commit at a
-// time — for slice-diff. A single git.CLI answers all of it, so one driver
-// serves slice-launch and slice-diff alike.
+// time — for slice-diff, and the dirty check and push complete-slice makes
+// of a branch it hands back. A single git.CLI answers all of it, so one
+// driver serves slice-launch and slice-diff alike.
 type GitCLI interface {
 	actions.Repo
 	DiffFrom(dir, baseName, branch string) (base, diff string, err error)
@@ -103,6 +104,8 @@ type GitCLI interface {
 	CommitDiff(dir, sha string) (string, error)
 	Show(dir, branch, path string) ([]string, error)
 	CurrentBranch(dir string) (string, error)
+	DirtyPaths(dir string) ([]string, error)
+	Push(dir, branch string) error
 	ReflogBranches(dir string) ([]string, error)
 	RemoteURL(dir string) (string, error)
 }
@@ -559,16 +562,20 @@ usage:
                       outgrown since is refused rather than half-applied — and
                       drop the proposal file. No --name with --project: the
                       project already has one
-  nat complete-slice <slice> [--branch NAME] [--pr URL] [--summary TEXT]
-                      [--pr-description TEXT|-] [--blocked] --project ID
-                      close out a slice you claimed: with --branch, handed back
-                      for review — the branch recorded, the slice left in
-                      progress, and the board's approve key what opens the pull
-                      request; with --pr, its pull request recorded and the
-                      slice left in progress until the merge marks it Done;
-                      with --blocked, left in progress with a note saying what
-                      stopped it; with none of the three, straight to Done,
-                      since work with no pull request has no merge coming.
+  nat complete-slice <slice> [--branch NAME] [--no-branch] [--pr URL]
+                      [--summary TEXT] [--pr-description TEXT|-] [--blocked]
+                      --project ID
+                      close out a slice you claimed: by default, handed back
+                      for review — the branch its worktree is on (or --branch)
+                      refused while the worktree has uncommitted changes, then
+                      pushed with --force-with-lease and recorded, the slice
+                      left in progress, and the board's approve key what opens
+                      the pull request; with --pr, its pull request recorded
+                      and the slice left in progress until the merge marks it
+                      Done; with --blocked, left in progress with a note saying
+                      what stopped it, nothing checked or pushed; with
+                      --no-branch, straight to Done, since work with no pull
+                      request has no merge coming.
                       A summary is appended to the page either way,
                       and --pr-description records beside it the text the board
                       opens the pull request with: its first line the title,

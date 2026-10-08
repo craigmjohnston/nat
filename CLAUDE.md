@@ -147,9 +147,15 @@ standing rule: never `tmux kill-server`, never kill, detach or send keys to a
 session the agent did not create, and a tmux of its own goes on a private
 `-L` socket (`TMUX_TMPDIR` does not isolate a process with `$TMUX` set).
 
-**Hand-back.** `complete-slice --branch` (or `/next-slice`'s own end)
-records the branch and leaves status alone — refused outright on a project
-with no `Branch` column, before the note goes on. The hand-back note and any
+**Hand-back.** `complete-slice` (or `/next-slice`'s own end) records the
+branch — `--branch`, else the one the slice's worktree is on — and leaves
+status alone — refused outright on a project with no `Branch` column, before
+the note goes on. nat does the git work, not the agent: before any write it
+refuses a worktree with uncommitted changes (naming them) and pushes the
+branch (`--force-with-lease -u origin`), a failed push writing nothing; no
+template or skill tells an agent to push (walked by tests). `--no-branch` is
+the docs/research ending, straight to Done; `--blocked` checks and pushes
+nothing. The hand-back note and any
 `--pr-description` are filed in the **same write**, under `Handed back` and
 `PR description` headings; `notion.PRDescriptionOf` reads the *last* such
 section, since a slice handed back twice has one per hand-back.

@@ -38,7 +38,12 @@ running agent's state.
   review snapshot, `gh pr view <PR> --comments` the one `gh` allowed, never
   a PR write). `PromptContext.ConflictBase` (set by `actions.Launch` for a
   conflicted hand-back with no PR) adds `conflictPassage`: rebase onto the
-  base, resolve, gate, `git push --force-with-lease`, hand back. Every
+  base, resolve, gate, hand back — the hand-back's own push carries the
+  lease. No template tells an agent to push (`TestNoPromptTellsTheAgentToPush`
+  walks them with `pushInstruction`; `skills_test.go` the skills): every
+  passage says commit, and that `complete-slice` pushes. The hand-back
+  example names `--branch <branch>` only where there is no worktree for nat
+  to read it off (the default, unplaced case). Every
   slice prompt carries `resumePassage` (`nat
   slice-resume` before changing anything when asked for more after a
   hand-back; a Done refusal means merged). See root CLAUDE.md's Resuming

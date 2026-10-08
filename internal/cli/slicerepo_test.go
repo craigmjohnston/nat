@@ -101,7 +101,7 @@ func TestSliceRepoRefusals(t *testing.T) {
 
 	// Done is nobody's to change.
 	sp.claimTask(t, task)
-	sp.run(t, "complete-slice", task, "--summary", "done", "--project", sp.id)
+	sp.run(t, "complete-slice", task, "--no-branch", "--summary", "done", "--project", sp.id)
 	if err := sp.fail(t, "slice-repo", task, "--repo", t.TempDir(), "--project", sp.id); !strings.Contains(err.Error(), "only a slice you claimed can be given a repository") {
 		t.Errorf("done: err = %v", err)
 	}

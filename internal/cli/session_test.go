@@ -147,6 +147,8 @@ func (f *fakeSessionRepo) CurrentBranch(dir string) (string, error) {
 }
 func (f *fakeSessionRepo) ReflogBranches(dir string) ([]string, error) { return f.reflog, f.reflogErr }
 func (f *fakeSessionRepo) RemoteURL(dir string) (string, error)        { return f.remote, f.remoteErr }
+func (f *fakeSessionRepo) DirtyPaths(dir string) ([]string, error)     { return nil, nil }
+func (f *fakeSessionRepo) Push(dir, branch string) error               { return nil }
 func (f *fakeSessionRepo) ConflictsWithBase(dir, branch string) git.MergeState {
 	return git.MergeUnknown
 }
