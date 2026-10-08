@@ -6,7 +6,7 @@ PKG := .
 # stale one fails with the previous build's refusals.
 NAT_DEV := /tmp/nat-dev
 
-.PHONY: build vet test lint check run dev clean
+.PHONY: build vet test lint mod check run dev clean
 
 build:
 	go build -o $(BINARY) $(PKG)
@@ -24,7 +24,11 @@ lint:
 		echo "golangci-lint not installed; skipping"; \
 	fi
 
-check: vet test lint
+# nat's embedded Claude Code mod: validated and tested by claude itself.
+mod:
+	./scripts/mod-check.sh
+
+check: vet test lint mod
 
 run: build
 	./$(BINARY)

@@ -323,7 +323,7 @@ func TestLaunch(t *testing.T) {
 			// own nat commands resolve against it whoever started the server.
 			"-e", "PATH=/Applications/gnat.app/Contents/MacOS:/opt/homebrew/bin:/usr/bin",
 			"-P", "-F", "#{pane_id}",
-			"sh", "-c", `cd '/Users/craig/Projects/x' && claude --settings ` + shellQuote(statuslineSettings(sink)) + ` "$(cat '/tmp/prompt.md')"`,
+			"sh", "-c", `cd '/Users/craig/Projects/x' && claude --settings ` + shellQuote(statuslineSettings(sink)) + modFlag(t) + ` "$(cat '/tmp/prompt.md')"`,
 			// Chained onto the creation, so the session never shows a status
 			// bar — not even to someone attaching straight away.
 			";", "set-option", "-t", "nat-b4463d8f", "status", "off",
@@ -338,6 +338,8 @@ func TestLaunch(t *testing.T) {
 		}, append(clickBindingArgs(), copyModeDragEndArgs()...)...)},
 		// The tag the agent is found by.
 		{name: "tmux", args: []string{"-u", "set-option", "-p", "-t", "%7", "@nat_slice", id}},
+		// Every pane's start command, for the sweep of old mods.
+		{name: "tmux", args: []string{"-u", "list-panes", "-a", "-F", "#{pane_start_command}"}},
 	}
 	if !reflect.DeepEqual(r.calls, want) {
 		t.Errorf("calls = %+v, want %+v", r.calls, want)
@@ -713,7 +715,7 @@ func TestLaunchArgsQuotesThePromptPath(t *testing.T) {
 		t.Fatalf("args = %v, want an sh -c command in there", args)
 	}
 	got := args[sh+2]
-	want := `cd '/tmp' && claude --settings '{"theme":"auto"}' "$(cat '/tmp/craig'\''s prompt.md')"`
+	want := `cd '/tmp' && claude --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/craig'\''s prompt.md')"`
 	if got != want {
 		t.Errorf("command = %q, want %q", got, want)
 	}
@@ -729,17 +731,17 @@ func TestLaunchArgsCarryTheModelFlags(t *testing.T) {
 		model config.AgentModel
 		want  string
 	}{
-		{"unset", config.AgentModel{}, `cd '/tmp' && claude --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
+		{"unset", config.AgentModel{}, `cd '/tmp' && claude --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`},
 		{"both", config.AgentModel{Model: "sonnet", Effort: "medium"},
-			`cd '/tmp' && claude --model 'sonnet' --effort 'medium' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && claude --model 'sonnet' --effort 'medium' --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`},
 		{"model only", config.AgentModel{Model: "opus"},
-			`cd '/tmp' && claude --model 'opus' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && claude --model 'opus' --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`},
 		{"effort only", config.AgentModel{Effort: "high"},
-			`cd '/tmp' && claude --effort 'high' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && claude --effort 'high' --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`},
 		// Whatever the value is, the shell reads it as one word: a model name
 		// is not a place to let a stray quote start a command.
 		{"quoted", config.AgentModel{Model: "cra'ig"},
-			`cd '/tmp' && claude --model 'cra'\''ig' --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`},
+			`cd '/tmp' && claude --model 'cra'\''ig' --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -768,7 +770,7 @@ func TestLaunchArgsCarryTheThemeFlag(t *testing.T) {
 	if sh < 0 || sh+2 >= len(args) {
 		t.Fatalf("args = %v, want an sh -c command in there", args)
 	}
-	want := `cd '/tmp' && claude --settings '{"theme":"auto"}' "$(cat '/tmp/p.md')"`
+	want := `cd '/tmp' && claude --settings '{"theme":"auto"}'` + modFlag(t) + ` "$(cat '/tmp/p.md')"`
 	if got := args[sh+2]; got != want {
 		t.Errorf("command = %q, want %q", got, want)
 	}
@@ -1126,9 +1128,9 @@ func TestLaunchCommandsMoveIntoTheWorkdir(t *testing.T) {
 	if err := os.WriteFile(prompt, []byte("go"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	bare := bareLaunchArgs("nat-1", workdir, config.AgentModel{}, false, "")
+	bare := bareLaunchArgs("nat-1", workdir, config.AgentModel{}, false, "", "")
 	commands := map[string]string{
-		"slice": agentCommand(workdir, prompt, config.AgentModel{}, ""),
+		"slice": agentCommand(workdir, prompt, config.AgentModel{}, "", ""),
 		"bare":  bare[slices.Index(bare, "sh")+2],
 		"usage": usageProbeCommand(workdir, "/tmp/settings.json"),
 	}
@@ -1174,10 +1176,11 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 	if err := NewTmuxWithRunner(launch).Launch(session, "/tmp", "/tmp/prompt.md", id, config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
-	// The tagging call sets the slice tag, and is the launch's last word —
-	// counting from the end, since what precedes it (the version asked about
-	// before a PATH is carried) depends on the environment of the test run.
-	tag := launch.calls[len(launch.calls)-1].args
+	// The tagging call sets the slice tag, and is the launch's last word but
+	// the mod sweep's pane read — counting from the end, since what precedes it
+	// (the version asked about before a PATH is carried) depends on the
+	// environment of the test run.
+	tag := launch.calls[len(launch.calls)-2].args
 	option, value := tag[5], tag[6]
 
 	// tmux reports the option back where the format asked for it, which is the

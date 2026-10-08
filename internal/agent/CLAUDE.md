@@ -169,6 +169,16 @@ running agent's state.
   from nat either way — whatever speaks the protocol there is the real
   terminal's own doing. See `macos/CLAUDE.md` for gnat's half: it pushes the
   `CSI ?997` report itself, on every appearance change.
+- Every `Launch`/`LaunchBare` (and `LaunchArgs`) loads nat's embedded mod:
+  `modelFlags` appends `--plugin-dir <path>` from `prepareMod`
+  (`internal/mods.Materialise`, write-once per content hash under the state
+  dir). A mod that cannot be written is logged and the launch goes ahead
+  without the flag, as `prepareStatusSink` degrades. The usage probe carries
+  none. After the pane is tagged, `sweepMods` reads every pane's
+  `#{pane_start_command}` and `mods.Sweep` removes hash folders nothing
+  live names: deleting a loaded folder unloads the mod from that session,
+  so a failed read removes nothing. No prompt or skill mentions the mod. Contract:
+  `docs/design/embedded-mod/README.md`.
 - `Activity()` is one `list-panes` scan, no screen read: a dead pane is
   gone, a pane carrying `@nat_waiting` (`WaitingPaneOption`, a field of
   `listPanesFormat`) is waiting, every other live tagged pane is working —

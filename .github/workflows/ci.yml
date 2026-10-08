@@ -40,6 +40,19 @@ jobs:
       - name: No uncovered statements
         run: ./scripts/no-uncovered.sh coverage.out
 
+  # nat's embedded Claude Code mod, validated and tested by Claude Code
+  # itself. Neither command signs in or reaches the network.
+  mod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Validate and test the mod
+        run: ./scripts/mod-check.sh
+
   lint:
     runs-on: ubuntu-latest
     steps:

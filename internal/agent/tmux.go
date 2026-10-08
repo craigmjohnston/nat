@@ -490,7 +490,7 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 // failure is reported, because until it is tagged nothing will find it again.
 func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.AgentModel) error {
 	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
-	out, err := t.run(launchArgs(session, workdir, promptFile, m, carryEnv, prepareStatusSink(session, m))...)
+	out, err := t.run(launchArgs(session, workdir, promptFile, m, carryEnv, prepareStatusSink(session, m), prepareMod())...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -500,6 +500,7 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.Age
 		return fmt.Errorf("tag tmux pane %s for slice %s: %w", pane, sliceID, err)
 	}
 	logging.Action("agent launched", "session", session, "slice", sliceID, "workdir", workdir, "pane", pane)
+	t.sweepMods()
 	return nil
 }
 
@@ -514,12 +515,13 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.Age
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
 func LaunchArgs(session, workdir, promptFile string, m config.AgentModel, carryEnv bool) []string {
-	return launchArgs(session, workdir, promptFile, m, carryEnv, "")
+	return launchArgs(session, workdir, promptFile, m, carryEnv, "", prepareMod())
 }
 
 // launchArgs is [LaunchArgs] with the file the session's statusline is teed
-// into (see [prepareStatusSink]); "" launches without a statusline.
-func launchArgs(session, workdir, promptFile string, m config.AgentModel, carryEnv bool, sink string) []string {
+// into (see [prepareStatusSink]) and the mod folder it loads (see
+// [prepareMod]); "" launches without that statusline or that mod.
+func launchArgs(session, workdir, promptFile string, m config.AgentModel, carryEnv bool, sink, mod string) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
@@ -530,7 +532,7 @@ func launchArgs(session, workdir, promptFile string, m config.AgentModel, carryE
 	}
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", agentCommand(workdir, promptFile, m, sink),
+		"sh", "-c", agentCommand(workdir, promptFile, m, sink, mod),
 	)
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
@@ -739,7 +741,7 @@ const terminalFeaturesSlot = "terminal-features[99]"
 // [Tmux.LiveSlices] finds the running session back by.
 func (t *Tmux) LaunchBare(session, workdir, tag string, m config.AgentModel) error {
 	carryEnv := os.Getenv("PATH") != "" && t.supportsSessionEnv()
-	out, err := t.run(bareLaunchArgs(session, workdir, m, carryEnv, prepareStatusSink(session, m))...)
+	out, err := t.run(bareLaunchArgs(session, workdir, m, carryEnv, prepareStatusSink(session, m), prepareMod())...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -748,12 +750,13 @@ func (t *Tmux) LaunchBare(session, workdir, tag string, m config.AgentModel) err
 		return fmt.Errorf("tag tmux pane %s for %s: %w", pane, tag, err)
 	}
 	logging.Action("ad hoc session launched", "session", session, "tag", tag, "workdir", workdir, "pane", pane)
+	t.sweepMods()
 	return nil
 }
 
 // bareLaunchArgs is [LaunchArgs] with no prompt file to read the agent's
 // opening turn from — an ad hoc session's whole point is that there is none.
-func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool, sink string) []string {
+func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool, sink, mod string) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
@@ -764,7 +767,7 @@ func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool,
 	}
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", inWorkdir(workdir, "claude"+modelFlags(m, sink)),
+		"sh", "-c", inWorkdir(workdir, "claude"+modelFlags(m, sink, mod)),
 	)
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
@@ -773,10 +776,12 @@ func bareLaunchArgs(session, workdir string, m config.AgentModel, carryEnv bool,
 	return append(args, copyModeDragEndArgs()...)
 }
 
-// modelFlags is the --model/--effort/--settings flags [agentCommand] and
-// [bareLaunchArgs] both pass to claude, shared so the one rule — an unset
-// half of the model pair contributes no flag at all — is written once.
-func modelFlags(m config.AgentModel, sink string) string {
+// modelFlags is the --model/--effort/--settings/--plugin-dir flags
+// [agentCommand] and [bareLaunchArgs] both pass to claude, shared so the one
+// rule — an unset half of the model pair contributes no flag at all — is
+// written once. --plugin-dir loads nat's mod for this one session only: it is
+// never installed, and no other session of the user's sees it.
+func modelFlags(m config.AgentModel, sink, mod string) string {
 	var flags string
 	if m.Model != "" {
 		flags += " --model " + shellQuote(m.Model)
@@ -784,7 +789,11 @@ func modelFlags(m config.AgentModel, sink string) string {
 	if m.Effort != "" {
 		flags += " --effort " + shellQuote(m.Effort)
 	}
-	return flags + ` --settings ` + shellQuote(statuslineSettings(sink))
+	flags += ` --settings ` + shellQuote(statuslineSettings(sink))
+	if mod != "" {
+		flags += " --plugin-dir " + shellQuote(mod)
+	}
+	return flags
 }
 
 // agentCommand is the shell command the session runs: start Claude Code with
@@ -805,8 +814,8 @@ func modelFlags(m config.AgentModel, sink string) string {
 // Either half of the model may be unset, and an unset one contributes no flag
 // at all rather than an empty value: Claude Code then decides for itself,
 // which is what it did before there was anywhere to say otherwise.
-func agentCommand(workdir, promptFile string, m config.AgentModel, sink string) string {
-	return inWorkdir(workdir, fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m, sink), shellQuote(promptFile)))
+func agentCommand(workdir, promptFile string, m config.AgentModel, sink, mod string) string {
+	return inWorkdir(workdir, fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m, sink, mod), shellQuote(promptFile)))
 }
 
 // inWorkdir prefixes command with a cd into workdir, so the shell a session
