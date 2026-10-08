@@ -321,14 +321,13 @@ of the Active panel rather than flooding it with a project's entire history.
 `--project <page ID>`, no active-project fallback — every template (slice,
 planning prompts) and every skill spells this out explicitly, and one test walks every template for an unpinned invocation. The
 `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
-worktree path are derived — implemented once, in `internal/actions`,
-`internal/worktree` and `internal/git`) is **re-spelled in prose twice**:
-in `internal/agent`'s slice prompt (`repoPassage`, told to a source
-project's task that has no repository yet) and in
-`skills/next-slice/SKILL.md`.
-**Never deduplicate this** — a prompt and a skill are both text handed to an
-LLM, not code, so neither can call the Go implementation; both copies must
-independently say the same thing.
+worktree path are derived — in `internal/actions`, `internal/worktree` and
+`internal/git`) is **spelled once, in Go**: an agent that cuts its own
+worktree runs a command that does it (`actions.EnsureWorktree`) — `nat
+slice-worktree` from `/next-slice`, `nat slice-repo --repo`, which cuts it
+after recording the repository, from the slice prompt's `repoPassage` —
+and works in the path it prints. No prompt or skill re-spells the naming;
+tests refuse `.worktrees` and `symbolic-ref` in `prompt.go` and the skill.
 
 **Milestones.** A `Milestone` select column, options in plan order — a
 milestone is nothing but its name, never referenced by URL or ID. Renaming
@@ -387,7 +386,7 @@ agents never see the plugin. **A source project has no working directory**
 `Repo`. A task launched with none (`actions.RepoUnknown`) starts in the home
 directory with no worktree or git read, and its prompt sends the agent to
 work the repository out from the card, ask the user where it cannot tell,
-record it with `nat slice-repo`, and cut its worktree by nat's own naming;
+record it with `nat slice-repo`, which cuts its worktree and prints the path;
 from then on every path finds it through `actions.WorkdirFor`. A new task on
 a card starts from the repository of the card's latest task with one. **A
 source project's name is its plugin's `describe` title** (else the plugin's

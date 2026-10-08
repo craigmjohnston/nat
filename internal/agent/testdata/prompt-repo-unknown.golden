@@ -62,32 +62,11 @@ review and the merge all find it:
 
     nat slice-repo 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 --repo <absolute path to the checkout>
 
-Then cut this slice's own worktree from that repository, exactly as nat
-cuts one — a later launch finds it by arriving at the same path, so the
-naming has to be followed to the letter:
-
-- The branch is `slice/` followed by the slice's name lowercased, with
-  every run of anything that is not an ASCII letter or digit collapsed
-  into a single hyphen and none left at either end: "Fix the login page"
-  is `slice/fix-the-login-page`.
-- The worktree goes in a sibling `<repo>.worktrees` directory, one entry
-  per branch, named by the branch with every run of anything that is not
-  a letter, a digit, a dot, a hyphen or an underscore collapsed into a
-  single hyphen — so `slice/fix-the-login-page` under a repository at
-  `/repos/app` is `/repos/app.worktrees/slice-fix-the-login-page`.
-  `<repo>` is the directory holding the git directory every worktree of
-  the repository shares: the parent of what `git rev-parse
-  --path-format=absolute --git-common-dir` names.
-- If `git worktree list --porcelain` already shows a worktree on that
-  branch, work there and cut nothing. If the branch exists with no
-  worktree, check it out: `git worktree add <repo>.worktrees/<path slug>
-  slice/<slug>`. Otherwise run `git fetch origin` (a fetch that fails is
-  no reason to stop) and cut it from the base:
-  `git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <base>`.
-- The base is whatever `git symbolic-ref --short refs/remotes/origin/HEAD`
-  names (`origin/main`, `origin/master`); with no such ref, `origin/main`
-  if the repository has one; and only a repository with no origin at all
-  falls back to the local `main`.
+That also cuts this slice's own worktree in that repository, exactly as
+nat cuts one for a launch, and prints its path on the `Worktree:` line:
+work there and nowhere else. Cut no worktree or branch of your own. If it
+says the worktree could not be cut, the repository is recorded but git
+refused, in its own words — tell the user what it said and stop.
 
 ## Before you write code
 
@@ -101,7 +80,7 @@ might not be.
 
 ## Do the work
 
-Work in the worktree you cut above; this session did not start there,
+Work in the worktree slice-repo printed; this session did not start there,
 so use absolute paths or `git -C`. Read its `CLAUDE.md`, if it has one,
 before anything else — architecture and the verification gate. Honour
 the brief's acceptance criteria and that gate before calling it done.

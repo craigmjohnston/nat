@@ -18,7 +18,10 @@ import (
 // no working directory — its cards come from anywhere — so an agent launched
 // on a task with none is told to work out which repository its card is about
 // and record it here; from then on relaunch, approve, merge and the merge's
-// worktree removal all find it through [actions.WorkdirFor].
+// worktree removal all find it through [actions.WorkdirFor]. Once recorded,
+// the slice's worktree is found or cut there as slice-worktree does it, and
+// its path printed — the agent's one command from a repository to a place to
+// work.
 //
 // A Todo slice takes it from anyone; one in progress only from whoever holds
 // it — the agent working it — and a Done one from nobody, its work being on
@@ -42,7 +45,7 @@ func sliceRepoCmd(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	dir, err := recordedRepoDir(*repo)
+	dir, err := repoFlagDir("slice-repo", *repo)
 	if err != nil {
 		return err
 	}
@@ -76,37 +79,47 @@ func sliceRepoCmd(ctx context.Context, args []string, env Env) error {
 	}
 	env.nudged()
 	logging.Action("slice repository recorded", "slice", s.ID, "repo", dir)
-	if *asJSON {
-		return writeJSON(env.Out, sliceRepoJSON{ID: s.ID, Name: s.Name, Repo: dir})
+
+	// The repository stands recorded whatever the cut makes of it: it is
+	// still the slice's, and slice-worktree cuts the worktree once the
+	// repository is fit for one.
+	wt, err := ensureWorktree(env, project, dir, s)
+	if err != nil {
+		return fmt.Errorf("slice-repo: recorded %s, but could not cut the slice's worktree there: %w", dir, err)
 	}
-	_, err = fmt.Fprintf(env.Out, "# %s\n\nRepository recorded: %s\n", s.Name, dir)
+	if *asJSON {
+		return writeJSON(env.Out, sliceRepoJSON{ID: s.ID, Name: s.Name, Repo: dir, Worktree: wt})
+	}
+	_, err = fmt.Fprintf(env.Out, "# %s\n\nRepository recorded: %s\nWorktree: %s\n", s.Name, dir, wt.Path)
 	return err
 }
 
-// recordedRepoDir is --repo as the slice records it: required, home expanded, made
-// absolute against the directory the command was typed in, and refused where
-// it is not a directory — a repository nobody can launch in is no answer.
-func recordedRepoDir(repo string) (string, error) {
+// repoFlagDir is a --repo as command takes it: home expanded, made absolute
+// against the directory the command was typed in, and refused where it is not
+// a directory — a repository nobody can launch in is no answer.
+func repoFlagDir(command, repo string) (string, error) {
 	dir := actions.ExpandHome(strings.TrimSpace(repo))
 	if dir == "" {
-		return "", usageErrorf("slice-repo: no --repo given: name the directory the slice is worked in")
+		return "", usageErrorf("%s: no --repo given: name the directory the slice is worked in", command)
 	}
 	if !filepath.IsAbs(dir) {
 		wd, err := getwd()
 		if err != nil {
-			return "", fmt.Errorf("slice-repo: resolve %q against the working directory: %w", dir, err)
+			return "", fmt.Errorf("%s: resolve %q against the working directory: %w", command, dir, err)
 		}
 		dir = filepath.Join(wd, dir)
 	}
 	if err := actions.ExistingDir(dir); err != nil {
-		return "", usageErrorf("slice-repo: %v", err)
+		return "", usageErrorf("%s: %v", command, err)
 	}
 	return filepath.Clean(dir), nil
 }
 
-// sliceRepoJSON is the structured form of a recorded repository.
+// sliceRepoJSON is the structured form of a recorded repository and the
+// worktree cut in it.
 type sliceRepoJSON struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Repo string `json:"repo"`
+	ID       string                `json:"id"`
+	Name     string                `json:"name"`
+	Repo     string                `json:"repo"`
+	Worktree actions.SliceWorktree `json:"worktree"`
 }

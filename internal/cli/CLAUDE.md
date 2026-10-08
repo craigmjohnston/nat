@@ -124,8 +124,19 @@ spec, `docs/design/task-sources/README.md`.
   repository through `store.RepoSetter` (a plan of nat's own; a Notion
   project is refused by name). A Todo slice takes it from anyone, one in
   progress only from its holder (`notOursError`), Done never; the path is
-  `~`-expanded, made absolute and must be a directory. What a source
-  project's agent runs once it has worked out its card's repository.
+  `~`-expanded, made absolute and must be a directory (`repoFlagDir`). What
+  a source project's agent runs once it has worked out its card's
+  repository: after the write (and nudge) it finds or cuts the slice's
+  worktree there (`ensureWorktree`, below) and prints it — `Worktree:
+  <path>`, JSON `worktree`. A cut git refuses is the error, the repository
+  left recorded.
+- `slice-worktree <slice> [--repo <dir>] [--json]` (`sliceworktree.go`, any
+  project, any status, no ownership check — it writes nothing to the plan):
+  `actions.EnsureWorktree` in `--repo`, else `WorkdirFor` (`~` expanded),
+  through `NewWorktrees` and `gitFor` (the project's base) — prints the
+  path alone, JSON `{path, branch, base, created}`. No repository at all,
+  or git refusing (outside a repository included), is the error in git's
+  words. `/next-slice` step 2 is this command.
 - `info --json`'s `source.menu` is the `sidebar` response's header menu
   where the plugin sent one, else `describe`'s.
 - Refusals: `project-mirror` and `done-clear` refuse a source project by

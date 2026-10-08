@@ -53,6 +53,12 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   there isn't one. A working directory outside any git repo falls back to the
   shared checkout (`OK: true`, a warning toast); a `git` that ran and refused
   is a hard failure (`OK: false`) — nothing is launched half-placed.
+- `EnsureWorktree` is the same find-or-fetch-and-cut (`worktreeOn`, shared
+  with `PlaceAgent`) for `nat slice-worktree`/`slice-repo`, with no shared
+  checkout to fall back to: a directory outside any repository is git's
+  refusal, the error. It answers `SliceWorktree` (path, branch, `Repo.Base`,
+  created) — the one place an agent cutting its own worktree gets nat's
+  naming from.
 - A `LaunchResult` with `Session == ""` is a launch that placed/claimed
   nothing (a worktree failure, a lost claim race) — reported as `Toast`, not
   a Go `error`: nothing is wrong with nat, the slice is simply still there to
@@ -72,8 +78,8 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   project is `backend: source`, which has no working directory, and
   `WorkdirFor` came back empty) is launched with no `PlaceAgent` and no git
   snapshot: the session starts in the home directory and
-  `PromptContext.RepoUnknown` sends the agent to find, record (`nat
-  slice-repo`) and cut its own worktree. `LaunchDir` is `ExistingDir` with
+  `PromptContext.RepoUnknown` sends the agent to find and record it (`nat
+  slice-repo`, which cuts the worktree through `EnsureWorktree`). `LaunchDir` is `ExistingDir` with
   that one case let through — the TUI's launch checks use it; every other
   empty directory is still refused. Once the repo is recorded, relaunch,
   approve (`slice-approve`), merge (`pr-merge`) and the TUI's worktree

@@ -494,13 +494,10 @@ func TestPromptSendsAnAgentWithNoRepositoryToFindIt(t *testing.T) {
 		"whichever repository its card is about",
 		"ask the user\nhere in the terminal, and do nothing else until they answer",
 		"    nat slice-repo " + c.Slice.ID + " --project " + testProjectID + " --repo <absolute path to the checkout>",
-		"`slice/fix-the-login-page`",
-		"`/repos/app.worktrees/slice-fix-the-login-page`",
-		"--path-format=absolute --git-common-dir",
-		"git worktree list --porcelain",
-		"`git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <base>`",
-		"git symbolic-ref --short refs/remotes/origin/HEAD",
-		"Work in the worktree you cut above",
+		"That also cuts this slice's own worktree in that repository",
+		"prints its path on the `Worktree:` line",
+		"Cut no worktree or branch of your own",
+		"Work in the worktree slice-repo printed",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
@@ -1124,21 +1121,18 @@ func TestGnatPlanPromptCarriesTheAcceptedProposalPassage(t *testing.T) {
 	}
 }
 
-// A project with a configured base branch tells an agent cutting its own
-// worktree to cut it from that, not from origin's default.
-func TestPromptRepoPassageNamesTheConfiguredBase(t *testing.T) {
-	c := repoUnknownContext()
-	c.Project.BaseBranch = "develop"
-	got := Prompt(c)
-	for _, want := range []string{
-		"- The base is this project's configured base branch, `develop`: `origin/develop`",
-		"where origin has it, else the local `develop`.",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("prompt does not say %q:\n%s", want, got)
-		}
+// The branch-and-worktree naming is spelled once, in Go
+// (actions.EnsureWorktree): the template that sends an agent to cut its own
+// worktree names the command, and never re-spells the rules — the words that
+// marked the old prose cannot creep back into the source.
+func TestPromptSourceSpellsOutNoWorktreeNaming(t *testing.T) {
+	src, err := os.ReadFile("prompt.go")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(got, "git symbolic-ref --short refs/remotes/origin/HEAD") {
-		t.Error("prompt still sends the agent to origin/HEAD with a base configured")
+	for _, banned := range []string{".worktrees", "symbolic-ref"} {
+		if strings.Contains(string(src), banned) {
+			t.Errorf("prompt.go says %q: name nat slice-repo or slice-worktree instead", banned)
+		}
 	}
 }

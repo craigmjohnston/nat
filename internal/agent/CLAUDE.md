@@ -66,8 +66,8 @@ running agent's state.
 - `PromptContext.RepoUnknown` (a source project's task with no repository)
   swaps "Already in your context" for `repoPassage`: work the repository out
   from the card's facts and links, ask the user where it cannot tell, record
-  it with `nat slice-repo <id> --project <id> --repo <path>`, cut the
-  worktree. The session starts in the home directory, so the git-status and
+  it with `nat slice-repo <id> --project <id> --repo <path>`, which cuts the
+  worktree and prints its path — the agent works there. The session starts in the home directory, so the git-status and
   CLAUDE.md lines are left out too. The template walks (`--project` pinning,
   the naming rule, the note command) cover it as `repoUnknownContext`.
 - `tmuxPassage` (never `tmux kill-server`, never touch another session; a
@@ -86,10 +86,10 @@ running agent's state.
   don't carry it: an agent run by hand isn't in a pane nat launched.
 - The `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
   worktree path are derived — `actions.SliceBranch`, `worktree.pathSlug`,
-  `git.CLI.Base`) is spelled out in prose in `repoPassage` and in
-  `skills/next-slice/SKILL.md` — **do not deduplicate this.** A skill is read
-  by an agent, not compiled, so it can't import Go code; both copies must
-  independently say the same thing.
+  `git.CLI.Base`) is never spelled out in prose: `repoPassage` names `nat
+  slice-repo`, `/next-slice` names `nat slice-worktree`, and each says to
+  work in the path printed. `TestPromptSourceSpellsOutNoWorktreeNaming`
+  (and the skill's test) refuse `.worktrees` and `symbolic-ref`.
 
 ## Usage probing (`usage.go`)
 

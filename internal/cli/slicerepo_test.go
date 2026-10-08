@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/actions"
 	"github.com/craigmjohnston/nat/internal/source"
 )
 
@@ -51,8 +52,10 @@ func TestSliceRepoRecordsTheRepository(t *testing.T) {
 	task := sp.addTask(t, "Task", "c1")
 	repo := t.TempDir()
 
-	// A Todo task takes one, as given; the text form says what was recorded.
-	if out := sp.run(t, "slice-repo", task, "--repo", repo, "--project", sp.id); out != "# Task\n\nRepository recorded: "+repo+"\n" {
+	// A Todo task takes one, as given; the text form says what was recorded,
+	// and the worktree cut there.
+	wantWT := filepath.Join(repo+".worktrees", "slice/task")
+	if out := sp.run(t, "slice-repo", task, "--repo", repo, "--project", sp.id); out != "# Task\n\nRepository recorded: "+repo+"\nWorktree: "+wantWT+"\n" {
 		t.Errorf("text = %q", out)
 	}
 	if got := sp.repoOf(t, task); got != repo {
@@ -70,8 +73,27 @@ func TestSliceRepoRecordsTheRepository(t *testing.T) {
 	if err := json.Unmarshal([]byte(sp.run(t, "slice-repo", task, "--repo", filepath.Base(repo), "--json", "--project", sp.id)), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got != (sliceRepoJSON{ID: task, Name: "Task", Repo: repo}) {
+	if got != (sliceRepoJSON{ID: task, Name: "Task", Repo: repo,
+		Worktree: actions.SliceWorktree{Path: wantWT, Branch: "slice/task", Base: "main", Created: true}}) {
 		t.Errorf("json = %+v", got)
+	}
+}
+
+// A worktree git will not cut is the command's error, in git's words — and
+// the repository stays recorded, being the slice's all the same.
+func TestSliceRepoKeepsTheRepositoryWhenTheCutFails(t *testing.T) {
+	sp := newSourceProject(t, &source.Fake{Details: map[string]source.ContainerDetail{"c1": {ID: "c1", Title: "Card"}}})
+	task := sp.addTask(t, "Task", "c1")
+	repo := t.TempDir()
+	sp.env.NewWorktrees = func() actions.Worktrees {
+		return &fakeSessionWorktrees{createErr: errors.New("fatal: not a git repository")}
+	}
+	err := sp.fail(t, "slice-repo", task, "--repo", repo, "--project", sp.id)
+	if want := "recorded " + repo + ", but could not cut the slice's worktree there: fatal: not a git repository"; !strings.Contains(err.Error(), want) {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+	if got := sp.repoOf(t, task); got != repo {
+		t.Errorf("repo = %q, want it recorded", got)
 	}
 }
 

@@ -56,78 +56,30 @@ no URL).
 A slice launched from the board is given a git worktree of its own, so its
 agent works on its own branch in its own directory rather than sharing the one
 checkout with every other agent and with the user. A session started from this
-skill cuts the same worktree for itself, so the branch it hands back is the one
-the board would have made.
-
-The branch is derived from the slice's name, exactly as the board derives it:
-`slice/` followed by the name lowercased, with every run of anything that is
-not an ASCII letter or digit collapsed into a single hyphen and none left at
-either end. "Teach /next-slice to work in a worktree" is
-`slice/teach-next-slice-to-work-in-a-worktree`.
-
-Where that worktree goes is nat's convention rather than anything git decides,
-and it has to be followed exactly, because a relaunch from either side finds
-the worktree by arriving at the same path: a sibling `<repo>.worktrees`
-directory, one entry per branch, named by the branch with every run of anything
-that is not a letter, a digit, a dot, a hyphen or an underscore collapsed into
-a single hyphen — so `slice/teach-next-slice` under a repository at
-`/repos/nat` is `/repos/nat.worktrees/slice-teach-next-slice`. `<repo>` is the
-directory holding the git directory every worktree of the repository shares,
-which is what `git rev-parse --path-format=absolute --git-common-dir` names the
-parent of — the common one, so a session already inside a worktree still cuts
-the next one beside the repository.
-
-First look for a worktree the branch already has, in the working directory the
-brief names:
+skill asks nat for the same worktree, so the branch it hands back is the one
+the board would have made:
 
 ```
-git worktree list --porcelain
+nat slice-worktree <slice> --project <project>
 ```
 
-One record per worktree, opened by its path and naming the branch it has
-checked out as a full ref, so the path under `branch refs/heads/slice/<slug>`
-is the answer. If there is one, work there: it is where the last session on
-this slice left off, and its commits are exactly what a relaunch wants. Nothing
-below is run in that case — a worktree that already exists is not re-cut and
-not rebased.
+It prints the worktree's path on one line. Where the slice already has a
+worktree — the last session on it left off there — that is the one it prints,
+untouched; otherwise it cuts one, on the slice's branch, from the project's
+base as it stands on origin now, exactly as a launch from the board does. The
+repository is the slice's own, else the project's working directory; pass
+`--repo <path>` only where the brief names neither. Cut no worktree or branch
+of your own: the path and branch name are nat's convention, and a relaunch
+finds the worktree only by nat arriving at the same one.
 
-Otherwise cut it:
+Work in that directory from here on, explicitly (absolute paths / `git -C`) if
+it is not where this session started.
 
-```
-git fetch origin
-git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <base>
-```
-
-The fetch first, and the base explicitly, because otherwise git cuts the branch
-from wherever the repository happens to be — whatever stale state the shared
-checkout was last left in — and the work starts life behind. The base is the
-project's configured base branch where it has one — the `base_branch` that
-`nat info --project <project> --json` names under `project`: `origin/<base_branch>`
-where origin has it, else the local `<base_branch>`. With none configured, it is
-origin's default branch: whatever `git symbolic-ref --short refs/remotes/origin/HEAD` names
-(`origin/main`, `origin/master`); where there is no such ref, `origin/main` if
-the repository has one. Git writes origin/HEAD at clone time and nothing
-maintains it afterwards, so plenty of checkouts have none — and falling back to
-the local `main` there would put you back on whatever the checkout last pulled,
-which is the thing the fetch was for. Only a repository with no origin at all
-falls back to `main`, where the local branch is all there is. A fetch that
-fails is not a reason to stop: work against the refs as last fetched.
-
-If the branch already exists but has no worktree — a slice whose branch was
-pushed and merged, since a squash merge leaves the branch behind — check it out
-instead of cutting it again, and do not consult the base at all:
-`git worktree add <repo>.worktrees/<path slug> slice/<slug>`.
-
-Work in the worktree's directory from here on, explicitly (absolute paths /
-`git -C`) if it is not where this session started.
-
-If git is not installed, or the working directory is not a git repository,
-branch in place instead: those are the launch that worked before there were
-worktrees, and the fallback is to make one branch for the slice in the working
-directory the brief names — off the same fetched base, `git fetch origin` and
-then `git switch -c slice/<slug> <base>`, the base as above. A git that ran and
-refused is different — something is wrong with the repository — so report what
-it said and stop rather than working half-placed.
+If it refuses, it says why in git's own words. A working directory that is no
+git repository has no branch to work on: there the work is not code, so do it
+where the brief says and hand back with `--no-branch`. A git that refused in a
+repository is something wrong with the repository — report what it said and
+stop rather than working half-placed.
 
 ## 3. Before you write code
 
@@ -161,8 +113,7 @@ might not be.
 - **If the work is code**: the worktree is already on the slice's branch, so
   keep the change to exactly ONE branch's worth of work and commit there — do
   not create a branch of your own and do not switch to another. Do not push it
-  yourself: handing back pushes it. (Where you fell back to branching in place,
-  that one branch is yours in the same way.) Do not run `gh` and
+  yourself: handing back pushes it. Do not run `gh` and
   do not open a pull request — you hand the branch back, and the user opens the
   pull request from the board once they have reviewed it.
 - **If the work is not code** (docs, research, written-up findings): produce
@@ -292,8 +243,7 @@ nat complete-slice <slice> --project <project> \
 <what the PR does and why>'
 ```
 
-nat reads the branch off the slice's worktree; where you branched in place
-instead, there is no worktree to read, so add `--branch <branch>`. It refuses
+nat reads the branch off the slice's worktree. It refuses
 while the worktree holds anything uncommitted — commit it first — then pushes
 the branch itself (with a lease, so a rebased branch goes too), records it and
 hands the slice back for review, writing the summary onto the slice page. A

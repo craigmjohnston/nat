@@ -76,7 +76,6 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 	for _, want := range []string{
 		"nat complete-slice <slice> --project <project> \\\n    --summary",
 		"handing back pushes it",
-		"add `--branch <branch>`",
 		"`--no-branch`",
 		"do not open a pull request",
 		"Never open or merge a pull request",
@@ -177,28 +176,30 @@ func TestNextSliceHandsInOnlyNewFollowUps(t *testing.T) {
 var prEnding = regexp.MustCompile(`--pr($|[^-\w])`)
 
 // A slice launched from the board is placed in a worktree of its own, and a
-// session started from the skill has to arrive at the same branch — and the
-// same worktree path — in the same way, otherwise the same slice hands back one
-// branch from the board and another from the terminal, and a relaunch from
-// either side cuts a second copy of the repository. The commands, the branch
-// rule and the path convention are what the agent acts on, so they are worth
-// naming here; the fallbacks are too, since a machine with no git is one that
-// would otherwise do nothing at all.
+// session started from the skill has to arrive at the same branch and the same
+// worktree path, otherwise the same slice hands back one branch from the board
+// and another from the terminal. nat cuts it for both (slice-worktree), so the
+// skill names the command — and never re-spells the naming, which lives in Go
+// alone: the words that marked the old prose cannot creep back.
 func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
 	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
 	if err != nil {
 		t.Fatalf("read the next-slice skill: %v", err)
 	}
-	text := string(body)
+	text := unwrapped(string(body))
 	for _, want := range []string{
-		"git worktree add <repo>.worktrees/<path slug> -b slice/<slug> <base>",
-		"git worktree list --porcelain",
-		"git rev-parse --path-format=absolute --git-common-dir",
-		"`slice/` followed by the name lowercased",
-		"If git is not installed, or the working directory is not a git repository",
+		"nat slice-worktree <slice> --project <project>",
+		"It prints the worktree's path on one line",
+		"Cut no worktree or branch of your own",
+		"If it refuses, it says why in git's own words",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the next-slice skill does not say %q", want)
+		}
+	}
+	for _, banned := range []string{".worktrees", "symbolic-ref"} {
+		if strings.Contains(text, banned) {
+			t.Errorf("the next-slice skill says %q: name nat slice-worktree instead", banned)
 		}
 	}
 }
@@ -551,28 +552,6 @@ func TestQueueWorkCarriesTheAcceptedProposalPassage(t *testing.T) {
 		`"title": "Its new title"`, "No two slices may answer to one title."} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the queue-work skill does not say %q", want)
-		}
-	}
-}
-
-// The next-slice skill cuts from the base nat info names where the project
-// configures one, else origin's default — the prose copy of the base rule the
-// slice prompt's repo passage also carries.
-func TestNextSliceCutsFromTheConfiguredBase(t *testing.T) {
-	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
-	if err != nil {
-		t.Fatalf("read the next-slice skill: %v", err)
-	}
-	text := unwrapped(string(body))
-	for _, want := range []string{
-		"-b slice/<slug> <base>",
-		"the `base_branch` that `nat info --project <project> --json` names",
-		"`origin/<base_branch>` where origin has it, else the local `<base_branch>`",
-		"With none configured, it is origin's default branch",
-		"git symbolic-ref --short refs/remotes/origin/HEAD",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("the next-slice skill does not say %q", want)
 		}
 	}
 }

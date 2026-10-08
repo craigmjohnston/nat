@@ -82,7 +82,7 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 		// A source project's task with no repository yet: there is nothing to
 		// cut a worktree from or read a branch of, so the session starts in the
 		// home directory and its prompt sends it to work the repository out,
-		// record it, and cut the worktree itself (agent.PromptContext.RepoUnknown).
+		// and record it — which cuts the worktree (agent.PromptContext.RepoUnknown).
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return LaunchResult{}, fmt.Errorf("launch agent: no home directory to start in: %w", err)
