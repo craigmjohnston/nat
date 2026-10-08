@@ -120,6 +120,7 @@ func command(tokens config.TokenSource) error {
 		NewSource:    newCLISource,
 		NewPlugins:   cli.DefaultNewPlugins,
 		Out:          stdout,
+		Err:          stderr,
 		In:           stdin,
 		ReadingPath:  cli.DefaultReadingPath,
 		Nudge:        nudge.Touch,
