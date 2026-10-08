@@ -979,14 +979,20 @@ func TestScrubEnvKeepsNamelessEntries(t *testing.T) {
 }
 
 func TestWritePromptFile(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	isolatedStatusDir(t)
 
 	path, err := WritePromptFile("nat-3b738308", "do the work")
 	if err != nil {
 		t.Fatalf("WritePromptFile: %v", err)
 	}
-	if got := filepath.Base(path); got != "nat-3b738308.md" {
-		t.Errorf("file = %q, want it named after the session", got)
+	dir, err := BriefDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Under the state dir, never $TMPDIR: the session reads it again on every
+	// compaction, and macOS cleans $TMPDIR files left unread for days.
+	if want := filepath.Join(dir, "nat-3b738308.md"); path != want {
+		t.Errorf("path = %q, want %q", path, want)
 	}
 
 	body, err := os.ReadFile(path)
@@ -1006,17 +1012,17 @@ func TestWritePromptFile(t *testing.T) {
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Errorf("file mode = %v, want 0600", got)
 	}
-	dir, err := os.Stat(filepath.Dir(path))
+	dirInfo, err := os.Stat(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := dir.Mode().Perm(); got != 0o700 {
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
 		t.Errorf("dir mode = %v, want 0700", got)
 	}
 }
 
-func TestWritePromptFileGivesEachLaunchItsOwnDirectory(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+func TestWritePromptFileOverwritesTheSessionsLastBrief(t *testing.T) {
+	isolatedStatusDir(t)
 
 	first, err := WritePromptFile("nat-3b738308", "one")
 	if err != nil {
@@ -1026,18 +1032,46 @@ func TestWritePromptFileGivesEachLaunchItsOwnDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first == second {
-		t.Errorf("both launches wrote %q, want a fresh directory each time", first)
+	if first != second {
+		t.Errorf("relaunch wrote %q, want the same file %q", second, first)
+	}
+	if body, _ := os.ReadFile(second); string(body) != "two" {
+		t.Errorf("contents = %q, want the newer brief", body)
+	}
+	entries, _ := os.ReadDir(filepath.Dir(second))
+	if len(entries) != 1 {
+		t.Errorf("brief dir holds %d entries, want the one file and no temp left over", len(entries))
+	}
+}
+
+func TestBriefDirError(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_STATE_HOME", "")
+	if _, err := BriefDir(); err == nil {
+		t.Fatal("BriefDir: want an error with no resolvable home directory")
 	}
 }
 
 func TestWritePromptFileError(t *testing.T) {
-	t.Run("no temp dir to write in", func(t *testing.T) {
-		t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
+	t.Run("no state dir to write in", func(t *testing.T) {
+		// A file where the state dir would be: nothing can be made under it.
+		file := filepath.Join(t.TempDir(), "file")
+		write(t, file, "")
+		t.Setenv("HOME", file)
+		t.Setenv("XDG_STATE_HOME", file)
 
 		if _, err := WritePromptFile("nat-1", "prompt"); err == nil {
 			t.Fatal("WritePromptFile: want error, got nil")
 		} else if !strings.Contains(err.Error(), "create prompt dir") {
+			t.Errorf("err = %v, want it to name the failed step", err)
+		}
+	})
+
+	t.Run("no state dir to resolve", func(t *testing.T) {
+		t.Setenv("HOME", "")
+		t.Setenv("XDG_STATE_HOME", "")
+
+		if _, err := WritePromptFile("nat-1", "prompt"); err == nil || !strings.Contains(err.Error(), "create prompt dir") {
 			t.Errorf("err = %v, want it to name the failed step", err)
 		}
 	})
@@ -1052,6 +1086,19 @@ func TestWritePromptFileError(t *testing.T) {
 			t.Fatal("writePromptInto: want error, got nil")
 		} else if !strings.Contains(err.Error(), "write prompt file") {
 			t.Errorf("err = %v, want it to name the failed step", err)
+		}
+	})
+
+	t.Run("file cannot be renamed into place", func(t *testing.T) {
+		dir := t.TempDir()
+		// A non-empty directory where the brief goes: the rename cannot replace it.
+		write(t, filepath.Join(dir, "nat-1.md", "x"), "")
+
+		if _, err := writePromptInto(dir, "nat-1", "prompt"); err == nil || !strings.Contains(err.Error(), "write prompt file") {
+			t.Errorf("err = %v, want it to name the failed step", err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "nat-1.md.tmp")); !os.IsNotExist(err) {
+			t.Errorf("temp file left behind: %v", err)
 		}
 	})
 }

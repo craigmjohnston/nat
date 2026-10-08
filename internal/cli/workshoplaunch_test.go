@@ -88,8 +88,6 @@ func TestWorkshopLaunchesAPlainSession(t *testing.T) {
 // inlined conventions are the one read left, and it fails soft) does not fail
 // the launch, and the output carries only the session and its directory.
 func TestWorkshopLaunchWithNoRequestIsAPlainSessionWhateverThePageSays(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("TMPDIR", dir)
 	api := &fakeAPI{blocksErr: errors.New("notion is down")}
 	env, out := testEnv(testConfig(t), api)
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
@@ -105,7 +103,7 @@ func TestWorkshopLaunchWithNoRequestIsAPlainSessionWhateverThePageSays(t *testin
 	if len(got) != 2 || got["session"] == nil || got["workdir"] == nil {
 		t.Errorf("output = %v, want only session and workdir", got)
 	}
-	if prompt := launchedPlanPrompt(t, dir); !strings.Contains(prompt, "/queue-work") || strings.Contains(prompt, "## The request") {
+	if prompt := launchedPlanPrompt(t); !strings.Contains(prompt, "/queue-work") || strings.Contains(prompt, "## The request") {
 		t.Errorf("prompt = %q, want a plain planning prompt with no request", prompt)
 	}
 }
@@ -117,15 +115,24 @@ func TestWorkshopLaunchMarkdownNamesOnlyTheSessionAndDirectory(t *testing.T) {
 	}
 }
 
-// launchedPlanPrompt reads back the prompt file the launch wrote — the test
-// sets TMPDIR to dir, so the file is findable without threading the path out.
-func launchedPlanPrompt(t *testing.T, dir string) string {
+// pinStateDir points the state directory — where a launch writes its brief —
+// at dir, on every platform's way of finding it.
+func pinStateDir(t *testing.T, dir string) {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join(dir, "nat-prompt-*", agent.PlanSessionName("project-1")+".md"))
-	if err != nil || len(matches) != 1 {
-		t.Fatalf("prompt files = %v (err %v), want exactly one", matches, err)
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_STATE_HOME", dir)
+}
+
+// launchedPlanPrompt reads back the prompt file the launch wrote — testConfig
+// pins HOME, and with it the state dir, so the file is findable without
+// threading the path out.
+func launchedPlanPrompt(t *testing.T) string {
+	t.Helper()
+	briefs, err := agent.BriefDir()
+	if err != nil {
+		t.Fatal(err)
 	}
-	b, err := os.ReadFile(matches[0])
+	b, err := os.ReadFile(filepath.Join(briefs, agent.PlanSessionName("project-1")+".md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,8 +140,6 @@ func launchedPlanPrompt(t *testing.T, dir string) string {
 }
 
 func TestWorkshopLaunchFoldsTheRequestIntoThePrompt(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("TMPDIR", dir)
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
@@ -144,7 +149,7 @@ func TestWorkshopLaunchFoldsTheRequestIntoThePrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workshop-launch: %v", err)
 	}
-	prompt := launchedPlanPrompt(t, dir)
+	prompt := launchedPlanPrompt(t)
 	if !strings.Contains(prompt, "## The request") || !strings.Contains(prompt, "Add dark mode to the board.") {
 		t.Errorf("prompt = %q, want the request folded in", prompt)
 	}
@@ -154,8 +159,6 @@ func TestWorkshopLaunchFoldsTheRequestIntoThePrompt(t *testing.T) {
 // the user is; --frontend gnat carries that claim into the prompt, the same
 // one gnat's own NatClient passes on every launch.
 func TestWorkshopLaunchWritesTheFrontendIntoThePrompt(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("TMPDIR", dir)
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
@@ -165,15 +168,13 @@ func TestWorkshopLaunchWritesTheFrontendIntoThePrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workshop-launch: %v", err)
 	}
-	prompt := launchedPlanPrompt(t, dir)
+	prompt := launchedPlanPrompt(t)
 	if !strings.Contains(prompt, "The user is driving this from gnat, the macOS app.") {
 		t.Errorf("prompt does not name gnat as the frontend:\n%s", prompt)
 	}
 }
 
 func TestWorkshopLaunchWritesNoFrontendNoteWhenUnset(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("TMPDIR", dir)
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
@@ -181,7 +182,7 @@ func TestWorkshopLaunchWritesNoFrontendNoteWhenUnset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workshop-launch: %v", err)
 	}
-	if prompt := launchedPlanPrompt(t, dir); strings.Contains(prompt, "driving this from") {
+	if prompt := launchedPlanPrompt(t); strings.Contains(prompt, "driving this from") {
 		t.Errorf("prompt names a frontend for an unflagged launch:\n%s", prompt)
 	}
 }
@@ -203,8 +204,6 @@ func TestWorkshopLaunchRefusesAnInvalidFrontend(t *testing.T) {
 }
 
 func TestWorkshopLaunchReadsTheRequestFromStdin(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("TMPDIR", dir)
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.In = strings.NewReader("  A request too long for an argument.  \n")
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
@@ -213,7 +212,7 @@ func TestWorkshopLaunchReadsTheRequestFromStdin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workshop-launch: %v", err)
 	}
-	if !strings.Contains(launchedPlanPrompt(t, dir), "A request too long for an argument.") {
+	if !strings.Contains(launchedPlanPrompt(t), "A request too long for an argument.") {
 		t.Errorf("prompt should carry the stdin request, trimmed")
 	}
 }
@@ -316,8 +315,13 @@ func TestWorkshopLaunchRefusesAnUnknownProject(t *testing.T) {
 }
 
 func TestWorkshopLaunchReportsAFailedPromptFile(t *testing.T) {
-	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
+	// A file where the state dir would be: no brief dir can be made under it.
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
+	pinStateDir(t, file)
 	// A fake tmux with nothing live, so the liveness check answers for this test
 	// rather than for whatever the machine running it happens to have launched.
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }

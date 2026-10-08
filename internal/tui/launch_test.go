@@ -130,7 +130,31 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "pin the config dir:", err)
 		os.Exit(1)
 	}
-	os.Exit(m.Run())
+	// And the state dir, where every launch writes its agent's brief: a test
+	// launch would otherwise leave one in the real state dir of whoever runs
+	// the suite.
+	state, err := os.MkdirTemp("", "nat-tui-test-state-*")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "pin the state dir:", err)
+		os.Exit(1)
+	}
+	_ = os.Setenv("HOME", state)
+	_ = os.Setenv("XDG_STATE_HOME", state)
+	code := m.Run()
+	_ = os.RemoveAll(state)
+	os.Exit(code)
+}
+
+// unwritableStateDir points the state dir at a file, so no brief can be
+// written under it.
+func unwritableStateDir(t *testing.T) {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", file)
+	t.Setenv("XDG_STATE_HOME", file)
 }
 
 // launchCall is one session the launcher was asked to start.
@@ -218,13 +242,12 @@ func (f *fakeLauncher) ReclaimStrays(hostPane string) (int, error) {
 }
 
 // launchApp returns an app showing testProject with a launcher standing in for
-// tmux, a real working directory for the form to validate, and a temp dir of
-// its own for the prompt files. It returns the working directory too, because
+// tmux and a real working directory for the form to validate; the prompt files
+// land in the state dir TestMain pins. It returns the working directory too, because
 // that is what the launch flow is asserted against.
 func launchApp(t *testing.T) (*App, *fakeLauncher, string) {
 	t.Helper()
 	workdir := t.TempDir()
-	t.Setenv("TMPDIR", t.TempDir())
 	// The suite may well be run from inside tmux, and the board reads its own
 	// pane from the environment: the tests about the tmux bar set one, and the
 	// rest are about a board that has none.
@@ -1190,7 +1213,7 @@ func TestAppLaunchReportsAFailedLaunch(t *testing.T) {
 }
 
 func TestLaunchAgentReportsAFailedPromptFile(t *testing.T) {
-	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
+	unwritableStateDir(t)
 	launcher := &fakeLauncher{}
 
 	client := &fakeNotion{}

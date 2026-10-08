@@ -849,7 +849,8 @@ func modelFlags(m config.AgentModel, sink, mod string) string {
 // blocks, which the pane never draws; claude's positional prompt is opening
 // alone. With no mod there is nothing to read the variable, so the brief is
 // the positional prompt, read back from the file. Verified live on 2.1.294:
-// a compaction re-reads the file, so it stays where [WritePromptFile] put it.
+// a compaction re-reads the file, so it stays where [WritePromptFile] put it
+// for as long as the session lives.
 func agentCommand(workdir, promptFile, opening string, m config.AgentModel, sink, mod string) string {
 	if mod == "" {
 		return inWorkdir(workdir, fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m, sink, mod), shellQuote(promptFile)))
@@ -1080,26 +1081,52 @@ func AttachClientCmd(session string) *exec.Cmd {
 // reason [Tmux.AttachCmd] is one.
 func (t *Tmux) AttachClientCmd(session string) *exec.Cmd { return AttachClientCmd(session) }
 
-// WritePromptFile writes an agent's opening prompt somewhere the session it is
-// launched for can read it back, returning the file's path.
+// briefDirName is where each session's brief lives, under nat's state
+// directory beside agent-status/ and agent-inbox/.
+const briefDirName = "agent-brief"
+
+// BriefDir is the directory holding one brief file per agent session.
+func BriefDir() (string, error) {
+	dir, err := logging.Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, briefDirName), nil
+}
+
+// WritePromptFile writes an agent's opening prompt to <state dir>/agent-brief/
+// <session>.md, where the session it is launched for can read it back,
+// returning the file's path. A later launch of the same session overwrites it.
 //
-// The file goes in a directory of its own rather than at a predictable path in
-// the shared temp dir: the agent obeys whatever it reads, so a file another
-// user could have put there first would be an instruction we did not write.
+// The file must last as long as the session: with the embedded mod, every
+// compaction reads it again (NAT_BRIEF). So it lives in nat's own state
+// directory, never $TMPDIR, whose files macOS cleans once they go unread for
+// days; [ReadStatuses] removes it once its session is gone. The directory is
+// the user's alone, so the predictable path is no one else's to plant a file
+// at — the agent obeys whatever it reads there.
 func WritePromptFile(session, prompt string) (string, error) {
-	dir, err := os.MkdirTemp("", "nat-prompt-")
+	dir, err := BriefDir()
+	if err == nil {
+		err = os.MkdirAll(dir, 0o700)
+	}
 	if err != nil {
 		return "", fmt.Errorf("create prompt dir: %w", err)
 	}
 	return writePromptInto(dir, session, prompt)
 }
 
-// writePromptInto writes the prompt file inside dir. It is split out so that a
-// write which fails — a directory that cannot be written to — is exercisable
-// without arranging for MkdirTemp itself to succeed and then break.
+// writePromptInto writes the prompt file inside dir, under a temp name renamed
+// into place, so a session compacting while its next launch writes never reads
+// half a brief.
 func writePromptInto(dir, session, prompt string) (string, error) {
 	path := filepath.Join(dir, session+".md")
-	if err := os.WriteFile(path, []byte(prompt), 0o600); err != nil {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(prompt), 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("write prompt file: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
 		return "", fmt.Errorf("write prompt file: %w", err)
 	}
 	return path, nil

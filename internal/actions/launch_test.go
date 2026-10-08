@@ -16,6 +16,21 @@ import (
 	"github.com/craigmjohnston/nat/internal/worktree"
 )
 
+// TestMain pins the state dir, where every launch writes its agent's brief, so
+// a test launch never leaves one in the real state dir of whoever runs the
+// suite.
+func TestMain(m *testing.M) {
+	state, err := os.MkdirTemp("", "nat-actions-test-state-*")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("HOME", state)
+	_ = os.Setenv("XDG_STATE_HOME", state)
+	code := m.Run()
+	_ = os.RemoveAll(state)
+	os.Exit(code)
+}
+
 // launchCall is one session a fakeLauncher was asked to start.
 type launchCall struct {
 	session, workdir, promptFile, opening, sliceID string
@@ -282,7 +297,13 @@ func TestLaunchLogsAFailedMilestoneSummaryRead(t *testing.T) {
 // write: the claim and the brief it is written with have already happened by
 // then, since fetching the brief needs the claim to have gone through first.
 func TestLaunchReportsAFailedPromptFile(t *testing.T) {
-	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "not-there"))
+	// A file where the state dir would be: no brief dir can be made under it.
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", file)
+	t.Setenv("XDG_STATE_HOME", file)
 	l := &fakeLauncher{}
 	client := &fakeClient{}
 
