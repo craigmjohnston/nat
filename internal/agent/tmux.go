@@ -533,9 +533,10 @@ const noUpdates = "DISABLE_UPDATES=1"
 // sessionEnv says this tmux takes them ([Tmux.supportsSessionEnv]): the
 // launching process's PATH — so the agent's nat commands resolve whoever
 // started the tmux server; an empty one writes nothing rather than clobbering
-// the server's — and [noUpdates]. An older tmux gets neither: it loses the
-// quiet, never the launch.
-func agentEnvArgs(sessionEnv bool) []string {
+// the server's — the session's inbox ([inboxEnvArgs]) and [noUpdates]. An
+// older tmux gets none of them: it loses the quiet and the inbox, never the
+// launch.
+func agentEnvArgs(session string, sessionEnv bool) []string {
 	if !sessionEnv {
 		return nil
 	}
@@ -543,6 +544,7 @@ func agentEnvArgs(sessionEnv bool) []string {
 	if path := os.Getenv("PATH"); path != "" {
 		args = append(args, "-e", "PATH="+path)
 	}
+	args = append(args, inboxEnvArgs(session)...)
 	return append(args, "-e", noUpdates)
 }
 
@@ -555,7 +557,7 @@ func launchArgs(session, workdir, promptFile string, m config.AgentModel, sessio
 		"-s", session,
 		"-c", workdir,
 	}
-	args = append(args, agentEnvArgs(sessionEnv)...)
+	args = append(args, agentEnvArgs(session, sessionEnv)...)
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", agentCommand(workdir, promptFile, m, sink, mod),
@@ -787,7 +789,7 @@ func bareLaunchArgs(session, workdir string, m config.AgentModel, sessionEnv boo
 		"-s", session,
 		"-c", workdir,
 	}
-	args = append(args, agentEnvArgs(sessionEnv)...)
+	args = append(args, agentEnvArgs(session, sessionEnv)...)
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", inWorkdir(workdir, "claude"+modelFlags(m, sink, mod)),
@@ -856,7 +858,42 @@ func inWorkdir(workdir, command string) string {
 // one another's text.
 func promptBuffer(session string) string { return SessionPrefix + "prompt-" + session }
 
-// SendPrompt types text at the agent running in session and submits it, as
+// SendPrompt hands text to the agent running in session as a prompt of the
+// user's own, a turn of its own once the agent is idle.
+//
+// A session nat launched with an inbox ([inboxEnv]) is handed it through
+// that: the embedded mod submits the file with `$.prompt.submit`, which no
+// permission prompt, dialog, unfocused composer or half-typed draft in the
+// pane can intercept. Where the mod does not take it within [inboxWait] —
+// none loaded — and in a session with no inbox at all, the text is pasted
+// into the pane instead ([Tmux.pastePrompt]). The log says which delivered.
+//
+// The text itself is never logged: a review comment is the user's own words
+// about their own code, and the log is not where they belong.
+func (t *Tmux) SendPrompt(session, text string) error {
+	if dir := t.sessionInbox(session); dir != "" {
+		taken, err := deliverToInbox(dir, text)
+		if err != nil {
+			logging.Error("could not write to an agent's inbox; pasting instead", "session", session, "err", err)
+		}
+		if taken {
+			logging.Action("prompt sent to an agent", "session", session, "bytes", len(text), "via", "inbox")
+			t.clearWaiting(session)
+			return nil
+		}
+		if err == nil {
+			logging.Action("agent inbox not read; pasting instead", "session", session)
+		}
+	}
+	if err := t.pastePrompt(session, text); err != nil {
+		return err
+	}
+	logging.Action("prompt sent to an agent", "session", session, "bytes", len(text), "via", "paste")
+	t.clearWaiting(session)
+	return nil
+}
+
+// pastePrompt types text at the agent running in session and submits it, as
 // though the user had pasted it into the pane themselves.
 //
 // It goes through a paste buffer rather than send-keys' own literal mode
@@ -865,10 +902,7 @@ func promptBuffer(session string) string { return SessionPrefix + "prompt-" + se
 // asked next. The paste is bracketed (-p), which is how Claude Code's composer
 // tells a pasted newline from a typed one, and the enter after it is the
 // separate keystroke that sends the turn.
-//
-// The text itself is never logged: a review comment is the user's own words
-// about their own code, and the log is not where they belong.
-func (t *Tmux) SendPrompt(session, text string) error {
+func (t *Tmux) pastePrompt(session, text string) error {
 	buffer := promptBuffer(session)
 	if _, err := t.run("set-buffer", "-b", buffer, "--", text); err != nil {
 		return fmt.Errorf("stage the prompt for %s: %w", session, err)
@@ -883,8 +917,6 @@ func (t *Tmux) SendPrompt(session, text string) error {
 	if _, err := t.run("send-keys", "-t", session, "Enter"); err != nil {
 		return fmt.Errorf("submit the prompt in %s: %w", session, err)
 	}
-	logging.Action("prompt sent to an agent", "session", session, "bytes", len(text))
-	t.clearWaiting(session)
 	return nil
 }
 

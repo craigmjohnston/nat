@@ -211,9 +211,9 @@ in-progress-with-no-live-session — one with a PR recorded is an ordinary
 relaunch, its dependencies not asked and gh built only to gather its review
 snapshot; Done is refused, PR or not), `agent-interrupt` (Claude Code's
 interrupt key), `agent-kill` (`kill-session`; a session already gone is
-success, not failure), `agent-send` (paste-buffer delivery, `--text` or
-stdin — same mechanism `internal/agent.SendPrompt` uses for review
-comments).
+success, not failure), `agent-send` (`internal/agent.SendPrompt`'s delivery —
+the session's inbox, else a paste — `--text` or stdin, as review comments
+go).
 
 `agent-waiting` / `agent-working` (`agentwaiting.go`): the calling agent
 marks its **own** pane — `$TMUX_PANE`, never an argument — waiting on the

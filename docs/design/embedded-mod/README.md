@@ -96,6 +96,23 @@ and `claude plugin test mods/embedded`. Both need `claude` on PATH and no
 sign-in or network. It is part of the project gate and has a CI job of its
 own, which installs Claude Code with `npm install -g @anthropic-ai/claude-code`.
 
+## The inbox
+
+Every prompt nat sends a live agent (`agent.Tmux.SendPrompt`: `agent-send`,
+triage, notes, the checks nudge, the board's review comments) goes through
+the mod where it can. Each launch sets `NAT_INBOX=<state dir>/agent-inbox/<session>`
+with `new-session -e`; a send writes `<unix nanoseconds>.md` there (temp name
+and rename, directory `0700`, file `0600`; the text never logged) and waits
+up to 3 s for it to go. The mod polls once a second from `session.start`
+(`$.clock.every`): it lists the inbox, and for each file in name order reads
+it, removes it with `rm`, and — only where the removal worked — submits it
+with `$.prompt.submit({ text, asUser: true })`, unawaited. A file still there
+after the wait (no mod: an older Claude Code, a session launched before this
+nat) is removed by nat and pasted instead, so a send arrives once either way;
+a session with no `NAT_INBOX` (a tmux too old for `-e`) is pasted to at once.
+The transcript labels each such prompt as from the `nat-embedded` plugin; the
+model reads it bare, as the user's own words.
+
 ## Agents never know
 
 Nothing in any agent prompt or embedded skill mentions the mod. It changes

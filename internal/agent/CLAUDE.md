@@ -204,14 +204,25 @@ running agent's state.
   `display-message` by pane ID *and* tag — tmux answers one aimed at a
   missing pane with an empty line, not an error. The flag lives on the pane
   alone, so a relaunch starts clear. **A send clears it**: `SendPrompt`,
-  once its keys have gone, reads the session's panes (`list-panes -s`) and
+  once delivered (inbox or paste), reads the session's panes (`list-panes -s`) and
   runs `SetWaiting(pane, false)` on a tagged pane that is waiting — an agent
   just told something is no longer waiting on the user, and every sender
   (`agent-send`, triage, notes, the checks nudge) goes through
   it. A pane not waiting is left alone; a failed clear is logged, never the
   send's error. `SendKeys`/`Interrupt` leave it: an interrupt answers nothing. It's a poll with no timer of its own;
   the caller decides cadence.
-- `SendPrompt` delivers text to a running agent through a **paste buffer**
+- `SendPrompt` delivers through the session's **inbox** first (`inbox.go`):
+  every `Launch`/`LaunchBare` carries `-e NAT_INBOX=<state dir>/agent-inbox/<session>`
+  (`inboxEnvArgs`, under the `-e` gate — the mod gets the whole path, never
+  works out the state dir), and a send reads it back with `show-environment`
+  — none (old tmux, a session from before) pastes at once. Else it writes
+  `<unix nanos>.md` (temp + rename, dir `0700`, file `0600`) and waits
+  `inboxWait` (3 s, polled every 200 ms) for the mod to remove it; not
+  removed, it removes it and pastes. The mod removes **before** submitting
+  and submits only where its `rm` worked, so a file nat took back is never
+  delivered twice. The log says `via` inbox or paste; `clearWaiting` runs on
+  both. Verified live on 2.1.294: a draft in the composer is left as typed.
+- The paste fallback (`pastePrompt`) goes through a **paste buffer**
   (`set-buffer` then `paste-buffer -d -p`), never `send-keys`'s literal mode
   — a multi-line prompt sent key-by-key would submit at the first newline.
   The `Enter` after the paste is what sends the turn; tmux's bracketing is

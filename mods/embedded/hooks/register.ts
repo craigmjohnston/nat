@@ -4,6 +4,7 @@ import type { EngineInterface, Register, StateDollar } from 'claude-code'
 import type { Wait } from '../types'
 
 type Engine = StateDollar & Pick<EngineInterface, 'process' | 'ui'>
+type InboxEngine = Pick<EngineInterface, 'clock' | 'fs' | 'process' | 'prompt' | 'ui'>
 
 // What the mod last wrote on the pane, held by the host so a hot reload (a
 // fresh module) neither forgets a wait it marked nor writes the flag again.
@@ -32,6 +33,47 @@ async function mark($: Engine, to: Wait | null, from?: readonly Wait[]): Promise
   }
 }
 
+// One prompt nat sent, as `nat agent-send` (and every other sender) names it:
+// the send's Unix time in nanoseconds, so name order is send order. A temp
+// file still being written has another name and is never read.
+const inboxFile = /^\d+\.md$/
+
+// Delivers what nat left in this session's inbox (`NAT_INBOX`, set by nat on
+// the launch) as the user's own prompts, each a turn of its own once the
+// session is idle — no composer, so no dialog, permission prompt or draft in
+// the pane can take it. Each file is removed before it is submitted, and only
+// a removal that worked submits: a file nat took back after giving up on the
+// mod (and pasted instead) is never sent twice. `busy` keeps a tick from
+// starting while the last is still at it; a reload starts both afresh.
+// Failures go to the debug log; the next tick tries again.
+function pollInbox($: InboxEngine, dir: string): void {
+  let busy = false
+  $.clock.every(1000, async () => {
+    if (busy) return
+    busy = true
+    try {
+      if (!(await $.fs.exists(dir))) return
+      const names = (await $.fs.list(dir))
+        .filter(entry => entry.kind === 'file' && inboxFile.test(entry.name))
+        .map(entry => entry.name)
+        .sort()
+      for (const name of names) {
+        const path = `${dir}/${name}`
+        const text = await $.fs.read(path)
+        const { exitCode } = await $.process.run(['rm', path], { timeoutMs: 10_000 })
+        if (exitCode !== 0) continue
+        // Resolves once the turn starts: not awaited, so the next file is not
+        // held behind a running turn.
+        void $.prompt.submit({ text, asUser: true })
+      }
+    } catch (err) {
+      $.ui.log(`agent inbox not read: ${String(err)}`, { to: 'debug' })
+    } finally {
+      busy = false
+    }
+  })
+}
+
 // nat's hooks into the Claude Code sessions it launches. Written against the
 // public mods reference and the declarations the installed build writes beside
 // a loaded mod; a hook that fails is skipped and a tree that does not validate
@@ -44,6 +86,14 @@ async function mark($: Engine, to: Wait | null, from?: readonly Wait[]): Promise
 // tree of its own, so Claude Code keeps drawing everything it knows; the
 // mode labels (`SessionMode`) are information and are left alone.
 export const register: Register = on => {
+  // Prompts nat sends this session arrive through its inbox; a session nat
+  // launched with none (an older tmux) is sent them by a paste instead.
+  on('session.start', async ($, e, next) => {
+    const dir = await $.env.get('NAT_INBOX')
+    if (dir) pollInbox($, dir)
+    return next(e)
+  })
+
   // The dim `? for shortcuts` / `esc to interrupt` line under the prompt
   // draws empty. It is also the one visible mark that a session loaded this
   // mod.
