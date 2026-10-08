@@ -186,10 +186,11 @@ struct ClaudeUpdateSheet: View {
     private func outputText(_ text: String) -> some View {
         ScrollView {
             Text(text.trimmingCharacters(in: .whitespacesAndNewlines))
-                .font(.system(size: GnatMetrics.xs, design: .monospaced))
+                .font(Typo.mono(size: GnatMetrics.xs))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .thinScrollers()
         .frame(maxHeight: 120)
         .fixedSize(horizontal: false, vertical: true)
     }
