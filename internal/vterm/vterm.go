@@ -69,26 +69,49 @@ func hangupOn(pty xpty.Pty, err error) (Pty, error) {
 }
 
 // hangupPty is an xpty PTY that drops the parent's copy of the child end once
-// the child holds one of its own.
+// the child has exited and everything it wrote has been read ([hangupPty.HangUp]).
 //
 // xpty keeps both ends open for the PTY's lifetime. With the child end still
 // open here, a read of the parent end never ends — not even once the child has
 // exited — because this process is itself a writer. Closing it is what makes
 // the read report EOF, or EIO on darwin, when the child goes away.
+//
+// It is closed late, not as soon as the child holds a copy of its own: the
+// last close of a PTY's child end discards whatever the child wrote and the
+// parent has not read yet. Closed straight after Start, the child's own exit
+// was that last close, and a short-lived child's output was lost whenever the
+// read pump had not drained it first — under load, `echo` printed nothing.
 type hangupPty struct {
 	xpty.Pty
 }
 
-func (p *hangupPty) Start(cmd *exec.Cmd) error {
-	if err := p.Pty.Start(cmd); err != nil {
-		return err //nolint:wrapcheck // wrapped by the caller
+// drainTimeout bounds how long [hangupPty.HangUp] waits for the parent end to
+// be read empty: nothing reads it once the Session is closed. A var so tests
+// need not wait it out.
+var drainTimeout = time.Second
+
+// HangUp closes the parent's copy of the child end once the parent end has
+// nothing left to read — or drainTimeout has passed, or the PTY is closed —
+// so the read pump takes every byte the child wrote before its read ends. Run
+// once the child has exited, when nothing more can arrive.
+func (p *hangupPty) HangUp() {
+	u, ok := p.Pty.(*xpty.UnixPty)
+	if !ok {
+		return
 	}
-	if unix, ok := p.Pty.(*xpty.UnixPty); ok {
-		// The child has its own descriptors for this by now; Close below
-		// closes it a second time and says so, which is not worth reporting.
-		_ = unix.Slave().Close()
+	deadline := time.Now().Add(drainTimeout)
+	for readable(u) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
 	}
-	return nil
+	// Close below closes it a second time and says so, which is not worth
+	// reporting.
+	_ = u.Slave().Close()
+}
+
+// hangUpper is a PTY whose child end the parent holds until [Session] says
+// the child has gone; a fake PTY has none.
+type hangUpper interface {
+	HangUp()
 }
 
 // waitProcess reaps a started command. A package var so tests can substitute a
@@ -112,6 +135,13 @@ type Session struct {
 
 	output chan struct{}
 	done   chan struct{}
+
+	// exited is closed once waitProcess has returned for the child — the
+	// child reaped; waitCtx is the context it waits under, cancelled by reap
+	// to give up on a child that will not exit.
+	exited     chan struct{}
+	waitCtx    context.Context
+	waitCancel context.CancelFunc
 
 	closeOnce sync.Once
 
@@ -144,7 +174,9 @@ func Start(cmd *exec.Cmd, cols, rows int, bg, fg color.Color) (*Session, error) 
 		emu:    vt.NewSafeEmulator(cols, rows),
 		output: make(chan struct{}, 1),
 		done:   make(chan struct{}),
+		exited: make(chan struct{}),
 	}
+	s.waitCtx, s.waitCancel = context.WithCancel(context.Background())
 	s.cursorVisible.Store(true)
 	s.emu.SetCallbacks(vt.Callbacks{
 		CursorVisibility: s.cursorVisible.Store,
@@ -153,9 +185,11 @@ func Start(cmd *exec.Cmd, cols, rows int, bg, fg color.Color) (*Session, error) 
 	s.emu.SetDefaultForegroundColor(fg)
 
 	if err := pty.Start(cmd); err != nil {
+		s.waitCancel()
 		_ = pty.Close()
 		return nil, fmt.Errorf("vterm: start command: %w", err)
 	}
+	go s.watchExit()
 
 	// The reply pump goes first: it must already be draining the emulator's
 	// input pipe before the read pump feeds the child's first startup query
@@ -231,27 +265,33 @@ func normalExit(err error) bool {
 		errors.Is(err, os.ErrClosed)
 }
 
-// reap waits for the child to exit, and kills it if it will not within
-// reapTimeout of its PTY going quiet. A Session over a fake PTY may have no
-// started process at all.
-func (s *Session) reap() {
+// watchExit reaps the child as soon as it exits, then hangs the PTY up
+// ([hangupPty.HangUp]) so the read pump's read ends once it has taken
+// everything the child wrote. A Session over a fake PTY may have no started
+// process at all.
+func (s *Session) watchExit() {
+	defer close(s.exited)
 	if s.cmd == nil || s.cmd.Process == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), reapTimeout)
-	defer cancel()
+	_ = waitProcess(s.waitCtx, s.cmd)
+	if h, ok := s.pty.(hangUpper); ok {
+		h.HangUp()
+	}
+}
 
-	waited := make(chan struct{})
-	go func() {
-		defer close(waited)
-		_ = waitProcess(ctx, s.cmd)
-	}()
-
+// reap waits for the child to have exited, and kills it if it has not within
+// reapTimeout of its PTY going quiet.
+func (s *Session) reap() {
+	defer s.waitCancel()
 	select {
-	case <-waited:
-	case <-ctx.Done():
-		_ = s.cmd.Process.Kill()
-		<-waited
+	case <-s.exited:
+	case <-time.After(reapTimeout):
+		s.waitCancel()
+		if s.cmd != nil && s.cmd.Process != nil {
+			_ = s.cmd.Process.Kill()
+		}
+		<-s.exited
 	}
 }
 

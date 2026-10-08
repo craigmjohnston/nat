@@ -7,11 +7,17 @@ only caller.
 
 ## Hard-won gotchas — do not "simplify" these away
 
-- After `Pty.Start`, close the parent's copy of the PTY's child (slave) end
-  immediately (`hangupPty.Start` does this). xpty keeps both ends open for the
-  PTY's lifetime; if the parent keeps its copy, a read of the parent end never
-  reports EOF/EIO even after the child exits, because this process is itself
-  still a writer.
+- The parent must close its copy of the PTY's child (slave) end, or a read
+  of the parent end never reports EOF/EIO even after the child exits (xpty
+  keeps both ends open; this process is itself still a writer) — but **not
+  straight after `Start`**: the last close of the child end discards output
+  the parent has not read, so a short-lived child's output (`echo`) was lost
+  under load whenever its own exit was that last close. `Session.watchExit`
+  reaps the child as soon as it exits, then `hangupPty.HangUp` waits until
+  the parent end polls empty (`readable`, zero-timeout `unix.Poll` through
+  `Control` — never `Fd()`, which makes the descriptor blocking), bounded by
+  `drainTimeout`, and only then closes it. `reap` waits for that exit and
+  kills after `reapTimeout` (cancelling `waitCtx`).
 - Read the screen only through `Session.Render()`. The emulator's own
   `Draw`/`Touched` damage-tracking goes nil across a resize, so anything built
   on it silently stops updating.
