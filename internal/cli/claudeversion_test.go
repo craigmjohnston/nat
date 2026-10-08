@@ -15,39 +15,55 @@ import (
 )
 
 // claudeVersionFixture points every seam claude-version has at fakes: claude
-// answers installed (or fails with runErr), the feed answers feedBody with
-// feedStatus and counts its hits, the cache lives in a temp dir, the clock is
-// pinned. It returns the hit counter, the cache path and a way to move the
-// clock.
+// answers installed (or fails with runErr) from a native install's path, the
+// feed answers feedBody with feedStatus and the stable pointer *stable, each
+// counting its hits, the user's settings and the cache live in a temp dir,
+// the clock is pinned.
 type claudeVersionFixture struct {
-	hits      *int
-	cachePath string
-	now       *time.Time
-	ran       *[][]string
+	hits         *int
+	stableHits   *int
+	stable       *string
+	cachePath    string
+	cacheDir     string
+	settingsPath string
+	now          *time.Time
+	ran          *[][]string
 }
 
 func newClaudeVersionFixture(t *testing.T, installed string, runErr error, feedStatus int, feedBody string) claudeVersionFixture {
 	t.Helper()
-	hits := 0
+	hits, stableHits := 0, 0
+	stable := "2.1.286\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
 		if r.Header.Get("Authorization") != "" {
-			t.Errorf("feed read carried an Authorization header")
+			t.Errorf("release read carried an Authorization header")
 		}
+		if r.URL.Path == "/stable" {
+			stableHits++
+			_, _ = w.Write([]byte(stable))
+			return
+		}
+		hits++
 		w.WriteHeader(feedStatus)
 		_, _ = w.Write([]byte(feedBody))
 	}))
 	t.Cleanup(srv.Close)
 
-	cachePath := filepath.Join(t.TempDir(), "state", "claude-version.json")
+	cacheDir := filepath.Join(t.TempDir(), "state")
+	cachePath := filepath.Join(cacheDir, "claude-version-latest.json")
+	settingsPath := filepath.Join(t.TempDir(), "settings.json")
 	now := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
 	var ran [][]string
 
-	oldURL, oldNow, oldRun, oldPath, oldClaude := claudeLatestURL, claudeVersionNow, claudeRun, claudeVersionCachePath, claudePath
+	oldURL, oldStable, oldNow, oldRun, oldPath, oldClaude, oldSettings :=
+		claudeLatestURL, claudeStableURL, claudeVersionNow, claudeRun, claudeVersionCachePath, claudePath, claudeSettingsPath
 	t.Cleanup(func() {
-		claudeLatestURL, claudeVersionNow, claudeRun, claudeVersionCachePath, claudePath = oldURL, oldNow, oldRun, oldPath, oldClaude
+		claudeLatestURL, claudeStableURL, claudeVersionNow, claudeRun, claudeVersionCachePath, claudePath, claudeSettingsPath =
+			oldURL, oldStable, oldNow, oldRun, oldPath, oldClaude, oldSettings
 	})
-	claudeLatestURL = srv.URL
+	claudeLatestURL = srv.URL + "/releases/latest"
+	claudeStableURL = srv.URL + "/stable"
+	claudeSettingsPath = func() (string, error) { return settingsPath, nil }
 	claudeVersionNow = func() time.Time { return now }
 	claudeRun = func(_ context.Context, name string, args ...string) (string, error) {
 		ran = append(ran, append([]string{name}, args...))
@@ -55,8 +71,13 @@ func newClaudeVersionFixture(t *testing.T, installed string, runErr error, feedS
 	}
 	// A native install unless a test says Homebrew.
 	claudePath = func() (string, error) { return "/Users/x/.local/share/claude/versions/2.1.294", nil }
-	claudeVersionCachePath = func() (string, error) { return cachePath, nil }
-	return claudeVersionFixture{hits: &hits, cachePath: cachePath, now: &now, ran: &ran}
+	claudeVersionCachePath = func(channel string) (string, error) {
+		return filepath.Join(cacheDir, "claude-version-"+channel+".json"), nil
+	}
+	return claudeVersionFixture{
+		hits: &hits, stableHits: &stableHits, stable: &stable, cachePath: cachePath, cacheDir: cacheDir,
+		settingsPath: settingsPath, now: &now, ran: &ran,
+	}
 }
 
 func runClaudeVersion(t *testing.T) string {
@@ -199,7 +220,7 @@ func TestClaudeVersionCorruptCache(t *testing.T) {
 // answer still given.
 func TestClaudeVersionNoCacheDir(t *testing.T) {
 	f := newClaudeVersionFixture(t, "2.1.294\n", nil, http.StatusOK, `{"tag_name":"v2.1.295"}`)
-	claudeVersionCachePath = func() (string, error) { return "", errors.New("no home") }
+	claudeVersionCachePath = func(string) (string, error) { return "", errors.New("no home") }
 	runClaudeVersion(t)
 	runClaudeVersion(t)
 	if *f.hits != 2 {
@@ -215,7 +236,7 @@ func TestClaudeVersionCacheUnwritable(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.cachePath = filepath.Join(blocker, "claude-version.json")
-	claudeVersionCachePath = func() (string, error) { return f.cachePath, nil }
+	claudeVersionCachePath = func(string) (string, error) { return f.cachePath, nil }
 	if got := runClaudeVersion(t); !strings.Contains(got, `"latest": "2.1.295"`) {
 		t.Errorf("output = %s", got)
 	}
@@ -254,12 +275,21 @@ func TestClaudeVersionDefaults(t *testing.T) {
 	prev := stateDir
 	t.Cleanup(func() { stateDir = prev })
 	stateDir = func() (string, error) { return "/state", nil }
-	if got, err := claudeVersionCachePath(); err != nil || got != "/state/claude-version.json" {
+	if got, err := claudeVersionCachePath("stable"); err != nil || got != "/state/claude-version-stable.json" {
 		t.Errorf("claudeVersionCachePath() = %q, %v", got, err)
 	}
 	stateDir = func() (string, error) { return "", errors.New("no home") }
-	if _, err := claudeVersionCachePath(); err == nil {
+	if _, err := claudeVersionCachePath("latest"); err == nil {
 		t.Error("an unresolvable state directory resolved")
+	}
+
+	t.Setenv("HOME", "/home/x")
+	if got, err := claudeSettingsPath(); err != nil || got != "/home/x/.claude/settings.json" {
+		t.Errorf("claudeSettingsPath() = %q, %v", got, err)
+	}
+	t.Setenv("HOME", "")
+	if _, err := claudeSettingsPath(); err == nil {
+		t.Error("claudeSettingsPath() resolved with no home")
 	}
 
 	bin := t.TempDir()
@@ -393,5 +423,119 @@ func TestClaudeUpdateFailure(t *testing.T) {
 	err := Run(context.Background(), []string{"claude-update", "--json"}, Env{Out: &bytes.Buffer{}})
 	if err == nil || !strings.Contains(err.Error(), "permission denied") {
 		t.Errorf("err = %v, want claude's own words", err)
+	}
+}
+
+// A Homebrew stable cask reads the stable pointer as latest; the
+// claude-code@latest cask reads the release feed as before.
+func TestClaudeVersionChannelByCask(t *testing.T) {
+	f := newClaudeVersionFixture(t, "2.1.285\n", nil, http.StatusOK, `{"tag_name":"v2.1.294"}`)
+	claudePath = func() (string, error) { return "/opt/homebrew/Caskroom/claude-code/2.1.285/claude", nil }
+	want := "{\n  \"installed\": \"2.1.285\",\n  \"latest\": \"2.1.286\",\n  \"update_available\": true\n}\n"
+	if got := runClaudeVersion(t); got != want {
+		t.Errorf("stable cask: output = %q, want %q", got, want)
+	}
+	if *f.stableHits != 1 || *f.hits != 0 {
+		t.Errorf("stable hits = %d, feed hits = %d, want 1 and 0", *f.stableHits, *f.hits)
+	}
+
+	claudePath = func() (string, error) { return "/opt/homebrew/Caskroom/claude-code@latest/2.1.285/claude", nil }
+	if got := runClaudeVersion(t); !strings.Contains(got, `"latest": "2.1.294"`) {
+		t.Errorf("latest cask: output = %s, want the feed's 2.1.294", got)
+	}
+	if *f.hits != 1 {
+		t.Errorf("feed hits = %d, want 1", *f.hits)
+	}
+
+	// Each channel's answer is cached apart, and read back within the hour.
+	for channel, want := range map[string]string{"stable": "2.1.286", "latest": "2.1.294"} {
+		data, err := os.ReadFile(filepath.Join(f.cacheDir, "claude-version-"+channel+".json"))
+		var cached claudeVersionCache
+		if err != nil || json.Unmarshal(data, &cached) != nil || cached.Latest != want {
+			t.Errorf("%s cache = %s (%v), want %s", channel, data, err, want)
+		}
+	}
+	claudePath = func() (string, error) { return "/opt/homebrew/Caskroom/claude-code/2.1.285/claude", nil }
+	if got := runClaudeVersion(t); !strings.Contains(got, `"latest": "2.1.286"`) || *f.stableHits != 1 {
+		t.Errorf("cached stable: output = %s, stable hits %d", got, *f.stableHits)
+	}
+}
+
+// Any other install takes its channel from autoUpdatesChannel; only "stable"
+// is stable, anything else — or settings that will not parse, or none — is
+// latest.
+func TestClaudeVersionChannelBySettings(t *testing.T) {
+	for _, tt := range []struct {
+		name, settings, want string
+	}{
+		{"stable", `{"autoUpdatesChannel": "stable"}`, "stable"},
+		{"latest", `{"autoUpdatesChannel": "latest"}`, "latest"},
+		{"unset", `{}`, "latest"},
+		{"unparseable", `{`, "latest"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newClaudeVersionFixture(t, "2.1.285\n", nil, http.StatusOK, `{"tag_name":"v2.1.294"}`)
+			if err := os.WriteFile(f.settingsPath, []byte(tt.settings), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if got := claudeChannel(); got != tt.want {
+				t.Errorf("claudeChannel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+	t.Run("no settings file", func(t *testing.T) {
+		newClaudeVersionFixture(t, "2.1.285\n", nil, http.StatusOK, `{}`)
+		if got := claudeChannel(); got != "latest" {
+			t.Errorf("claudeChannel() = %q, want latest", got)
+		}
+	})
+	t.Run("no home", func(t *testing.T) {
+		newClaudeVersionFixture(t, "2.1.285\n", nil, http.StatusOK, `{}`)
+		claudeSettingsPath = func() (string, error) { return "", errors.New("no home") }
+		if got := claudeChannel(); got != "latest" {
+			t.Errorf("claudeChannel() = %q, want latest", got)
+		}
+	})
+	t.Run("no claude on PATH", func(t *testing.T) {
+		f := newClaudeVersionFixture(t, "2.1.285\n", nil, http.StatusOK, `{}`)
+		claudePath = func() (string, error) { return "", errors.New("not found") }
+		if err := os.WriteFile(f.settingsPath, []byte(`{"autoUpdatesChannel": "stable"}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := claudeChannel(); got != "stable" {
+			t.Errorf("claudeChannel() = %q, want stable", got)
+		}
+	})
+}
+
+// A stable pointer that answers no version, or fails, leaves latest out.
+func TestClaudeVersionStableUnreadable(t *testing.T) {
+	for _, body := range []string{"", "<html>\n"} {
+		f := newClaudeVersionFixture(t, "2.1.285\n", nil, http.StatusOK, `{}`)
+		claudePath = func() (string, error) { return "/opt/homebrew/Caskroom/claude-code/2.1.285/claude", nil }
+		*f.stable = body
+		if got := runClaudeVersion(t); strings.Contains(got, "latest") {
+			t.Errorf("body %q: output = %s, want latest left out", body, got)
+		}
+	}
+	newClaudeVersionFixture(t, "2.1.285\n", nil, http.StatusOK, `{}`)
+	claudePath = func() (string, error) { return "/opt/homebrew/Caskroom/claude-code/2.1.285/claude", nil }
+	claudeStableURL = "http://127.0.0.1:0/stable"
+	if got := runClaudeVersion(t); strings.Contains(got, "latest") {
+		t.Errorf("unreachable: output = %s, want latest left out", got)
+	}
+}
+
+// A body cut short mid-read fails the read rather than answering half of it.
+func TestClaudeVersionTruncatedBody(t *testing.T) {
+	newClaudeVersionFixture(t, "2.1.285\n", nil, http.StatusOK, `{}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		_, _ = w.Write([]byte(`{"tag`))
+	}))
+	t.Cleanup(srv.Close)
+	claudeLatestURL = srv.URL
+	if got := runClaudeVersion(t); strings.Contains(got, "latest") {
+		t.Errorf("output = %s, want latest left out", got)
 	}
 }

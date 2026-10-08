@@ -17,9 +17,20 @@ import (
 )
 
 // claudeLatestURL is the release feed `claude-version` reads the newest
-// Claude Code from: one unauthenticated GitHub REST read, no gh and no token.
-// A var so tests point it at an httptest server.
+// Claude Code on the latest channel from: one unauthenticated GitHub REST
+// read, no gh and no token. A var so tests point it at an httptest server.
 var claudeLatestURL = "https://api.github.com/repos/anthropics/claude-code/releases/latest"
+
+// claudeStableURL is the stable channel's pointer — the plain-text version
+// the native installer itself reads for `stable`, about a week behind latest.
+// One unauthenticated read. A var so tests point it at an httptest server.
+var claudeStableURL = "https://downloads.claude.ai/claude-code-releases/stable"
+
+// The two release channels Claude Code updates along.
+const (
+	channelLatest = "latest"
+	channelStable = "stable"
+)
 
 // claudeVersionHTTP is the client that feed is read through; its timeout
 // keeps a slow network from holding gnat's read open.
@@ -63,15 +74,57 @@ func homebrewCask(path string) string {
 	return cask
 }
 
-// claudeVersionCachePath is where the latest version read off the feed is
-// kept: `<state dir>/claude-version.json`, beside the pr-status reading. A
-// var so tests point it at a throwaway directory.
-var claudeVersionCachePath = func() (string, error) {
+// claudeSettingsPath is the user's Claude Code settings file, where a
+// non-Homebrew install's `autoUpdatesChannel` lives. A var so tests say where.
+var claudeSettingsPath = func() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".claude", "settings.json"), nil
+}
+
+// claudeChannel is the release channel this install updates along, as Claude
+// Code itself decides it: a Homebrew install by its cask's name (`claude-code`
+// is stable, `claude-code@latest` latest), any other by `autoUpdatesChannel`
+// in the user's settings. Anything unread or unrecognised is latest, Claude
+// Code's own default.
+func claudeChannel() string {
+	if path, err := claudePath(); err == nil {
+		if cask := homebrewCask(path); cask != "" {
+			if cask == "claude-code" {
+				return channelStable
+			}
+			return channelLatest
+		}
+	}
+	path, err := claudeSettingsPath()
+	if err != nil {
+		return channelLatest
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return channelLatest
+	}
+	var settings struct {
+		AutoUpdatesChannel string `json:"autoUpdatesChannel"`
+	}
+	if json.Unmarshal(data, &settings) != nil || settings.AutoUpdatesChannel != channelStable {
+		return channelLatest
+	}
+	return channelStable
+}
+
+// claudeVersionCachePath is where the newest version read for channel is
+// kept: `<state dir>/claude-version-<channel>.json`, beside the pr-status
+// reading — one file a channel, so the two answers never mix. A var so tests
+// point it at a throwaway directory.
+var claudeVersionCachePath = func(channel string) (string, error) {
 	dir, err := stateDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "claude-version.json"), nil
+	return filepath.Join(dir, "claude-version-"+channel+".json"), nil
 }
 
 // claudeVersionCache is the cache file's shape: the feed's latest version
@@ -141,11 +194,18 @@ func installedClaude(ctx context.Context) string {
 	return fields[0]
 }
 
-// latestClaude is the newest Claude Code release: the cache's where it was
-// read within [claudeVersionTTL], else the feed's, written back to the cache.
-// A failed feed read answers "" and leaves the cache as it was.
+// latestClaude is the newest Claude Code release on this install's channel
+// ([claudeChannel]): the cache's where it was read within
+// [claudeVersionTTL], else the channel's source's — the release feed for
+// latest, the stable pointer for stable — written back to the cache. A failed
+// read answers "" and leaves the cache as it was.
 func latestClaude(ctx context.Context) string {
-	path, pathErr := claudeVersionCachePath()
+	channel := claudeChannel()
+	read := readLatestClaude
+	if channel == channelStable {
+		read = readStableClaude
+	}
+	path, pathErr := claudeVersionCachePath(channel)
 	if pathErr == nil {
 		if data, err := os.ReadFile(path); err == nil {
 			var cached claudeVersionCache
@@ -155,9 +215,9 @@ func latestClaude(ctx context.Context) string {
 			}
 		}
 	}
-	latest, err := readLatestClaude(ctx)
+	latest, err := read(ctx)
 	if err != nil {
-		logging.Error("read the latest Claude Code release", "err", err)
+		logging.Error("read the newest Claude Code release", "channel", channel, "err", err)
 		return ""
 	}
 	if pathErr == nil {
@@ -173,25 +233,47 @@ func latestClaude(ctx context.Context) string {
 	return latest
 }
 
-// readLatestClaude reads the release feed's tag_name, without its leading v.
-func readLatestClaude(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, claudeLatestURL, nil)
+// fetchClaudeRelease is one unauthenticated GET of url, its body where it
+// answered 200.
+func fetchClaudeRelease(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := claudeVersionHTTP.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("release feed answered %s", resp.Status)
+		return nil, fmt.Errorf("%s answered %s", url, resp.Status)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+// readStableClaude reads the stable pointer: a bare version, one line.
+func readStableClaude(ctx context.Context) (string, error) {
+	body, err := fetchClaudeRelease(ctx, claudeStableURL)
+	if err != nil {
+		return "", err
+	}
+	stable := strings.TrimSpace(string(body))
+	if stable == "" || stable[0] < '0' || stable[0] > '9' {
+		return "", fmt.Errorf("stable pointer carried no version: %.40q", stable)
+	}
+	return stable, nil
+}
+
+// readLatestClaude reads the release feed's tag_name, without its leading v.
+func readLatestClaude(ctx context.Context) (string, error) {
+	body, err := fetchClaudeRelease(ctx, claudeLatestURL)
+	if err != nil {
+		return "", err
 	}
 	var release struct {
 		TagName string `json:"tag_name"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+	if err := json.Unmarshal(body, &release); err != nil {
 		return "", fmt.Errorf("parse release feed: %w", err)
 	}
 	latest := strings.TrimPrefix(strings.TrimSpace(release.TagName), "v")

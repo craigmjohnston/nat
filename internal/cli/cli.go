@@ -277,8 +277,8 @@ usage:
                       detached session; prints nothing read where no window
                       is available
   nat claude-version [--json]
-                      the installed Claude Code and the newest released,
-                      the latter read off GitHub's release feed at most
+                      the installed Claude Code and the newest released on
+                      its own channel (latest or stable), read at most
                       hourly; a side not read is left out
   nat claude-update [--json]
                       update Claude Code — brew upgrade <cask> for a
