@@ -698,8 +698,8 @@ Notion. A task launched with no repository on a project with none — a
 source project's — starts in the home directory with no worktree cut and no
 git read, and its prompt tells the agent to work the repository out from
 the card's facts and links (asking the user in the terminal where it
-cannot tell), record it with `slice-repo`, and cut the slice's worktree
-itself by nat's own naming. From then on relaunch, approve, merge and the
+cannot tell), record it with `slice-repo`, which cuts the slice's worktree there
+and prints its path. From then on relaunch, approve, merge and the
 merge's worktree removal all find it through the task's `Repo`. `--json` prints the project as `--local` does, with
 `"backend": "source"` and `"source": "<plugin name>"`.
 

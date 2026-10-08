@@ -17,10 +17,9 @@ project's one checkout with every other agent and the user.
   not beside whichever worktree nat happened to be launched from.
 - This is nat's own rule, not git's, and it must be re-derivable on every
   relaunch — a relaunch has to arrive at the exact same path a first launch
-  did. `skills/next-slice` re-implements this same `pathSlug`/`dirSuffix`
-  rule in plain git (see root CLAUDE.md and `skills/next-slice/SKILL.md`) —
-  that duplication is deliberate, not an oversight: a skill is read by an
-  agent, not compiled, so it cannot import this package.
+  did. It is spelled here alone: an agent cutting its own worktree runs `nat
+  slice-worktree` or `nat slice-repo` (`actions.EnsureWorktree`) rather
+  than following prose (see root CLAUDE.md).
 
 ## Operations
 

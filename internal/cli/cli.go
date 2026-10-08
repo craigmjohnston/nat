@@ -603,7 +603,13 @@ usage:
   nat slice-repo <slice> --repo PATH [--json] --project ID
                       record the repository a Todo slice, or one you claimed,
                       is worked in — what a source project's agent does once
-                      it has worked out which repository its card is about
+                      it has worked out which repository its card is about —
+                      then find or cut the slice's worktree there, as
+                      slice-worktree does, and print its path
+  nat slice-worktree <slice> [--repo PATH] [--json] --project ID
+                      print the path of a slice's worktree, cutting it first
+                      where there is none, exactly as a launch does: in --repo,
+                      else the slice's repository, else the project's
   nat slice-note <slice> --note TEXT|- [--from SLICE] [--milestone NAME] --project ID
                       append a note to a Todo or in-progress slice's brief, for
                       whoever works it later: the slice named by name (with
@@ -855,6 +861,8 @@ func runCommand(ctx context.Context, args []string, env Env) error {
 		return sliceVisuals(ctx, args[1:], env)
 	case "slice-repo":
 		return sliceRepoCmd(ctx, args[1:], env)
+	case "slice-worktree":
+		return sliceWorktreeCmd(ctx, args[1:], env)
 	case "slice-note":
 		return sliceNote(ctx, args[1:], env)
 	case "slice-checks":

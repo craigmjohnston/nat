@@ -187,18 +187,55 @@ func placeOnBranch(w Worktrees, r Repo, dir, branch, errPrefix, outsideRepoNote 
 	if !InRepo(dir) {
 		return Placement{Dir: dir, Toast: dir + " is not a git repository — " + outsideRepoNote, Sev: SevWarning, OK: true}
 	}
-	// A branch git has no worktree for is the ordinary case — nobody has
-	// worked it yet — so a failure here is not read at all: it is the cut
-	// below that says whether the agent can be placed.
-	if path, err := w.Path(dir, branch); err == nil {
-		return Placement{Dir: path, Branch: branch, Repo: dir, OK: true}
-	}
-	r.Fetch(dir)
-	path, err := w.Create(dir, branch, r.Base(dir))
+	path, _, err := worktreeOn(w, r, dir, branch)
 	if err != nil {
 		return Placement{Toast: fmt.Sprintf("%s: %v.", errPrefix, err), Sev: SevError}
 	}
 	return Placement{Dir: path, Branch: branch, Repo: dir, OK: true}
+}
+
+// worktreeOn is branch's worktree in the repository at dir: the one it already
+// has, or a fresh one cut after a fetch from [Repo.Base] — created says which.
+// A branch git has no worktree for is the ordinary case — nobody has worked it
+// yet — so a failed look-up is not read at all: it is the cut that says
+// whether there is a worktree, and a git that refuses it is the error, in
+// git's own words.
+func worktreeOn(w Worktrees, r Repo, dir, branch string) (path string, created bool, err error) {
+	if path, err := w.Path(dir, branch); err == nil {
+		return path, false, nil
+	}
+	r.Fetch(dir)
+	path, err = w.Create(dir, branch, r.Base(dir))
+	if err != nil {
+		return "", false, err
+	}
+	return path, true, nil
+}
+
+// SliceWorktree is where a slice's worktree is, as `nat slice-worktree` and
+// `nat slice-repo` report it: its path, its branch ([AgentBranch]), the base
+// the repository's slices are cut from and measured against, and whether this
+// call cut it.
+type SliceWorktree struct {
+	Path    string `json:"path"`
+	Branch  string `json:"branch"`
+	Base    string `json:"base"`
+	Created bool   `json:"created"`
+}
+
+// EnsureWorktree finds s's worktree in the repository at dir, or cuts it
+// exactly as a launch's [PlaceAgent] does — the one statement of nat's
+// branch-and-worktree naming an agent cutting its own reaches, so no prompt
+// or skill has to spell it out. Unlike a launch it has no shared checkout to
+// fall back to: a directory that is no git repository is git's refusal like
+// any other, and the error.
+func EnsureWorktree(w Worktrees, r Repo, dir string, s domain.Slice) (SliceWorktree, error) {
+	branch := AgentBranch(s)
+	path, created, err := worktreeOn(w, r, dir, branch)
+	if err != nil {
+		return SliceWorktree{}, err
+	}
+	return SliceWorktree{Path: path, Branch: branch, Base: r.Base(dir), Created: created}, nil
 }
 
 // InRepo reports whether dir is inside a git working tree, by git's own

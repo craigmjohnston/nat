@@ -348,3 +348,35 @@ func equalCalls(got, want []worktreeCall) bool {
 	}
 	return true
 }
+
+// EnsureWorktree is a launch's placement with nothing to fall back to: the
+// worktree the slice's branch has, else a fresh cut after a fetch, and a cut
+// git refuses the error — reported with the base either way.
+func TestEnsureWorktree(t *testing.T) {
+	s := domain.Slice{Name: "Info view", Branch: "slice/pushed"}
+
+	w := &fakeWorktrees{existing: map[string]string{"slice/pushed": "/repos/nat-pushed"}}
+	r := &fakeRepo{base: "origin/main"}
+	got, err := EnsureWorktree(w, r, "/repos/nat", s)
+	if err != nil || got != (SliceWorktree{Path: "/repos/nat-pushed", Branch: "slice/pushed", Base: "origin/main"}) {
+		t.Errorf("reuse = %+v, %v", got, err)
+	}
+	if len(r.fetches) != 0 {
+		t.Errorf("fetches = %v, want none for a worktree already there", r.fetches)
+	}
+
+	w = &fakeWorktrees{}
+	got, err = EnsureWorktree(w, r, "/repos/nat", s)
+	if err != nil || got != (SliceWorktree{Path: filepath.Join("/repos/nat-worktrees", "slice/pushed"),
+		Branch: "slice/pushed", Base: "origin/main", Created: true}) {
+		t.Errorf("cut = %+v, %v", got, err)
+	}
+	if len(r.fetches) != 1 {
+		t.Errorf("fetches = %v, want one before the cut", r.fetches)
+	}
+
+	w = &fakeWorktrees{createErr: &worktree.ExitError{Code: 128, Stderr: "fatal: not a git repository\n"}}
+	if _, err := EnsureWorktree(w, r, "/repos/nat", s); err == nil || err.Error() != "fatal: not a git repository" {
+		t.Errorf("refusal = %v, want git's words", err)
+	}
+}
