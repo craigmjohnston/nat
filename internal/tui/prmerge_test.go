@@ -266,12 +266,13 @@ func TestMergeSectionFitsTheWidth(t *testing.T) {
 	}
 }
 
-// TestMergeRefusalMergeStateGate mirrors GitHub's merge button: only CLEAN,
-// HAS_HOOKS and UNSTABLE go through; everything else refuses with a named
-// reason. internal/actions/mergerefusal_test.go and macos's PRPresentationTests
+// TestMergeRefusalMergeStateGate pins the gate: only what GitHub positively
+// says stands in the way refuses — a mergeability still being worked out
+// does not, checks still running always do. internal/actions/mergerefusal_test.go and macos's PRPresentationTests
 // carry the same table.
 func TestMergeRefusalMergeStateGate(t *testing.T) {
 	pendingChecks := []gh.Check{{Name: "build", State: "IN_PROGRESS"}}
+	greenChecks := []gh.Check{{Name: "build", State: "SUCCESS"}}
 	tests := []struct {
 		name string
 		pr   gh.PR
@@ -288,8 +289,17 @@ func TestMergeRefusalMergeStateGate(t *testing.T) {
 		{"dirty", gh.PR{MergeStateStatus: "DIRTY", BaseRefName: "main"}, "mergeable: conflicting with main"},
 		{"draft state", gh.PR{MergeStateStatus: "DRAFT"}, "draft: mark the pull request ready for review"},
 		{"draft flag", gh.PR{MergeStateStatus: "CLEAN", IsDraft: true}, "draft: mark the pull request ready for review"},
-		{"empty", gh.PR{}, "mergeable: mergeability unknown"},
-		{"unknown", gh.PR{MergeStateStatus: "UNKNOWN"}, "mergeable: mergeability unknown"},
+		{"empty", gh.PR{}, ""},
+		{"unknown", gh.PR{MergeStateStatus: "UNKNOWN"}, ""},
+		{"a state this build does not know", gh.PR{MergeStateStatus: "SOMEHOW"}, ""},
+		{"unknown mergeable, green checks", gh.PR{Mergeable: "UNKNOWN", MergeStateStatus: "UNKNOWN", Checks: greenChecks}, ""},
+		{"empty state, green checks", gh.PR{Mergeable: "MERGEABLE", Checks: greenChecks}, ""},
+		{"blocked by mergeability alone", gh.PR{MergeStateStatus: "BLOCKED", Mergeable: "UNKNOWN", Checks: greenChecks}, ""},
+		{"blocked by review, mergeability unknown", gh.PR{MergeStateStatus: "BLOCKED", Mergeable: "UNKNOWN", ReviewDecision: "REVIEW_REQUIRED"}, "blocked by review: review required"},
+		{"checks running, state unknown", gh.PR{Mergeable: "UNKNOWN", MergeStateStatus: "UNKNOWN", Checks: pendingChecks}, "checks: 1 pending"},
+		{"review required, state unknown", gh.PR{MergeStateStatus: "UNKNOWN", ReviewDecision: "REVIEW_REQUIRED"}, "review: review required"},
+		{"conflicting", gh.PR{Mergeable: "CONFLICTING", MergeStateStatus: "UNKNOWN", BaseRefName: "main"}, "mergeable: conflicting with main"},
+		{"changes requested", gh.PR{MergeStateStatus: "UNKNOWN", ReviewDecision: "CHANGES_REQUESTED"}, "review: changes requested"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

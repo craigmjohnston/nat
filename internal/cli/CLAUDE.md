@@ -416,7 +416,9 @@ the requested, a failed collaborator listing `candidates_error`, never
 result, `{pr, added, removed}`, reading nothing back),
 `pr-merge` (re-reads the PR through one batched reading of it alone —
 `readOnePR`, 1 point, no `gh pr view` — applies
-`actions.MergeRefusal` before ever calling `gh pr merge`, marks Done on
+`actions.MergeRefusal` before ever calling `gh pr merge` — a mergeability
+GitHub is still working out refuses nothing there, so gh is asked and its
+own refusal relayed verbatim — marks Done on
 success — the merge landed regardless of whether this last write does, so
 its own failure says so rather than pretending the merge never happened —
 then `actions.RemoveSliceWorktree`),

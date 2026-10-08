@@ -172,7 +172,12 @@ primary and sends at once, `sendBackReason` its note, no editor. The action
 it replaced sits behind a chevron (`NavigatorBarButton.alternatives`, a
 `HeaderSplitButton`) only where it could still go — Approve while
 approvable, Merge never with a conflict and only while `canMerge` (which a
-failing check already refuses). Sending is
+failing check already refuses). Merge PR's gate is `mergeRefusal`
+(`PRPresentation.swift`, hand-mirrored with the Go copies): only what GitHub
+positively says stands in the way greys it — checks still running do, a
+mergeability still being worked out (`UNKNOWN`, `BLOCKED` on that alone)
+does not; the click then attempts the merge and shows nat's refusal, if any
+(story `action-bar-merge-mergeability-unknown`). Sending is
 `AppModel.sendBack`, the one-shot `.sendBack` (no stage advance; the view puts
 the terminal up once it has gone): **the record first** — `nat slice-resume
 --note -` (stamped `Resumed`, then the Branch cleared) — then a live agent is

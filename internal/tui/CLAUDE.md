@@ -85,7 +85,9 @@ directly; check each file, don't assume every one routes through `actions`.
   what GitHub last said is stale.
 - `m` (`prmergeflow.go`) asks on the merge box itself (`PRView`'s own
   `rowPrompt`), refuses on the first failing verdict in `mergeRefusal`'s
-  wording, and on success marks the slice Done directly (not via a
+  wording (and on what GitHub positively says still stands in the way —
+  never on a mergeability it is still working out, which the merge box still
+  draws as "mergeability unknown", pending), and on success marks the slice Done directly (not via a
   background poll) — see root CLAUDE.md's Done-means-merged rule.
 
 ## Poll / nudge / selective load

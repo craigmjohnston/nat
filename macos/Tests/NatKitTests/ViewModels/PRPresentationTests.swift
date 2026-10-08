@@ -388,10 +388,12 @@ final class PRPresentationTests: XCTestCase {
 
     }
 
-    /// Mirrors `TestMergeRefusalMergeStateGate` in the Go copies: GitHub's
-    /// merge button, so only CLEAN / HAS_HOOKS / UNSTABLE go through.
+    /// Mirrors `TestMergeRefusalMergeStateGate` in the Go copies: only what
+    /// GitHub positively says stands in the way refuses — a mergeability still
+    /// being worked out does not, checks still running always do.
     func testMergeRefusalMergeStateGate() {
         let pending = [PRCheck(name: "build", state: "IN_PROGRESS", link: "")]
+        let green = [PRCheck(name: "build", state: "SUCCESS", link: "")]
         let cases: [(String, PRDetail, String?)] = [
             ("clean", samplePR(mergeable: "MERGEABLE", mergeStateStatus: "CLEAN"), nil),
             ("has hooks", samplePR(mergeStateStatus: "HAS_HOOKS"), nil),
@@ -407,8 +409,22 @@ final class PRPresentationTests: XCTestCase {
             ("dirty", samplePR(mergeStateStatus: "DIRTY"), "mergeable: conflicting with main"),
             ("draft state", samplePR(mergeStateStatus: "DRAFT"), "draft: mark the pull request ready for review"),
             ("draft flag", samplePR(isDraft: true, mergeStateStatus: "CLEAN"), "draft: mark the pull request ready for review"),
-            ("empty", samplePR(), "mergeable: mergeability unknown"),
-            ("unknown", samplePR(mergeStateStatus: "UNKNOWN"), "mergeable: mergeability unknown"),
+            ("empty", samplePR(), nil),
+            ("unknown", samplePR(mergeStateStatus: "UNKNOWN"), nil),
+            ("a state this build does not know", samplePR(mergeStateStatus: "SOMEHOW"), nil),
+            ("unknown mergeable, green checks", samplePR(checks: green, mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN"), nil),
+            ("empty state, green checks", samplePR(checks: green, mergeable: "MERGEABLE"), nil),
+            ("blocked by mergeability alone", samplePR(checks: green, mergeable: "UNKNOWN", mergeStateStatus: "BLOCKED"), nil),
+            ("blocked by review, mergeability unknown",
+                samplePR(reviewDecision: "REVIEW_REQUIRED", mergeable: "UNKNOWN", mergeStateStatus: "BLOCKED"),
+                "blocked by review: review required"),
+            ("checks running, state unknown", samplePR(checks: pending, mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN"),
+                "checks: 1 pending"),
+            ("review required, state unknown", samplePR(reviewDecision: "REVIEW_REQUIRED", mergeStateStatus: "UNKNOWN"),
+                "review: review required"),
+            ("conflicting", samplePR(mergeable: "CONFLICTING", mergeStateStatus: "UNKNOWN"), "mergeable: conflicting with main"),
+            ("changes requested", samplePR(reviewDecision: "CHANGES_REQUESTED", mergeStateStatus: "UNKNOWN"),
+                "review: changes requested"),
         ]
         for (name, pr, want) in cases {
             XCTAssertEqual(mergeRefusal(pr), want, name)
