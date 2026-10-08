@@ -10,11 +10,13 @@ import (
 	"io/fs"
 )
 
-// Only what Claude Code loads is embedded — the manifest and the hooks — not
-// the mod's tests or README, nor the types and tsconfig.json a build lays
-// beside a loaded mod (gitignored, but present in a checkout that loaded it).
+// Only what Claude Code loads is embedded — the manifest, the hooks and the
+// state contract the manifest names (`types/`) — not the mod's tests or
+// README, nor the types and tsconfig.json a build lays beside a loaded mod
+// (`.claude-plugin/types/`, gitignored, but present in a checkout that
+// loaded it).
 //
-//go:embed embedded/.claude-plugin/plugin.json embedded/hooks
+//go:embed embedded/.claude-plugin/plugin.json embedded/hooks embedded/types
 var embedded embed.FS
 
 // Embedded is nat's own mod, its files at the root (`.claude-plugin/`,

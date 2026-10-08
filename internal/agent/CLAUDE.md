@@ -186,7 +186,11 @@ running agent's state.
   agent sets the flag itself (`nat agent-waiting` → `SetWaiting`, cleared by
   `nat agent-working`); nat never infers it from the screen (the old
   `capture-pane` match on Claude Code's status line read every finished turn
-  as waiting and broke whenever the line's shape changed). `SetWaiting`
+  as waiting and broke whenever the line's shape changed). The embedded mod
+  (`mods/embedded`) is a second writer of the same flag through the same two
+  commands, on the waits Claude Code itself knows (an AskUserQuestion
+  dialog, a permission prompt, an MCP elicitation, a turn ended on an error
+  or refusal); `waitingPassage` stays for a question asked in prose. `SetWaiting`
   refuses (`ErrNotAgentPane`) a pane with no `@nat_slice` tag, read back with
   `display-message` by pane ID *and* tag — tmux answers one aimed at a
   missing pane with an empty line, not an error. The flag lives on the pane

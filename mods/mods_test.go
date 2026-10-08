@@ -14,7 +14,7 @@ func TestEmbedded(t *testing.T) {
 		}
 		return err
 	})
-	want := []string{".claude-plugin/plugin.json", "hooks/hooks.json", "hooks/register.ts"}
+	want := []string{".claude-plugin/plugin.json", "hooks/hooks.json", "hooks/register.ts", "types/index.d.ts"}
 	if len(got) != len(want) {
 		t.Fatalf("embedded = %v, want %v", got, want)
 	}
