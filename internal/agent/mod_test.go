@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -64,5 +66,42 @@ func TestLaunchWithoutTheModWhenItCannotBeWritten(t *testing.T) {
 	}
 	if log := read(); !strings.Contains(log, "embedded mod disabled") {
 		t.Errorf("log = %q, want the failure logged", log)
+	}
+}
+
+// A launch sweeps old mods by every pane's start command: a folder a live
+// session was started with stays, one nothing names goes, and a pane read
+// that fails removes nothing.
+func TestLaunchSweepsOldMods(t *testing.T) {
+	isolatedStatusDir(t)
+	state, err := logging.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(state, "mods")
+	live, dead := filepath.Join(root, "aaaaaaaaaaaa"), filepath.Join(root, "bbbbbbbbbbbb")
+	for _, d := range []string{live, dead} {
+		write(t, filepath.Join(d, mods.Name, "hooks", "register.ts"), "")
+		age(t, d, time.Hour)
+	}
+	panes := "sh -c \"claude --plugin-dir '" + filepath.Join(live, mods.Name) + "'\"\n"
+
+	failing := &fakeRunner{outs: map[string]string{"new-session": "%7"}, errs: map[string]error{"list-panes": &ExitError{Code: 1}}}
+	if err := NewTmuxWithRunner(failing).LaunchBare("nat-session-1", "/tmp", "session:p:s", config.AgentModel{}); err != nil {
+		t.Fatalf("LaunchBare: %v", err)
+	}
+	if _, err := os.Stat(dead); err != nil {
+		t.Errorf("an unread server swept %s: %v", dead, err)
+	}
+
+	r := &fakeRunner{outs: map[string]string{"new-session": "%7", "list-panes": panes}}
+	if err := NewTmuxWithRunner(r).Launch("nat-1", "/tmp", "/tmp/p.md", "slice", config.AgentModel{}); err != nil {
+		t.Fatalf("Launch: %v", err)
+	}
+	if _, err := os.Stat(live); err != nil {
+		t.Errorf("the live session's mod was swept: %v", err)
+	}
+	if _, err := os.Stat(dead); !os.IsNotExist(err) {
+		t.Errorf("%s is still there (%v), want it swept", dead, err)
 	}
 }

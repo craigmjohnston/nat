@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"strings"
+
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/mods"
 )
@@ -16,4 +18,18 @@ func prepareMod() string {
 		return ""
 	}
 	return dir
+}
+
+// sweepMods removes the materialised mods no live session loaded
+// ([mods.Sweep]), read off the start command of every pane on the server —
+// a launch's carries its --plugin-dir. A failed read removes nothing: a
+// folder a live session loaded must never go, and an unread server could be
+// holding one.
+func (t *Tmux) sweepMods() {
+	out, err := t.run("list-panes", "-a", "-F", "#{pane_start_command}")
+	if err != nil {
+		logging.Action("old embedded mods not swept", "error", err.Error())
+		return
+	}
+	mods.Sweep(strings.Split(out, "\n"))
 }

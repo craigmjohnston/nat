@@ -241,3 +241,93 @@ func TestMaterialiseUnwritableTree(t *testing.T) {
 		t.Errorf("materialise = %q, want the write's error", dir)
 	}
 }
+
+func TestSweep(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	mk := func(name string, age time.Duration) string {
+		dir := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Join(dir, Name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(dir, now.Add(-age), now.Add(-age)); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	files, _ := readFiles(testMod(), "v1")
+	current := mk(hashOf(files), time.Hour)
+	inUse := mk("aaaaaaaaaaaa", time.Hour)
+	fresh := mk("ffffffffffff", time.Second)
+	old := mk("000000000000", time.Hour)
+	stale := mk(".tmp-123", time.Hour)
+	// A prefix of a kept hash is a different folder, not a mention of it.
+	prefix := mk("aaaaaaaaaaa", time.Hour)
+	commands := []string{"", "sh -c \"claude --plugin-dir '" + filepath.Join(inUse, Name) + "'\""}
+	// A mod that cannot be read sweeps nothing.
+	sweep(root, failRead{testMod()}, "v1", commands, now)
+	if _, err := os.Stat(old); err != nil {
+		t.Errorf("an unreadable mod swept %s: %v", old, err)
+	}
+	sweep(root, testMod(), "v1", commands, now)
+	for _, kept := range []string{current, inUse, fresh} {
+		if _, err := os.Stat(kept); err != nil {
+			t.Errorf("%s swept: %v", kept, err)
+		}
+	}
+	for _, gone := range []string{old, stale, prefix} {
+		if _, err := os.Stat(gone); !os.IsNotExist(err) {
+			t.Errorf("%s kept (%v), want it swept", gone, err)
+		}
+	}
+	// A root that is not there sweeps nothing and does not fail.
+	sweep(filepath.Join(root, "missing"), testMod(), "v1", nil, now)
+}
+
+func TestSweepRemovalFailure(t *testing.T) {
+	root := t.TempDir()
+	old := filepath.Join(root, "000000000000")
+	if err := os.MkdirAll(filepath.Join(old, Name), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(old, past, past); err != nil {
+		t.Fatal(err)
+	}
+	// Its contents cannot be unlinked from a directory with no write bit.
+	if err := os.Chmod(old, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(old, 0o700) })
+	sweep(root, testMod(), "v1", nil, time.Now())
+	if _, err := os.Stat(old); err != nil {
+		t.Errorf("%s: %v, want a failed removal left in place", old, err)
+	}
+}
+
+// The real Sweep keeps this build's own mod and clears an old one.
+func TestSweepEmbedded(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	dir, err := Materialise()
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Hour)
+	_ = os.Chtimes(filepath.Dir(dir), past, past)
+	old := filepath.Join(filepath.Dir(filepath.Dir(dir)), "000000000000")
+	if err := os.Mkdir(old, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Chtimes(old, past, past)
+	Sweep(nil)
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("this build's mod swept: %v", err)
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Errorf("old mod kept (%v), want it swept", err)
+	}
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_STATE_HOME", "")
+	Sweep(nil) // no state directory: nothing to sweep, no panic
+}

@@ -12,6 +12,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/logging"
 	"github.com/craigmjohnston/nat/internal/version"
@@ -35,13 +37,81 @@ const manifest = ".claude-plugin/plugin.json"
 // contents. A folder already there is used as it stands: a session loading
 // it watches it and hot-reloads on any change, so one a live session loaded
 // is never rewritten, and a nat whose mod differs gets a hash of its own.
-// Older hashes are left where they are.
+// Older hashes are left for [Sweep].
 func Materialise() (string, error) {
+	root, err := root()
+	if err != nil {
+		return "", err
+	}
+	return materialise(root, embeddedmods.Embedded(), version.Version())
+}
+
+// root is the directory every materialised mod lives under.
+func root() (string, error) {
 	dir, err := logging.Dir()
 	if err != nil {
 		return "", err
 	}
-	return materialise(filepath.Join(dir, dirName), embeddedmods.Embedded(), version.Version())
+	return filepath.Join(dir, dirName), nil
+}
+
+// sweepGrace is how old a folder under the mods directory must be before
+// [Sweep] removes it: another nat — an older build beside this one — may have
+// just written its hash and not yet started the session that loads it, and a
+// temp tree may be one still being written.
+const sweepGrace = time.Minute
+
+// Sweep removes every materialised mod but this build's and those a running
+// session loaded, along with any temp tree a failed write left. inUse is the
+// start command of every live tmux pane: a hash folder named in one is kept,
+// since deleting a folder a session loaded unloads the mod from it there and
+// then. A folder younger than [sweepGrace] is kept too. Best effort: a
+// removal that fails is logged and left for the next sweep.
+func Sweep(inUse []string) {
+	root, err := root()
+	if err != nil {
+		return
+	}
+	sweep(root, embeddedmods.Embedded(), version.Version(), inUse, time.Now())
+}
+
+// sweep is [Sweep] under root, keeping src stamped as ver, at now. A mod that
+// cannot be read sweeps nothing: what is current is not known.
+func sweep(root string, src fs.FS, ver string, inUse []string, now time.Time) {
+	files, err := readFiles(src, ver)
+	if err != nil {
+		return
+	}
+	current := hashOf(files)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		dir := filepath.Join(root, name)
+		if name == current || named(inUse, dir+string(filepath.Separator)) {
+			continue
+		}
+		if info, err := e.Info(); err != nil || now.Sub(info.ModTime()) < sweepGrace {
+			continue
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			logging.Action("old embedded mod not removed", "dir", dir, "error", err.Error())
+			continue
+		}
+		logging.Action("old embedded mod removed", "dir", dir)
+	}
+}
+
+// named reports whether any of commands mentions path.
+func named(commands []string, path string) bool {
+	for _, c := range commands {
+		if strings.Contains(c, path) {
+			return true
+		}
+	}
+	return false
 }
 
 // materialise is [Materialise] into root, from src, stamped as ver.

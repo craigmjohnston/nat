@@ -338,6 +338,8 @@ func TestLaunch(t *testing.T) {
 		}, append(clickBindingArgs(), copyModeDragEndArgs()...)...)},
 		// The tag the agent is found by.
 		{name: "tmux", args: []string{"-u", "set-option", "-p", "-t", "%7", "@nat_slice", id}},
+		// Every pane's start command, for the sweep of old mods.
+		{name: "tmux", args: []string{"-u", "list-panes", "-a", "-F", "#{pane_start_command}"}},
 	}
 	if !reflect.DeepEqual(r.calls, want) {
 		t.Errorf("calls = %+v, want %+v", r.calls, want)
@@ -1174,10 +1176,11 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 	if err := NewTmuxWithRunner(launch).Launch(session, "/tmp", "/tmp/prompt.md", id, config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
-	// The tagging call sets the slice tag, and is the launch's last word —
-	// counting from the end, since what precedes it (the version asked about
-	// before a PATH is carried) depends on the environment of the test run.
-	tag := launch.calls[len(launch.calls)-1].args
+	// The tagging call sets the slice tag, and is the launch's last word but
+	// the mod sweep's pane read — counting from the end, since what precedes it
+	// (the version asked about before a PATH is carried) depends on the
+	// environment of the test run.
+	tag := launch.calls[len(launch.calls)-2].args
 	option, value := tag[5], tag[6]
 
 	// tmux reports the option back where the format asked for it, which is the

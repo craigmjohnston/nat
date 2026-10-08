@@ -500,6 +500,7 @@ func (t *Tmux) Launch(session, workdir, promptFile, sliceID string, m config.Age
 		return fmt.Errorf("tag tmux pane %s for slice %s: %w", pane, sliceID, err)
 	}
 	logging.Action("agent launched", "session", session, "slice", sliceID, "workdir", workdir, "pane", pane)
+	t.sweepMods()
 	return nil
 }
 
@@ -749,6 +750,7 @@ func (t *Tmux) LaunchBare(session, workdir, tag string, m config.AgentModel) err
 		return fmt.Errorf("tag tmux pane %s for %s: %w", pane, tag, err)
 	}
 	logging.Action("ad hoc session launched", "session", session, "tag", tag, "workdir", workdir, "pane", pane)
+	t.sweepMods()
 	return nil
 }
 

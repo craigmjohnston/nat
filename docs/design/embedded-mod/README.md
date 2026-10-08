@@ -43,9 +43,33 @@ a folder a live session loaded is never rewritten: a hash directory that
 exists is used as it stands. It is written whole under a temp name and
 renamed into place, so one that exists is always complete — a half-written
 module is never loaded — and of two nats materialising the same hash at once,
-the second uses the first's. Files are `0600`, directories `0700`. Older
-hash directories are left where they are: they are a few KB, and one may
-still be loaded by a session an older nat started. Nothing sweeps them.
+the second uses the first's. Files are `0600`, directories `0700`.
+
+## Sweeping old hashes
+
+Deleting a folder a live session loaded unloads the mod from that session
+there and then (checked on 2.1.294: the hint came back and `/plugin` listed
+no mod), so an old hash goes only once nothing runs it. After every
+`Launch`/`LaunchBare`, `internal/agent` reads the start command of every pane
+on the tmux server (`list-panes -a -F '#{pane_start_command}'`, which carries
+each launch's `--plugin-dir`) and hands them to `internal/mods.Sweep`, which
+removes every folder under
+`<state dir>/mods/` except:
+
+- this build's own hash;
+- a hash named in any live pane's start command;
+- anything younger than a minute, which covers an older nat running beside
+  this one that has just written its hash and not yet started its session,
+  and a temp tree still being written.
+
+Leftover `.tmp-*` trees from a failed write go the same way. A pane read that
+fails removes nothing, and a removal that fails is logged and retried on the
+next launch.
+
+One race is accepted: a second nat build that *reuses* an old hash folder
+(older than a minute) and is between materialising and starting its session
+can lose that folder. Its session then starts without the mod, which is the
+same degrade as a failed write.
 
 ## Degrading
 
