@@ -23,7 +23,7 @@ import (
 // something to one, and reports which are running — because none of that is
 // anything a launch itself does.
 type Launcher interface {
-	Launch(session, workdir, promptFile, opening, sliceID string, model config.AgentModel) error
+	Launch(session, workdir, promptFile, opening, sliceID, projectID string, model config.AgentModel) error
 }
 
 // PRReviewReader is what a launch needs of gh to gather a pull request's
@@ -154,7 +154,7 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 	if err != nil {
 		return LaunchResult{}, fmt.Errorf("launch agent: %w", err)
 	}
-	if err := l.Launch(session, c.WorkingDir, file, agent.OpeningLine(c), c.Slice.ID, m); err != nil {
+	if err := l.Launch(session, c.WorkingDir, file, agent.OpeningLine(c), c.Slice.ID, c.ProjectID, m); err != nil {
 		return LaunchResult{}, err
 	}
 	return LaunchResult{Context: c, Session: session, Toast: p.Toast, Sev: p.Sev}, nil

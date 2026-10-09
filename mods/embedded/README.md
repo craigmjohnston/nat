@@ -20,6 +20,9 @@ Tested with Claude Code **2.1.294**.
   second, each file in the inbox `NAT_INBOX` names, in name order, is
   removed and then submitted with `$.prompt.submit({ text, asUser: true })`
   — a turn of its own once idle, no composer involved.
+  And they record a resume: a prompt the user typed (`origin.kind`
+  `composer` or `bridge`) on a session with `NAT_SLICE` and `NAT_PROJECT`
+  set runs `nat slice-resume` with the prompt on stdin before it goes on.
   And they hand the session its brief: `prompt.context` appends the file
   `NAT_BRIEF` names as a `natBrief` context block, which the model reads
   and the pane never draws; nat starts the session on one opening line

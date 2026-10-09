@@ -29,7 +29,7 @@ import (
 type AgentLauncher interface {
 	LiveSlices() (map[string]string, error)
 	Activity() (map[string]agent.Activity, error)
-	Launch(session, workdir, promptFile, opening, sliceID string, model config.AgentModel) error
+	Launch(session, workdir, promptFile, opening, sliceID, projectID string, model config.AgentModel) error
 	SendPrompt(session, text string) error
 	AttachClientCmd(session string) *exec.Cmd
 	AttachCmd(session string) *exec.Cmd

@@ -118,10 +118,10 @@ func TestPromptResumesAPublishedSliceWithItsBranchCleared(t *testing.T) {
 	}
 }
 
-// Every slice prompt, whatever launched it, tells the agent to put a request
-// for more after its hand-back on the record before changing anything, and
-// what a Done refusal means.
-func TestEverySlicePromptCarriesTheResumePassage(t *testing.T) {
+// No slice prompt names `nat slice-resume`: a request for more typed at a
+// handed-back agent is put on the record by the embedded mod, which runs it
+// for the pane, and every other one by the nat send that carries it.
+func TestNoSlicePromptNamesSliceResume(t *testing.T) {
 	for name, c := range map[string]PromptContext{
 		"slice":          testContext(),
 		"slice worktree": worktreeContext(),
@@ -130,16 +130,8 @@ func TestEverySlicePromptCarriesTheResumePassage(t *testing.T) {
 		"slice no repo":  repoUnknownContext(),
 		"published":      publishedContext(),
 	} {
-		got := Prompt(c)
-		for _, want := range []string{
-			"If the user asks for more or different work after you have handed back",
-			"    nat slice-resume " + c.Slice.ID + " --project " + testProjectID + " --note '<what they asked for>'\n",
-			"commit, and hand back again with the same\n`complete-slice` command",
-			"Done, the work is merged: say so to the user and stop.",
-		} {
-			if !strings.Contains(got, want) {
-				t.Errorf("the %s prompt does not say %q", name, want)
-			}
+		if got := Prompt(c); strings.Contains(got, "slice-resume") {
+			t.Errorf("the %s prompt names slice-resume", name)
 		}
 	}
 }

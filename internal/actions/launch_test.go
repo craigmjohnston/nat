@@ -33,8 +33,8 @@ func TestMain(m *testing.M) {
 
 // launchCall is one session a fakeLauncher was asked to start.
 type launchCall struct {
-	session, workdir, promptFile, opening, sliceID string
-	model                                          config.AgentModel
+	session, workdir, promptFile, opening, sliceID, projectID string
+	model                                                     config.AgentModel
 }
 
 // fakeLauncher stands in for tmux: only the one method Launch itself calls.
@@ -45,8 +45,8 @@ type fakeLauncher struct {
 
 var _ Launcher = (*fakeLauncher)(nil)
 
-func (f *fakeLauncher) Launch(session, workdir, promptFile, opening, sliceID string, model config.AgentModel) error {
-	f.launches = append(f.launches, launchCall{session, workdir, promptFile, opening, sliceID, model})
+func (f *fakeLauncher) Launch(session, workdir, promptFile, opening, sliceID, projectID string, model config.AgentModel) error {
+	f.launches = append(f.launches, launchCall{session, workdir, promptFile, opening, sliceID, projectID, model})
 	return f.launchErr
 }
 
@@ -62,7 +62,7 @@ func TestLaunchStartsTheAgentInAWorktree(t *testing.T) {
 	client := &fakeClient{getPage: func(id string) (*notion.Page, error) { return todoPage(id, true), nil }}
 
 	res, err := Launch(context.Background(), l, w, r, client.store(), nil, "u1",
-		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, WorkingDir: dir},
+		agent.PromptContext{Slice: domain.Slice{ID: "s5", Name: "Info view"}, ProjectID: "p1", WorkingDir: dir},
 		config.AgentModel{Model: "opus", Effort: "high"})
 
 	if err != nil {
@@ -85,7 +85,7 @@ func TestLaunchStartsTheAgentInAWorktree(t *testing.T) {
 		t.Fatalf("launches = %+v, want exactly one", l.launches)
 	}
 	got := l.launches[0]
-	if got.session != res.Session || got.workdir != want || got.sliceID != "s5" {
+	if got.session != res.Session || got.workdir != want || got.sliceID != "s5" || got.projectID != "p1" {
 		t.Errorf("launch = %+v, want it started in the worktree", got)
 	}
 	if prompt, err := os.ReadFile(got.promptFile); err != nil || !strings.Contains(string(prompt), "Info view") {

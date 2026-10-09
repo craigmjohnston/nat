@@ -430,7 +430,6 @@ func Prompt(c PromptContext) string {
 	b.WriteString("about a value you interpolated rather than read is exactly the kind of\n")
 	b.WriteString("line that costs somebody else an hour redoing the work to find out it\n")
 	b.WriteString("was wrong.\n\n")
-	b.WriteString(resumePassage(c))
 	b.WriteString("Pass `--no-branch` when the slice produced no branch — a docs or\n")
 	b.WriteString("research slice — and it is marked Done there and then, with no pull\n")
 	b.WriteString("request to describe. A summary too long for one argument can be piped in\n")
@@ -745,23 +744,6 @@ func conflictPassage(c PromptContext) string {
 	b.WriteString("   commit that conflicts, until the rebase is finished.\n")
 	b.WriteString("3. Run the project's verification gate on the result.\n")
 	b.WriteString("4. Hand the slice back with `complete-slice`, as below.\n")
-	return b.String()
-}
-
-// resumePassage tells a slice agent what to do when the user asks for more
-// after it has handed back: say so on the record with `nat slice-resume`
-// before changing anything — which takes the slice back out of review, so the
-// user's board reads it as work in progress again — then do the work and hand
-// back exactly as before. skills/next-slice/SKILL.md says the same in its own
-// words.
-func resumePassage(c PromptContext) string {
-	var b strings.Builder
-	b.WriteString("If the user asks for more or different work after you have handed back,\n")
-	b.WriteString("say so on the record before changing anything:\n\n")
-	fmt.Fprintf(&b, "    nat slice-resume %s --project %s --note '<what they asked for>'\n\n", c.Slice.ID, c.ProjectID)
-	b.WriteString("then do the work, commit, and hand back again with the same\n")
-	b.WriteString("`complete-slice` command. If it refuses because the slice is\n")
-	b.WriteString("Done, the work is merged: say so to the user and stop.\n\n")
 	return b.String()
 }
 
