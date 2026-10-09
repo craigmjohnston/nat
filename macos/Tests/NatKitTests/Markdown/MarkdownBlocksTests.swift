@@ -103,6 +103,32 @@ final class MarkdownBlocksTests: XCTestCase {
         XCTAssertEqual(briefExcerpt("a b\n\nc", maxWords: 2), "a b\u{2026}")
     }
 
+    // MARK: - Brief summary
+
+    private func words(_ n: Int) -> String { Array(repeating: "word", count: n).joined(separator: " ") }
+
+    func testABriefOfOneParagraphHasNoSummary() {
+        XCTAssertNil(briefSummary("Make the sidebar show every project."))
+        XCTAssertNil(briefSummary("\n\nOne paragraph,\nover two lines.\n\n  \n"))
+        XCTAssertNil(briefSummary(""))
+    }
+
+    func testABriefOfTwoParagraphsIsSummedUpByItsFirst() {
+        XCTAssertEqual(briefSummary("\n  \nShow every project.\nIn the sidebar.\n   \n## Detail\n\nMore."),
+                       "Show every project.\nIn the sidebar.")
+        XCTAssertEqual(briefSummary(words(60) + "\n\nDetail."), words(60))
+    }
+
+    func testALongFirstParagraphIsNoSummary() {
+        XCTAssertNil(briefSummary(words(61) + "\n\nDetail."))
+    }
+
+    func testTheBriefCardFoldsToTheSummaryElseTheExcerpt() {
+        XCTAssertEqual(briefCardExcerpt("Show every project.\n\n" + words(100)), "Show every project.")
+        XCTAssertEqual(briefCardExcerpt(words(61) + "\n\nDetail."), words(30) + "\u{2026}")
+        XCTAssertNil(briefCardExcerpt("A short brief."))
+    }
+
     // MARK: - Details
 
     func testADetailsFoldSplitsTheProseAroundIt() {

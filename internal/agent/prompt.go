@@ -309,14 +309,7 @@ func Prompt(c PromptContext) string {
 		b.WriteString("gate — is auto-loaded by Claude Code; there is no need to read it again.\n")
 	}
 
-	b.WriteString("\n## Before you write code\n\n")
-	b.WriteString("If this slice turns on an architecture question — a decision neither the\n")
-	b.WriteString("brief nor a Done slice in the milestone actually settles — do not guess\n")
-	b.WriteString("and start writing: raise it with the user right away, before code, not at\n")
-	b.WriteString("hand-back where an hour of the wrong shape is already sunk. And never run\n")
-	b.WriteString("`complete-slice` on work whose architecture is still unsettled that way —\n")
-	b.WriteString("a hand-back is a claim the shape is right, not a place to flag that it\n")
-	b.WriteString("might not be.\n")
+	b.WriteString(questionPassage)
 
 	b.WriteString("\n## Do the work\n\n")
 	if c.RepoUnknown {
@@ -384,6 +377,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString(checksPassage(c))
 	b.WriteString(notesPassage(c))
 	b.WriteString(namingPassage)
+	b.WriteString(writingPassage)
 	b.WriteString(tmuxPassage)
 	b.WriteString(waitingPassage(true))
 
@@ -396,30 +390,27 @@ func Prompt(c PromptContext) string {
 		// No worktree for nat to read the branch off: the agent names it.
 		b.WriteString("        --branch <branch> \\\n")
 	}
-	b.WriteString("        --summary '- <what changed>\\n- <key decision>' \\\n")
+	b.WriteString("        --summary '- <what now works, in the user's words>\\n- <a decision you made>' \\\n")
 	b.WriteString("        --pr-description '<title line>\n\n<what the PR does and why>'\n\n")
 	b.WriteString("That refuses while the worktree holds anything uncommitted — commit it\n")
 	b.WriteString("first — then pushes the branch, records it and hands the slice back for\n")
 	b.WriteString("review, writing the summary onto its page; a push it reports refused is\n")
-	b.WriteString("yours to sort out before handing back again. `--summary` is quoted back\n")
-	b.WriteString("to a future agent in its milestone's digest, not read by a person, so\n")
-	b.WriteString("keep it a ")
+	b.WriteString("yours to sort out before handing back again. It leaves the slice in\n")
 	if c.Frontend == FrontendGnat {
-		b.WriteString("handful of terse bullet points — what changed and key decisions — never\n")
-		b.WriteString("a narrative of the session. It leaves the slice in progress on purpose —\n")
-		b.WriteString("approving it in the app's Diff tab is what opens the pull request and\n")
-		b.WriteString("marks it Done.\n\n")
+		b.WriteString("progress on purpose — approving it in the app's Diff tab is what opens\n")
+		b.WriteString("the pull request and marks it Done.\n\n")
 	} else {
-		b.WriteString("handful of terse bullet points — what changed, key decisions, follow-ups\n")
-		b.WriteString("worth queueing — never a narrative of the session. It leaves the slice in\n")
 		b.WriteString("progress on purpose — approving it on the board is what opens the pull\n")
 		b.WriteString("request and marks it Done.\n\n")
 	}
-	b.WriteString("`--pr-description` is what that pull request is opened with: its first\n")
-	b.WriteString("line is the title and the rest the body, so write it ready to publish —\n")
-	b.WriteString("what the change does and why, for whoever reviews it on GitHub, not a\n")
-	b.WriteString("report of your session. Pass `--pr-description -` to read it from stdin\n")
-	b.WriteString("when it is too long for an argument, and give `--summary` as a flag then.\n\n")
+	b.WriteString(summaryPassage)
+	if c.Frontend != FrontendGnat {
+		b.WriteString("Follow-ups worth queueing go in a last bullet of their own.\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(prDescriptionPassage)
+	b.WriteString("Pass `--pr-description -` to read it from stdin when it is too long for\n")
+	b.WriteString("an argument, and give `--summary` as a flag then.\n\n")
 	b.WriteString("Handing the same slice back a second time, leave `--pr-description` off\n")
 	b.WriteString("where the one already filed still describes the change: the last one\n")
 	b.WriteString("filed is what the pull request opens with, so restating it unchanged only\n")
@@ -571,8 +562,10 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 		b.WriteString("  — one new Todo slice, its brief read from stdin\n")
 	}
 	b.WriteString("\n" + SliceTitleRule + "\n")
+	b.WriteString(briefShapePassage)
 
 	b.WriteString(namingPassage)
+	b.WriteString(writingPassage)
 	b.WriteString(tmuxPassage)
 	b.WriteString(waitingPassage(true))
 
@@ -825,7 +818,7 @@ func followUpsPassage(c PromptContext) string {
 	b.WriteString("yours to do and not yours to lose. When the gate is green, before\n")
 	b.WriteString("`complete-slice`, hand each one in and **stop**:\n\n")
 	fmt.Fprintf(&b, "    nat slice-followups %s --project %s \\\n", c.Slice.ID, c.ProjectID)
-	b.WriteString("        --follow-up '<title line>\n\n<the change: which file or function, what it does instead, and why>\nDone when: <how anyone checks it is finished>'\n\n")
+	b.WriteString("        --follow-up '<title line>\n\n<the problem, as the user sees it, and what leaving it costs>\n<what you recommend, and why>\n<the change: what, where, instead of what>\nDone when: <how anyone checks it is finished>'\n\n")
 	b.WriteString(followUpBriefPassage)
 	b.WriteString(SliceTitleRule + "\n\n")
 	b.WriteString("`--follow-up` repeats, one per follow-up. A later hand-in carries only\n")
@@ -885,8 +878,10 @@ func rerunPassage(sliceID, projectID string) string {
 // prompts, and the queue-work, queue-project and next-slice skills in their
 // own copies — with the cap read from [domain.MaxSliceTitleLen], the one place
 // the number is kept. Tests walk each template and skill for it.
-var SliceTitleRule = fmt.Sprintf("A slice title is at most %d characters, one change named, "+
-	"with the list of what it covers in the brief.", domain.MaxSliceTitleLen)
+var SliceTitleRule = fmt.Sprintf("A slice title names one change in eight words or fewer, in the "+
+	"words of the person who asked for it — what they get, not how it is built. No file, type or "+
+	"command names; no colon, dash or \"and\" joining several changes; no \"N fixes in one pass\". "+
+	"At most %d characters. The list of what it covers goes in the brief.", domain.MaxSliceTitleLen)
 
 // ProposalWithdrawnRule is what both gnat planning prompts — a project's
 // workshop and a new project's — say of a proposal the user writes after: the
@@ -978,17 +973,25 @@ func waitingPassage(pinned bool) string {
 // followUpBriefPassage says how a follow-up is written: as the brief of the
 // slice it becomes if queued, since slice-triage files it as one verbatim.
 // skills/next-slice/SKILL.md carries the same words in its own copy.
-const followUpBriefPassage = "Write each one as a slice brief: if the user queues it, this text is the\n" +
-	"brief of a new slice, word for word, read by an agent with nothing else.\n" +
-	"The title is an imperative action (\"Make the sidebar's post-write\n" +
-	"refresh read the replica\"), not a symptom. The body is the change —\n" +
-	"which file or function, what it does instead, and why — then a line\n" +
-	"starting `Done when:` saying how anyone checks it is finished. Write a\n" +
+const followUpBriefPassage = "A follow-up is work the user has not asked for that you noticed and did\n" +
+	"not do; anything this slice's own `Done when:` covers is this slice's\n" +
+	"work, so do it rather than file it. Write each one as a slice brief: if\n" +
+	"the user queues it, this text is the brief of a new slice, word for\n" +
+	"word, read by an agent with nothing else. The title is an imperative\n" +
+	"action in plain words, eight words or fewer, naming no file or type. The\n" +
+	"body opens with one line saying the problem as the user would see it and\n" +
+	"what it costs to leave it, then one line saying what you recommend\n" +
+	"(queue it, fold it in now, or drop it) and why. Then the change — what,\n" +
+	"where, instead of what — and a line starting `Done when:` saying how\n" +
+	"anyone checks it is finished, as something they can see or run. Write a\n" +
 	"decision, not a question: where there is a choice, pick one and name the\n" +
 	"alternative rejected; no \"could\", \"might\", \"consider\" or \"worth looking\n" +
-	"at\". If saying what to change needs a look at the code, take that look\n" +
-	"now — it is usually one read; if it genuinely needs investigation, the\n" +
-	"investigation is the deliverable and `Done when:` says what it produces.\n\n"
+	"at\". Before filing one, check the plan for a later slice that already\n" +
+	"covers it, and fold housekeeping you noticed — a flaky test, lint drift,\n" +
+	"dead code — into one item or fix it now. If saying what to change needs\n" +
+	"a look at the code, take that look now; if it genuinely needs\n" +
+	"investigation, the investigation is the deliverable and `Done when:`\n" +
+	"says what it produces.\n\n"
 
 // repoOverridden reports whether the agent is being sent somewhere other than
 // the project's default working directory, which is worth calling out in the
@@ -1004,3 +1007,160 @@ func repoOverridden(c PromptContext) bool {
 	}
 	return c.Project.WorkingDir != "" && dir != c.Project.WorkingDir
 }
+
+// writingPassage is how every agent nat launches writes what a person reads:
+// for someone who set the goals but has not followed the code, the point
+// first, in their words, with code kept out of prose. It is in every slice,
+// plan and new-project prompt, beside namingPassage; every embedded skill
+// carries the same words in its own copy. Tests walk each for it.
+const writingPassage = "\n" +
+	"## Writing for the user\n" +
+	"\n" +
+	"Everything you write that a person reads — a slice title or brief, a\n" +
+	"question, a hand-back summary, a pull request description, a follow-up,\n" +
+	"a note — is read by someone who set the goals and follows the progress\n" +
+	"but has not followed the code, and may not read English as a first\n" +
+	"language. They decide from your first sentence whether to read on, so\n" +
+	"write for them, not for the engineer who will review the diff.\n" +
+	"\n" +
+	"- Lead with the point. The first sentence says what changes for them, or\n" +
+	"  what you need from them. Detail comes after, never before.\n" +
+	"- Use their words. Say things the way the brief and the user say them.\n" +
+	"  Do not coin a name for something; where a new thing needs one, name it\n" +
+	"  by what it does and say what it is the first time, in half a sentence.\n" +
+	"  Use one name per thing throughout.\n" +
+	"- Keep code out of prose. File paths, function and type names, flags,\n" +
+	"  environment variables and identifiers go in a later detail section or\n" +
+	"  the pull request body, never in a title, a question or an opening\n" +
+	"  sentence. A command the user runs themselves is the exception.\n" +
+	"- Write short, plain sentences: one idea each, about twenty words,\n" +
+	"  common words (use, not utilise; show, not surface), no idioms. Say\n" +
+	"  what something does, not how it is wired.\n" +
+	"- Say what the reader gets. A fix is \"a link click no longer opens two\n" +
+	"  tabs\", not the names of the two handlers that overlapped. A warning\n" +
+	"  says what breaks for the user, not the mechanism.\n" +
+	"\n" +
+	"Before you send anything, check it: could someone who has never opened\n" +
+	"the code say what this is about from the first sentence? If not, rewrite\n" +
+	"the first sentence.\n" +
+	"\n" +
+	"For example. A title: not \"Catch the modified enters with a key monitor\n" +
+	"— performKeyEquivalent never sees them\" but \"Make shift+enter insert a\n" +
+	"newline in the agent terminal\". A summary line: not\n" +
+	"\"DiffStore.sendComments now always sends the complete-slice --branch\n" +
+	"instruction and runs slice-rework after agent-send succeeds\" but \"Review\n" +
+	"comments sent to an agent now always ask it to hand the work back again,\n" +
+	"so a slice cannot get stuck in review\". A question: not \"Where the\n" +
+	"'already there' baseline comes from: a comment counts as new when no\n" +
+	"`Sent back` names its URL …\" but \"Say a pull request already has five\n" +
+	"comments when its agent starts. Should the agent be told about those\n" +
+	"five, or only about new ones from now on? I recommend only new ones,\n" +
+	"because you have already seen the five.\"\n"
+
+// questionPassage is how a slice agent decides what to ask the user and how
+// to shape a question a non-implementer can answer — and raises an
+// architecture question before code rather than at hand-back. It is in every
+// slice prompt; /next-slice carries the same words, less the closing
+// sentence about `nat agent-waiting`, which it does not teach.
+const questionPassage = "\n" +
+	"## Asking the user\n" +
+	"\n" +
+	"Decide what you can, ask what you cannot. Ask only where different\n" +
+	"answers would change the work materially, or before something\n" +
+	"destructive or hard to undo; otherwise take the reading the brief and\n" +
+	"the code best support, say so in one line, and carry on. A failing check\n" +
+	"on your pull request, a flaky test you hit, or a loose end in code you\n" +
+	"touched is part of this slice: fix it and say what you did, rather than\n" +
+	"asking whether to. Do everything that does not depend on the answer\n" +
+	"before you ask.\n" +
+	"\n" +
+	"Raise an architecture question — a decision neither the brief nor a Done\n" +
+	"slice in the milestone settles — before you write code, not at\n" +
+	"hand-back, where an hour of the wrong shape is already sunk. Never run\n" +
+	"`complete-slice` on work whose shape is still unsettled that way: a\n" +
+	"hand-back is a claim the shape is right.\n" +
+	"\n" +
+	"Shape every question so it can be answered without opening the code:\n" +
+	"\n" +
+	"- The first line is the decision, in one plain sentence, and why it\n" +
+	"  matters to the user.\n" +
+	"- Then the options, two to four, each with what the user gets and gives\n" +
+	"  up, in a line. Put the one you recommend first and say why. Letter or\n" +
+	"  number them so the reply can be \"1b\".\n" +
+	"- No code identifiers, file paths or flags, unless the user must choose\n" +
+	"  between them. No term the brief or the user has not used, unless you\n" +
+	"  say what it means in the same sentence.\n" +
+	"- One decision per question, under about 120 words, and the question\n" +
+	"  before any report, never buried after one.\n" +
+	"- Never ask the user to observe what they cannot (what a run printed,\n" +
+	"  which input device failed): find out yourself, or say exactly what to\n" +
+	"  click and what each outcome would mean.\n" +
+	"- Never ask what is already decided: by the brief, a design it cites,\n" +
+	"  the project's rules, or an answer earlier in this session. Read what\n" +
+	"  the brief cites before you choose an approach; if it names something\n" +
+	"  that does not exist, say so in your first message, before building\n" +
+	"  anything.\n" +
+	"\n" +
+	"Do not end a turn on a status line (\"waiting on CI\", \"I'll check again\n" +
+	"in five\"): wait inside the turn, or end with what you are waiting for\n" +
+	"and when you will report. `nat agent-waiting` is for a question on\n" +
+	"screen.\n"
+
+// briefShapePassage is how a planning agent shapes a brief: a summary
+// paragraph of its own first — the one gnat shows as the task's description,
+// and the one [domain.CheckBriefOpening] caps — then what is settled, what is
+// out of scope, a hint where to look and Done when. It is in every planning
+// prompt after the title rule; queue-work and queue-project carry the same
+// words. Tests walk each for it.
+const briefShapePassage = "\n" +
+	"## Writing a brief\n" +
+	"\n" +
+	"A brief opens with a summary: one or two sentences, in a paragraph of\n" +
+	"its own, saying what changes for the user and why. The app shows this\n" +
+	"paragraph as the task's description, so it must stand alone, and nothing\n" +
+	"in it names a file, a function, a type or a language. A brief whose\n" +
+	"first paragraph runs past sixty words is refused.\n" +
+	"\n" +
+	"Then, in short paragraphs or bullets:\n" +
+	"\n" +
+	"- What is settled: decisions already made — the user's, a design\n" +
+	"  document's, an earlier slice's — stated as rules, with any term the\n" +
+	"  user may not know explained in a clause. Where a rule rests on\n" +
+	"  something the user has not confirmed, or on a number from a survey or\n" +
+	"  an earlier slice, say so and keep the number out of Done when.\n" +
+	"- What is out of scope.\n" +
+	"- Where to look, if it helps: a starting point in the code, labelled as\n" +
+	"  a hint (\"probably in …\"), never a line number and never a mechanism to\n" +
+	"  use. Say what the code must do, not how to write it: a prescribed\n" +
+	"  approach goes stale, and when it does it sends the agent down the\n" +
+	"  wrong path. Name a method only where it is a real requirement, and say\n" +
+	"  why. Do not fix a visual choice — a glyph, a colour, a badge rather\n" +
+	"  than a line — unless the user chose it: say what it must tell the user\n" +
+	"  and let the review of the rendered result settle the rest.\n" +
+	"- Done when: how anyone checks it is finished, as things the user can\n" +
+	"  see or run.\n" +
+	"\n" +
+	"Keep a brief under about 400 words. Leave out anecdotes, statistics and\n" +
+	"history; one clause of why is enough. Before you name a slice, command,\n" +
+	"file or feature as existing, check that it exists: read the plan, grep\n" +
+	"the code. A slice is a change the user can see working on its own: do\n" +
+	"not split work by layer, test surface or to allow parallel agents, and\n" +
+	"put plumbing in the slice that uses it. When in doubt, fewer slices.\n"
+
+// summaryPassage says who reads a hand-back's --summary — the user on the
+// task log, and later agents in the milestone's digest — and so how it
+// opens. /next-slice carries the same words.
+const summaryPassage = "`--summary` is shown to the user on the task log and quoted to later\n" +
+	"agents in the milestone's digest. Its first bullet says what now works\n" +
+	"or what changed, in the user's words, as one sentence they could read\n" +
+	"alone. Then at most three bullets: decisions you made and anything the\n" +
+	"reviewer must check. Identifiers only where a reviewer needs them to\n" +
+	"find the place. Never a narrative of the session.\n"
+
+// prDescriptionPassage says how a hand-back's --pr-description is written:
+// ready to publish, the plain why first. /next-slice carries the same words.
+const prDescriptionPassage = "`--pr-description` is what the pull request is opened with: its first\n" +
+	"line is the title and the rest the body, ready to publish. The first\n" +
+	"paragraph says what the change does and why, in plain words, for whoever\n" +
+	"reviews it on GitHub. Technical detail follows under its own heading. No\n" +
+	"test counts, no list of files touched, no report of your session.\n"

@@ -659,7 +659,10 @@ on: the diff's commit switcher (`DiffCommitsMenu`) a row atop the Changes
 body; the workshop's launch shortcut is in the brief editor's placeholder. The PR's title heads the PR view's own body. The Thread ends, while the slice can be launched, on a
 `LaunchCard` item — what Launch will do, model and effort as chips, the base;
 quietened, chips disabled, when blocked — with Launch itself only in the
-action bar; its prose items cut short as the brief does (`Excerpt`). View ▸ Hide done items
+action bar; its prose items cut short as the brief does (`Excerpt`). The
+Brief card folds to the brief's summary paragraph where it opens on one
+(`briefSummary`: the first paragraph, more after it, at most nat's 60 words),
+else its first 30 words (`briefCardExcerpt`); story `window-brief-summary`. View ▸ Hide done items
 (`showsDoneItems`) drops done slices, ended sessions and the Done folder from
 the sidebar. Every "merge" icon is `MergeIcon` — the Merge button's own `MergeGlyph`,
 never `arrow.triangle.merge` (the Task log's Merged item through

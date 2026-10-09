@@ -424,12 +424,11 @@ func TestPlanningSkillsDraftOrderAndDependencies(t *testing.T) {
 // lines the file's own wrapping happens to break it over.
 func unwrapped(text string) string { return strings.Join(strings.Fields(text), " ") }
 
-// A brief's markdown is now converted into the page's own blocks rather than
-// flattened to plain paragraphs, so a drafting agent that still wrote dense
-// prose would be leaving real lists and headings on the table. Both planning
-// skills ship inside the binary, so the structure guidance has to be said
-// here or it is not said anywhere an agent reads.
-func TestPlanningSkillsDraftStructuredBriefs(t *testing.T) {
+// Both planning skills ship inside the binary, so how a brief is shaped — a
+// summary paragraph of its own first, the one plan-apply caps and gnat
+// shows — has to be said here or it is not said anywhere an agent reads.
+func TestPlanningSkillsCarryTheBriefShape(t *testing.T) {
+	const sentinel = "A brief opens with a summary: one or two sentences, in a paragraph of its own"
 	for _, skill := range []string{"queue-work", "queue-project"} {
 		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
 		if err != nil {
@@ -437,15 +436,60 @@ func TestPlanningSkillsDraftStructuredBriefs(t *testing.T) {
 			continue
 		}
 		text := unwrapped(string(body))
-		for _, want := range []string{
-			"Write the brief structured, not as one dense paragraph.",
-			"Short paragraphs separated by blank lines, what and where first",
-			"acceptance criteria as their own final paragraph or list",
-			"markdown bullets, one item per line",
-		} {
+		for _, want := range []string{sentinel, "Shape every brief as **Writing a brief**, below, says"} {
 			if !strings.Contains(text, want) {
 				t.Errorf("the %s skill does not say %q", skill, want)
 			}
+		}
+		if strings.Contains(text, "Write the brief structured, not as one dense paragraph.") {
+			t.Errorf("the %s skill still carries the old brief rule", skill)
+		}
+	}
+}
+
+// Every embedded skill — a skill added later included — carries the writing
+// rule the prompts carry, since each one has an agent write what a person
+// reads. Whitespace is compared collapsed, as for the naming rule.
+func TestEverySkillCarriesTheWritingRule(t *testing.T) {
+	const sentinel = "They decide from your first sentence whether to read on, so write for them, " +
+		"not for the engineer who will review the diff."
+	entries, err := fs.ReadDir(FS(), ".")
+	if err != nil {
+		t.Fatalf("read the embedded skills: %v", err)
+	}
+	for _, e := range entries {
+		body, err := fs.ReadFile(FS(), e.Name()+"/SKILL.md")
+		if err != nil {
+			t.Errorf("read the %s skill: %v", e.Name(), err)
+			continue
+		}
+		if !strings.Contains(unwrapped(string(body)), sentinel) {
+			t.Errorf("the %s skill does not carry the writing rule", e.Name())
+		}
+	}
+}
+
+// /next-slice says how to ask the user, as the slice prompt does, in place of
+// its old architecture-question section, whose rule it keeps; and says who
+// reads the hand-back's summary.
+func TestNextSliceCarriesTheQuestionRule(t *testing.T) {
+	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
+	if err != nil {
+		t.Fatalf("read the skill: %v", err)
+	}
+	text := unwrapped(string(body))
+	for _, want := range []string{"Decide what you can, ask what you cannot.",
+		"Raise an architecture question",
+		"`--summary` is shown to the user on the task log",
+		"The first paragraph says what the change does and why, in plain words",
+		"A follow-up is work the user has not asked for"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the next-slice skill does not say %q", want)
+		}
+	}
+	for _, old := range []string{"Before you write code", "not read by a person", "agent-waiting"} {
+		if strings.Contains(text, old) {
+			t.Errorf("the next-slice skill still says %q", old)
 		}
 	}
 }

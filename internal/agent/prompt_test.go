@@ -125,7 +125,7 @@ func TestPromptNamesTheFrontend(t *testing.T) {
 	if want := "The user is driving this from gnat, the macOS app.\n\n"; !strings.Contains(gnat, want) {
 		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
 	}
-	if want := "approving it in the app's Diff tab is what opens the pull request and\nmarks it Done."; !strings.Contains(gnat, want) {
+	if want := "approving it in the app's Diff tab is what opens\nthe pull request and marks it Done."; !strings.Contains(gnat, want) {
 		t.Errorf("gnat prompt does not say %q:\n%s", want, gnat)
 	}
 	if strings.Contains(gnat, "approving it on the board") {
@@ -391,8 +391,10 @@ func TestPlanPromptRoutesEverythingThroughThePlanningCommands(t *testing.T) {
 			t.Errorf("plan prompt does not mention %q", want)
 		}
 	}
+	// The writing rule's bad example quotes a hand-back instruction; it
+	// is an example of prose, not a command the planner is given.
 	for _, unwanted := range []string{"start-slice", "complete-slice", "next-slice", "Notion"} {
-		if strings.Contains(got, unwanted) {
+		if strings.Contains(strings.ReplaceAll(got, writingPassage, ""), unwanted) {
 			t.Errorf("plan prompt should not mention %q", unwanted)
 		}
 	}
@@ -538,7 +540,7 @@ func TestPromptTellsAWorktreeAgentToUseItsBranch(t *testing.T) {
 		}
 	}
 	for _, unwanted := range []string{"branch for the slice", "--branch"} {
-		if strings.Contains(got, unwanted) {
+		if strings.Contains(strings.ReplaceAll(got, writingPassage, ""), unwanted) {
 			t.Errorf("prompt still tells the agent to make its own branch (%q)", unwanted)
 		}
 	}
@@ -768,19 +770,18 @@ func TestOnlyAGnatPromptProposesFollowUps(t *testing.T) {
 		"`complete-slice` refuses while the\ndecision is outstanding.",
 		"A later hand-in carries only\nwhat is new — never a repeat of a follow-up already handed in.",
 		"\nDone when: <how anyone checks it is finished>'",
-		"this text is the\nbrief of a new slice, word for word",
-		"starting `Done when:` saying how anyone checks it is finished",
+		followUpBriefPassage,
 	} {
 		if !strings.Contains(gnat, want) {
 			t.Errorf("gnat prompt does not say %q", want)
 		}
 	}
-	if strings.Contains(gnat, "follow-ups\nworth queueing") {
+	if strings.Contains(gnat, "Follow-ups worth queueing") {
 		t.Error("gnat prompt still asks for follow-ups in the summary")
 	}
 	for _, f := range []Frontend{FrontendTUI, ""} {
 		c.Frontend = f
-		if got := Prompt(c); strings.Contains(got, "slice-followups") || !strings.Contains(got, "follow-ups\nworth queueing") {
+		if got := Prompt(c); strings.Contains(got, "slice-followups") || !strings.Contains(got, "Follow-ups worth queueing go in a last bullet") {
 			t.Errorf("the %q prompt should keep follow-ups in the summary", f)
 		}
 	}
@@ -916,6 +917,74 @@ func TestEveryPromptCarriesTheNamingRule(t *testing.T) {
 	} {
 		if !strings.Contains(text, namingPassage) {
 			t.Errorf("the %s prompt does not carry the naming rule", prompt)
+		}
+	}
+}
+
+// Every template handed to an agent that writes what a person reads carries
+// the writing rule — the same prompts the naming rule goes into.
+func TestEveryPromptCarriesTheWritingRule(t *testing.T) {
+	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
+	for prompt, text := range map[string]string{
+		"slice":          Prompt(testContext()),
+		"slice worktree": Prompt(worktreeContext()),
+		"slice gnat":     Prompt(gnatContext()),
+		"slice resume":   Prompt(resumeContext()),
+		"slice no repo":  Prompt(repoUnknownContext()),
+		"published":      Prompt(publishedContext()),
+		"conflicted":     Prompt(conflictedContext()),
+		"plan":           PlanPrompt(testProjectID, name, dir, "", "", ""),
+		"plan request":   PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
+		"plan gnat":      PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
+		"new project":    NewProjectPrompt("ws-1", "A todo app."),
+	} {
+		if !strings.Contains(text, writingPassage) {
+			t.Errorf("the %s prompt does not carry the writing rule", prompt)
+		}
+	}
+}
+
+// Every slice prompt says how to ask the user — and when not to — in place of
+// the old architecture-question section, whose rule the new one keeps; and
+// says who reads the hand-back's summary and pull request description.
+func TestEverySlicePromptCarriesTheQuestionRule(t *testing.T) {
+	for prompt, text := range map[string]string{
+		"slice":          Prompt(testContext()),
+		"slice worktree": Prompt(worktreeContext()),
+		"slice gnat":     Prompt(gnatContext()),
+		"slice resume":   Prompt(resumeContext()),
+		"slice no repo":  Prompt(repoUnknownContext()),
+		"published":      Prompt(publishedContext()),
+		"conflicted":     Prompt(conflictedContext()),
+	} {
+		for _, want := range []string{questionPassage, summaryPassage, prDescriptionPassage} {
+			if !strings.Contains(text, want) {
+				t.Errorf("the %s prompt does not carry %q", prompt, want)
+			}
+		}
+		for _, old := range []string{"## Before you write code", "not read by a person", "terse bullet points"} {
+			if strings.Contains(text, old) {
+				t.Errorf("the %s prompt still says %q", prompt, old)
+			}
+		}
+	}
+	if !strings.Contains(questionPassage, "Raise an architecture question") {
+		t.Error("the question rule dropped the architecture-question rule")
+	}
+}
+
+// Every planning prompt says how a brief is shaped — a summary paragraph of
+// its own first, the one plan-apply caps and gnat shows.
+func TestEveryPlanningPromptCarriesTheBriefShape(t *testing.T) {
+	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
+	for prompt, text := range map[string]string{
+		"plan":         PlanPrompt(testProjectID, name, dir, "", "", ""),
+		"plan request": PlanPrompt(testProjectID, name, dir, "Split the reporting milestone.", "", ""),
+		"plan gnat":    PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
+		"new project":  NewProjectPrompt("ws-1", "A todo app."),
+	} {
+		if !strings.Contains(text, briefShapePassage) {
+			t.Errorf("the %s prompt does not carry the brief shape", prompt)
 		}
 	}
 }
@@ -1062,7 +1131,7 @@ func TestPromptsSayWhyTheProjectIsPinned(t *testing.T) {
 // and the slice prompt where it hands in follow-ups.
 func TestEveryNamingPromptCarriesTheTitleCap(t *testing.T) {
 	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
-	if !strings.Contains(SliceTitleRule, fmt.Sprintf("at most %d characters", domain.MaxSliceTitleLen)) {
+	if !strings.Contains(SliceTitleRule, fmt.Sprintf("At most %d characters", domain.MaxSliceTitleLen)) {
 		t.Fatalf("SliceTitleRule = %q, want the cap from domain", SliceTitleRule)
 	}
 	for prompt, text := range map[string]string{

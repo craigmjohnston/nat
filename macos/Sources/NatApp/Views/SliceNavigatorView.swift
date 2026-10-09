@@ -457,7 +457,9 @@ struct SliceNavigatorView: View {
                         if detail.brief.isEmpty {
                             Text("This task has no brief yet. What you write here becomes the agent's prompt.").ink(.secondary)
                         } else {
-                            Excerpt(text: detail.brief) { shown in
+                            // Folded to the brief's summary paragraph where
+                            // it opens on one.
+                            Excerpt(text: detail.brief, cut: briefCardExcerpt) { shown in
                                 Text(markdownAttributed(shown, size: Typo.scaled(13.5)))
                                     .ink(.primary)
                                     .textSelection(.enabled)

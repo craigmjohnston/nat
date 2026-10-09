@@ -212,6 +212,15 @@ longer one (`plan-apply`/`-propose`/`-accept`, `slice-add`, `slice-edit
 re-validated, and the workshop, new-project and slice (follow-ups) prompts
 and the three skills carry `agent.SliceTitleRule`, walked by tests.
 
+**Writing for the user.** Every agent nat launches, on any project, writes
+what a person reads — titles, briefs, questions, summaries, PR
+descriptions, follow-ups — for someone who has not followed the code. The
+rules live in nat alone, never a project's CLAUDE.md: `internal/agent`'s
+writing, question and brief-shape passages and `SliceTitleRule`, and the
+same words in each skill's own copy; tests walk every template and skill
+for them. A planner's or follow-up's brief opens on a summary paragraph of
+at most 60 words (`domain.CheckBriefOpening`), which gnat's Brief card shows.
+
 **Task log.** A slice's history is read off its body, in order, by
 `store.TaskEvents`: each `Handed back`, `Sent back` (`slice-rework
 --comments`, filed before the branch is cleared, as hand-back files before

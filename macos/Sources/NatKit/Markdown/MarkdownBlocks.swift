@@ -228,3 +228,40 @@ public func briefExcerpt(_ text: String, maxWords: Int) -> String? {
 
 /// Words that fill about four lines of the navigator at its usual width.
 public let briefExcerptWords = 30
+
+/// The most words a brief's summary paragraph may run to — nat's
+/// `domain.MaxBriefOpeningWords`, which refuses a planner's brief whose
+/// first paragraph is longer.
+public let briefSummaryWords = 60
+
+/// A brief's summary: its first paragraph — the lines from the first
+/// non-blank one up to the next blank one — where more follows it and it is
+/// at most `briefSummaryWords` words. Nil otherwise: a brief of one
+/// paragraph has no summary apart from itself, and a long first paragraph
+/// was written before briefs opened on one.
+public func briefSummary(_ text: String) -> String? {
+    var summary: [Substring] = []
+    var rest = false
+    for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+        let blank = line.allSatisfy(\.isWhitespace)
+        if summary.isEmpty {
+            if !blank { summary.append(line) }
+        } else if blank {
+            rest = true
+        } else if rest {
+            let joined = summary.joined(separator: "\n")
+            let words = joined.split(whereSeparator: \.isWhitespace).count
+            return words <= briefSummaryWords ? joined.trimmingCharacters(in: .whitespaces) : nil
+        } else {
+            summary.append(line)
+        }
+    }
+    return nil
+}
+
+/// What the Brief card shows folded: the brief's summary paragraph where it
+/// has one, else its first `briefExcerptWords` words. Nil where the whole
+/// brief is no longer than that, so there is no Show more.
+public func briefCardExcerpt(_ text: String) -> String? {
+    briefSummary(text) ?? briefExcerpt(text, maxWords: briefExcerptWords)
+}

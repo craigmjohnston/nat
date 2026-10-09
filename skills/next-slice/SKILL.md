@@ -81,20 +81,52 @@ where the brief says and hand back with `--no-branch`. A git that refused in a
 repository is something wrong with the repository — report what it said and
 stop rather than working half-placed.
 
-## 3. Before you write code
+## 3. Asking the user
 
 The brief already carries the slice's own body, the project's conventions and
 a digest of its milestone — every sibling slice's status, and the hand-back
 summary of each Done one, which is often where a design decision that binds
 this one already got settled.
 
-If this slice turns on an architecture question that neither the brief nor a
-Done slice in the milestone actually settles, do not guess and start writing:
-raise it with the user right away, before code — not at hand-back, once an
-hour or more of the wrong shape is already sunk. And never run
-`complete-slice` on work whose architecture is still unsettled that way; a
-hand-back is a claim that the shape is right, not a place to flag that it
-might not be.
+Decide what you can, ask what you cannot. Ask only where different
+answers would change the work materially, or before something
+destructive or hard to undo; otherwise take the reading the brief and
+the code best support, say so in one line, and carry on. A failing check
+on your pull request, a flaky test you hit, or a loose end in code you
+touched is part of this slice: fix it and say what you did, rather than
+asking whether to. Do everything that does not depend on the answer
+before you ask.
+
+Raise an architecture question — a decision neither the brief nor a Done
+slice in the milestone settles — before you write code, not at
+hand-back, where an hour of the wrong shape is already sunk. Never run
+`complete-slice` on work whose shape is still unsettled that way: a
+hand-back is a claim the shape is right.
+
+Shape every question so it can be answered without opening the code:
+
+- The first line is the decision, in one plain sentence, and why it
+  matters to the user.
+- Then the options, two to four, each with what the user gets and gives
+  up, in a line. Put the one you recommend first and say why. Letter or
+  number them so the reply can be "1b".
+- No code identifiers, file paths or flags, unless the user must choose
+  between them. No term the brief or the user has not used, unless you
+  say what it means in the same sentence.
+- One decision per question, under about 120 words, and the question
+  before any report, never buried after one.
+- Never ask the user to observe what they cannot (what a run printed,
+  which input device failed): find out yourself, or say exactly what to
+  click and what each outcome would mean.
+- Never ask what is already decided: by the brief, a design it cites,
+  the project's rules, or an answer earlier in this session. Read what
+  the brief cites before you choose an approach; if it names something
+  that does not exist, say so in your first message, before building
+  anything.
+
+Do not end a turn on a status line ("waiting on CI", "I'll check again
+in five"): wait inside the turn, or end with what you are waiting for
+and when you will report.
 
 ## 4. Do the work
 
@@ -171,6 +203,49 @@ or a plugin's, which the next reader may not have. This holds for everything
 you write: summaries, PR descriptions, follow-up briefs, notes, proposal
 briefs.
 
+## Writing for the user
+
+Everything you write that a person reads — a slice title or brief, a
+question, a hand-back summary, a pull request description, a follow-up,
+a note — is read by someone who set the goals and follows the progress
+but has not followed the code, and may not read English as a first
+language. They decide from your first sentence whether to read on, so
+write for them, not for the engineer who will review the diff.
+
+- Lead with the point. The first sentence says what changes for them, or
+  what you need from them. Detail comes after, never before.
+- Use their words. Say things the way the brief and the user say them.
+  Do not coin a name for something; where a new thing needs one, name it
+  by what it does and say what it is the first time, in half a sentence.
+  Use one name per thing throughout.
+- Keep code out of prose. File paths, function and type names, flags,
+  environment variables and identifiers go in a later detail section or
+  the pull request body, never in a title, a question or an opening
+  sentence. A command the user runs themselves is the exception.
+- Write short, plain sentences: one idea each, about twenty words,
+  common words (use, not utilise; show, not surface), no idioms. Say
+  what something does, not how it is wired.
+- Say what the reader gets. A fix is "a link click no longer opens two
+  tabs", not the names of the two handlers that overlapped. A warning
+  says what breaks for the user, not the mechanism.
+
+Before you send anything, check it: could someone who has never opened
+the code say what this is about from the first sentence? If not, rewrite
+the first sentence.
+
+For example. A title: not "Catch the modified enters with a key monitor
+— performKeyEquivalent never sees them" but "Make shift+enter insert a
+newline in the agent terminal". A summary line: not
+"DiffStore.sendComments now always sends the complete-slice --branch
+instruction and runs slice-rework after agent-send succeeds" but "Review
+comments sent to an agent now always ask it to hand the work back again,
+so a slice cannot get stuck in review". A question: not "Where the
+'already there' baseline comes from: a comment counts as new when no
+`Sent back` names its URL …" but "Say a pull request already has five
+comments when its agent starts. Should the agent be told about those
+five, or only about new ones from now on? I recommend only new ones,
+because you have already seen the five."
+
 ## 5. Finish
 
 Work you noticed but did not do — a bug beside your change, a test gap in code
@@ -182,22 +257,37 @@ one in and **stop**:
 nat slice-followups <slice> --project <project> \
     --follow-up '<title line>
 
-<the change: which file or function, what it does instead, and why>
+<the problem, as the user sees it, and what leaving it costs>
+<what you recommend, and why>
+<the change: what, where, instead of what>
 Done when: <how anyone checks it is finished>'
 ```
 
-Write each one as a slice brief: if the user queues it, this text is the brief
-of a new slice, word for word, read by an agent with nothing else. The title is
-an imperative action ("Make the sidebar's post-write refresh read the
-replica"), not a symptom. The body is the change — which file or function, what
-it does instead, and why — then a line starting `Done when:` saying how anyone
-checks it is finished. Write a decision, not a question: where there is a
-choice, pick one and name the alternative rejected; no "could", "might",
-"consider" or "worth looking at". If saying what to change needs a look at the
-code, take that look now — it is usually one read; if it genuinely needs
-investigation, the investigation is the deliverable and `Done when:` says what
-it produces. A slice title is at most 64 characters, one change named, with the
-list of what it covers in the brief.
+A follow-up is work the user has not asked for that you noticed and did
+not do; anything this slice's own `Done when:` covers is this slice's
+work, so do it rather than file it. Write each one as a slice brief: if
+the user queues it, this text is the brief of a new slice, word for
+word, read by an agent with nothing else. The title is an imperative
+action in plain words, eight words or fewer, naming no file or type. The
+body opens with one line saying the problem as the user would see it and
+what it costs to leave it, then one line saying what you recommend
+(queue it, fold it in now, or drop it) and why. Then the change — what,
+where, instead of what — and a line starting `Done when:` saying how
+anyone checks it is finished, as something they can see or run. Write a
+decision, not a question: where there is a choice, pick one and name the
+alternative rejected; no "could", "might", "consider" or "worth looking
+at". Before filing one, check the plan for a later slice that already
+covers it, and fold housekeeping you noticed — a flaky test, lint drift,
+dead code — into one item or fix it now. If saying what to change needs
+a look at the code, take that look now; if it genuinely needs
+investigation, the investigation is the deliverable and `Done when:`
+says what it produces.
+
+A slice title names one change in eight words or fewer, in the words of
+the person who asked for it — what they get, not how it is built. No
+file, type or command names; no colon, dash or "and" joining several
+changes; no "N fixes in one pass". At most 64 characters. The list of
+what it covers goes in the brief.
 
 `--follow-up` repeats, one per follow-up. A later hand-in carries only what is
 new — never a repeat of a follow-up already handed in. The user decides on the
@@ -236,8 +326,8 @@ Record the outcome with the slice's page ID or URL, as printed in the brief:
 
 ```
 nat complete-slice <slice> --project <project> \
-    --summary '- <what changed>
-- <key decision>' \
+    --summary '- <what now works, in the user's words>
+- <a decision you made>' \
     --pr-description '<title line>
 
 <what the PR does and why>'
@@ -247,17 +337,23 @@ nat reads the branch off the slice's worktree. It refuses
 while the worktree holds anything uncommitted — commit it first — then pushes
 the branch itself (with a lease, so a rebased branch goes too), records it and
 hands the slice back for review, writing the summary onto the slice page. A
-push it reports refused is yours to sort out before handing back again. `--summary` is quoted back to a future agent
-in its milestone's digest, not read by a person, so keep it a handful of terse
-bullet points — what changed and key decisions — never a narrative of the
-session. It leaves the slice in progress deliberately — approving it on the
-board is what opens the pull request, and the merge of that pull request is
-what marks the slice Done.
+push it reports refused is yours to sort out before handing back again. It
+leaves the slice in progress deliberately — approving it on the board is what
+opens the pull request, and the merge of that pull request is what marks the
+slice Done.
 
-`--pr-description` is what that pull request is opened with — its first line
-becomes the title and the rest the body — so write it ready to publish: what
-the change does and why, addressed to whoever reviews it on GitHub, not a
-report of your session. It is filed on the slice page under its own heading, so
+`--summary` is shown to the user on the task log and quoted to later
+agents in the milestone's digest. Its first bullet says what now works
+or what changed, in the user's words, as one sentence they could read
+alone. Then at most three bullets: decisions you made and anything the
+reviewer must check. Identifiers only where a reviewer needs them to
+find the place. Never a narrative of the session.
+
+`--pr-description` is what the pull request is opened with: its first
+line is the title and the rest the body, ready to publish. The first
+paragraph says what the change does and why, in plain words, for whoever
+reviews it on GitHub. Technical detail follows under its own heading. No
+test counts, no list of files touched, no report of your session. It is filed on the slice page under its own heading, so
 the user can approve the branch days later and still get it. Pass
 `--pr-description -` to read it from stdin when it is too long for an argument,
 and give `--summary` as a flag then, since stdin is taken.

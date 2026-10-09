@@ -82,7 +82,9 @@ func NewProjectPrompt(workspaceID, description string) string {
 	b.WriteString("second one, so send the whole plan again each time rather than a diff\n")
 	b.WriteString("of it.\n\n")
 	b.WriteString(ProposalWithdrawnRule)
+	b.WriteString(briefShapePassage)
 	b.WriteString(namingPassage)
+	b.WriteString(writingPassage)
 	b.WriteString(tmuxPassage)
 	b.WriteString(waitingPassage(false))
 

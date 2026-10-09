@@ -226,6 +226,12 @@ succeeds), `plan-apply`, `project-create`, `config-set`.
   `slice-edit --title`, `slice-followups` (each first line) and the plan
   path (created titles, `edit` titles) — before any write. Titles already on
   the board are never re-validated.
+- **Brief opening**: `domain.CheckBriefOpening` refuses a brief whose first
+  paragraph runs past `MaxBriefOpeningWords` (60, `strings.Fields`; an
+  empty brief passes) — in the plan path (`validatePlan`: created slices'
+  and `edit` descriptions, naming the slice) and `slice-followups` (each
+  brief), before any write. Not in `slice-add`/`slice-edit`, which take the
+  user's own brief; briefs on the board are never re-validated.
 - `slice-move` — refuses only **In progress** (not Done — moving milestones
   is plan bookkeeping, not touching the work).
 - `slice-move`, `slice-delete`, a refiling `slice-reorder` and `plan-apply`
