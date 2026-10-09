@@ -52,6 +52,10 @@ func domainSessionFor(branch string) domain.Session {
 type fakeSessionWorktrees struct {
 	created []struct{ dir, branch, base string }
 	removed []struct{ dir, branch string }
+	// discarded are the forced removals asked for — a cancel's, or the delete
+	// of a slice in progress — and discardErr what they are refused with.
+	discarded  []struct{ dir, branch string }
+	discardErr error
 	// existingPath, when set, is what Path answers for any branch — a
 	// worktree already cut, which is what [actions.RemoveWorktree] needs to
 	// find before it removes it.
@@ -88,6 +92,11 @@ func (f *fakeSessionWorktrees) Create(dir, branch, base string) (string, error) 
 func (f *fakeSessionWorktrees) Remove(dir, branch string) error {
 	f.removed = append(f.removed, struct{ dir, branch string }{dir, branch})
 	return f.removeErr
+}
+
+func (f *fakeSessionWorktrees) Discard(dir, branch string) error {
+	f.discarded = append(f.discarded, struct{ dir, branch string }{dir, branch})
+	return f.discardErr
 }
 
 func (f *fakeSessionWorktrees) Branches(dir string) ([]string, error) {

@@ -369,9 +369,11 @@ usage:
                       filed under it any more (--json: removed_milestone)
   nat slice-delete <slice> [--json] --project ID
                       move a slice's page to Notion's trash, where it is still
-                      recoverable. Refused on a slice in progress. The
-                      milestone it leaves is removed where no slice is filed
-                      under it any more (--json: removed_milestone)
+                      recoverable. A slice in progress has its live agent
+                      stopped first (refused where it cannot be) and its
+                      worktree and branch discarded after. The milestone it
+                      leaves is removed where no slice is filed under it any
+                      more (--json: removed_milestone)
   nat session-launch --project ID [--dir DIR] [--model M] [--effort E] [--json]
                       start a bare agent on a repo with no slice and no
                       prompt: a worktree on session/<id> off the remote's
@@ -650,6 +652,13 @@ usage:
                       hand a slice you claimed back to the plan: Todo and
                       unassigned, its brief and any branch left as they are, for
                       when the session working it ended without finishing it
+  nat slice-cancel <slice> [--json] --project ID
+                      take a slice in progress back to Todo and throw its work
+                      away: its live agent stopped (refused where it cannot
+                      be), a note on its page, its branch and pull request
+                      cleared, then its worktree and branch deleted. Anyone's
+                      slice; an open pull request is left on GitHub. Refused
+                      on a Todo or Done slice
   nat pr-view <slice> [--json] --project ID
                       print one pull request in full: its description, checks,
                       reviews, comments and change stats, read through gh in
@@ -873,6 +882,8 @@ func runCommand(ctx context.Context, args []string, env Env) error {
 		return sliceChecksCancel(ctx, args[1:], env)
 	case "release-slice":
 		return releaseSlice(ctx, args[1:], env)
+	case "slice-cancel":
+		return sliceCancel(ctx, args[1:], env)
 	case "pr-view":
 		return prView(ctx, args[1:], env)
 	case "pr-comment":

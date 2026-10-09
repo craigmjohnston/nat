@@ -32,6 +32,8 @@ type fakeWorktrees struct {
 	createErr error
 	removeErr error
 	resetErr  error
+	// discardErr is what a discard is refused with.
+	discardErr error
 	// branchesErr is what a listing of the repository's worktrees fails
 	// with; nil lists the branches in existing.
 	branchesErr error
@@ -42,9 +44,16 @@ type fakeWorktrees struct {
 	looks   []worktreeCall
 	creates []worktreeCall
 	removes []worktreeCall
+	// discards are the forced removals asked for.
+	discards []worktreeCall
 }
 
 var _ Worktrees = (*fakeWorktrees)(nil)
+
+func (f *fakeWorktrees) Discard(dir, branch string) error {
+	f.discards = append(f.discards, worktreeCall{dir: dir, branch: branch})
+	return f.discardErr
+}
 
 func (f *fakeWorktrees) Path(dir, branch string) (string, error) {
 	f.looks = append(f.looks, worktreeCall{dir: dir, branch: branch})

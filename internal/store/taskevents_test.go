@@ -308,7 +308,10 @@ func TestTaskEventsStampedSections(t *testing.T) {
 		"### Summary\n\n" + testStamp + "\n\n" +
 		"### Follow-ups" + stamp + "1. A\n   Brief A.\n\n" +
 		"### Follow-ups triaged" + stamp + "- Dropped: A\n\n" +
-		releasedLine("Craig Johnston", testNow)
+		releasedLine("Craig Johnston", testNow) + "\n\n" +
+		// A cancel's line, like a release's, ends the section it turns up in.
+		"### Handed back" + stamp + "Did it again.\n\n" +
+		cancelledLine("Craig Johnston", testNow)
 	want := []TaskEvent{
 		{Kind: "launched", At: readNow},
 		{Kind: "handed_back", Note: "Did the thing.", At: readNow},
@@ -318,9 +321,34 @@ func TestTaskEventsStampedSections(t *testing.T) {
 		{Kind: "summary", At: readNow},
 		{Kind: "follow_ups", At: readNow, Batch: 1, FollowUps: []TaskFollowUp{{Index: 1, Title: "A", Brief: "Brief A.", Decision: "dropped", DecidedAt: readNow}}},
 		{Kind: "released", By: "Craig Johnston", At: readNow},
+		{Kind: "handed_back", Note: "Did it again.", At: readNow},
+		{Kind: "cancelled", By: "Craig Johnston", At: readNow},
 	}
 	if got := TaskEvents(body); !reflect.DeepEqual(got, want) {
 		t.Errorf("TaskEvents() =\n%#v\nwant\n%#v", got, want)
+	}
+}
+
+// A cancel's line read back names who and when; a name holding " at " still
+// reads whole, and a time that will not parse reads as the zero time.
+func TestCancelledBy(t *testing.T) {
+	tests := []struct {
+		line string
+		by   string
+		at   time.Time
+	}{
+		{cancelledLine("Craig Johnston", testNow), "Craig Johnston", testNow},
+		{cancelledLine("Jo at Home", testNow), "Jo at Home", testNow},
+		{"Cancelled by Jo at 2026-13-03T23:14:05+01:00: the work so far was discarded and it is back at Todo.", "Jo", time.Time{}},
+	}
+	for _, tt := range tests {
+		by, at, ok := cancelledBy(tt.line)
+		if !ok || by != tt.by || !at.Equal(tt.at) {
+			t.Errorf("cancelledBy(%q) = %q, %v, %v; want %q at %v", tt.line, by, at, ok, tt.by, tt.at)
+		}
+	}
+	if _, _, ok := cancelledBy("Cancelled by nobody."); ok {
+		t.Error("a line that is not a cancel's read as one")
 	}
 }
 

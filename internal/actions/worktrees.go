@@ -22,6 +22,10 @@ type Worktrees interface {
 	Path(dir, branch string) (string, error)
 	Create(dir, branch, base string) (string, error)
 	Remove(dir, branch string) error
+	// Discard is Remove for work the user threw away: the worktree forced
+	// off, uncommitted work and all, and the branch deleted whatever its
+	// commits — [DiscardSliceWorktree]'s.
+	Discard(dir, branch string) error
 	// Branches is every branch a linked worktree of the repository at dir
 	// has checked out, in one read — what [SweepLanded] matches slices
 	// against.

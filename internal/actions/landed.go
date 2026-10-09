@@ -46,6 +46,26 @@ func RemoveSliceWorktree(w Worktrees, s domain.Slice, p config.ProjectConfig) bo
 	return RemoveWorktree(w, dir, AgentBranch(s))
 }
 
+// DiscardSliceWorktree throws a slice's worktree and branch away — the one
+// worktree removal that forces ([Worktrees.Discard]), for work the user has
+// said to discard: a slice cancelled back to Todo, or deleted while in
+// progress. It finds them as [RemoveSliceWorktree] does, by [WorkdirFor] and
+// [AgentBranch], so the caller passes the slice as it stood before any write
+// cleared its Branch. A slice with no repository has nothing to discard. A
+// refusal from git is logged and left, never the caller's failure — the slice
+// write has happened regardless — and reported false.
+func DiscardSliceWorktree(w Worktrees, s domain.Slice, p config.ProjectConfig) bool {
+	dir := sliceRepo(s, p)
+	if dir == "" {
+		return true
+	}
+	if err := w.Discard(dir, AgentBranch(s)); err != nil {
+		logging.Action("left the slice's discarded worktree in place", "dir", dir, "branch", AgentBranch(s), "error", err)
+		return false
+	}
+	return true
+}
+
 // sliceRepo is the repository a slice's worktree was cut from, as the launch
 // read it: [WorkdirFor], with a leading ~ expanded.
 func sliceRepo(s domain.Slice, p config.ProjectConfig) string {

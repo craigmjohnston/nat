@@ -714,6 +714,53 @@ func TestReleaseSliceCarriesTheLocalFailureUp(t *testing.T) {
 	}
 }
 
+func TestCancelSliceWritesLocallyThenPushes(t *testing.T) {
+	api := &fakeAPI{}
+	m, l := mirroredPlan(t, api)
+	ctx := context.Background()
+	sh, _ := m.Shape(ctx, project())
+	if _, err := l.ClaimSlice(ctx, "writes", sh, "u1"); err != nil {
+		t.Fatalf("seed a claim: %v", err)
+	}
+
+	s, err := m.CancelSlice(ctx, "writes", sh, "Craig")
+	if err != nil {
+		t.Fatalf("CancelSlice: %v", err)
+	}
+	if s.Status != domain.SliceTodo {
+		t.Errorf("status = %v, want Todo", s.Status)
+	}
+	if len(api.updates) == 0 || api.updates[len(api.updates)-1][notion.PropPR].URL != "" {
+		t.Errorf("updates = %v, want the cancel pushed to the workspace", api.updates)
+	}
+	if dirty, _ := l.Dirty(ctx, "writes"); dirty {
+		t.Error("dirty = true, want the push to have cleared it")
+	}
+}
+
+// A page whose shape cannot be read leaves the cancel unpushed, flagged for
+// the next sync, as every push does.
+func TestCancelSlicePageShapeFailureLeavesTheFlagSet(t *testing.T) {
+	api := &fakeAPI{page: func(string) (*notion.Page, error) { return nil, errBoom }}
+	m, l := mirroredPlan(t, api)
+	ctx := context.Background()
+	sh, _ := m.Shape(ctx, project())
+	if _, err := m.CancelSlice(ctx, "writes", sh, "Craig"); err != nil {
+		t.Fatalf("CancelSlice: %v", err)
+	}
+	if dirty, _ := l.Dirty(ctx, "writes"); !dirty {
+		t.Error("dirty = false, want it still set")
+	}
+}
+
+func TestCancelSliceCarriesTheLocalFailureUp(t *testing.T) {
+	l, _ := openPlan(t)
+	m := Mirror(l, Over(&fakeAPI{}), Project{ID: "proj"})
+	if _, err := m.CancelSlice(context.Background(), "ghost", Shape{}, "Craig"); err == nil {
+		t.Error("CancelSlice on a slice not in the plan: want an error")
+	}
+}
+
 func TestCompleteSliceDoneWritesLocallyThenPushesWithThePagesShape(t *testing.T) {
 	api := &fakeAPI{}
 	m, l := mirroredPlan(t, api)

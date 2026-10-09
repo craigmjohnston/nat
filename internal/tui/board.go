@@ -45,6 +45,10 @@ type boardKeyMap struct {
 	// — for when the session working it ended without finishing it. It is the
 	// way out of the one state a slice otherwise gets stuck in.
 	Release key.Binding
+	// Cancel is release's destructive sibling: the agent stopped and the work
+	// thrown away, the slice back at Todo — for work the user wants gone
+	// rather than handed on.
+	Cancel key.Binding
 
 	Launch key.Binding
 	Attach key.Binding
@@ -74,6 +78,7 @@ func defaultBoardKeyMap() boardKeyMap {
 		Diff:    key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "review diff")),
 		PR:      key.NewBinding(key.WithKeys("V"), key.WithHelp("V", "view pull request")),
 		Release: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "release slice")),
+		Cancel:  key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "cancel slice, discarding its work")),
 
 		Launch: key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "launch agent")),
 		Attach: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "show/hide agent")),
@@ -101,7 +106,7 @@ func (k boardKeyMap) projects() []key.Binding {
 
 // writes are the bindings the root model handles rather than the board.
 func (k boardKeyMap) writes() []key.Binding {
-	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Diff, k.PR, k.Release}
+	return []key.Binding{k.Add, k.Edit, k.Move, k.Delete, k.Diff, k.PR, k.Release, k.Cancel}
 }
 
 // sliceHints are the hints row's bindings while the cursor is on a slice: the
@@ -122,7 +127,8 @@ func (k boardKeyMap) writes() []key.Binding {
 //
 // Release is not here at all. It is rarer than any of these — a session that
 // died, rather than anything the plan does in its ordinary course — and the
-// row has less room than the help screen, which is where it is named.
+// row has less room than the help screen, which is where it is named. Cancel,
+// its destructive sibling, is left out for the same reason.
 func (b Board) sliceHints() []hint {
 	k := b.keys
 	return []hint{

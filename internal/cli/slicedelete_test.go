@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/craigmjohnston/nat/internal/actions"
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
@@ -81,18 +84,68 @@ func TestSliceDeleteJSON(t *testing.T) {
 	}
 }
 
-func TestSliceDeleteRefusesInProgress(t *testing.T) {
-	api := deletableAPI(notion.SliceInProgress)
+// deleteEnvWithTmux is testEnv with tmux answered by runner and the worktrees
+// by the fake it returns.
+func deleteEnvWithTmux(t *testing.T, api *fakeAPI, runner *agentTestRunner) (Env, *fakeSessionWorktrees) {
+	t.Helper()
 	env, _ := testEnv(testConfig(t), api)
+	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
+	w := &fakeSessionWorktrees{}
+	env.NewWorktrees = func() actions.Worktrees { return w }
+	return env, w
+}
 
-	err := Run(context.Background(), []string{
-		"slice-delete", testSliceID, "--project", "project-1",
-	}, env)
-	if err == nil || !strings.Contains(err.Error(), "in progress") {
-		t.Errorf("err = %v, want 'in progress'", err)
+// A slice in progress is deleted: its live agent killed first, then the
+// trash, then its worktree and branch discarded with the work in them.
+func TestSliceDeleteStopsAndDiscardsASliceInProgress(t *testing.T) {
+	for name, live := range map[string]map[string]string{
+		"with its agent live": {testSliceID: "nat-c020efb4"},
+		"with no agent":       {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := deletableAPI(notion.SliceInProgress)
+			runner := &agentTestRunner{liveSessions: live}
+			env, w := deleteEnvWithTmux(t, api, runner)
+
+			if err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "project-1"}, env); err != nil {
+				t.Fatalf("slice-delete: %v", err)
+			}
+			wantKills := []string(nil)
+			if len(live) > 0 {
+				wantKills = []string{"nat-c020efb4"}
+			}
+			if !reflect.DeepEqual(runner.kills, wantKills) {
+				t.Errorf("kills = %v, want %v", runner.kills, wantKills)
+			}
+			if !equalLines(api.trashes, []string{testSliceID}) {
+				t.Errorf("trashes = %v, want the slice trashed", api.trashes)
+			}
+			if want := []removal{{"/tmp/nat", "slice/render-the-board"}}; !reflect.DeepEqual(w.discarded, want) || len(w.removed) != 0 {
+				t.Errorf("discarded = %+v, removed = %+v, want the one forced discard %+v", w.discarded, w.removed, want)
+			}
+		})
 	}
-	if len(api.trashes) != 0 {
-		t.Errorf("refused delete still trashed: %v", api.trashes)
+}
+
+// An agent that cannot be stopped — tmux unreadable, or a kill that fails —
+// refuses the delete before the page is touched.
+func TestSliceDeleteRefusesWhereTheAgentCannotBeStopped(t *testing.T) {
+	for name, runner := range map[string]*agentTestRunner{
+		"unreadable tmux": {liveFatalErr: "tmux is broken"},
+		"failed kill":     {liveSessions: map[string]string{testSliceID: "nat-c020efb4"}, killErr: "permission denied"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := deletableAPI(notion.SliceInProgress)
+			env, w := deleteEnvWithTmux(t, api, runner)
+
+			err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "project-1"}, env)
+			if err == nil {
+				t.Fatal("slice-delete: want the agent's refusal")
+			}
+			if len(api.trashes)+len(w.discarded) != 0 {
+				t.Errorf("trashed %v, discarded %+v, want nothing", api.trashes, w.discarded)
+			}
+		})
 	}
 }
 

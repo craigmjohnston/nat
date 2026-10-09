@@ -213,6 +213,33 @@ func (l *Local) ReleaseSlice(ctx context.Context, id string, sh Shape, by string
 	return s, nil
 }
 
+// CancelSlice hands the slice back to the plan as [Local.ReleaseSlice] does,
+// with its branch (where the shape records one) and pull request cleared in
+// the same write — the work they name is being thrown away — and a cancel's
+// line on the page rather than a release's. One transaction, as a release is.
+func (l *Local) CancelSlice(ctx context.Context, id string, sh Shape, by string) (domain.Slice, error) {
+	s, err := l.updateSlice(ctx, id, "cancel the slice", func(tx *sql.Tx, _ domain.Slice) error {
+		body, err := l.sliceBody(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		set := `status = ?, pr = '', body = ?`
+		if sh.HasAssignee {
+			set += `, assignee = ''`
+		}
+		if sh.HasBranch {
+			set += `, branch = ''`
+		}
+		return l.exec(ctx, tx, "cancel the slice", `UPDATE slices SET `+set+` WHERE id = ?`,
+			notion.SliceTodo, appendLines(body, cancelledLine(by, clockOr(l.Clock))), id)
+	})
+	if err != nil {
+		return domain.Slice{}, err
+	}
+	logging.Action("slice cancelled", "slice", s.ID, "name", s.Name)
+	return s, nil
+}
+
 // CompleteSlice closes the slice out: the summary filed on its body under a
 // heading naming the ending, the pull request description beside it under one
 // of its own where the hand-back carried one, and whichever properties the

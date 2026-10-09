@@ -241,6 +241,91 @@ func TestRemoveFailure(t *testing.T) {
 	}
 }
 
+// argsOf is every call's arguments, in order.
+func argsOf(calls []call) [][]string {
+	out := make([][]string, len(calls))
+	for i, c := range calls {
+		out[i] = c.args
+	}
+	return out
+}
+
+// Discard forces the worktree off, then asks whether the branch is there and
+// deletes it whatever its commits — the work was asked to go.
+func TestDiscardForcesTheWorktreeAndTheBranchOff(t *testing.T) {
+	runner := &fakeRunner{replies: []reply{{out: listPorcelain}, {}, {}, {}}}
+	if err := NewWithRunner(runner).Discard("/repos/nat", "slice/worktrees"); err != nil {
+		t.Fatalf("Discard() = %v, want it gone", err)
+	}
+	want := [][]string{
+		{"worktree", "list", "--porcelain"},
+		{"worktree", "remove", "--force", wantPath},
+		{"rev-parse", "--verify", "--quiet", "refs/heads/slice/worktrees"},
+		{"branch", "-D", "slice/worktrees"},
+	}
+	if got := argsOf(runner.calls); !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %v\nwant %v", got, want)
+	}
+	for i, c := range runner.calls {
+		if c.dir != "/repos/nat" || c.name != Binary {
+			t.Errorf("call %d ran %q in %q, want %q in the slice's repository", i, c.name, c.dir, Binary)
+		}
+	}
+}
+
+// A branch with no worktree still loses its branch, so no later launch can
+// check the discarded work out again.
+func TestDiscardDeletesABranchWithNoWorktree(t *testing.T) {
+	runner := &fakeRunner{replies: []reply{{out: listPorcelain}, {}, {}}}
+	if err := NewWithRunner(runner).Discard("/repos/nat", "slice/elsewhere"); err != nil {
+		t.Fatalf("Discard() = %v, want the branch gone", err)
+	}
+	want := [][]string{
+		{"worktree", "list", "--porcelain"},
+		{"rev-parse", "--verify", "--quiet", "refs/heads/slice/elsewhere"},
+		{"branch", "-D", "slice/elsewhere"},
+	}
+	if got := argsOf(runner.calls); !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %v\nwant %v", got, want)
+	}
+}
+
+// Neither a worktree nor a branch is nothing to discard, and no failure.
+func TestDiscardWithNothingThere(t *testing.T) {
+	runner := &fakeRunner{replies: []reply{{out: listPorcelain}, {err: noBranch}}}
+	if err := NewWithRunner(runner).Discard("/repos/nat", "slice/never"); err != nil {
+		t.Fatalf("Discard() = %v, want nothing to do", err)
+	}
+	if len(runner.calls) != 2 {
+		t.Errorf("calls = %v, want the list and the branch check alone", argsOf(runner.calls))
+	}
+}
+
+// Each of git's refusals comes back as git's own error, and a refused worktree
+// removal leaves the branch alone.
+func TestDiscardFailures(t *testing.T) {
+	boom := &ExitError{Code: 128, Stderr: "fatal: boom\n"}
+	tests := []struct {
+		name    string
+		replies []reply
+		calls   int
+	}{
+		{"the listing", []reply{{err: boom}}, 1},
+		{"the removal", []reply{{out: listPorcelain}, {err: boom}}, 2},
+		{"the branch", []reply{{out: listPorcelain}, {}, {}, {err: boom}}, 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runner := &fakeRunner{replies: tt.replies}
+			if err := NewWithRunner(runner).Discard("/repos/nat", "slice/worktrees"); !errors.Is(err, error(boom)) {
+				t.Errorf("Discard() = %v, want git's own error", err)
+			}
+			if len(runner.calls) != tt.calls {
+				t.Errorf("calls = %v, want %d", argsOf(runner.calls), tt.calls)
+			}
+		})
+	}
+}
 
 // TestPathReadsTheListing covers the ordinary read: the branch's own record,
 // past the main worktree and whatever else the repository has out.

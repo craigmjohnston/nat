@@ -194,6 +194,14 @@ type fakeLauncher struct {
 	clients  []string
 	// reclaims records the host pane the reconcile was asked about.
 	reclaims []string
+	// kills records the sessions ended, and killErr the failure that stops one.
+	kills   []string
+	killErr error
+}
+
+func (f *fakeLauncher) Kill(session string) error {
+	f.kills = append(f.kills, session)
+	return f.killErr
 }
 
 var _ AgentLauncher = (*fakeLauncher)(nil)

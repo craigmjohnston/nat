@@ -758,6 +758,8 @@ func (a *App) boardWrite(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.viewPRFlow(), true
 	case key.Matches(msg, a.board.keys.Release):
 		return a.releaseSliceFlow(), true
+	case key.Matches(msg, a.board.keys.Cancel):
+		return a.cancelSliceFlow(), true
 	case key.Matches(msg, a.board.keys.Launch):
 		return a.launchAgentFlow(), true
 	case key.Matches(msg, a.board.keys.Attach):

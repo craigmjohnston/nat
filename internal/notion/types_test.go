@@ -45,6 +45,8 @@ func TestPropertyValueJSON(t *testing.T) {
 		{"status", NewStatus("Active"), `{"status":{"name":"Active"}}`},
 		{"people", NewPeople("user-1"), `{"people":[{"id":"user-1"}]}`},
 		{"url", NewURL("https://example.test/pr/1"), `{"url":"https://example.test/pr/1"}`},
+		// An emptied url is null, which no omitempty field could say.
+		{"cleared url", ClearURL(), `{"url":null}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

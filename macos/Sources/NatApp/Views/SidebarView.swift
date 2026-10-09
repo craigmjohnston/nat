@@ -45,7 +45,11 @@ struct SidebarView: View {
     /// starts folded.
     @State private var fold: [String: Bool]
 
-    @State private var sliceForDeletion: (row: SidebarSliceRow, done: Bool)?
+    /// The slice a delete is confirming, with its status as the plan read it —
+    /// which says what the confirmation warns of (`SliceRemovalRules`).
+    @State private var sliceForDeletion: (row: SidebarSliceRow, status: String?)?
+    /// The slice a cancel is confirming.
+    @State private var sliceForCancel: SidebarSliceRow?
     @State private var sessionForDiscard: String?
     @State private var newSliceTarget: NewSliceTarget?
     @State private var milestoneForRename: MilestoneRef?
@@ -1512,7 +1516,9 @@ struct SidebarView: View {
                 }
             }
         }
-        Button("Delete\u{2026}", systemImage: "trash", role: .destructive) { sliceForDeletion = (row, page?.status == "Done") }
+        Button(SliceRemovalRules.cancelItem, systemImage: "xmark.circle", role: .destructive) { sliceForCancel = row }
+            .disabled(!SliceRemovalRules.canCancel(status: page?.status))
+        Button("Delete\u{2026}", systemImage: "trash", role: .destructive) { sliceForDeletion = (row, page?.status) }
     }
 
     // MARK: - Actions
@@ -1583,6 +1589,12 @@ struct SidebarView: View {
         }
     }
 
+    /// Cancels a slice in progress, its work discarded. The slice is still on
+    /// the plan — back at Todo — so the selection is left where it was.
+    fileprivate func cancelSlice(_ row: SidebarSliceRow) {
+        run { try await NatClient().sliceCancel(projectID: row.projectID, sliceRef: row.sliceID) }
+    }
+
     private func startNewSession(inProject projectID: String) async {
         var folder: String?
         if appModel.sessionNeedsFolder(inProject: projectID) {
@@ -1631,9 +1643,17 @@ struct SidebarView: View {
                     }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text(view.sliceForDeletion?.done == true
-                        ? "This task is Done, so deleting it removes the record of finished work. The page goes to Notion's trash."
-                        : "The page goes to Notion's trash.")
+                    Text(SliceRemovalRules.deleteMessage(status: view.sliceForDeletion?.status))
+                }
+                .alert(
+                    "Cancel \u{201C}\(view.sliceForCancel?.title ?? "")\u{201D} and discard its work?",
+                    isPresented: presenting(view.$sliceForCancel),
+                    presenting: view.sliceForCancel
+                ) { row in
+                    Button(SliceRemovalRules.cancelButton, role: .destructive) { view.cancelSlice(row) }
+                    Button("Keep", role: .cancel) {}
+                } message: { _ in
+                    Text(SliceRemovalRules.cancelMessage)
                 }
                 .alert(
                     "Rename \u{201C}\(view.milestoneForRename?.name ?? "")\u{201D}",

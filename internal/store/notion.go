@@ -220,6 +220,44 @@ func (n *Notion) ReleaseSlice(ctx context.Context, id string, sh Shape, by strin
 	return s, nil
 }
 
+// CancelSlice hands the slice back to the plan as [Notion.ReleaseSlice] does,
+// and takes the work with it: its Branch (where the project has the column)
+// and its pull request are cleared in the same properties write, since both
+// name work the caller is about to delete — a branch left recorded would put
+// the next launch back on it, and a pull request would read the slice as in
+// review. The line goes on first, for the reason a release's does.
+func (n *Notion) CancelSlice(ctx context.Context, id string, sh Shape, by string) (domain.Slice, error) {
+	if _, err := n.api.AppendBlockChildren(ctx, id,
+		[]map[string]any{textBlock("paragraph", cancelledLine(by, clockOr(n.Clock)))}); err != nil {
+		return domain.Slice{}, fmt.Errorf("note the cancel on the slice: %w", err)
+	}
+	properties := map[string]notion.PropertyValue{
+		notion.PropStatus: notion.NewChoice(sh.statusType, notion.SliceTodo),
+		notion.PropPR:     notion.ClearURL(),
+	}
+	if sh.HasAssignee {
+		properties[notion.PropAssignee] = notion.NewPeople()
+	}
+	if sh.HasBranch {
+		properties[notion.PropBranch] = notion.NewRichText("")
+	}
+	updated, err := n.api.UpdatePageProperties(ctx, id, properties)
+	if err != nil {
+		return domain.Slice{}, fmt.Errorf("cancel the slice: %w", err)
+	}
+	s := domain.SliceFromPage(*updated)
+	logging.Action("slice cancelled", "slice", s.ID, "name", s.Name)
+	return s, nil
+}
+
+// cancelledLine is the one line a cancel leaves on a slice, in a release's
+// shape — who and when inside the sentence — so the task log reads the two
+// apart: a release kept the work, a cancel threw it away.
+func cancelledLine(by string, at time.Time) string {
+	return fmt.Sprintf("Cancelled by %s at %s: the work so far was discarded and it is back at Todo.",
+		by, at.Format(time.RFC3339))
+}
+
 // releasedLine is the one line a release leaves on a slice, so a slice that
 // went round twice reads as having done so rather than as having been worked
 // once by somebody who wrote nothing down. The board and the headless command

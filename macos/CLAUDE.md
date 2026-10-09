@@ -209,6 +209,15 @@ open PR mid-story: Task and the terminal up, the PR section folded and kept),
 `window-pr-send-back`, `window-review-send-back`, `action-bar-merge-no-agent`,
 `action-bar-split-menu`.
 
+**Delete and cancel.** The slice row menu's Delete… is offered whatever the
+status, and its alert says what goes (`SliceRemovalRules.deleteMessage`: a
+Done task's record; an In progress task's agent, worktree and branch, which
+`nat slice-delete` stops and discards). Beside it, **Cancel and discard
+work…** (`SliceRemovalRules.canCancel`: In progress only) asks with an alert
+whose destructive button is "Discard work", never "Cancel", then runs `nat
+slice-cancel` (`NatClient.sliceCancel`) through the menu's `run` — the
+selection kept, since the task is still on the plan, back at Todo.
+
 **New and Updated.** One rule, one store: `SeenMemory` (UserDefaults
 `seenSnapshots`, per project, slice and `SeenSection`; `.inMemory()` for tests
 and stories) remembers each section as item → fingerprint as last seen. No
@@ -704,7 +713,8 @@ selected there is no breadcrumb. Stories: `titlebar-band-*`,
 `status-bar-agent-readout*`, `changes-section-commits`, `action-bar-*`. The Thread is labelled "Task" whatever the
 slice's state, and draws `slice-show`'s `events`
 in order — hand-backs, send-backs (`slice-rework --comments`), releases,
-relaunches, work resumed (`slice-resume`: "Work resumed", why as its body,
+cancels (`slice-cancel`: "<who> cancelled to Todo, work discarded", story
+`window-task-log-cancelled`), relaunches, work resumed (`slice-resume`: "Work resumed", why as its body,
 its stamp as its time; the hand-back that ends it the ordinary card after
 it), notes (`nat slice-note`, headed "Another agent left a note";
 `fromSlice` matched once against the loaded plan by name and milestone

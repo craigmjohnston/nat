@@ -241,11 +241,19 @@ succeeds), `plan-apply`, `project-create`, `config-set`.
   that case only — a reorder within a milestone is always allowed. Position
   is the plan file's alone: a Notion-backed project sends a request only for
   the refile, and a same-milestone reorder sets no dirty flag.
-- `slice-delete` — refuses only **In progress**; Done is allowed through
-  (Notion's trash is the recovery, not a CLI refusal) — the same asymmetry
-  the board's `d` confirm draws with its warning-vs-refusal split. After the
-  trash, `actions.RemoveSliceWorktree`; `complete-slice` does the same where
-  it closes a slice Done (`--no-branch`).
+- `slice-delete` — refuses no status (Notion's trash is the recovery; the
+  caller's confirm warns of Done and In progress). `actions.Delete`: an In
+  progress slice's live agent is stopped first (`actions.StopAgent`, through
+  `NewTmux` — refused before the trash where tmux can't be read or the kill
+  fails), and after the trash its worktree and branch are discarded
+  (`actions.DiscardSliceWorktree`); any other slice's worktree goes through
+  `actions.RemoveSliceWorktree`, as `complete-slice` does where it closes a
+  slice Done (`--no-branch`).
+- `slice-cancel` (`slicecancel.go`) — `actions.Cancel`, no ownership check,
+  `by` the config's assignee name (none is refused): refuses Todo, Done and
+  an unreadable slice, stops the agent as delete does, then
+  `Store.CancelSlice` and the discard. `--json` → `{id, name, cancelled}`.
+  Nothing on GitHub is touched.
 
 Agent control (tmux only, no Notion read beyond the claim check):
 `slice-launch` (`actions.Launch`, same flow the board's `l` key and
@@ -302,7 +310,7 @@ See root CLAUDE.md's Notes rule.
 
 `slice-show --json`'s `events` is the slice's whole task log: every
 `store.TaskEvent` its body carries (`handed_back`/`sent_back`/`resumed`/`launched`/`relaunched`/
-`released`/`blocked`/`summary`/`follow_ups`/`note`/`checks_failed`), in body order, plus — read off
+`released`/`cancelled`/`blocked`/`summary`/`follow_ups`/`note`/`checks_failed`), in body order, plus — read off
 the slice's properties rather than its body — an `approved` event where a
 pull request is recorded and a `merged` event where the slice is Done with a
 pull request or branch recorded. Always an array, never `omitempty`: the app

@@ -473,6 +473,8 @@ public enum ThreadEventKind: Equatable, Sendable {
     case sentBack
     /// Released back to Todo, its session ended unfinished.
     case released
+    /// Cancelled back to Todo, its agent stopped and its work discarded.
+    case cancelled
     /// Launched again on the work so far.
     case relaunched
     /// Work resumed after a hand-back (`nat slice-resume`), the reason as
@@ -844,6 +846,11 @@ private func threadEvent(
             return ThreadEvent(.released, who: "Released to Todo")
         }
         return ThreadEvent(.released, who: by, meta: "released to Todo")
+    case .cancelled:
+        guard let by = event.by.flatMap({ $0.isEmpty ? nil : $0 }) else {
+            return ThreadEvent(.cancelled, who: "Cancelled to Todo, work discarded")
+        }
+        return ThreadEvent(.cancelled, who: by, meta: "cancelled to Todo, work discarded")
     case .launched:
         // `buildThreadEvents` draws a recorded launch as its Launched item
         // and never reaches here with one; this is that item as a record.

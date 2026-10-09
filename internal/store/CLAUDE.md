@@ -53,7 +53,8 @@ no working dir.
   protocol). A same-container reorder delegates.
 - **Events follow the write**, only on success, logged never returned
   (`fireEvent`): `AddSlice`→created, `ClaimSlice`→claimed,
-  `ReleaseSlice`→released, `CompleteSlice`→handed_back *only with a branch*,
+  `ReleaseSlice`→released, `CancelSlice`→released (the protocol has no
+  cancel), `CompleteSlice`→handed_back *only with a branch*,
   `RecordPR`→approved, `MarkDone`→merged, `DeleteSlice`→deleted. `RecordPR`/
   `MarkDone` read the slice back for the task (a failed read sends the ID
   alone); `DeleteSlice` reads it *before* the delete. `Task.Status` is
@@ -73,7 +74,8 @@ no working dir.
   Blocked / Summary (`CompleteSlice`), Sent back, Resumed, Note (stamp, then the
   `From …` provenance, then the note), Launched, Relaunched, Follow-ups and
   Follow-ups triaged. `PR description` is **never** stamped — every line under
-  it is the PR's body. The released line carries its time in the sentence
+  it is the PR's body. The released line (and `CancelSlice`'s cancelled
+  line, read back as `CancelledKind`) carries its time in the sentence
   (`… by <name> at <RFC 3339>: …`), the ` at …` optional on read.
 - The time comes from each store's `Clock` (nil → `time.Now`); tests set it
   (`fixedClock`, `clocked`) so bodies and Notion request JSON stay exact.
@@ -109,7 +111,7 @@ no working dir.
 - Single-write ops (`RecordPR`, `MarkDone`, `ReopenSlice`, `ClearBranch`, `MoveSlice`,
   `DeleteSlice`) return the raw backend error — the caller's own sentence
   ("delete the slice") is the context, not the store's.
-- Multi-write ops (`ReleaseSlice`, `CompleteSlice`, `AddMilestones`,
+- Multi-write ops (`ReleaseSlice`, `CancelSlice`, `CompleteSlice`, `AddMilestones`,
   `RenameMilestone`, `RemoveMilestone`, `MoveMilestone`, `EditSlice`,
   `SetSliceBrief`) wrap with which step failed — different states need
   different recovery (a release's line vs. its status; a completion's note

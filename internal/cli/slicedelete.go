@@ -7,7 +7,6 @@ import (
 	"io"
 
 	"github.com/craigmjohnston/nat/internal/actions"
-	"github.com/craigmjohnston/nat/internal/domain"
 )
 
 // sliceDelete moves a slice's page to Notion's trash — the headless half of
@@ -17,8 +16,11 @@ import (
 // dropping the record of finished work is the caller's confirm, not this
 // command's refusal.
 //
-// A slice in progress is refused, exactly as a move is: the page underneath
-// belongs to whoever took it.
+// A slice in progress is deleted too, on the same reasoning: the caller's
+// confirm is the gate. Its live agent is stopped first, refusing before any
+// write where tmux cannot be read or the kill fails, and its worktree and
+// branch are discarded with the work in them after the trash — all
+// [actions.Delete]'s, which the board's d runs too.
 func sliceDelete(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("slice-delete", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -49,18 +51,11 @@ func sliceDelete(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	if s.Status == domain.SliceClaimed {
-		return fmt.Errorf("%q is in progress: work in flight is not deleted under its agent", s.Name)
+	pruned, err := actions.Delete(ctx, st, env.NewTmux(), env.NewWorktrees(), storeProject(projectID, project), project, s)
+	if err != nil {
+		return err
 	}
-
-	if err := st.DeleteSlice(ctx, s.ID); err != nil {
-		return fmt.Errorf("delete the slice: %w", err)
-	}
-	// A trashed slice's worktree belongs to nothing any more. In progress is
-	// refused above, so no agent is working in it; a removal git refuses is
-	// logged and left, and the delete has happened regardless.
-	actions.RemoveSliceWorktree(env.NewWorktrees(), s, project)
-	removed := firstOf(actions.PruneEmptied(ctx, st, storeProject(projectID, project), s.MilestoneID))
+	removed := firstOf(pruned)
 
 	env.nudged()
 	if *asJSON {

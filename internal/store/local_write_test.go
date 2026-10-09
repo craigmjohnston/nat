@@ -75,6 +75,56 @@ func TestLocalClaimAndRelease(t *testing.T) {
 	}
 }
 
+// A cancel is a release that throws the work away: Todo, held by nobody, the
+// Branch and pull request emptied in the same write, and the cancel's own line
+// on the body under the brief.
+func TestLocalCancel(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	ctx := context.Background()
+	if _, err := l.ClaimSlice(ctx, "writes", wholeShape, "Craig Johnston"); err != nil {
+		t.Fatalf("ClaimSlice: %v", err)
+	}
+	if _, err := l.CompleteSlice(ctx, "writes", wholeShape,
+		Outcome{Summary: "Pushed.", Branch: "slice/writes", PR: "https://example.test/pr/9"}); err != nil {
+		t.Fatalf("CompleteSlice: %v", err)
+	}
+
+	cancelled, err := l.CancelSlice(ctx, "writes", wholeShape, "Craig Johnston")
+	if err != nil {
+		t.Fatalf("CancelSlice: %v", err)
+	}
+	if cancelled.Status != domain.SliceTodo || cancelled.AssigneeName != "" ||
+		cancelled.Branch != "" || cancelled.PRURL != "" {
+		t.Errorf("cancelled = %+v, want Todo, held by nobody, no branch and no pull request", cancelled)
+	}
+	if got := readBack(t, l, "writes"); !reflect.DeepEqual(got, cancelled) {
+		t.Errorf("stored = %+v, want what the cancel answered with %+v", got, cancelled)
+	}
+	got := body(t, l, "writes")
+	if !strings.HasPrefix(got, "Write the plan.") || !strings.HasSuffix(got, cancelledLine("Craig Johnston", testNow)) {
+		t.Errorf("body = %q, want the brief first and the cancel's line last", got)
+	}
+}
+
+// A shape that records neither ownership nor a branch leaves both columns as
+// they were, as the Notion store leaves a project without them.
+func TestLocalCancelWithoutAssigneeOrBranchColumns(t *testing.T) {
+	l, _ := openPlan(t)
+	fillPlan(t, l)
+	ctx := context.Background()
+	if _, err := l.CompleteSlice(ctx, "reads", wholeShape, Outcome{Summary: "x", Branch: "slice/reads"}); err != nil {
+		t.Fatalf("CompleteSlice: %v", err)
+	}
+	cancelled, err := l.CancelSlice(ctx, "reads", Shape{}, "Craig Johnston")
+	if err != nil {
+		t.Fatalf("CancelSlice: %v", err)
+	}
+	if cancelled.Status != domain.SliceTodo || cancelled.AssigneeName != "Craig Johnston" || cancelled.Branch != "slice/reads" {
+		t.Errorf("cancelled = %+v, want Todo with the assignee and branch untouched", cancelled)
+	}
+}
+
 // A shape that records no ownership decides it on status alone, so neither half
 // of a claim-and-release writes an assignee — which is what the Notion store
 // does with a project whose table has no such column.
@@ -498,6 +548,7 @@ func TestLocalWritesRefuseASliceThatIsNotThere(t *testing.T) {
 	writes := map[string]func() error{
 		"ClaimSlice":   func() error { _, err := l.ClaimSlice(ctx, "ghost", wholeShape, "u"); return err },
 		"ReleaseSlice": func() error { _, err := l.ReleaseSlice(ctx, "ghost", wholeShape, "u"); return err },
+		"CancelSlice":  func() error { _, err := l.CancelSlice(ctx, "ghost", wholeShape, "u"); return err },
 		"CompleteSlice": func() error {
 			_, err := l.CompleteSlice(ctx, "ghost", wholeShape, Outcome{Summary: "done"})
 			return err
@@ -537,6 +588,7 @@ func TestLocalReleaseAndCompleteReportAFailedBodyRead(t *testing.T) {
 
 	writes := map[string]func() error{
 		"ReleaseSlice":  func() error { _, err := l.ReleaseSlice(ctx, "writes", wholeShape, "u"); return err },
+		"CancelSlice":   func() error { _, err := l.CancelSlice(ctx, "writes", wholeShape, "u"); return err },
 		"CompleteSlice": func() error { _, err := l.CompleteSlice(ctx, "writes", wholeShape, Outcome{Summary: "done"}); return err },
 		"ProposeFollowUps": func() error {
 			return l.ProposeFollowUps(ctx, "writes", []FollowUp{{Title: "A", Brief: "B"}})
