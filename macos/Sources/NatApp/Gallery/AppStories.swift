@@ -1727,6 +1727,16 @@ enum AppStories {
         },
 
         Story(
+            name: "window-task-log-cancelled",
+            summary: "An in-progress task's log after a cancel: launched, handed back, then \"Craig Johnston cancelled to Todo, work discarded\" under its own glyph and time, then relaunched from the brief alone.",
+            size: window
+        ) {
+            await slicePane(
+                Fixtures.activitySliceID, agents: [], details: Fixtures.cancelledSliceDetails,
+                focus: NavigatorFocus(open: [.thread], main: .diff))
+        },
+
+        Story(
             name: "window-task-log-folds",
             summary: "An in-progress task's log as it first draws: Launched with its time, the hand-back open, "
                 + "then a run of six quiet items (three notes, a blocked hand-in, a triaged proposal and its "

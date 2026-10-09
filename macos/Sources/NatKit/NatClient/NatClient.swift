@@ -830,16 +830,35 @@ public final class NatClient: Sendable {
 
     /// Move a slice's page to Notion's trash — the rail's delete action,
     /// mirroring `internal/cli/slicedelete.go`'s `sliceDelete`. Notion has no
-    /// hard delete, so the page stays recoverable in the Notion UI; the CLI
-    /// refuses a slice in progress, and warning about a Done one is the
-    /// caller's confirm dialog, not this client's.
+    /// hard delete, so the page stays recoverable in the Notion UI. A slice in
+    /// progress is deleted too: the CLI stops its live agent first — refusing
+    /// where it cannot — and discards its worktree and branch after. Warning
+    /// about either, or about a Done one, is the caller's confirm dialog, not
+    /// this client's.
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
     ///   - sliceRef: The slice's URL or Notion page ID
-    /// - Throws: NatError if the slice is in progress, or the command fails
+    /// - Throws: NatError if its agent could not be stopped, or the command fails
     public func sliceDelete(projectID: String, sliceRef: String) async throws {
         _ = try await runNat(arguments: ["slice-delete", "--project", projectID, "--json", sliceRef])
+    }
+
+    /// Take a slice in progress back to Todo and throw its work away — the
+    /// rail's cancel action, mirroring `internal/cli/slicecancel.go`'s
+    /// `sliceCancel`: its live agent stopped, a note on its page, its branch
+    /// and pull request cleared, then its worktree and branch deleted. An open
+    /// pull request is left on GitHub. The CLI refuses a Todo or Done slice,
+    /// and an agent it cannot stop; each passes straight through as
+    /// `NatError.commandFailed`. The confirmation is the caller's.
+    ///
+    /// - Parameters:
+    ///   - projectID: The project's Notion page ID
+    ///   - sliceRef: The slice's URL or Notion page ID
+    /// - Throws: NatError if the slice is not in progress, its agent could not
+    ///   be stopped, or the command fails
+    public func sliceCancel(projectID: String, sliceRef: String) async throws {
+        _ = try await runNat(arguments: ["slice-cancel", "--project", projectID, "--json", sliceRef])
     }
 
     // MARK: - Milestones

@@ -39,6 +39,7 @@ extension ThreadEventKind {
         case .handedBack: return "arrow.uturn.backward.circle"
         case .sentBack: return "arrow.uturn.forward.circle"
         case .released: return "arrow.down.to.line.circle"
+        case .cancelled: return "xmark.circle"
         case .relaunched: return "arrow.clockwise.circle"
         case .resumed: return "arrow.uturn.left.circle"
         case .checksFailed: return "xmark.octagon"

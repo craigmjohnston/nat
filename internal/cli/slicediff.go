@@ -291,12 +291,18 @@ func checkNames(record string) []string {
 // holdsHandBack reports whether a task log, read off body, holds a Handed
 // back.
 func holdsHandBack(body string) bool {
+	// A hand-back before a cancel was discarded with its branch: only one
+	// since the last cancel counts, as a launch reads it.
+	found := false
 	for _, e := range store.TaskEvents(body) {
-		if e.Kind == store.HandedBackKind {
-			return true
+		switch e.Kind {
+		case store.HandedBackKind:
+			found = true
+		case store.CancelledKind:
+			found = false
 		}
 	}
-	return false
+	return found
 }
 
 // takenBack reports whether s is a slice handed back and then taken back to

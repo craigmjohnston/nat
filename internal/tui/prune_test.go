@@ -3,6 +3,9 @@ package tui
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/notion"
 	"github.com/craigmjohnston/nat/internal/store"
@@ -66,8 +69,12 @@ func TestMoveSliceRemovesTheMilestoneItEmptied(t *testing.T) {
 
 func TestDeleteSliceRemovesTheMilestoneItEmptied(t *testing.T) {
 	st, sp := pruneLocal(t)
-	runMsg(t, deleteSlice(st, sp, "s1", "XDG config", "M1: Config"))
-	got := runMsg(t, deleteSlice(st, sp, "s2", "Keyring", "M1: Config")).(sliceSavedMsg)
+	del := func(id, name string) tea.Cmd {
+		return deleteSlice(st, sp, config.ProjectConfig{}, &fakeLauncher{}, &fakeWorktrees{},
+			domain.Slice{ID: id, Name: name, MilestoneID: "M1: Config"})
+	}
+	runMsg(t, del("s1", "XDG config"))
+	got := runMsg(t, del("s2", "Keyring")).(sliceSavedMsg)
 	if got.err != nil || !got.deleted || !equal(got.removed, []string{"M1: Config"}) {
 		t.Errorf("msg = %+v, want the delete with M1: Config removed", got)
 	}

@@ -34,6 +34,9 @@ type AgentLauncher interface {
 	AttachClientCmd(session string) *exec.Cmd
 	AttachCmd(session string) *exec.Cmd
 	ReclaimStrays(hostPane string) (int, error)
+	// Kill ends a slice's agent session — what the delete of a slice in
+	// progress and a cancel run first ([actions.StopAgent]).
+	Kill(session string) error
 }
 
 // liveInterval is how often the board re-reads which sessions are running. An

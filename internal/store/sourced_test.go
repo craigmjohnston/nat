@@ -186,6 +186,16 @@ func TestSourcedLifecycleEventsFollowTheirWrites(t *testing.T) {
 	}
 	f.Events = nil
 
+	// A cancel is a release to the plugin: the task is back at Todo, held by
+	// nobody, its pull request gone with the work.
+	if _, err := s.CancelSlice(ctx, sl.ID, sh, "Craig"); err != nil {
+		t.Fatal(err)
+	}
+	if ev := onlyEvent(t, f); ev.Event != source.EventReleased || ev.Task.Status != "Todo" || ev.Task.PR != "" {
+		t.Errorf("cancel event = %+v", ev)
+	}
+	f.Events = nil
+
 	if err := s.MarkDone(ctx, sl.ID, sh); err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +221,9 @@ func TestSourcedTellsNothingWhenTheWriteFails(t *testing.T) {
 	}
 	if _, err := s.ReleaseSlice(ctx, "nope", sh, "u"); err == nil {
 		t.Error("ReleaseSlice: want an error")
+	}
+	if _, err := s.CancelSlice(ctx, "nope", sh, "u"); err == nil {
+		t.Error("CancelSlice: want an error")
 	}
 	if _, err := s.CompleteSlice(ctx, "nope", sh, Outcome{Summary: "x", Branch: "b"}); err == nil {
 		t.Error("CompleteSlice: want an error")

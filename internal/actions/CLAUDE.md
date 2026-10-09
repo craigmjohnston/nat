@@ -106,6 +106,22 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   record-then-`ClearBranch`, shared with `slice-rework`'s `Sent back`.
   `ResumeStore` (`RecordResumed` + `ClearBranch`) is what it needs.
 
+## Cancel / delete (`cancel.go`)
+
+- `StopAgent(t, id)` kills the slice's live session (`AgentStopper`:
+  `LiveSlices` + `Kill`, which `agent.Tmux` and the board's launcher answer);
+  an unreadable tmux or a failed kill is the error, no session is nothing.
+- `Cancel(st, t, w, sp, p, id, by)` — reads the slice (Todo/Done/other
+  refused by name) and the project's shape, `StopAgent`, then
+  `Store.CancelSlice` in `shape.On(page)`, then `DiscardSliceWorktree` off the
+  slice as read (its Branch still recorded).
+- `Delete(st, t, w, sp, p, s)` — In progress: `StopAgent`, trash,
+  `DiscardSliceWorktree`; anything else: trash, `RemoveSliceWorktree`; then
+  `PruneEmptied`. `slice-delete` and the board's `d` both run it.
+- `DiscardSliceWorktree` (`landed.go`) is `RemoveSliceWorktree`'s forced
+  sibling (`Worktrees.Discard`); a refusal is logged and reported false.
+- `handedBack` reads only hand-backs since the last `cancelled` event.
+
 ## Hand-back push (`handback.go`)
 
 - `PushHandBack(w, g, s, p, branch)` is `complete-slice`'s git half, run

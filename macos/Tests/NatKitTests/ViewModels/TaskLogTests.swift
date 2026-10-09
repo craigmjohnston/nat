@@ -28,13 +28,16 @@ final class TaskLogTests: XCTestCase {
              {"index": 2, "title": "Undecided", "decision": "", "decidedAt": "not a time"}
            ]},
            {"kind": "released", "by": "Craig"},
+           {"kind": "cancelled", "by": "Craig", "at": "2026-10-03T23:14:05+01:00"},
            {"kind": "approved", "pr": "https://github.com/o/r/pull/40"},
            {"kind": "merged"}
          ]}
         """
         let detail = try JSONDecoder().decode(SliceDetail.self, from: Data(json.utf8))
 
-        XCTAssertEqual(detail.events?.map(\.kind), [.handedBack, .followUps, .released, .approved, .merged])
+        XCTAssertEqual(detail.events?.map(\.kind), [.handedBack, .followUps, .released, .cancelled, .approved, .merged])
+        XCTAssertEqual(detail.events?[3].by, "Craig")
+        XCTAssertNotNil(detail.events?[3].at)
         XCTAssertEqual(detail.events?[0].note, "first")
         XCTAssertEqual(detail.events?[1].followUps, [
             TaskFollowUp(
@@ -43,7 +46,7 @@ final class TaskLogTests: XCTestCase {
             TaskFollowUp(index: 2, title: "Undecided"),
         ], "a decision time that will not parse is no time")
         XCTAssertEqual(detail.events?[2].by, "Craig")
-        XCTAssertEqual(detail.events?[3].pr, prURL)
+        XCTAssertEqual(detail.events?[4].pr, prURL)
     }
 
     func testANoteDecodesWithWhoItCameFrom() throws {
@@ -359,6 +362,8 @@ final class TaskLogTests: XCTestCase {
             events: [
                 TaskLogEvent(.released, by: "Craig"),
                 TaskLogEvent(.released, by: ""),
+                TaskLogEvent(.cancelled, by: "Craig"),
+                TaskLogEvent(.cancelled, by: ""),
                 TaskLogEvent(.relaunched),
                 TaskLogEvent(.blocked, note: "No token."),
                 TaskLogEvent(.summary, note: "Wrote it up."),
@@ -368,22 +373,24 @@ final class TaskLogTests: XCTestCase {
             ])
 
         XCTAssertEqual(log.map(\.kind), [
-            .launched, .released, .released, .relaunched, .blocked, .closed, .followUps, .followUp, .followUps,
-            .approved,
+            .launched, .released, .released, .cancelled, .cancelled, .relaunched, .blocked, .closed, .followUps,
+            .followUp, .followUps, .approved,
         ])
         XCTAssertEqual(log[1].title, "Craig released to Todo")
         XCTAssertEqual(log[2].title, "Released to Todo")
-        XCTAssertEqual(log[3].title, "Relaunched on the work so far")
-        XCTAssertEqual(log[4].title, "Agent blocked")
-        XCTAssertEqual(log[4].tone, .hot)
-        XCTAssertEqual(log[4].body, "No token.")
-        XCTAssertEqual(log[5].body, "Wrote it up.")
-        XCTAssertEqual(log[6].meta, "proposed 1 follow-up")
-        XCTAssertEqual(log[7].title, "Folded in proposed follow-up")
-        XCTAssertEqual(log[7].body, "Later")
-        XCTAssertTrue(log[8].awaitsTriage, "a proposal still undecided is the triage card")
-        XCTAssertEqual(log[8].tone, .hot)
-        XCTAssertEqual(log[9].facts, [])
+        XCTAssertEqual(log[3].title, "Craig cancelled to Todo, work discarded")
+        XCTAssertEqual(log[4].title, "Cancelled to Todo, work discarded")
+        XCTAssertEqual(log[5].title, "Relaunched on the work so far")
+        XCTAssertEqual(log[6].title, "Agent blocked")
+        XCTAssertEqual(log[6].tone, .hot)
+        XCTAssertEqual(log[6].body, "No token.")
+        XCTAssertEqual(log[7].body, "Wrote it up.")
+        XCTAssertEqual(log[8].meta, "proposed 1 follow-up")
+        XCTAssertEqual(log[9].title, "Folded in proposed follow-up")
+        XCTAssertEqual(log[9].body, "Later")
+        XCTAssertTrue(log[10].awaitsTriage, "a proposal still undecided is the triage card")
+        XCTAssertEqual(log[10].tone, .hot)
+        XCTAssertEqual(log[11].facts, [])
     }
 
     /// Work resumed after a hand-back: its own card — titled so, why as its
@@ -502,7 +509,7 @@ final class TaskLogTests: XCTestCase {
         XCTAssertFalse(
             ThreadEvent(.followUps, who: "Agent", awaitsTriage: true).isCollapsible, "a pending proposal never folds")
         for kind in [
-            ThreadEventKind.launched, .agent, .handedBack, .sentBack, .released, .relaunched, .checksFailed,
+            ThreadEventKind.launched, .agent, .handedBack, .sentBack, .released, .cancelled, .relaunched, .checksFailed,
             .approved, .merged, .closed,
         ] {
             XCTAssertFalse(ThreadEvent(kind, who: "x").isCollapsible, "\(kind) stays open")

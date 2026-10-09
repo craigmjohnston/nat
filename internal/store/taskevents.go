@@ -10,8 +10,8 @@ import (
 
 // TaskEvent is one entry of a slice's task log, read back off its body by
 // [TaskEvents] in the order it was written. Kind is one of: "handed_back",
-// "sent_back", "resumed", "launched", "relaunched", "released", "blocked",
-// "summary", "follow_ups", "note", "checks_failed".
+// "sent_back", "resumed", "launched", "relaunched", "released", "cancelled",
+// "blocked", "summary", "follow_ups", "note", "checks_failed".
 // `nat slice-show --json` adds two more of its own, read off the slice's
 // properties rather than its body — see its own doc comment.
 type TaskEvent struct {
@@ -21,7 +21,8 @@ type TaskEvent struct {
 	// always the same fixed sentence and so carries nothing worth surfacing a
 	// second time.
 	Note string
-	// By is who released the slice, for a "released" event, and who a "note"
+	// By is who released the slice, for a "released" event (or cancelled it,
+	// for a "cancelled"), and who a "note"
 	// came from — its provenance line less the leading "From " — for a note,
 	// and likewise for a "sent_back" a checks nudge filed (a review's own
 	// comments carry no such line, and no By). Note is the text without it.
@@ -32,7 +33,7 @@ type TaskEvent struct {
 	// at all, and every other kind; By is the same either way.
 	FromSlice *NoteSource
 	// At is when the event was written, off the stamp its section opens with
-	// (or, for a release, the time its line names) — the zero time for one
+	// (or, for a release or a cancel, the time its line names) — the zero time for one
 	// written before sections were stamped.
 	At time.Time
 	// Batch is a "follow_ups" event's Follow-ups section's ordinal among the
@@ -120,10 +121,26 @@ func releasedBy(line string) (string, time.Time, bool) {
 	return m[1], at, true
 }
 
+// cancelledLineRe matches [cancelledLine]'s own text, as [releasedLineRe]
+// matches a release's: a bare paragraph wherever it falls, naming who and
+// when.
+var cancelledLineRe = regexp.MustCompile(`^Cancelled by (.+?) at (\d{4}-\d\d-\d\dT\S+): the work so far was discarded and it is back at Todo\.$`)
+
+// cancelledBy reports the name and time a cancel's line names, as
+// [releasedBy] reads a release's.
+func cancelledBy(line string) (string, time.Time, bool) {
+	m := cancelledLineRe.FindStringSubmatch(strings.TrimSpace(line))
+	if m == nil {
+		return "", time.Time{}, false
+	}
+	at, _ := time.Parse(time.RFC3339, m[2])
+	return m[1], at, true
+}
+
 // TaskEvents reads a slice's whole task log off its body, top to bottom: one
 // event per Handed back, Sent back, Resumed, Launched, Relaunched, Checks failed, Blocked,
-// Summary, Note and Follow-ups section, plus one for every Released-back-to-Todo paragraph,
-// wherever in a section it falls. Every other heading — PR description,
+// Summary, Note and Follow-ups section, plus one for every Released-back-to-Todo
+// and Cancelled paragraph, wherever in a section it falls. Every other heading — PR description,
 // Visual changes, a brief's own — is not an event and simply ends whatever
 // section came before it.
 //
@@ -246,6 +263,12 @@ func TaskEvents(body string) []TaskEvent {
 			events = append(events, TaskEvent{Kind: releasedKind, By: by, At: at})
 			continue
 		}
+		if by, at, ok := cancelledBy(line); ok {
+			closeCurrent()
+			in, level, curKind = outside, 0, ""
+			events = append(events, TaskEvent{Kind: CancelledKind, By: by, At: at})
+			continue
+		}
 		h, text := headingOf(line)
 		if h > 0 && h <= level {
 			closeCurrent()
@@ -351,6 +374,10 @@ const (
 	releasedKind   = "released"
 	followUpsKind  = "follow_ups"
 	noteKind       = "note"
+	// CancelledKind is exported because a hand-back before a cancel is
+	// work thrown away: actions.Launch and slice-diff read only the
+	// hand-backs after the last one.
+	CancelledKind = "cancelled"
 	// ChecksFailedKind and SentBackKind are exported, unlike the rest,
 	// because actions.NoticeFailingChecks reads them back to tell a failure
 	// already on the record from news; HandedBackKind because slice-diff

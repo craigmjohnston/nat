@@ -30,9 +30,17 @@ type fakeWorktrees struct {
 	looks   []worktreeCall
 	creates []worktreeCall
 	removes []worktreeCall
+	// discards are the forced removals a cancel, or the delete of a slice in
+	// progress, asked for.
+	discards []worktreeCall
 }
 
 var _ Worktrees = (*fakeWorktrees)(nil)
+
+func (f *fakeWorktrees) Discard(dir, branch string) error {
+	f.discards = append(f.discards, worktreeCall{dir: dir, branch: branch})
+	return nil
+}
 
 func (f *fakeWorktrees) Path(dir, branch string) (string, error) {
 	f.looks = append(f.looks, worktreeCall{dir: dir, branch: branch})

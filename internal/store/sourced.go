@@ -127,6 +127,18 @@ func (s *Sourced) ReleaseSlice(ctx context.Context, id string, sh Shape, by stri
 	return sl, nil
 }
 
+// CancelSlice cancels the slice in the file, then tells the plugin it was
+// released: the protocol has no cancel, and to the plugin a task back at Todo
+// held by nobody is a release, whatever became of the work.
+func (s *Sourced) CancelSlice(ctx context.Context, id string, sh Shape, by string) (domain.Slice, error) {
+	sl, err := s.local.CancelSlice(ctx, id, sh, by)
+	if err != nil {
+		return domain.Slice{}, err
+	}
+	s.fireEvent(ctx, sl, source.EventReleased)
+	return sl, nil
+}
+
 // CompleteSlice closes the slice out in the file, and tells the plugin only of
 // a hand-back — an ending that recorded a branch. A blocked or plain ending is
 // not an event the protocol has.

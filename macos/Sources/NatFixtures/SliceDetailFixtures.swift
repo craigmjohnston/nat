@@ -317,6 +317,34 @@ extension Fixtures {
         sliceDetails.merging([activitySliceID: notedSliceDetail]) { _, new in new }
     }
 
+    /// The activity slice launched again after a cancel: its first launch's
+    /// hand-back, then the cancel that threw that work away (`nat
+    /// slice-cancel`, naming who), then the relaunch from the brief alone.
+    /// Times measured from `now`, as `notedTaskLogEvents`' are.
+    public static var cancelledSliceDetails: [String: SliceDetail] {
+        let thisYear = Calendar.current.date(byAdding: .day, value: -3, to: now) ?? now
+        let detail = SliceDetail(
+            id: activitySliceID,
+            name: "Poll tmux for agent activity",
+            url: "https://notion.so/\(activitySliceID)",
+            status: "In progress",
+            milestone: "M2: Review flow",
+            assignee: "Craig Johnston",
+            blocked: false,
+            handedBack: false,
+            state: "in progress",
+            brief: "Poll tmux every second for each agent's activity.",
+            events: [
+                TaskLogEvent(.launched, at: thisYear),
+                TaskLogEvent(.handedBack, note: "Polls every second; each row draws its agent's activity.",
+                             at: thisYear.addingTimeInterval(2 * 3600)),
+                TaskLogEvent(.cancelled, by: "Craig Johnston", at: thisYear.addingTimeInterval(26 * 3600)),
+                TaskLogEvent(.relaunched, at: thisYear.addingTimeInterval(27 * 3600)),
+            ]
+        )
+        return sliceDetails.merging([activitySliceID: detail]) { _, new in new }
+    }
+
     /// An in-progress slice whose log has gone quiet in the middle: launched
     /// and handed back early this year, then three notes, a blocked hand-in
     /// and a proposal of follow-ups already triaged (its count line and one

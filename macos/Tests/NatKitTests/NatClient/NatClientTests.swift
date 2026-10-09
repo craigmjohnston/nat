@@ -293,7 +293,34 @@ final class NatClientTests: XCTestCase {
             XCTFail("Should have thrown")
         } catch let error as NatError {
             if case .commandFailed(let message) = error {
-                XCTAssertEqual(message, "\"Write the UI\" is in progress: work in flight is not deleted under its agent")
+                XCTAssertEqual(message, "stop its agent: can't kill session")
+            } else {
+                XCTFail("Expected commandFailed error")
+            }
+        }
+    }
+
+    func testSliceCancel() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceCancelSuccess)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        try await client.sliceCancel(projectID: "proj-123", sliceRef: "slice-1")
+
+        XCTAssertEqual(fakeRunner.lastArguments, [
+            "slice-cancel", "--project", "proj-123", "--json", "slice-1"
+        ])
+    }
+
+    func testSliceCancelFailure() async throws {
+        let fakeRunner = FakeRunner(fixture: .sliceCancelFailure)
+        let client = NatClient(commandRunner: fakeRunner)
+
+        do {
+            try await client.sliceCancel(projectID: "proj-123", sliceRef: "slice-1")
+            XCTFail("Should have thrown")
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error {
+                XCTAssertEqual(message, "\"Write the UI\" is Done: its work is merged, and new work on it is a new slice")
             } else {
                 XCTFail("Expected commandFailed error")
             }

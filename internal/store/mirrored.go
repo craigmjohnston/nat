@@ -335,6 +335,24 @@ func (m *Mirrored) ReleaseSlice(ctx context.Context, id string, sh Shape, by str
 	return s, nil
 }
 
+// CancelSlice cancels the slice locally, then pushes the cancel to the
+// workspace.
+func (m *Mirrored) CancelSlice(ctx context.Context, id string, sh Shape, by string) (domain.Slice, error) {
+	s, err := m.local.CancelSlice(ctx, id, sh, by)
+	if err != nil {
+		return domain.Slice{}, err
+	}
+	m.push(ctx, id, func() error {
+		pageSh, err := m.pageShape(ctx, id)
+		if err != nil {
+			return err
+		}
+		_, err = m.remote.CancelSlice(ctx, id, sh.On(pageSh), by)
+		return err
+	})
+	return s, nil
+}
+
 // CompleteSlice closes the slice out locally, then pushes the same ending to
 // the workspace. The page's own shape is only read when the ending writes a
 // status ([Outcome.done]) — every other ending is a note and, maybe, a branch

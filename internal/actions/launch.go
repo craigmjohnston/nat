@@ -240,14 +240,20 @@ func gitSnapshot(r Repo, dir, branch string) (base, log, diffStat string) {
 
 // handedBack reports whether a slice's task log, read off its brief, holds a
 // hand-back: work an earlier session pushed and gave up for review, whether
-// its branch is still recorded or was cleared when it was taken back.
+// its branch is still recorded or was cleared when it was taken back. A
+// hand-back before a cancel is not one: that work was discarded with its
+// branch, so only the hand-backs since the last cancel count.
 func handedBack(brief string) bool {
+	found := false
 	for _, e := range store.TaskEvents(brief) {
-		if e.Kind == store.HandedBackKind {
-			return true
+		switch e.Kind {
+		case store.HandedBackKind:
+			found = true
+		case store.CancelledKind:
+			found = false
 		}
 	}
-	return false
+	return found
 }
 
 // conflictBase is the base a handed-back branch conflicts with, read at

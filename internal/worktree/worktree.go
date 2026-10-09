@@ -200,6 +200,43 @@ func (c CLI) Remove(dir, branch string) error {
 	return nil
 }
 
+// Discard is [CLI.Remove] for work the user has said to throw away — a
+// slice cancelled, or deleted while in progress: the worktree for branch is
+// removed with --force, whatever modified or untracked files it holds, and
+// then the branch is deleted with -D, whether or not its commits are
+// reachable from anywhere else.
+//
+// The branch goes even where there is no worktree to remove — a slice handed
+// back and swept may have none and still a branch — because a surviving branch
+// is what [CLI.Create] checks out rather than cutting afresh, which would put
+// the next launch straight back on the work that was meant to be gone. A
+// repository with no such branch has nothing left to delete. git's refusal of
+// either step is logged and comes back.
+func (c CLI) Discard(dir, branch string) error {
+	out, err := c.runner.Run(dir, Binary, "worktree", "list", "--porcelain")
+	if err != nil {
+		logging.Error("could not list worktrees", "dir", dir, "error", err)
+		return err
+	}
+	if path := worktreeOf(out, branch); path != "" {
+		if _, err := c.runner.Run(dir, Binary, "worktree", "remove", "--force", path); err != nil {
+			logging.Error("could not discard a worktree", "dir", dir, "branch", branch,
+				"path", path, "error", err)
+			return err
+		}
+		logging.Action("worktree discarded", "dir", dir, "branch", branch, "path", path)
+	}
+	if !c.hasBranch(dir, branch) {
+		return nil
+	}
+	if _, err := c.runner.Run(dir, Binary, "branch", "-D", branch); err != nil {
+		logging.Error("could not delete a discarded branch", "dir", dir, "branch", branch, "error", err)
+		return err
+	}
+	logging.Action("branch discarded", "dir", dir, "branch", branch)
+	return nil
+}
+
 // Reset hard-resets the worktree at path to ref: its branch moved to ref and
 // every tracked file put back as ref has it. It is for nat's own run checkout
 // alone — a branch nobody else works on — and never for a slice's worktree,

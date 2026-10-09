@@ -155,6 +155,83 @@ func TestReleaseSliceFailures(t *testing.T) {
 	}
 }
 
+// A cancel writes its line, then one properties write taking the slice back
+// to Todo with the work's Branch and pull request cleared, exactly as asked.
+func TestCancelSliceWritesTheLineThenClearsTheWork(t *testing.T) {
+	api := &fakeAPI{updatePage: func(id string, _ map[string]notion.PropertyValue) (*notion.Page, error) {
+		return slicePage(id, "Cancel action", notion.SliceTodo), nil
+	}}
+	n := Over(api)
+	n.Clock = fixedClock
+	s, err := n.CancelSlice(context.Background(), "s5", Shape{HasAssignee: true, HasBranch: true}, "Craig Johnston")
+	if err != nil {
+		t.Fatalf("CancelSlice() error = %v", err)
+	}
+	if s.Status != domain.SliceTodo {
+		t.Errorf("slice = %+v, want it back at Todo", s)
+	}
+	if got := api.calls; !reflect.DeepEqual(got, []string{"AppendBlockChildren", "UpdatePageProperties"}) {
+		t.Errorf("calls = %v, want the line written before the properties", got)
+	}
+	if _, text := blockText(t, api.appended[0][0]); text != cancelledLine("Craig Johnston", testNow) {
+		t.Errorf("line = %q, want the cancel's line", text)
+	}
+	got, err := json.Marshal(api.updates[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"Assignee":{"people":[]},"Branch":{"rich_text":[{"type":"text","text":{"content":""}}]},` +
+		`"PR":{"url":null},"Status":{"select":{"name":"Todo"}}}`
+	if string(got) != want {
+		t.Errorf("properties = %s\nwant %s", got, want)
+	}
+}
+
+// A project with neither an Assignee nor a Branch column clears neither: the
+// status and the pull request alone.
+func TestCancelSliceClearsOnlyTheColumnsThereAre(t *testing.T) {
+	api := &fakeAPI{}
+	if _, err := Over(api).CancelSlice(context.Background(), "s5", Shape{}, "Craig"); err != nil {
+		t.Fatalf("CancelSlice() error = %v", err)
+	}
+	got, err := json.Marshal(api.updates[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"PR":{"url":null},"Status":{"select":{"name":"Todo"}}}`; string(got) != want {
+		t.Errorf("properties = %s, want %s", got, want)
+	}
+}
+
+func TestCancelSliceFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		api  *fakeAPI
+		want string
+	}{
+		{"the line", &fakeAPI{appendBlocks: func(string, []map[string]any) ([]notion.Block, error) {
+			return nil, errBoom
+		}}, "note the cancel"},
+		{"the properties", &fakeAPI{updatePage: func(string, map[string]notion.PropertyValue) (*notion.Page, error) {
+			return nil, errBoom
+		}}, "cancel the slice"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Over(tt.api).CancelSlice(context.Background(), "s5", Shape{}, "Craig")
+			if !errors.Is(err, errBoom) || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("err = %v, want %q and the failure", err, tt.want)
+			}
+		})
+	}
+	// A failed line writes nothing else.
+	api := &fakeAPI{appendBlocks: func(string, []map[string]any) ([]notion.Block, error) { return nil, errBoom }}
+	_, _ = Over(api).CancelSlice(context.Background(), "s5", Shape{}, "Craig")
+	if len(api.updates) != 0 {
+		t.Errorf("updates = %v, want none after a failed line", api.updates)
+	}
+}
+
 // The four endings write four different things, and the note is filed under a
 // heading naming which of them it was.
 func TestCompleteSliceEndings(t *testing.T) {

@@ -1,6 +1,9 @@
 package notion
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Page is a Notion page — a row of a data source, here. Data source queries and
 // the page endpoints return the same shape; only the fields this app reads are
@@ -170,6 +173,21 @@ type PropertyValue struct {
 	People   *[]User       `json:"people,omitempty"`
 	URL      string        `json:"url,omitempty"`
 	Number   *float64      `json:"number,omitempty"`
+
+	// clearURL is a url property being emptied, which [ClearURL] builds and
+	// [PropertyValue.MarshalJSON] writes as `"url": null` — Notion's one way
+	// to empty a url, and one an omitempty string has no way to say.
+	clearURL bool
+}
+
+// MarshalJSON writes the value as its fields say, but for one built by
+// [ClearURL], which is the url property emptied and nothing else.
+func (p PropertyValue) MarshalJSON() ([]byte, error) {
+	if p.clearURL {
+		return []byte(`{"url":null}`), nil
+	}
+	type plain PropertyValue
+	return json.Marshal(plain(p))
 }
 
 // NewTitle builds a title property value.
@@ -245,6 +263,12 @@ func NewRelation(pageIDs ...string) PropertyValue {
 // NewURL builds a url property value.
 func NewURL(u string) PropertyValue {
 	return PropertyValue{URL: u}
+}
+
+// ClearURL builds the value that empties a url property — a cancelled
+// slice's pull request, no longer the work's.
+func ClearURL() PropertyValue {
+	return PropertyValue{clearURL: true}
 }
 
 // Text returns the plain text of a title or rich_text property, and "" for any

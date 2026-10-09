@@ -230,6 +230,11 @@ type Store interface {
 	// ReleaseSlice hands a slice back to the plan: Todo, held by nobody, and a
 	// line on it naming who let it go. Nothing else about the slice is touched.
 	ReleaseSlice(ctx context.Context, id string, sh Shape, by string) (domain.Slice, error)
+	// CancelSlice is a release that throws the work away: a line on it naming
+	// who cancelled it first, then Todo, held by nobody, and its Branch and
+	// pull request cleared — what `nat slice-cancel` writes once the agent is
+	// stopped, before the branch itself is deleted.
+	CancelSlice(ctx context.Context, id string, sh Shape, by string) (domain.Slice, error)
 	// CompleteSlice closes a slice out: the summary written on it first, then
 	// whichever properties the ending calls for.
 	CompleteSlice(ctx context.Context, id string, sh Shape, o Outcome) (domain.Slice, error)

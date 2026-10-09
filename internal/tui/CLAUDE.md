@@ -150,8 +150,13 @@ directly; check each file, don't assume every one routes through `actions`.
   redraw (`Board`'s plan viewport vs. `PRView`'s own content). A plan landing
   closes a prompt anchored to a *row* (`closeBoardPrompt`, since the row may
   have moved) but leaves one anchored to a *pull request* alone (it hasn't).
-- `claimedNote(slice, verb)` (`slicemove.go`) is the shared refusal for "a
-  slice In progress cannot be `<verb>`'d" — used by move/delete; `editable`
+- `claimedNote(slice, verb)` (`slicemove.go`) is the refusal for "a slice
+  In progress cannot be `<verb>`'d" — used by move alone now: `d` opens its
+  confirm on an In progress slice too, warning that the agent is stopped and
+  the work discarded, and runs `actions.Delete` (killing through
+  `App.launcher`, which carries `Kill`). `X` (`slicecancel.go`) is cancel —
+  a confirm refused with a note for anything not In progress, then
+  `actions.Cancel`; in the help screen, not the hints row; `editable`
   in `sliceform.go`'s edit flow applies the same Todo-only rule `slice-edit`
   enforces headlessly (see `internal/cli/CLAUDE.md`).
 

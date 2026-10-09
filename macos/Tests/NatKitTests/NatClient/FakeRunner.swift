@@ -48,6 +48,8 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case sliceMoveFailure
         case sliceDeleteSuccess
         case sliceDeleteFailure
+        case sliceCancelSuccess
+        case sliceCancelFailure
         case milestoneAddSuccess
         case milestoneAddFailure
         case milestoneRenameSuccess
@@ -196,7 +198,11 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case .sliceDeleteSuccess:
             return (fixtureSliceDelete.data(using: .utf8)!, Data(), 0)
         case .sliceDeleteFailure:
-            return (Data(), "\"Write the UI\" is in progress: work in flight is not deleted under its agent".data(using: .utf8)!, 1)
+            return (Data(), "stop its agent: can't kill session".data(using: .utf8)!, 1)
+        case .sliceCancelSuccess:
+            return (fixtureSliceCancel.data(using: .utf8)!, Data(), 0)
+        case .sliceCancelFailure:
+            return (Data(), "\"Write the UI\" is Done: its work is merged, and new work on it is a new slice".data(using: .utf8)!, 1)
         case .milestoneAddSuccess:
             return (fixtureMilestoneAdd.data(using: .utf8)!, Data(), 0)
         case .milestoneAddFailure:
@@ -657,6 +663,16 @@ let fixtureSliceDelete = """
   "id": "slice-1",
   "name": "Write the UI",
   "deleted": true
+}
+"""
+
+// fixtureSliceCancel is `slice-cancel --json`'s success reading, mirroring
+// internal/cli/slicecancel.go's sliceCancelledJSON.
+let fixtureSliceCancel = """
+{
+  "id": "slice-1",
+  "name": "Write the UI",
+  "cancelled": true
 }
 """
 

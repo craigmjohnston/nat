@@ -48,6 +48,12 @@ project's one checkout with every other agent and the user.
   leftover branch costs nothing since `Create` checks an existing one out
   rather than tripping over it.
 
+- `Discard(dir, branch)` is the forced sibling, for work the user threw away
+  (a cancel, the delete of an In progress slice): `git worktree remove
+  --force` where the listing names a worktree, then `git branch -D` where the
+  branch exists — a branch with no worktree is still deleted, since `Create`
+  would otherwise check it out again. Each refusal is logged and returned.
+
 ## Conventions
 
 - `Runner` is its own seam (not `gh.Runner`/`git.Runner`), same reasoning as

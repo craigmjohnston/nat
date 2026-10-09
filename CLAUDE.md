@@ -76,7 +76,9 @@ here when you're just applying the rule.
 **Lifecycle.** Todo → In progress → Done. Never edit or move the milestone
 of an in-progress slice; never edit a Done one either (`internal/tui/CLAUDE.md`,
 `internal/cli/CLAUDE.md` — the exact per-action refusal differs: edit is
-Todo-only, move/delete refuse only In progress). In-progress is called `In
+Todo-only, move refuses only In progress, delete refuses neither — an In
+progress slice's delete stops its live agent first and discards its worktree
+and branch after, through `actions.Delete`). In-progress is called `In
 progress`. There is one project shape: nat does not convert older ones at
 load.
 
@@ -94,6 +96,19 @@ Status back to Todo — the same order `complete-slice` writes in, since a
 slice already back at Todo would refuse a note added to it. Assignee cleared;
 everything else on the page (brief, `Depends on`, `Repo`, any `Branch`)
 untouched. Refused on a slice with a live agent.
+
+**Cancelling** (`X` / `nat slice-cancel` / gnat's Cancel and discard work…)
+is release's destructive sibling, on the user's confirmation alone (no
+ownership check): `actions.Cancel` refuses Todo and Done by name, stops the
+live agent (refused, before any write, where tmux can't be read or the kill
+fails), writes its `Cancelled by … at …` line **before** one properties write
+— Todo, Assignee, `Branch` and `PR` cleared (`Store.CancelSlice`) — then
+discards the worktree **and deletes the branch** (`worktree.CLI.Discard`:
+`--force`, `-D`), since a launch reuses an existing branch and would resurrect
+the work. A git refusal is logged, never the command's. GitHub is untouched:
+an open PR is left for the user. A source plugin hears `released`. A
+hand-back before the last cancel no longer counts as one (`handedBack`,
+`holdsHandBack`).
 
 **Launching** (`l`) covers two states: Todo, and In progress with no live
 session (a relaunch — placed back on `agentBranch`, told it's continuing).
@@ -224,7 +239,8 @@ status alone never makes a launch a relaunch), `Relaunched` (written
 by an `actions.Launch` of a slice with history — `store.HasHistory`: notes
 alone are not history; either line's failure is logged, never fatal),
 `Blocked`, `Summary`, `Note` (a `note` event, `by` its provenance), released
-line and `Follow-ups` section, each proposal
+line, cancelled line (`cancelled`, `by` and `at` off the sentence as a
+release's are) and `Follow-ups` section, each proposal
 decided by a later `Follow-ups triaged`. Every one of those sections opens
 with a stamp paragraph, `At <RFC 3339 with offset>` (the released line says
 `… by <name> at <RFC 3339>: …` instead; `PR description` is never stamped,
@@ -287,7 +303,10 @@ recorded at hand-back, else the derived `slice/<slug>`) — the pair the
 launch placed the agent by, which must never disagree; a task with no
 repository has nothing to remove. An existing branch's worktree is reused,
 never re-cut; a removal git refuses is logged and left, never forced, and
-never fails the command. `R` deliberately *keeps* the worktree — the work
+never fails the command. The one forced removal is work the user threw away —
+a cancel, or the delete of an In progress slice — through
+`actions.DiscardSliceWorktree` (same repository and branch, worktree and
+branch both gone). `R` deliberately *keeps* the worktree — the work
 so far is what the next session wants.
 
 **Dependencies.** `Depends on` is a dual-property relation (`Blocks` is its

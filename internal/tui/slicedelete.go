@@ -8,6 +8,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/craigmjohnston/nat/internal/actions"
+	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/store"
 )
@@ -18,22 +19,26 @@ type DeleteSliceForm struct {
 	form    *huh.Form
 	heading string
 
-	sliceID   string
-	sliceName string
-	// from is the ID of the milestone the slice is filed under, which the
-	// delete may leave empty.
-	from string
+	// slice is the slice as the board held it when the confirm opened: its
+	// status says whether there is an agent to stop and work to discard, and
+	// its milestone is the one the delete may leave empty.
+	slice domain.Slice
 
 	confirmed bool
 }
 
 // deleteWarning is what the confirm says under the question. A Done slice is
 // finished work — the record of it is the only thing left — so deleting one is
-// warned about rather than refused.
+// warned about rather than refused, and so is a slice in progress, whose agent
+// and work go with it.
 func deleteWarning(s domain.Slice) string {
-	if s.Status == domain.SliceDone {
+	switch s.Status {
+	case domain.SliceDone:
 		return "WARNING: this slice is Done. Deleting it drops the record of finished work. " +
 			"The page goes to Notion's trash."
+	case domain.SliceClaimed:
+		return "WARNING: this slice is in progress. Its agent is stopped, and its worktree and branch, " +
+			"with any work not yet on a pull request, are discarded. The page goes to Notion's trash."
 	}
 	return "The page goes to Notion's trash."
 }
@@ -41,10 +46,8 @@ func deleteWarning(s domain.Slice) string {
 // newDeleteSliceForm returns the confirm for trashing a slice.
 func newDeleteSliceForm(theme huh.Theme, s domain.Slice) *DeleteSliceForm {
 	f := &DeleteSliceForm{
-		heading:   "Delete a slice",
-		sliceID:   s.ID,
-		sliceName: s.Name,
-		from:      s.MilestoneID,
+		heading: "Delete a slice",
+		slice:   s,
 	}
 	f.form = newForm(theme, huh.NewGroup(
 		huh.NewConfirm().
@@ -89,21 +92,25 @@ func (f *DeleteSliceForm) save(a *App) tea.Cmd {
 		return nil
 	}
 	sp := store.ProjectOf(a.cfg.ActiveProjectID, cfg)
-	return deleteSlice(st, sp, f.sliceID, f.sliceName, f.from)
+	return deleteSlice(st, sp, cfg, a.launcher, newWorktrees(), f.slice)
 }
 
 // deleteSlice moves a slice's page to the trash. Notion has no hard delete, so
-// a slice deleted by mistake is still recoverable in the Notion UI. The
+// a slice deleted by mistake is still recoverable in the Notion UI. It is
+// [actions.Delete], the flow `nat slice-delete` runs: a slice in progress has
+// its agent stopped first — refused where it cannot be — and its worktree and
+// branch discarded after; any other has its worktree removed the safe way. The
 // milestone it was filed under is removed where the delete left it with no
 // slice at all.
-func deleteSlice(st store.Store, sp store.Project, sliceID, sliceName, from string) tea.Cmd {
+func deleteSlice(st store.Store, sp store.Project, p config.ProjectConfig, t actions.AgentStopper, w Worktrees,
+	s domain.Slice) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
-		if err := st.DeleteSlice(ctx, sliceID); err != nil {
-			return sliceSavedMsg{err: fmt.Errorf("delete slice: %w", err)}
+		removed, err := actions.Delete(context.Background(), st, t, w, sp, p, s)
+		if err != nil {
+			return sliceSavedMsg{err: fmt.Errorf("delete %q: %w", s.Name, err)}
 		}
-		msg := sliceSavedMsg{note: fmt.Sprintf("Deleted %q.", sliceName), sliceID: sliceID, deleted: true}
-		return msg.pruned(actions.PruneEmptied(ctx, st, sp, from))
+		msg := sliceSavedMsg{note: fmt.Sprintf("Deleted %q.", s.Name), sliceID: s.ID, deleted: true}
+		return msg.pruned(removed)
 	}
 }
 
@@ -115,9 +122,6 @@ func (a *App) deleteSliceFlow() tea.Cmd {
 	s, ok := a.board.SelectedSlice()
 	if !ok {
 		return a.showConfirm("Move to a slice to delete it.", sevWarning)
-	}
-	if note, refused := claimedNote(s, "deleted"); refused {
-		return a.showConfirm(note, sevWarning)
 	}
 	return a.openForm(newDeleteSliceForm(a.styles.FormTheme, s))
 }

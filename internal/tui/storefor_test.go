@@ -173,7 +173,7 @@ func TestAppReleaseChosenRefusedWhenTheStoreCannotOpen(t *testing.T) {
 
 func TestDeleteSliceFormSaveRefusedWhenTheStoreCannotOpen(t *testing.T) {
 	a := storeForBrokenApp(t, &fakeNotion{})
-	f := &DeleteSliceForm{sliceID: "s5", sliceName: "Info view", confirmed: true}
+	f := &DeleteSliceForm{slice: domain.Slice{ID: "s5", Name: "Info view"}, confirmed: true}
 	if cmd := f.save(a); cmd != nil {
 		t.Error("want nothing dispatched against a store that cannot open")
 	}
