@@ -329,7 +329,7 @@ final class AgentReapingTests: XCTestCase {
         )
         let model = await startedModel(client: client)
 
-        let refusal = await model.killAgent(sliceID: "s-1")
+        let refusal = await model.killAgent(sliceID: "s-1", projectID: "proj-1")
 
         XCTAssertNil(refusal)
         XCTAssertEqual(client.kills, ["s-1"])
@@ -344,18 +344,9 @@ final class AgentReapingTests: XCTestCase {
         )
         let model = await startedModel(client: client)
 
-        let refusal = await model.killAgent(sliceID: "s-1")
+        let refusal = await model.killAgent(sliceID: "s-1", projectID: "proj-1")
 
         XCTAssertEqual(refusal, "no live session for s-1")
-    }
-
-    @MainActor
-    func testKillAgentWithoutAProjectSaysSo() async {
-        let model = AppModel()
-
-        let refusal = await model.killAgent(sliceID: "s-1")
-
-        XCTAssertEqual(refusal, "No project loaded")
     }
 
     // MARK: - Every open tab is swept, not only the active one
@@ -405,35 +396,9 @@ final class AgentReapingTests: XCTestCase {
         XCTAssertEqual(client.kills, ["s-2"])
     }
 
-    /// A candidate verified as belonging to a live In-progress session this
-    /// run has no open tab for is cached, so a later sweep does not pay for
-    /// asking about it again.
-    @MainActor
-    func testAVerifiedElsewhereCandidateIsNotReReadNextSweep() async {
-        let client = ReapingClient(
-            plans: ["proj-1": Self.plan([Self.slice("s-1", status: "Todo")])],
-            agents: [AgentStatus(sliceID: "other-project-slice", session: "nat-other", activity: .waiting)],
-            statuses: ["other-project-slice": .found(status: "In progress", trashed: false)]
-        )
-
-        // The start's own sweep reads it once and finds it belongs to a live
-        // In-progress session no open tab here holds.
-        let model = await startedModel(client: client)
-        XCTAssertEqual(client.statusReadIDs, ["other-project-slice"])
-        XCTAssertEqual(client.kills, [])
-
-        // Every later sweep still nominates it — nothing here has changed —
-        // but the cache is what keeps it from being asked about again.
-        await model.refresh()
-        await model.refresh()
-        XCTAssertEqual(client.statusReadIDs, ["other-project-slice"])
-    }
-
     /// A candidate an open plan names, saved by a fresh In-progress read, is
-    /// the launch race being closed rather than another window's session: it
-    /// is never cached, so every later sweep verifies it afresh and its real
-    /// ending is still caught rather than found behind a cache entry that
-    /// outlived it.
+    /// the launch race being closed: nothing is cached, so every later sweep
+    /// verifies it afresh and its real ending is still caught.
     @MainActor
     func testARaceSavedCandidateIsVerifiedAfreshEverySweep() async {
         let client = ReapingClient(
@@ -449,7 +414,7 @@ final class AgentReapingTests: XCTestCase {
         XCTAssertEqual(client.kills, [])
 
         // The stale plan nominates it again, and the fresh read is paid for
-        // again: a slice this run's own plan names is never cached away.
+        // again.
         await model.refresh()
         XCTAssertEqual(client.statusReadIDs, ["s-1", "s-1"])
         XCTAssertEqual(client.kills, [])
@@ -458,8 +423,8 @@ final class AgentReapingTests: XCTestCase {
     // MARK: - Closing a tab
 
     /// Closing a project's tab runs one final sweep for it, ignoring visit
-    /// holds entirely: once the tab is gone, its plan stops being one the
-    /// ordinary sweep considers, so this is the last chance for a while.
+    /// holds entirely, while its plan is still open: once the tab is gone, no
+    /// sweep touches its sessions at all, so this is the last chance.
     @MainActor
     func testClosingATabReapsItsOwnDanglingSessionIgnoringHolds() async {
         let client = ReapingClient(

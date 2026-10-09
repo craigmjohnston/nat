@@ -47,12 +47,12 @@ final class SessionReapingTests: XCTestCase {
     }
 
     /// A slice absent from every open project's plan — another project's
-    /// session, or one whose slice has since been deleted — is a candidate
-    /// exactly as one present with the wrong status is.
-    func testASliceAbsentFromEveryOpenPlanIsACandidate() {
+    /// session, or one whose slice has since been deleted — is no candidate:
+    /// there is no project to verify or kill it on.
+    func testASliceAbsentFromEveryOpenPlanIsNoCandidate() {
         let reaped = reap(agents: [agent("s-1")], slicesByID: [:])
 
-        XCTAssertEqual(reaped, ["s-1"])
+        XCTAssertEqual(reaped, [])
     }
 
     func testAnInProgressSliceIsNeverACandidate() {

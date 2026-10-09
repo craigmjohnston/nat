@@ -415,17 +415,6 @@ public final class AppModel {
     /// idle: holds exist only within the current app run.
     private var heldUntil: [String: Date] = [:]
 
-    /// Slice IDs a sweep has verified belong to a live In-progress session of
-    /// a project this run has not got open — another window's project, most
-    /// likely — so there is nothing to re-verify about them until the app
-    /// restarts. Read fresh every sweep would cost a `nat slice-status` apiece
-    /// forever. It holds only slices no open plan names, and is consulted
-    /// only for those: a slice an open plan does name has this run watching
-    /// its work end, and a cache entry that outlived that ending would keep
-    /// its session alive forever — opening the project a cached slice belongs
-    /// to is likewise what puts it back under the plan's own rule.
-    private var verifiedElsewhere: Set<String> = []
-
     /// Project stores keyed by project ID (lazily created).
     private var stores: [String: ProjectStore] = [:]
 
@@ -1121,6 +1110,10 @@ public final class AppModel {
         workshopSelectedProjects.remove(projectID)
         workshopPinnedProjects.remove(projectID)
         let closing = Set((stores[projectID]?.state.projectInfo?.slices ?? []).map(\.id))
+        // Reaped while the tab is still in `projectTabs`: a session the
+        // sweep cannot find in an open plan is one it never touches, so the
+        // closing project's plan must still be there for its finished
+        // sessions to be reaped at all.
         await reapFinishedAgents(ignoringHoldsFor: closing)
         projectTabs.remove(at: index)
         // Its pull-request loop stops with the tab; reopening starts one.
@@ -2741,10 +2734,11 @@ public final class AppModel {
     /// where the session is gone. Nothing in the app asks for a kill by hand
     /// — `reapFinishedAgents` is the only caller — so a refusal is something
     /// to log rather than the app's error banner; `nat agent-kill` is where
-    /// a kill is asked for outright.
+    /// a kill is asked for outright. `projectID` is the slice's own
+    /// project, never merely the active one: nat finds the session by the
+    /// slice it is asked about in the project it is asked on.
     @discardableResult
-    func killAgent(sliceID: String) async -> String? {
-        guard let projectID = activeProjectID else { return "No project loaded" }
+    func killAgent(sliceID: String, projectID: String) async -> String? {
         do {
             try await clientFactory().agentKill(projectID: projectID, sliceRef: sliceID)
         } catch let error as NatError {
@@ -2758,7 +2752,7 @@ public final class AppModel {
     }
 
     /// Ends the project's planning agent outright — `nat agent-kill
-    /// --workshop`, alongside `killAgent(sliceID:)` above. Unlike that one,
+    /// --workshop`, alongside `killAgent(sliceID:projectID:)` above. Unlike that one,
     /// this is asked for by hand: the rail's ✕ on the workshop row is the
     /// only caller, closing a tab a session is still live on.
     ///
@@ -2959,21 +2953,19 @@ public final class AppModel {
     /// reaped only where that read says so (`verifiedForReap`) — closing the
     /// race the plan reading alone cannot: a session's own claim is always
     /// written before the session exists, so this fresh read can never show a
-    /// phantom state the way the cached plan might. Only a candidate no open
-    /// plan names is cached in `verifiedElsewhere` on an In-progress answer —
-    /// another window's project's, with nothing here to watch it finish. One
-    /// an open plan does name was nominated off a stale reading, which is
-    /// exactly the race the fresh read exists to close, and is left uncached:
-    /// the plan's next load stops nominating it by itself, and when its work
-    /// really does end, that ending still has to be verified rather than
-    /// found behind a cache entry that outlived it.
+    /// phantom state the way the cached plan might. Both that read and the
+    /// kill are asked on the slice's **own** project, the one whose open plan
+    /// nominated it: asked on another, `nat slice-status` cannot find the
+    /// slice, answers gone, and a live agent is killed. A session no open
+    /// plan lists is never nominated (`agentSessionsToReap`), since there is
+    /// no project here to ask about it on.
     private func reapFinishedAgents(ignoringHoldsFor unheld: Set<String> = []) async {
-        let plans = projectTabs.compactMap { stores[$0.id]?.state.projectInfo }
-        guard !plans.isEmpty, let projectID = activeProjectID else { return }
-        var slicesByID: [String: Slice] = [:]
-        for info in plans {
-            for slice in info.slices { slicesByID[slice.id] = slice }
+        var owners: [String: (projectID: String, slice: Slice)] = [:]
+        for tab in projectTabs {
+            guard let info = stores[tab.id]?.state.projectInfo else { continue }
+            for slice in info.slices { owners[slice.id] = (tab.id, slice) }
         }
+        guard !owners.isEmpty else { return }
 
         let client = clientFactory()
         guard let statuses = try? await client.status() else { return }
@@ -2982,22 +2974,16 @@ public final class AppModel {
         for id in unheld { holds.removeValue(forKey: id) }
         let candidates = agentSessionsToReap(
             agents: statuses,
-            slicesByID: slicesByID,
+            slicesByID: owners.mapValues(\.slice),
             selectedSliceID: selectedSliceID,
             heldUntil: holds,
             now: now()
         )
         for sliceID in candidates {
-            let inOpenPlan = slicesByID[sliceID] != nil
-            if !inOpenPlan, verifiedElsewhere.contains(sliceID) { continue }
+            guard let projectID = owners[sliceID]?.projectID else { continue }
             let result = try? await client.sliceStatus(projectID: projectID, sliceRef: sliceID)
-            guard verifiedForReap(result) else {
-                if !inOpenPlan, case .found("In progress", false) = result {
-                    verifiedElsewhere.insert(sliceID)
-                }
-                continue
-            }
-            if let refusal = await killAgent(sliceID: sliceID) {
+            guard verifiedForReap(result) else { continue }
+            if let refusal = await killAgent(sliceID: sliceID, projectID: projectID) {
                 // Nothing to say to the user: nobody asked for this sweep,
                 // and a session that would not die is one the next sweep
                 // tries again on.

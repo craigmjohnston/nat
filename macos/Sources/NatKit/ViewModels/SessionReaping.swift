@@ -15,19 +15,22 @@ public let agentVisitHold: TimeInterval = 5 * 60
 /// the rule can be read and tested without a tmux or a `nat` anywhere near
 /// it.
 ///
-/// It iterates the live sessions themselves rather than a plan's slices,
-/// since the whole point is to catch a session belonging to no open plan at
-/// all: a project closed, or never opened this run, whose session nonetheless
-/// survives. `slicesByID` is every open project's plan merged into one map,
-/// keyed by slice ID — a slice ID names at most one project, so nothing is
-/// lost merging them, and a session's slice absent from the merge is exactly
-/// the "no open plan holds it" case.
+/// It iterates the live sessions and looks each one's slice up in
+/// `slicesByID`, every open project's plan merged into one map keyed by slice
+/// ID — a slice ID names at most one project, so nothing is lost merging
+/// them. A session's slice must be in that merge to be a candidate at all:
+/// the slice's own project is the one its verification and kill are asked
+/// on, and a session no open plan lists has no project gnat can name. Asked
+/// on any other project, `nat slice-status` cannot find the slice, answers
+/// `gone`, and the read that exists to keep a live agent would kill it — so
+/// such a session (another project's, a closed tab's, one whose slice was
+/// deleted) is never touched.
 ///
-/// A session is a candidate when its slice is either:
-/// - absent from every open project's plan (another, unopened or since-closed
-///   project's session, or one whose slice has been deleted), or
-/// - present, with a status that is not "In progress" — Done or Todo,
-///   Notion's own word disagreeing with a session still running on it.
+/// A session is a candidate when its slice is in an open plan with a status
+/// that is not "In progress" — Done or Todo, Notion's own word disagreeing
+/// with a session still running on it. In progress runs from claim to merge
+/// (Done is written only by the merge), so anything else means no undone
+/// work.
 ///
 /// Two guards apply here rather than in the verification that follows,
 /// since neither is a question `nat slice-status` could answer any better:
@@ -65,7 +68,7 @@ public func agentSessionsToReap(
             guard !TmuxSession.isPlanTag(agent.sliceID) else { return false }
             guard agent.sliceID != selectedSliceID else { return false }
             if let until = heldUntil[agent.sliceID], until > now { return false }
-            guard let slice = slicesByID[agent.sliceID] else { return true }
+            guard let slice = slicesByID[agent.sliceID] else { return false }
             return slice.status != "In progress"
         }
         .map(\.sliceID)

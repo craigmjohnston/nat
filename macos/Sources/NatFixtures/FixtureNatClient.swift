@@ -117,6 +117,11 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// Every `session-list`, by project.
     private let sessionListRecorded = Recorder()
     public var sessionListReads: [String] { sessionListRecorded.all() }
+    /// Every `slice-status`, as `slice-status --project <id> <slice>`.
+    private let sliceStatusRecorded = Recorder()
+    public var sliceStatusReads: [String] { sliceStatusRecorded.all() }
+    /// What `slice-status` answers, by slice (`setSliceStatus`).
+    private let sliceStatuses = Box<[String: SliceStatusResult]>([:])
     /// The pull request `pr-status --detail` reads where a test set one
     /// (`setDetail`) — else the fixture's.
     private let detailPR = Box<PRDetail?>(nil)
@@ -491,8 +496,17 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         prStatusByProject.set(all)
     }
 
+    /// Say what `slice-status` answers for one slice, on any project — In
+    /// progress for a slice none was set for.
+    public func setSliceStatus(_ result: SliceStatusResult, forSlice sliceID: String) {
+        var all = sliceStatuses.get()
+        all[sliceID] = result
+        sliceStatuses.set(all)
+    }
+
     public func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
-        try await answer(.found(status: "In progress", trashed: false))
+        sliceStatusRecorded.append("slice-status --project \(projectID) \(sliceRef)")
+        return try await answer(sliceStatuses.get()[sliceRef] ?? .found(status: "In progress", trashed: false))
     }
 
     public func configShow() async throws -> ConfigDoc {
@@ -528,7 +542,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func agentKill(projectID: String, sliceRef: String) async throws {
-        try await record("agent-kill \(sliceRef)")
+        try await record("agent-kill --project \(projectID) \(sliceRef)")
     }
 
     public func agentKillWorkshop(projectID: String) async throws {
