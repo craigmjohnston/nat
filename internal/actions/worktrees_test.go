@@ -108,6 +108,13 @@ type fakeRepo struct {
 
 	merge  git.MergeState
 	tested []string // every (dir, branch) pair ConflictsWithBase was asked, joined
+
+	underWay          bool     // RebaseInProgress's answer
+	underWayConflicts []string // and the paths it names
+	underWayErr       error
+	rebaseConflicts   []string // Rebase's answer
+	rebaseErr         error
+	rebased           []string // every (dir, base) pair Rebase was asked, joined
 }
 
 var _ Repo = (*fakeRepo)(nil)
@@ -129,6 +136,15 @@ func (f *fakeRepo) DiffStat(dir, base, branch string) (string, error) {
 func (f *fakeRepo) ConflictsWithBase(dir, branch string) git.MergeState {
 	f.tested = append(f.tested, dir+"|"+branch)
 	return f.merge
+}
+
+func (f *fakeRepo) RebaseInProgress(string) ([]string, bool, error) {
+	return f.underWayConflicts, f.underWay, f.underWayErr
+}
+
+func (f *fakeRepo) Rebase(dir, base string) ([]string, error) {
+	f.rebased = append(f.rebased, dir+"|"+base)
+	return f.rebaseConflicts, f.rebaseErr
 }
 
 // repoDir is a directory that looks enough like a git checkout for the

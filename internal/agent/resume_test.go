@@ -145,12 +145,15 @@ func TestEverySlicePromptCarriesTheResumePassage(t *testing.T) {
 }
 
 // conflictedContext is a relaunch on a hand-back with no pull request whose
-// branch the launch found conflicting with origin/main.
+// branch the launch found conflicting with origin/main, and rebased onto it
+// until the rebase stopped on two conflicted files.
 func conflictedContext() PromptContext {
 	c := worktreeContext()
 	c.Slice.Status = domain.SliceClaimed
 	c.Slice.Branch = c.Branch
 	c.ConflictBase = "origin/main"
+	c.ConflictRebase = RebaseStoppedAtLaunch
+	c.ConflictPaths = []string{"internal/agent/prompt.go", "go.mod"}
 	return c
 }
 
@@ -158,22 +161,90 @@ func TestPromptOnAConflictedHandBack(t *testing.T) {
 	golden(t, "prompt-conflicted", Prompt(conflictedContext()))
 }
 
-// A conflicted hand-back is told to rebase onto the base it conflicts with,
-// resolve, and hand back — nat's push of the rewritten branch carries the
-// lease — on top of the ordinary relaunch, which still says it is continuing.
-func TestPromptTasksAConflictedHandBackWithARebase(t *testing.T) {
+// A rebase the launch stopped on conflicts lists the files and asks for the
+// resolving, the continue, the gate and a hand-back — and nothing of a fetch
+// or a rebase to start, which the launch made, or of pushing, which the
+// hand-back does — on top of the ordinary relaunch, which still says it is
+// continuing.
+func TestPromptTasksAConflictedHandBackWithTheResolving(t *testing.T) {
 	c := conflictedContext()
 	got := Prompt(c)
 	for _, want := range []string{
 		"There is work on that branch already",
 		"## The branch conflicts with origin/main",
-		"on " + c.Branch + ":\n   `git rebase origin/main`",
-		"Resolve every conflict",
-		"Do not push\n   yourself: the hand-back pushes the rebased branch with a lease.",
+		"The launch fetched origin and rebased " + c.Branch + " onto origin/main.",
+		"is stopped on the first commit that conflicts, with these files conflicted:\n\n" +
+			"- `internal/agent/prompt.go`\n- `go.mod`\n",
+		"Resolve each conflict, keeping what both sides meant: origin/main's side\n   is merged work",
+		"`git rebase --continue`",
+		"Run the project's verification gate",
 		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
+		}
+	}
+	passage := conflictPassage(c)
+	for _, absent := range []string{"git fetch", "`git rebase origin/main`", "push"} {
+		if strings.Contains(passage, absent) {
+			t.Errorf("the passage says %q:\n%s", absent, passage)
+		}
+	}
+}
+
+// A rebase found under way is not the launch's: the passage says so, and
+// lists what it left conflicted — or says nothing is, where it is resolved
+// but not yet continued.
+func TestPromptOnARebaseAlreadyUnderWay(t *testing.T) {
+	c := conflictedContext()
+	c.ConflictRebase = RebaseUnderWay
+	got := conflictPassage(c)
+	for _, want := range []string{
+		"A rebase is already under way in the worktree, so the launch started\nnone of its own.",
+		"It is stopped, with these files conflicted:\n\n- `internal/agent/prompt.go`\n- `go.mod`\n",
+		"`git rebase --continue`",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("passage does not say %q:\n%s", want, got)
+		}
+	}
+	c.ConflictPaths = nil
+	if got := conflictPassage(c); !strings.Contains(got, "It is stopped, with no file left conflicted.\n\n1. ") {
+		t.Errorf("passage with nothing conflicted:\n%s", got)
+	}
+}
+
+// A clean rebase at launch leaves only the gate and the hand-back.
+func TestPromptOnABranchRebasedAtLaunch(t *testing.T) {
+	c := conflictedContext()
+	c.ConflictRebase, c.ConflictPaths = RebasedAtLaunch, nil
+	got := conflictPassage(c)
+	want := "The launch fetched origin and rebased " + c.Branch + " onto origin/main, and the\n" +
+		"rebase went through with no conflict. What is left:\n\n" +
+		"1. Run the project's verification gate on the rebased branch.\n" +
+		"2. Hand the slice back with `complete-slice`, as below.\n"
+	if !strings.HasSuffix(got, want) {
+		t.Errorf("passage = %q, want it to end %q", got, want)
+	}
+	for _, absent := range []string{"Resolve", "--continue", "push"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("the passage says %q:\n%s", absent, got)
+		}
+	}
+}
+
+// A rebase the launch did not make is the agent's to make, start to finish.
+func TestPromptLeavesAnUnmadeRebaseToTheAgent(t *testing.T) {
+	c := conflictedContext()
+	c.ConflictRebase, c.ConflictPaths = RebaseLeftToAgent, nil
+	got := conflictPassage(c)
+	for _, want := range []string{
+		"1. `git fetch origin`, then, on " + c.Branch + ":\n   `git rebase origin/main`.",
+		"Resolve every conflict",
+		"Do not push\n   yourself: the hand-back pushes the rebased branch with a lease.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("passage does not say %q:\n%s", want, got)
 		}
 	}
 }

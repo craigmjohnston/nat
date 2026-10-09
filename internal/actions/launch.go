@@ -121,11 +121,13 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 	}
 	// A hand-back with no pull request yet has nothing on GitHub to say
 	// whether it still merges, so the launch tests the branch itself, and a
-	// conflict tells the agent to rebase before anything else. One with a
-	// pull request has that from GitHub, and the user's own word sending it
-	// back says so.
+	// conflict is rebased onto the base before the agent starts, leaving it
+	// only what needs one: the resolving. One with a pull request has that
+	// from GitHub, and the user's own word sending it back says so.
 	if c.Slice.PRURL == "" && c.Branch != "" && c.HandedBack {
-		c.ConflictBase = conflictBase(r, c.WorkingDir, c.Branch)
+		if c.ConflictBase = conflictBase(r, c.WorkingDir, c.Branch); c.ConflictBase != "" {
+			c.ConflictRebase, c.ConflictPaths = rebaseAtLaunch(r, c.WorkingDir, c.ConflictBase)
+		}
 	}
 	// A relaunch — the slice's brief already carries history from an
 	// earlier pass ([store.HasHistory]: a note alone is not history, since
@@ -256,6 +258,33 @@ func conflictBase(r Repo, dir, branch string) string {
 		return ""
 	}
 	return r.Base(dir)
+}
+
+// rebaseAtLaunch rebases the conflicted branch in the worktree at dir onto
+// base for the agent, which is left only the resolving. The merge test has
+// just fetched origin, so base is origin's as of now and no second fetch is
+// made. A rebase already under way is never restarted: the agent is told of
+// it and its conflicted files instead. Where whether one is under way cannot
+// be read, or the rebase fails for any reason but a conflict ([git.CLI.Rebase]
+// has aborted it, logged), the rebase is left to the agent as before.
+func rebaseAtLaunch(r Repo, dir, base string) (agent.ConflictRebase, []string) {
+	conflicts, underWay, err := r.RebaseInProgress(dir)
+	switch {
+	case err != nil:
+		return agent.RebaseLeftToAgent, nil
+	case underWay:
+		return agent.RebaseUnderWay, conflicts
+	}
+	conflicts, err = r.Rebase(dir, base)
+	switch {
+	case err != nil:
+		logging.Action("could not rebase a conflicted hand-back at launch; the agent will", "dir", dir,
+			"base", base, "err", err)
+		return agent.RebaseLeftToAgent, nil
+	case len(conflicts) > 0:
+		return agent.RebaseStoppedAtLaunch, conflicts
+	}
+	return agent.RebasedAtLaunch, nil
 }
 
 // reviewSnapshot is a launch's read of a recorded pull request's review: its

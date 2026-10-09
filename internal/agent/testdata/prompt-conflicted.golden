@@ -32,18 +32,24 @@ Go, Bubble Tea v2, 100% coverage of new code.
 ## The branch conflicts with origin/main
 
 This slice was handed back on slice/tmux-integration-agent-prompt-template, and origin/main has moved on
-since: the launch tested the merge, and the branch no longer merges into
-it cleanly. Bring it up to date before anything else — that is what this
-session was launched for, along with anything the task log's last entry
-asks:
+since: the launch tested the merge, and the branch no longer merged into
+it cleanly. Bringing it up to date comes before anything else — that is
+what this session was launched for, along with anything the task log's
+last entry asks.
 
-1. `git fetch origin`, then, on slice/tmux-integration-agent-prompt-template:
-   `git rebase origin/main`.
-2. Resolve every conflict, keeping what both sides meant: origin/main's side
-   is merged work, never to be undone to make the branch fit.
+The launch fetched origin and rebased slice/tmux-integration-agent-prompt-template onto origin/main. The rebase
+is stopped on the first commit that conflicts, with these files conflicted:
+
+- `internal/agent/prompt.go`
+- `go.mod`
+
+1. Resolve each conflict, keeping what both sides meant: origin/main's side
+   is merged work, never to be undone to make the branch fit. `git add`
+   each file as it is resolved.
+2. `git rebase --continue`, resolving the same way through any later
+   commit that conflicts, until the rebase is finished.
 3. Run the project's verification gate on the result.
-4. Hand the slice back with `complete-slice`, as below. Do not push
-   yourself: the hand-back pushes the rebased branch with a lease.
+4. Hand the slice back with `complete-slice`, as below.
 
 Every `nat` command below names the project this slice is in:
 

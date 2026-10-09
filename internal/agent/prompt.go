@@ -72,9 +72,11 @@ import (
 //
 // ConflictBase is the base a handed-back branch with no pull request was found
 // conflicting with at launch ([git.CLI.ConflictsWithBase], run by
-// [actions.Launch]): set, the prompt tasks the agent with rebasing onto it
-// first ([conflictPassage]). Empty for a clean branch, one that could not be
-// tested, and every slice with a pull request or never handed back.
+// [actions.Launch]): set, the prompt tasks the agent with bringing the branch
+// up to date with it first ([conflictPassage]). Empty for a clean branch, one
+// that could not be tested, and every slice with a pull request or never
+// handed back. ConflictRebase is how far the launch itself got with that
+// rebase, and ConflictPaths the files it left conflicted.
 //
 // Container is the container a source project's slice hangs off, read off the
 // plugin at launch by [actions.Launch]; nil for every other project, and where
@@ -107,6 +109,8 @@ type PromptContext struct {
 	ReviewChecks    string
 	HandedBack      bool
 	ConflictBase    string
+	ConflictRebase  ConflictRebase
+	ConflictPaths   []string
 	Container       *PromptContainer
 	RepoUnknown     bool
 }
@@ -660,14 +664,37 @@ func pullRequestPassage(c PromptContext) string {
 	return b.String()
 }
 
+// ConflictRebase is how far [actions.Launch] got rebasing a conflicted
+// hand-back onto its base before the agent started: the fetch and the rebase
+// are mechanical, and only resolving what conflicts needs an agent.
+type ConflictRebase int
+
+const (
+	// RebaseLeftToAgent is a rebase the launch did not make — it could not
+	// tell whether one was under way, or its own failed and was aborted — so
+	// the agent is told to make it. The zero value, the passage that asks the
+	// most of the agent, for any launch that set nothing.
+	RebaseLeftToAgent ConflictRebase = iota
+	// RebasedAtLaunch is a rebase that went through with no conflict.
+	RebasedAtLaunch
+	// RebaseStoppedAtLaunch is the launch's own rebase, stopped on the first
+	// commit that conflicts.
+	RebaseStoppedAtLaunch
+	// RebaseUnderWay is a rebase the launch found already in progress in the
+	// worktree, and so started none of its own.
+	RebaseUnderWay
+)
+
 // conflictPassage tells an agent relaunched on a handed-back branch that no
 // longer merges into its base — found by the launch's own test, there being no
 // pull request for GitHub to say so of — that bringing the branch up to date
-// comes first: rebase it onto the base, resolve the conflicts, run the gate
-// and hand back. The hand-back's own push is the lease form, which is what
-// lets a rebased branch go over its old self while never overwriting anything
-// it has not seen, so the agent pushes nothing itself. Empty where the launch
-// found no conflict.
+// comes first, from wherever the launch's own rebase left it
+// ([PromptContext.ConflictRebase]): run the gate on a branch it rebased
+// cleanly; resolve the files it stopped on (or found a rebase already stopped
+// on), keeping both sides' meaning, and continue; or, where it made no rebase,
+// make one. Every ending is a hand-back, whose own push is the lease form —
+// what lets a rebased branch go over its old self while never overwriting
+// anything it has not seen. Empty where the launch found no conflict.
 func conflictPassage(c PromptContext) string {
 	base := c.ConflictBase
 	if base == "" {
@@ -676,16 +703,48 @@ func conflictPassage(c PromptContext) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n## The branch conflicts with %s\n\n", base)
 	fmt.Fprintf(&b, "This slice was handed back on %s, and %s has moved on\n", c.Branch, base)
-	b.WriteString("since: the launch tested the merge, and the branch no longer merges into\n")
-	b.WriteString("it cleanly. Bring it up to date before anything else — that is what this\n")
-	b.WriteString("session was launched for, along with anything the task log's last entry\n")
-	b.WriteString("asks:\n\n")
-	fmt.Fprintf(&b, "1. `git fetch origin`, then, on %s:\n   `git rebase %s`.\n", c.Branch, base)
-	fmt.Fprintf(&b, "2. Resolve every conflict, keeping what both sides meant: %s's side\n", base)
-	b.WriteString("   is merged work, never to be undone to make the branch fit.\n")
+	b.WriteString("since: the launch tested the merge, and the branch no longer merged into\n")
+	b.WriteString("it cleanly. Bringing it up to date comes before anything else — that is\n")
+	b.WriteString("what this session was launched for, along with anything the task log's\n")
+	b.WriteString("last entry asks.\n\n")
+	switch c.ConflictRebase {
+	case RebasedAtLaunch:
+		fmt.Fprintf(&b, "The launch fetched origin and rebased %s onto %s, and the\n", c.Branch, base)
+		b.WriteString("rebase went through with no conflict. What is left:\n\n")
+		b.WriteString("1. Run the project's verification gate on the rebased branch.\n")
+		b.WriteString("2. Hand the slice back with `complete-slice`, as below.\n")
+		return b.String()
+	case RebaseStoppedAtLaunch:
+		fmt.Fprintf(&b, "The launch fetched origin and rebased %s onto %s. The rebase\n", c.Branch, base)
+		b.WriteString("is stopped on the first commit that conflicts")
+	case RebaseUnderWay:
+		b.WriteString("A rebase is already under way in the worktree, so the launch started\n")
+		b.WriteString("none of its own. It is stopped")
+	default:
+		fmt.Fprintf(&b, "1. `git fetch origin`, then, on %s:\n   `git rebase %s`.\n", c.Branch, base)
+		fmt.Fprintf(&b, "2. Resolve every conflict, keeping what both sides meant: %s's side\n", base)
+		b.WriteString("   is merged work, never to be undone to make the branch fit.\n")
+		b.WriteString("3. Run the project's verification gate on the result.\n")
+		b.WriteString("4. Hand the slice back with `complete-slice`, as below. Do not push\n")
+		b.WriteString("   yourself: the hand-back pushes the rebased branch with a lease.\n")
+		return b.String()
+	}
+	if len(c.ConflictPaths) == 0 {
+		b.WriteString(", with no file left conflicted.\n\n")
+	} else {
+		b.WriteString(", with these files conflicted:\n\n")
+		for _, p := range c.ConflictPaths {
+			fmt.Fprintf(&b, "- `%s`\n", p)
+		}
+		b.WriteString("\n")
+	}
+	fmt.Fprintf(&b, "1. Resolve each conflict, keeping what both sides meant: %s's side\n", base)
+	b.WriteString("   is merged work, never to be undone to make the branch fit. `git add`\n")
+	b.WriteString("   each file as it is resolved.\n")
+	b.WriteString("2. `git rebase --continue`, resolving the same way through any later\n")
+	b.WriteString("   commit that conflicts, until the rebase is finished.\n")
 	b.WriteString("3. Run the project's verification gate on the result.\n")
-	b.WriteString("4. Hand the slice back with `complete-slice`, as below. Do not push\n")
-	b.WriteString("   yourself: the hand-back pushes the rebased branch with a lease.\n")
+	b.WriteString("4. Hand the slice back with `complete-slice`, as below.\n")
 	return b.String()
 }
 

@@ -43,7 +43,14 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   branch, whose brief holds a `Handed back` (in review, or sent back) is
   tested with
   `Repo.ConflictsWithBase`; only `MergeConflicted` sets
-  `PromptContext.ConflictBase` (`Repo.Base`), the prompt's rebase passage.
+  `PromptContext.ConflictBase` (`Repo.Base`), the prompt's rebase passage,
+  and then `rebaseAtLaunch` makes the rebase before the agent starts
+  (`PromptContext.ConflictRebase`/`ConflictPaths`): a rebase already under
+  way (`Repo.RebaseInProgress`) is never restarted (`RebaseUnderWay`);
+  else `Repo.Rebase` onto the base — no second fetch, the merge test just
+  made one — `RebasedAtLaunch` or `RebaseStoppedAtLaunch`. An unreadable
+  in-progress check or a failed (already aborted) rebase leaves it to the
+  agent (`RebaseLeftToAgent`, the zero value). Nothing goes on the task log.
   The claim runs **last** of what can fail before
   tmux is asked for anything, so a worktree or prompt-file failure leaves the
   slice exactly where it was.

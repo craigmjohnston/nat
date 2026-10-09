@@ -37,9 +37,13 @@ running agent's state.
   `pullRequestPassage` (the PR is open, a push updates it, the launch's
   review snapshot, `gh pr view <PR> --comments` the one `gh` allowed, never
   a PR write). `PromptContext.ConflictBase` (set by `actions.Launch` for a
-  conflicted hand-back with no PR) adds `conflictPassage`: rebase onto the
-  base, resolve, gate, hand back — the hand-back's own push carries the
-  lease. No template tells an agent to push (`TestNoPromptTellsTheAgentToPush`
+  conflicted hand-back with no PR) adds `conflictPassage`, by
+  `ConflictRebase`: `RebasedAtLaunch` asks the gate and a hand-back only;
+  `RebaseStoppedAtLaunch`/`RebaseUnderWay` list `ConflictPaths` and ask
+  resolve (both sides' meaning), `git rebase --continue`, gate, hand back,
+  saying nothing of pushing; `RebaseLeftToAgent` is the whole fetch, rebase,
+  resolve, gate, hand back — the hand-back's own push carries the lease.
+  No template tells an agent to push (`TestNoPromptTellsTheAgentToPush`
   walks them with `pushInstruction`; `skills_test.go` the skills): every
   passage says commit, and that `complete-slice` pushes. The hand-back
   example names `--branch <branch>` only where there is no worktree for nat

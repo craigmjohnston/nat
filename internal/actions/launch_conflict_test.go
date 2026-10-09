@@ -15,8 +15,8 @@ import (
 // conflictLaunch relaunches slice s5 onto its existing worktree on
 // slice/info-view, its brief the given blocks, against a repository whose
 // merge test answers merge — and reports the context the prompt was written
-// with and what the repository was asked to test.
-func conflictLaunch(t *testing.T, s domain.Slice, merge git.MergeState, body ...notion.Block) (agent.PromptContext, []string) {
+// with, what the repository was asked to test, and what it was asked to rebase.
+func conflictLaunch(t *testing.T, s domain.Slice, merge git.MergeState, body ...notion.Block) (c agent.PromptContext, tested, rebased []string) {
 	t.Helper()
 	dir := repoDir(t)
 	w := &fakeWorktrees{existing: map[string]string{"slice/info-view": dir + "-worktrees/slice/info-view"}}
@@ -32,7 +32,7 @@ func conflictLaunch(t *testing.T, s domain.Slice, merge git.MergeState, body ...
 	if err != nil {
 		t.Fatalf("Launch() = %v, want it to go through", err)
 	}
-	return res.Context, r.tested
+	return res.Context, r.tested, r.rebased
 }
 
 func handedBackBody(t *testing.T) []notion.Block {
@@ -46,7 +46,7 @@ func TestLaunchTellsAConflictedHandBackItsBase(t *testing.T) {
 	for name, branch := range map[string]string{"in review": "slice/info-view", "sent back": ""} {
 		t.Run(name, func(t *testing.T) {
 			s := domain.Slice{ID: "s5", Name: "Info view", Branch: branch, Status: domain.SliceClaimed}
-			c, tested := conflictLaunch(t, s, git.MergeConflicted, handedBackBody(t)...)
+			c, tested, _ := conflictLaunch(t, s, git.MergeConflicted, handedBackBody(t)...)
 			if c.ConflictBase != "origin/main" {
 				t.Errorf("ConflictBase = %q, want origin/main", c.ConflictBase)
 			}
@@ -58,14 +58,15 @@ func TestLaunchTellsAConflictedHandBackItsBase(t *testing.T) {
 }
 
 // A branch that merges cleanly, or one the test could not be made of, is
-// told nothing: an unknown reading is never a conflict.
+// told nothing and rebased onto nothing: an unknown reading is never a
+// conflict.
 func TestLaunchTellsACleanOrUntestedHandBackNothing(t *testing.T) {
 	for name, merge := range map[string]git.MergeState{"clean": git.MergeClean, "unknown": git.MergeUnknown} {
 		t.Run(name, func(t *testing.T) {
 			s := domain.Slice{ID: "s5", Name: "Info view", Branch: "slice/info-view", Status: domain.SliceClaimed}
-			c, tested := conflictLaunch(t, s, merge, handedBackBody(t)...)
-			if c.ConflictBase != "" {
-				t.Errorf("ConflictBase = %q, want none", c.ConflictBase)
+			c, tested, rebased := conflictLaunch(t, s, merge, handedBackBody(t)...)
+			if c.ConflictBase != "" || c.ConflictRebase != agent.RebaseLeftToAgent || rebased != nil {
+				t.Errorf("ConflictBase %q, rebase %v, rebased %v — want none", c.ConflictBase, c.ConflictRebase, rebased)
 			}
 			if len(tested) != 1 {
 				t.Errorf("tested %v, want the one test", tested)
@@ -79,11 +80,11 @@ func TestLaunchTellsACleanOrUntestedHandBackNothing(t *testing.T) {
 func TestLaunchTestsNoBranchWithAPullRequestOrNoHandBack(t *testing.T) {
 	approved := domain.Slice{ID: "s5", Name: "Info view", Branch: "slice/info-view", Status: domain.SliceClaimed,
 		PRURL: "https://github.test/o/r/pull/1"}
-	if c, tested := conflictLaunch(t, approved, git.MergeConflicted, handedBackBody(t)...); c.ConflictBase != "" || tested != nil {
+	if c, tested, _ := conflictLaunch(t, approved, git.MergeConflicted, handedBackBody(t)...); c.ConflictBase != "" || tested != nil {
 		t.Errorf("approved: ConflictBase %q, tested %v — want neither", c.ConflictBase, tested)
 	}
 	working := domain.Slice{ID: "s5", Name: "Info view", Status: domain.SliceClaimed}
-	c, tested := conflictLaunch(t, working, git.MergeConflicted, block(t, "heading_3", "Blocked"), block(t, "paragraph", "Stuck."))
+	c, tested, _ := conflictLaunch(t, working, git.MergeConflicted, block(t, "heading_3", "Blocked"), block(t, "paragraph", "Stuck."))
 	if c.ConflictBase != "" || !reflect.DeepEqual(tested, []string(nil)) {
 		t.Errorf("never handed back: ConflictBase %q, tested %v — want neither", c.ConflictBase, tested)
 	}

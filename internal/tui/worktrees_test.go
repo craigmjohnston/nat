@@ -95,6 +95,8 @@ func (f *fakeRepo) DiffStat(dir, base, branch string) (string, error) { return f
 func (f *fakeRepo) Base(string) string { return f.base }
 
 func (f *fakeRepo) ConflictsWithBase(dir, branch string) git.MergeState { return git.MergeUnknown }
+func (f *fakeRepo) RebaseInProgress(string) ([]string, bool, error)     { return nil, false, nil }
+func (f *fakeRepo) Rebase(string, string) ([]string, error)             { return nil, nil }
 
 // withBase gives the real git a project's configured base, and leaves a fake
 // — or a project with none — as it is.

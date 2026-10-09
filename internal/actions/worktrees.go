@@ -38,13 +38,17 @@ type Worktrees interface {
 // [Launch] gathers for a resume launch's prompt once the worktree is
 // placed: the one-line commit log and the diff stat of what is already on
 // the branch — and, for a hand-back relaunched with no pull request, whether
-// that branch still merges into the base ([git.CLI.ConflictsWithBase]).
+// that branch still merges into the base ([git.CLI.ConflictsWithBase]), and
+// where it does not, the rebase onto it the launch starts before the agent
+// does ([git.CLI.RebaseInProgress], [git.CLI.Rebase]).
 type Repo interface {
 	Fetch(dir string)
 	Base(dir string) string
 	LogOneline(dir, base, branch string) (string, error)
 	DiffStat(dir, base, branch string) (string, error)
 	ConflictsWithBase(dir, branch string) git.MergeState
+	RebaseInProgress(dir string) (conflicts []string, inProgress bool, err error)
+	Rebase(dir, base string) (conflicts []string, err error)
 }
 
 // branchPrefix is what every slice's branch is named under, matching the
