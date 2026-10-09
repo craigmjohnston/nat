@@ -74,6 +74,20 @@ request.
   apart. `MergeUnknown` is the zero value and never reads as conflicted;
   nothing is returned as an error.
 
+## Rebase (`rebase.go`)
+
+- `RebaseInProgress(dir)` stats `git rev-parse --git-path rebase-merge` /
+  `rebase-apply` (the worktree's own git dir — `.git/worktrees/<name>` in a
+  linked worktree; a relative answer is joined to `dir`), and where one is
+  there reads `ConflictedPaths`. A reading that fails is an **error, never
+  "none"** — a caller must then start no rebase, one may be under way.
+- `ConflictedPaths(dir)` is `git diff --name-only --diff-filter=U`.
+- `Rebase(dir, base)` is `git rebase <base>`: clean → no paths; stopped →
+  the conflicted paths, the rebase **left stopped**; any other failure
+  (dirty tree, a hook, a stop with nothing unmerged) → `git rebase --abort`
+  (its own failure logged) and the error. It fetches nothing — the caller
+  has (`actions.Launch` just ran `ConflictsWithBase`).
+
 ## Hand-back (`handback.go`)
 
 - `DirtyPaths(dir)` is `git status --porcelain --untracked-files=normal`,

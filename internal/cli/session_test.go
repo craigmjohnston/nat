@@ -152,6 +152,8 @@ func (f *fakeSessionRepo) Push(dir, branch string) error               { return 
 func (f *fakeSessionRepo) ConflictsWithBase(dir, branch string) git.MergeState {
 	return git.MergeUnknown
 }
+func (f *fakeSessionRepo) RebaseInProgress(string) ([]string, bool, error) { return nil, false, nil }
+func (f *fakeSessionRepo) Rebase(string, string) ([]string, error)         { return nil, nil }
 
 var _ actions.Worktrees = (*fakeSessionWorktrees)(nil)
 var _ GitCLI = (*fakeSessionRepo)(nil)

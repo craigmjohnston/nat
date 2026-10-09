@@ -284,6 +284,8 @@ func (d dirGit) CommitsFrom(string, string, string) (string, []git.Commit, error
 func (d dirGit) CommitDiff(string, string) (string, error)       { return "", nil }
 func (d dirGit) Show(string, string, string) ([]string, error)   { return nil, nil }
 func (d dirGit) ConflictsWithBase(string, string) git.MergeState { return git.MergeUnknown }
+func (d dirGit) RebaseInProgress(string) ([]string, bool, error) { return nil, false, nil }
+func (d dirGit) Rebase(string, string) ([]string, error)         { return nil, nil }
 
 // endSession marks a seeded session ended.
 func endSession(t *testing.T, env Env, id string) {
