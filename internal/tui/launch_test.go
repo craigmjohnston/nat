@@ -213,7 +213,7 @@ func (f *fakeLauncher) Activity() (map[string]agent.Activity, error) {
 	return f.activity, nil
 }
 
-func (f *fakeLauncher) Launch(session, workdir, promptFile, opening, sliceID string, model config.AgentModel) error {
+func (f *fakeLauncher) Launch(session, workdir, promptFile, opening, sliceID, projectID string, model config.AgentModel) error {
 	f.launches = append(f.launches, launchCall{session, workdir, promptFile, opening, sliceID, model})
 	return f.launchErr
 }

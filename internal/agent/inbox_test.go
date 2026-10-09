@@ -96,7 +96,9 @@ func TestLaunchesCarryTheInbox(t *testing.T) {
 		want    bool
 	}{{"tmux 3.5a\n", true}, {"tmux 3.0a\n", false}} {
 		for name, launch := range map[string]func(*Tmux) error{
-			"Launch":     func(tm *Tmux) error { return tm.Launch("nat-1", "/tmp", "/tmp/p.md", "go", "3b73", config.AgentModel{}) },
+			"Launch": func(tm *Tmux) error {
+				return tm.Launch("nat-1", "/tmp", "/tmp/p.md", "go", "3b73", "", config.AgentModel{})
+			},
 			"LaunchBare": func(tm *Tmux) error { return tm.LaunchBare("nat-1", "/tmp", "session:p:s", config.AgentModel{}) },
 		} {
 			r := &fakeRunner{outs: map[string]string{"-V": tt.version, "new-session": "%7\n"}}
@@ -110,6 +112,39 @@ func TestLaunchesCarryTheInbox(t *testing.T) {
 	}
 	if args := LaunchArgs("nat-1", "/tmp", "/tmp/p.md", "Work the slice.", config.AgentModel{}, true); !slices.Contains(args, want) {
 		t.Errorf("LaunchArgs = %v, want the inbox carried", args)
+	}
+}
+
+// A slice's session names its slice and project beside its inbox; a planning
+// or ad hoc session names neither, and a tmux too old for -e is handed none.
+func TestSliceLaunchesCarryTheSliceAndProject(t *testing.T) {
+	slice, project := sliceEnv+"=3b73", projectEnv+"=p1"
+	for _, tt := range []struct {
+		name, version string
+		launch        func(*Tmux) error
+		want          bool
+	}{
+		{"slice", "tmux 3.5a\n", func(tm *Tmux) error {
+			return tm.Launch("nat-1", "/tmp", "/tmp/p.md", "go", "3b73", "p1", config.AgentModel{})
+		}, true},
+		{"slice on an old tmux", "tmux 3.0a\n", func(tm *Tmux) error {
+			return tm.Launch("nat-1", "/tmp", "/tmp/p.md", "go", "3b73", "p1", config.AgentModel{})
+		}, false},
+		{"planning", "tmux 3.5a\n", func(tm *Tmux) error {
+			return tm.Launch("nat-plan-1", "/tmp", "/tmp/p.md", "go", PlanTag("p1"), "", config.AgentModel{})
+		}, false},
+		{"ad hoc", "tmux 3.5a\n", func(tm *Tmux) error { return tm.LaunchBare("nat-1", "/tmp", "session:p:s", config.AgentModel{}) }, false},
+	} {
+		r := &fakeRunner{outs: map[string]string{"-V": tt.version, "new-session": "%7\n"}}
+		if err := tt.launch(NewTmuxWithRunner(r)); err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		args := r.calls[1].args
+		hasSlice := slices.ContainsFunc(args, func(a string) bool { return strings.HasPrefix(a, sliceEnv+"=") })
+		hasProject := slices.ContainsFunc(args, func(a string) bool { return strings.HasPrefix(a, projectEnv+"=") })
+		if tt.want && (!slices.Contains(args, slice) || !slices.Contains(args, project)) || !tt.want && (hasSlice || hasProject) {
+			t.Errorf("%s: args %v, want slice and project carried = %v", tt.name, args, tt.want)
+		}
 	}
 }
 

@@ -484,14 +484,16 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 // working directory, running an agent seeded with the prompt in promptFile for
 // the slice with page ID sliceID, as the model and effort m asks for. opening
 // is the one line the pane shows in the brief's place where the embedded mod
-// carries the brief ([agentCommand]).
+// carries the brief ([agentCommand]). projectID is the project the slice is
+// in, "" for a session working no slice (a planning agent, whose sliceID is a
+// [PlanTag]): only a slice's session carries [sliceEnvArgs].
 //
 // The pane the session starts in is tagged with sliceID, which is what
 // [Tmux.LiveSlices] reads the running agents back out of. A session whose pane
 // could not be tagged is left running — its agent is already working — but the
 // failure is reported, because until it is tagged nothing will find it again.
-func (t *Tmux) Launch(session, workdir, promptFile, opening, sliceID string, m config.AgentModel) error {
-	out, err := t.run(launchArgs(session, workdir, promptFile, opening, m, t.supportsSessionEnv(), prepareStatusSink(session, m), prepareMod())...)
+func (t *Tmux) Launch(session, workdir, promptFile, opening, sliceID, projectID string, m config.AgentModel) error {
+	out, err := t.run(launchArgs(session, workdir, promptFile, opening, m, t.supportsSessionEnv(), prepareStatusSink(session, m), prepareMod(), sliceEnvArgs(sliceID, projectID))...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -517,7 +519,7 @@ func (t *Tmux) Launch(session, workdir, promptFile, opening, sliceID string, m c
 // pane IDs are unique for the life of the server, where a name is whatever it
 // has last been set to.
 func LaunchArgs(session, workdir, promptFile, opening string, m config.AgentModel, sessionEnv bool) []string {
-	return launchArgs(session, workdir, promptFile, opening, m, sessionEnv, "", prepareMod())
+	return launchArgs(session, workdir, promptFile, opening, m, sessionEnv, "", prepareMod(), nil)
 }
 
 // noUpdates is the variable every Claude Code session nat launches is started
@@ -536,10 +538,10 @@ const noUpdates = "DISABLE_UPDATES=1"
 // sessionEnv says this tmux takes them ([Tmux.supportsSessionEnv]): the
 // launching process's PATH — so the agent's nat commands resolve whoever
 // started the tmux server; an empty one writes nothing rather than clobbering
-// the server's — the session's inbox ([inboxEnvArgs]) and [noUpdates]. An
-// older tmux gets none of them: it loses the quiet and the inbox, never the
-// launch.
-func agentEnvArgs(session string, sessionEnv bool) []string {
+// the server's — the session's inbox ([inboxEnvArgs]), [noUpdates] and slice,
+// a slice's [sliceEnvArgs]. An older tmux gets none of them: it loses the
+// quiet and the inbox, never the launch.
+func agentEnvArgs(session string, sessionEnv bool, slice []string) []string {
 	if !sessionEnv {
 		return nil
 	}
@@ -548,19 +550,40 @@ func agentEnvArgs(session string, sessionEnv bool) []string {
 		args = append(args, "-e", "PATH="+path)
 	}
 	args = append(args, inboxEnvArgs(session)...)
+	args = append(args, slice...)
 	return append(args, "-e", noUpdates)
 }
 
+// sliceEnv and projectEnv name the slice a session works and the project it
+// is in, set on a slice's session only, beside [inboxEnv]. The embedded mod
+// reads them to run `nat slice-resume` for a prompt the user types at a
+// handed-back agent: every nat-driven send resumes the slice before it sends,
+// and the typed prompt is the one only the mod sees.
+const (
+	sliceEnv   = "NAT_SLICE"
+	projectEnv = "NAT_PROJECT"
+)
+
+// sliceEnvArgs is the -e flags naming sliceID and projectID, or nothing where
+// projectID is "" (a session working no slice).
+func sliceEnvArgs(sliceID, projectID string) []string {
+	if projectID == "" {
+		return nil
+	}
+	return []string{"-e", sliceEnv + "=" + sliceID, "-e", projectEnv + "=" + projectID}
+}
+
 // launchArgs is [LaunchArgs] with the file the session's statusline is teed
-// into (see [prepareStatusSink]) and the mod folder it loads (see
-// [prepareMod]); "" launches without that statusline or that mod.
-func launchArgs(session, workdir, promptFile, opening string, m config.AgentModel, sessionEnv bool, sink, mod string) []string {
+// into (see [prepareStatusSink]), the mod folder it loads (see [prepareMod])
+// — "" launches without that statusline or that mod — and the slice's
+// [sliceEnvArgs].
+func launchArgs(session, workdir, promptFile, opening string, m config.AgentModel, sessionEnv bool, sink, mod string, slice []string) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
 		"-c", workdir,
 	}
-	args = append(args, agentEnvArgs(session, sessionEnv)...)
+	args = append(args, agentEnvArgs(session, sessionEnv, slice)...)
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", agentCommand(workdir, promptFile, opening, m, sink, mod),
@@ -792,7 +815,7 @@ func bareLaunchArgs(session, workdir string, m config.AgentModel, sessionEnv boo
 		"-s", session,
 		"-c", workdir,
 	}
-	args = append(args, agentEnvArgs(session, sessionEnv)...)
+	args = append(args, agentEnvArgs(session, sessionEnv, nil)...)
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
 		"sh", "-c", inWorkdir(workdir, "claude"+modelFlags(m, sink, mod)),

@@ -103,7 +103,7 @@ func TestLaunchHandsTheBriefToTheModByPath(t *testing.T) {
 	opening := `Work the slice "Craig's slice": your brief is the natBrief block of this message.`
 
 	r := &fakeRunner{outs: map[string]string{"new-session": "%7"}}
-	if err := NewTmuxWithRunner(r).Launch("nat-1", t.TempDir(), prompt, opening, "slice", config.AgentModel{}); err != nil {
+	if err := NewTmuxWithRunner(r).Launch("nat-1", t.TempDir(), prompt, opening, "slice", "", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	args := r.calls[slices.IndexFunc(r.calls, func(c call) bool { return slices.Contains(c.args, "new-session") })].args
@@ -174,7 +174,7 @@ func TestLaunchSweepsOldMods(t *testing.T) {
 	}
 
 	r := &fakeRunner{outs: map[string]string{"new-session": "%7", "list-panes": panes}}
-	if err := NewTmuxWithRunner(r).Launch("nat-1", "/tmp", "/tmp/p.md", "Work the slice.", "slice", config.AgentModel{}); err != nil {
+	if err := NewTmuxWithRunner(r).Launch("nat-1", "/tmp", "/tmp/p.md", "Work the slice.", "slice", "", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	if _, err := os.Stat(live); err != nil {

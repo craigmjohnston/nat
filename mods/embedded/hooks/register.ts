@@ -5,6 +5,7 @@ import type { Wait } from '../types'
 
 type Engine = StateDollar & Pick<EngineInterface, 'process' | 'ui'>
 type InboxEngine = Pick<EngineInterface, 'clock' | 'fs' | 'process' | 'prompt' | 'ui'>
+type ResumeEngine = Pick<EngineInterface, 'env' | 'process' | 'ui'>
 
 // What the mod last wrote on the pane, held by the host so a hot reload (a
 // fresh module) neither forgets a wait it marked nor writes the flag again.
@@ -72,6 +73,35 @@ function pollInbox($: InboxEngine, dir: string): void {
       busy = false
     }
   })
+}
+
+// The origins of a prompt the user wrote themselves: Enter in the pane (gnat's
+// typing reaches it so) or a message through Remote Control. Every other
+// origin — nat's own sends through the inbox (a plugin's), a background
+// task's notification, a schedule, a peer — is not the user asking for more.
+const typed: ReadonlySet<string> = new Set(['composer', 'bridge'])
+
+// Puts a prompt the user typed at a slice's agent on the record as
+// `nat slice-resume`, the prompt its note, before the agent reads it — what
+// every nat send does itself before it sends. `slice-resume` writes nothing
+// where the slice is not handed back, so every typed prompt runs it; where it
+// is, the slice's board card reads as work in progress again. `NAT_SLICE` and
+// `NAT_PROJECT` are set by nat on a slice's launch alone. Nothing here throws:
+// a failure goes to the debug log, never the transcript, and never holds the
+// prompt.
+async function resume($: ResumeEngine, text: string): Promise<void> {
+  try {
+    const slice = await $.env.get('NAT_SLICE')
+    const project = await $.env.get('NAT_PROJECT')
+    if (!slice || !project) return
+    const { exitCode, stderr } = await $.process.run(
+      ['nat', 'slice-resume', slice, '--project', project, '--note', '-'],
+      { stdin: text, timeoutMs: 30_000 },
+    )
+    if (exitCode !== 0) $.ui.log(`nat slice-resume exited ${exitCode}: ${stderr.trim()}`, { to: 'debug' })
+  } catch (err) {
+    $.ui.log(`resume not recorded: ${String(err)}`, { to: 'debug' })
+  }
 }
 
 // nat's hooks into the Claude Code sessions it launches. Written against the
@@ -159,6 +189,7 @@ export const register: Register = on => {
 
   on('prompt.submit', async ($, e, next) => {
     await mark($, null)
+    if (typed.has(e.origin.kind)) await resume($, e.text)
     return next(e)
   })
 

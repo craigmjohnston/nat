@@ -47,11 +47,9 @@ running agent's state.
   walks them with `pushInstruction`; `skills_test.go` the skills): every
   passage says commit, and that `complete-slice` pushes. The hand-back
   example names `--branch <branch>` only where there is no worktree for nat
-  to read it off (the default, unplaced case). Every
-  slice prompt carries `resumePassage` (`nat
-  slice-resume` before changing anything when asked for more after a
-  hand-back; a Done refusal means merged). See root CLAUDE.md's Resuming
-  rule.
+  to read it off (the default, unplaced case). No slice prompt names `nat
+  slice-resume`: the embedded mod runs it for a prompt typed in the pane
+  (`TestNoSlicePromptNamesSliceResume`). See root CLAUDE.md's Resuming rule.
 - `nat slice-checks` is how every agent reads CI: `checksPassage` in the
   slice prompt and `ChecksPrompt` (the nudge `actions.NoticeFailingChecks`
   sends). No template names `gh pr checks`.
@@ -233,7 +231,9 @@ running agent's state.
 - `SendPrompt` delivers through the session's **inbox** first (`inbox.go`):
   every `Launch`/`LaunchBare` carries `-e NAT_INBOX=<state dir>/agent-inbox/<session>`
   (`inboxEnvArgs`, under the `-e` gate — the mod gets the whole path, never
-  works out the state dir), and a send reads it back with `show-environment`
+  works out the state dir) — a slice's `Launch` (a non-empty `projectID`)
+  `NAT_SLICE`/`NAT_PROJECT` too (`sliceEnvArgs`), which the mod's resume
+  reads; a planning launch passes `""` — and a send reads it back with `show-environment`
   — none (old tmux, a session from before) pastes at once. Else it writes
   `<unix nanos>.md` (temp + rename, dir `0700`, file `0600`) and waits
   `inboxWait` (3 s, polled every 200 ms) for the mod to remove it; not

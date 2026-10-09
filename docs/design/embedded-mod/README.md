@@ -113,6 +113,25 @@ a session with no `NAT_INBOX` (a tmux too old for `-e`) is pasted to at once.
 The transcript labels each such prompt as from the `nat-embedded` plugin; the
 model reads it bare, as the user's own words.
 
+## The resume
+
+Every nat send to a handed-back agent resumes the slice first (`nat
+slice-resume`, a `Resumed` card with the request, `Branch` cleared). A prompt
+the user types in the pane is the one nat never sees, so the mod records it: a
+slice launch (`actions.Launch`, never a planning or ad hoc one) also sets
+`NAT_SLICE=<slice page ID>` and `NAT_PROJECT=<project page ID>` with
+`new-session -e`, beside `NAT_INBOX`, and the mod's `prompt.submit` hook, for
+a prompt whose `origin.kind` is `composer` or `bridge` (Enter in the pane, or
+Remote Control) on a session with both set, runs `nat slice-resume $NAT_SLICE
+--project $NAT_PROJECT --note -` with the prompt on stdin before passing it
+on. The origin, not a list of what the poller submitted, is what tells the
+user's words apart: an inbox delivery is a plugin's, and a background task's
+notification, a schedule or a peer is not the user asking for more either.
+`slice-resume` writes nothing where the slice is not handed back, so every
+typed prompt runs it. A non-zero exit or a throw is logged to debug and the
+prompt goes on. The slice prompt says nothing of it; `/next-slice`, run by
+hand with no mod, keeps its own paragraph.
+
 ## The brief
 
 A slice, fix, planning or new-project session is not started with its brief

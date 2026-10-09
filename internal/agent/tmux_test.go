@@ -209,7 +209,7 @@ func TestEveryTmuxCallRunsAsAUTF8Client(t *testing.T) {
 	if _, err := tm.LiveSlices(); err != nil {
 		t.Fatalf("LiveSlices: %v", err)
 	}
-	if err := tm.Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", config.AgentModel{}); err != nil {
+	if err := tm.Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", "", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	if err := tm.SendPrompt("nat-b4463d8f", "hello"); err != nil {
@@ -311,7 +311,7 @@ func TestLaunch(t *testing.T) {
 		"new-session": "%7\n",
 	}}
 	id := "3b738308-f654-8170-8c99-eccab4463d8f"
-	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/Users/craig/Projects/x", "/tmp/prompt.md", "Work the slice.", id, config.AgentModel{}); err != nil {
+	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/Users/craig/Projects/x", "/tmp/prompt.md", "Work the slice.", id, "", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 
@@ -362,7 +362,7 @@ func TestLaunch(t *testing.T) {
 func TestLaunchNoPATH(t *testing.T) {
 	t.Setenv("PATH", "")
 	r := &fakeRunner{outs: map[string]string{"new-session": "%7\n"}}
-	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", config.AgentModel{}); err != nil {
+	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", "", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	launch := r.calls[1].args
@@ -408,7 +408,7 @@ func TestLaunchOldTmuxDropsTheEnv(t *testing.T) {
 		"-V":          "tmux 3.0a\n",
 		"new-session": "%7\n",
 	}}
-	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", config.AgentModel{}); err != nil {
+	if err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", "", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	launch := r.calls[1].args
@@ -449,7 +449,7 @@ func TestVersionAtLeast(t *testing.T) {
 
 func TestLaunchError(t *testing.T) {
 	inner := &ExitError{Code: 1, Stderr: "duplicate session: nat-b4463d8f"}
-	err := NewTmuxWithRunner(&fakeRunner{err: inner}).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", config.AgentModel{})
+	err := NewTmuxWithRunner(&fakeRunner{err: inner}).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", "", config.AgentModel{})
 	if err == nil {
 		t.Fatal("Launch: want error, got nil")
 	}
@@ -470,7 +470,7 @@ func TestLaunchTagError(t *testing.T) {
 		errs: map[string]error{"set-option": inner},
 	}
 
-	err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", config.AgentModel{})
+	err := NewTmuxWithRunner(r).Launch("nat-b4463d8f", "/tmp", "/tmp/prompt.md", "Work the slice.", "3b73", "", config.AgentModel{})
 	if err == nil {
 		t.Fatal("Launch: want error, got nil")
 	}
@@ -1254,7 +1254,7 @@ func TestLaunchTagsWhatLiveSlicesReads(t *testing.T) {
 	session := SessionName(id)
 
 	launch := &fakeRunner{outs: map[string]string{"new-session": "%7"}}
-	if err := NewTmuxWithRunner(launch).Launch(session, "/tmp", "/tmp/prompt.md", "Work the slice.", id, config.AgentModel{}); err != nil {
+	if err := NewTmuxWithRunner(launch).Launch(session, "/tmp", "/tmp/prompt.md", "Work the slice.", id, "", config.AgentModel{}); err != nil {
 		t.Fatalf("Launch: %v", err)
 	}
 	// The tagging call sets the slice tag, and is the launch's last word but

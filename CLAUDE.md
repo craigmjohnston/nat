@@ -110,8 +110,10 @@ status) files a stamped `Resumed` section (the note) **then** clears
 progress and writes nothing (run twice, one card); not In progress is
 refused, Done by name (merged — new work is a new slice). The agent's next
 `complete-slice --branch` re-records the branch, a second `Handed back`.
-An agent asked for more after its hand-back runs it itself (every slice
-prompt and `/next-slice` say so); a UI action runs it on the user's behalf
+A prompt the user types at a slice's agent is resumed by the embedded mod
+(`prompt.submit`, origin `composer`/`bridge`, from `NAT_SLICE`/`NAT_PROJECT`
+set on a slice launch alone); `/next-slice`, run by hand with no mod, tells
+its agent to run it itself; a UI action runs it on the user's behalf
 **before** reaching the agent — `agent-send` with the hand-back line where
 a session is live, else the ordinary launch (gnat's "Send back to agent";
 the board's `l` on an In progress slice with a PR, note
