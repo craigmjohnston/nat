@@ -104,6 +104,11 @@ func followUpsOf(given []string) ([]store.FollowUp, error) {
 		if err := domain.CheckSliceTitle(title); err != nil {
 			return nil, usageErrorf("slice-followups: %v", err)
 		}
+		// Its brief is the new slice's too, so its opening is held to the
+		// summary cap plan-apply holds a planner's to.
+		if err := domain.CheckBriefOpening(brief); err != nil {
+			return nil, usageErrorf("slice-followups: %q: %v", title, err)
+		}
 		seen[title] = true
 		items = append(items, store.FollowUp{Title: title, Brief: brief})
 	}

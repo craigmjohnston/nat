@@ -160,6 +160,74 @@ func TestPlanApplyCapsTitles(t *testing.T) {
 	}
 }
 
+// longOpening is a brief opening on a paragraph of n words.
+func longOpening(n int) string {
+	return strings.TrimSpace(strings.Repeat("word ", n)) + "\n\nDone when: it works."
+}
+
+// A created slice's brief and an edit's must open on a summary paragraph of
+// at most sixty words, refused naming the slice before anything is written.
+func TestPlanApplyCapsBriefOpenings(t *testing.T) {
+	for _, tc := range []struct {
+		name, doc, want string
+	}{
+		{"a 60-word created opening", fmt.Sprintf(`{"slices": [{"title": "Fresh", "milestone": "M2: Board", "description": %q}]}`,
+			longOpening(60)), ""},
+		{"a 61-word created opening", fmt.Sprintf(`{"slices": [{"title": "Fresh", "milestone": "M2: Board", "description": %q}]}`,
+			longOpening(61)), `slice 1 ("Fresh"): the brief's first paragraph is 61 words, over the 60`},
+		{"a summary sentence before it", fmt.Sprintf(`{"slices": [{"title": "Fresh", "milestone": "M2: Board", "description": %q}]}`,
+			"Show every project.\n\n"+longOpening(61)), ""},
+		{"a 61-word edit opening", fmt.Sprintf(`{"edit": [{"slice": "Queued work", "description": %q}]}`, longOpening(61)),
+			`edit 1 ("Queued work"): the brief's first paragraph is 61 words`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := changesAPI(t, 1)
+			_, err := runPlan(t, api, tc.doc)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("plan-apply: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want %q", err, tc.want)
+			}
+			assertNothingChanged(t, api)
+		})
+	}
+}
+
+// plan-propose --project refuses a long opening before the proposal file is
+// written, and takes the same brief with a summary sentence before it.
+func TestPlanProposeWithProjectCapsBriefOpenings(t *testing.T) {
+	doc := func(brief string) string {
+		return fmt.Sprintf(`{"slices": [{"title": "Fresh", "milestone": "M2: Board", "description": %q}]}`, brief)
+	}
+	env, _ := proposeProjectEnv(t, testConfig(t), changesAPI(t, 0))
+	env.In = strings.NewReader(doc(longOpening(61)))
+	err := Run(context.Background(), []string{"plan-propose", "--project", "project-1"}, env)
+	if err == nil || !strings.Contains(err.Error(), `slice 1 ("Fresh"): the brief's first paragraph is 61 words`) {
+		t.Fatalf("err = %v, want the opening refused", err)
+	}
+	assertNothingWritten(t, "project-1")
+
+	env.In = strings.NewReader(doc("Show every project.\n\n" + longOpening(61)))
+	if err := Run(context.Background(), []string{"plan-propose", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("a brief opening on a summary sentence: %v", err)
+	}
+}
+
+// slice-followups holds each follow-up's brief to the same opening cap.
+func TestSliceFollowupsCapsBriefOpenings(t *testing.T) {
+	_, err := followUpsOf([]string{"Fix it\n\n" + longOpening(61)})
+	if err == nil || !strings.Contains(err.Error(), `slice-followups: "Fix it": the brief's first paragraph is 61 words`) {
+		t.Errorf("err = %v, want the opening refused", err)
+	}
+	if _, err := followUpsOf([]string{"Fix it\n\nThe board loses a row.\n\n" + longOpening(61)}); err != nil {
+		t.Errorf("a brief opening on a summary sentence: %v", err)
+	}
+}
+
 func (s *changesStub) SetSliceTitle(_ context.Context, id, _ string) error { return s.call("title " + id) }
 
 // A rename that fails stops the run as a failed brief write does.

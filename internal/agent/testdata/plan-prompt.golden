@@ -52,7 +52,41 @@ plan:
 - `nat slice-add <title> --milestone <name> [--description -] --project 3b738308-f654-8117-9f2e-c3b0a9b7f001`
   — one new Todo slice, its brief read from stdin
 
-A slice title is at most 64 characters, one change named, with the list of what it covers in the brief.
+A slice title names one change in eight words or fewer, in the words of the person who asked for it — what they get, not how it is built. No file, type or command names; no colon, dash or "and" joining several changes; no "N fixes in one pass". At most 64 characters. The list of what it covers goes in the brief.
+
+## Writing a brief
+
+A brief opens with a summary: one or two sentences, in a paragraph of
+its own, saying what changes for the user and why. The app shows this
+paragraph as the task's description, so it must stand alone, and nothing
+in it names a file, a function, a type or a language. A brief whose
+first paragraph runs past sixty words is refused.
+
+Then, in short paragraphs or bullets:
+
+- What is settled: decisions already made — the user's, a design
+  document's, an earlier slice's — stated as rules, with any term the
+  user may not know explained in a clause. Where a rule rests on
+  something the user has not confirmed, or on a number from a survey or
+  an earlier slice, say so and keep the number out of Done when.
+- What is out of scope.
+- Where to look, if it helps: a starting point in the code, labelled as
+  a hint ("probably in …"), never a line number and never a mechanism to
+  use. Say what the code must do, not how to write it: a prescribed
+  approach goes stale, and when it does it sends the agent down the
+  wrong path. Name a method only where it is a real requirement, and say
+  why. Do not fix a visual choice — a glyph, a colour, a badge rather
+  than a line — unless the user chose it: say what it must tell the user
+  and let the review of the rendered result settle the rest.
+- Done when: how anyone checks it is finished, as things the user can
+  see or run.
+
+Keep a brief under about 400 words. Leave out anecdotes, statistics and
+history; one clause of why is enough. Before you name a slice, command,
+file or feature as existing, check that it exists: read the plan, grep
+the code. A slice is a change the user can see working on its own: do
+not split work by layer, test surface or to allow parallel agents, and
+put plumbing in the slice that uses it. When in doubt, fewer slices.
 
 ## Naming slices
 
@@ -63,6 +97,49 @@ card number, an issue key). Names are what every reading of the plan
 shows; the rest is the tracker's own or a plugin's, which the next reader
 may not have. This holds for everything you write: summaries, PR
 descriptions, follow-up briefs, notes, proposal briefs.
+
+## Writing for the user
+
+Everything you write that a person reads — a slice title or brief, a
+question, a hand-back summary, a pull request description, a follow-up,
+a note — is read by someone who set the goals and follows the progress
+but has not followed the code, and may not read English as a first
+language. They decide from your first sentence whether to read on, so
+write for them, not for the engineer who will review the diff.
+
+- Lead with the point. The first sentence says what changes for them, or
+  what you need from them. Detail comes after, never before.
+- Use their words. Say things the way the brief and the user say them.
+  Do not coin a name for something; where a new thing needs one, name it
+  by what it does and say what it is the first time, in half a sentence.
+  Use one name per thing throughout.
+- Keep code out of prose. File paths, function and type names, flags,
+  environment variables and identifiers go in a later detail section or
+  the pull request body, never in a title, a question or an opening
+  sentence. A command the user runs themselves is the exception.
+- Write short, plain sentences: one idea each, about twenty words,
+  common words (use, not utilise; show, not surface), no idioms. Say
+  what something does, not how it is wired.
+- Say what the reader gets. A fix is "a link click no longer opens two
+  tabs", not the names of the two handlers that overlapped. A warning
+  says what breaks for the user, not the mechanism.
+
+Before you send anything, check it: could someone who has never opened
+the code say what this is about from the first sentence? If not, rewrite
+the first sentence.
+
+For example. A title: not "Catch the modified enters with a key monitor
+— performKeyEquivalent never sees them" but "Make shift+enter insert a
+newline in the agent terminal". A summary line: not
+"DiffStore.sendComments now always sends the complete-slice --branch
+instruction and runs slice-rework after agent-send succeeds" but "Review
+comments sent to an agent now always ask it to hand the work back again,
+so a slice cannot get stuck in review". A question: not "Where the
+'already there' baseline comes from: a comment counts as new when no
+`Sent back` names its URL …" but "Say a pull request already has five
+comments when its agent starts. Should the agent be told about those
+five, or only about new ones from now on? I recommend only new ones,
+because you have already seen the five."
 
 ## tmux
 

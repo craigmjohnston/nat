@@ -164,6 +164,9 @@ func resolveChanges(p plan, newMilestones map[string]int, existing []domain.Mile
 		if err := domain.CheckSliceTitle(title); err != nil {
 			return planChanges{}, nil, nil, fmt.Errorf("%s (%q): %w", what, s.Name, err)
 		}
+		if err := domain.CheckBriefOpening(brief); err != nil {
+			return planChanges{}, nil, nil, fmt.Errorf("%s (%q): %w", what, s.Name, err)
+		}
 		changes.edits = append(changes.edits, resolvedEdit{slice: s, title: title, brief: brief})
 	}
 

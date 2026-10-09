@@ -6,16 +6,18 @@ import NatKit
 /// A chunk of text cut to its first `maxWords` words until asked for the
 /// rest — the brief's own Show more, for every Thread item that carries
 /// prose, and the PR description at three times the length. Folds again
-/// whenever the text itself changes.
+/// whenever the text itself changes. `cut` decides the folded text, nil
+/// for none to fold; the first `maxWords` words where not given.
 struct Excerpt<Content: View>: View {
     let text: String
     var maxWords = briefExcerptWords
+    var cut: ((String) -> String?)?
     @ViewBuilder let content: (String) -> Content
 
     @State private var expanded = false
 
     var body: some View {
-        let excerpt = briefExcerpt(text, maxWords: maxWords)
+        let excerpt = cut.map { $0(text) } ?? briefExcerpt(text, maxWords: maxWords)
         VStack(alignment: .leading, spacing: 4) {
             content(expanded ? text : excerpt ?? text)
             if excerpt != nil {

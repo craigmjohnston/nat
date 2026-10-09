@@ -65,6 +65,18 @@ running agent's state.
   plan and new-project prompt, and `notesPassage` (`nat slice-note
   --from <own slice ID>`) in every slice prompt; tests walk each
   template for them. The skills carry the same words in their own copies.
+- `writingPassage` (write for someone who set the goals but has not
+  followed the code: the point first, their words, no code in prose) sits
+  beside `namingPassage` in every slice, plan and new-project prompt;
+  `questionPassage` ("Asking the user" — decide what you can, how to shape
+  a question, the architecture-question rule) in every slice prompt;
+  `briefShapePassage` (a summary paragraph first, which `plan-apply` caps at
+  `domain.MaxBriefOpeningWords`) in every planning prompt after
+  `SliceTitleRule`; `summaryPassage`/`prDescriptionPassage` in the slice
+  prompt's hand-back. Tests walk each template; the skills carry the same
+  words (next-slice's question rule without the `agent-waiting` sentence).
+  The writing rule's bad examples quote `complete-slice --branch`, so the
+  tests refusing those words in a plan or worktree prompt strip it first.
 - `PromptContext.RepoUnknown` (a source project's task with no repository)
   swaps "Already in your context" for `repoPassage`: work the repository out
   from the card's facts and links, ask the user where it cannot tell, record

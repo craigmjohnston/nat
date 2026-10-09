@@ -1379,6 +1379,37 @@ enum AppStories {
         },
 
         Story(
+            name: "window-brief-summary",
+            summary: "A Todo slice whose brief opens on a summary paragraph: the Brief card shows that "
+                + "sentence alone, the detail behind Show more.",
+            size: window
+        ) {
+            let id = "f1x75111-0000-4000-8000-0000000000c2"
+            let todo = Slice(
+                id: id, name: "Make shift+enter insert a newline", status: "Todo",
+                milestoneID: "M2: Review flow", assignee: "", pr: "", url: "",
+                blocked: false, handedBack: false)
+            let plan = ProjectInfo(
+                project: Fixtures.project, milestones: Fixtures.milestones, slices: Fixtures.slices + [todo])
+            var details = Fixtures.sliceDetails
+            details[id] = SliceDetail(
+                id: id, name: todo.name, url: "", status: "Todo", milestone: "M2: Review flow",
+                assignee: "", branch: nil, repo: nil, pr: nil, dependsOn: nil, blocked: false,
+                handedBack: false, state: nil,
+                brief: "Shift+enter in the agent terminal starts a new line instead of sending the message.\n\n"
+                    + "- What is settled: plain enter still sends; shift+enter and option+enter both insert "
+                    + "a newline, as they do in Claude Code's own terminal.\n"
+                    + "- Out of scope: the workshop's brief editor.\n"
+                    + "- Where to look: probably the terminal's key handling.\n\n"
+                    + "Done when: typing shift+enter in a slice's terminal moves to a new line and sends nothing.")
+            let appModel = await Fixtures.startedAppModel(
+                client: FixtureNatClient(plan: plan, agents: [], details: details), config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = id
+            await appModel.sliceDetailStore(projectID: Fixtures.projectID).fetch(sliceRef: id)
+            return shell(appModel)
+        },
+
+        Story(
             name: "window-pr-long-description",
             summary: "A pull request whose description runs long: cut to three times the brief's length, with Show more.",
             size: window

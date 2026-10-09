@@ -340,6 +340,9 @@ func validatePlan(p plan, existing []domain.Milestone, existingSlices []domain.S
 		if err := domain.CheckSliceTitle(s.Title); err != nil {
 			return planTargets{}, fmt.Errorf("slice %d: %w", i+1, err)
 		}
+		if err := domain.CheckBriefOpening(s.Description); err != nil {
+			return planTargets{}, fmt.Errorf("slice %d (%q): %w", i+1, strings.TrimSpace(s.Title), err)
+		}
 		ref := strings.TrimSpace(s.Milestone)
 		if ref == "" {
 			return planTargets{}, fmt.Errorf("slice %d (%q) names no milestone", i+1, strings.TrimSpace(s.Title))
