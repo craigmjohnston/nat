@@ -922,9 +922,10 @@ struct SidebarView: View {
     /// Scratch, in the rows' own font and ink, no chip — a click opens the
     /// Scratch tab.
     private func activeScratchRow(_ projectID: String) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
+            // Its icon's leading edge where the other rows' badges start.
             Image(systemName: DesignTokens.scratchSymbol)
-                .frame(width: GnatMetrics.treeGlyphColumn)
+                .font(.system(size: 11))
             Text(scratchTitle)
                 .lineLimit(1)
             Spacer(minLength: 0)

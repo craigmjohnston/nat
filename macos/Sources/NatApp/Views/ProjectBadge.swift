@@ -28,8 +28,8 @@ struct ProjectBadgeView: View {
     }
 }
 
-/// Scratch where another project's badge is drawn: its icon — the scratch
-/// tab's, `DesignTokens.scratchSymbol` — then the word Scratch, in the
+/// Scratch where another project's badge is drawn: its icon,
+/// `DesignTokens.scratchSymbol`, then the word Scratch, in the
 /// surrounding UI font, with no capsule or wash, in the quiet ink the grey
 /// chip used.
 struct ScratchMark: View {

@@ -625,8 +625,8 @@ never an Untitled row); both tree pickers' project rows (`CrumbTreePicker`,
 `RunTreePicker` — `RunProject.tag`/`.color`), 6pt before the name,
 after the folder; and the project settings sheet's Colour row. Fold
 headings (Scratch, a source) carry none. **Scratch takes no badge**: where a
-badge is drawn it is `ScratchMark` (`ProjectBadgeView(scratch:)`) — the
-scratch tab's icon (`DesignTokens.scratchSymbol`) then the word Scratch, in
+badge is drawn it is `ScratchMark` (`ProjectBadgeView(scratch:)`) — its
+notepad icon (`DesignTokens.scratchSymbol`) then the word Scratch, in
 the surrounding UI font, the grey chip's quiet ink, no capsule — flagged by
 `SidebarActiveRow.isScratch`, `TitlebarIdentity.isScratch` and
 `RunProject.isScratch`; in both tree pickers the icon takes the folder's
