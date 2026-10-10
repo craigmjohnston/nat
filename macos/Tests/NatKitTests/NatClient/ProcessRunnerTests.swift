@@ -108,6 +108,35 @@ final class ProcessRunnerTests: XCTestCase {
     /// found it.
     private let natOnPath = "echo"
     private var pathDir: String { "/bin" }
+
+    /// A cancelled call ends its process rather than waiting it out — what
+    /// abandoning a stuck `pr-status` relies on to leave no nat behind.
+    func testACancelEndsTheProcess() async throws {
+        let runner = ProcessRunner()
+        let call = Task {
+            try await runner.run(executable: "/bin/sleep", arguments: ["30"], workingDirectory: nil, standardInput: nil)
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        let start = ContinuousClock.now
+        call.cancel()
+        let result = try await call.value
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(5))
+        XCTAssertNotEqual(result.exitCode, 0)
+    }
+
+    /// A call cancelled before its process launched ends it as it launches:
+    /// one not yet launched cannot be terminated.
+    func testACancelBeforeTheLaunchEndsTheProcessOnLaunch() async throws {
+        let runner = ProcessRunner()
+        let start = ContinuousClock.now
+        let result = try await Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await runner.run(
+                executable: "/bin/sleep", arguments: ["30"], workingDirectory: nil, standardInput: nil)
+        }.value
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(5))
+        XCTAssertNotEqual(result.exitCode, 0)
+    }
 }
 
 private extension String {

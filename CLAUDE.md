@@ -35,6 +35,10 @@ any one package does it.
   `internal/agent/CLAUDE.md`.
 - `internal/gh/`, `internal/git/`, `internal/worktree/` — thin CLI wrappers.
   See each package's `CLAUDE.md`.
+- `internal/subprocess/` — how every outside program nat runs is started and
+  waited on: its own process group, killed whole at the call's time limit,
+  the wait on its output bounded even where a grandchild (the ssh under a
+  git fetch) still holds it. Every wrapper's real runner goes through it.
 - `internal/vterm/` — PTY + VT emulator behind the embedded agent terminal.
   See `internal/vterm/CLAUDE.md` (the three hard-won gotchas — read before
   touching it).

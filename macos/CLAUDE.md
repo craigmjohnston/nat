@@ -273,7 +273,10 @@ after `gh pr create` and starts checks later still; actions inside the
 window fold into the one pending read, and the tick restarts from it. A
 background plan landing at launch asks for one too. **Never two reads in
 flight**: a tick finding one running leaves it to finish; a settle read
-waits for it, then reads. **The nudge path refreshes the plan only**
+waits for it, then reads. A reading still running after two minutes
+(`limit`) is abandoned — its `nat` cancelled (`ProcessRunner` terminates a
+cancelled call's process), an `NSLog` line, nothing shown — and counts as
+failed, so the next tick or settle read runs as normal. **The nudge path refreshes the plan only**
 (`refresh(.replica)`, `refreshBackgroundProjects`, `updateReviewStats` — no
 `pr-status`, no `session-list`). `rateLimit` is the last reading's budget:
 the status bar draws `GitHubBudgetReadout` from it — nothing while healthy,

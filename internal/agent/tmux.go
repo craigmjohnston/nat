@@ -6,7 +6,6 @@ package agent
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +18,8 @@ import (
 
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/logging"
+
+	"github.com/craigmjohnston/nat/internal/subprocess"
 )
 
 // TmuxBinary is the name of the tmux binary, looked up on PATH.
@@ -192,15 +193,8 @@ var _ Runner = ExecRunner{}
 // becomes an *ExitError; anything else (a missing binary, say) is returned as
 // it came back from os/exec.
 func (ExecRunner) Run(name string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), tmuxTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = stableDir()
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if err := subprocess.Run(tmuxTimeout, stableDir(), nil, &stdout, &stderr, name, args...); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return stdout.String(), &ExitError{Code: exitErr.ExitCode(), Stderr: stderr.String()}

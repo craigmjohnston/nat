@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/craigmjohnston/nat/internal/logging"
+
+	"github.com/craigmjohnston/nat/internal/subprocess"
 )
 
 // claudeLatestURL is the release feed `claude-version` reads the newest
@@ -48,7 +50,7 @@ var claudeVersionNow = time.Now
 // update`, or `brew upgrade` for a Homebrew install. A var so tests never run
 // the real ones.
 var claudeRun = func(ctx context.Context, name string, args ...string) (string, error) {
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	out, err := subprocess.Command(ctx, name, args...).CombinedOutput()
 	return string(out), err
 }
 

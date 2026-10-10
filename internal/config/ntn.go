@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/craigmjohnston/nat/internal/subprocess"
 )
 
 // NtnBinary is the name of Notion's official CLI, looked up on PATH.
@@ -53,7 +55,7 @@ func NewNtnCLI() *NtnCLI { return &NtnCLI{run: runCommand} }
 
 // runCommand executes name with args, returning stdout and stderr separately.
 func runCommand(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := subprocess.Command(ctx, name, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

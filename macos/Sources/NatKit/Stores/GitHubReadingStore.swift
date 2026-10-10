@@ -24,6 +24,10 @@ import Foundation
 /// Never two reads in flight: a tick that finds one running leaves it to
 /// finish and reads nothing itself; a settle read waits for it, then reads.
 /// A read that fails changes nothing — the last reading stands everywhere.
+/// A read still running after `limit` (two minutes) is abandoned and counted
+/// as failed — its nat is cancelled, logged, and not waited on — so one stuck
+/// `pr-status` cannot hold off every later one: on 9 October one waited
+/// nineteen hours on a fetch's dead ssh, and no reading landed until relaunch.
 ///
 /// It also keeps gnat's own spend this session — the points its readings
 /// cost (`cost`) and one per action that spent one (`actionRan`) — and when
@@ -64,6 +68,7 @@ public final class GitHubReadingStore {
     private let deliver: @MainActor (GitHubReading) async -> Void
     private let tick: Duration?
     private let settleDelay: Duration
+    private let limit: Duration
     private let sleep: @Sendable (Duration) async -> Void
 
     private var inFlight: Task<Void, Never>?
@@ -83,6 +88,9 @@ public final class GitHubReadingStore {
     ///   - tick: the interval between readings; nil, as in tests, for no
     ///     tick at all
     ///   - settleDelay: how long a settle read waits after the action
+    ///   - limit: how long a reading may run before it is abandoned — well
+    ///     above a slow one (several projects, each with a fetch), far below
+    ///     a stuck one; waited on the real clock, not `sleep`
     ///   - sleep: how a wait is waited — `Task.sleep` in the app, a gate in
     ///     tests
     ///   - now: the clock `launchedAt` is read off
@@ -92,6 +100,7 @@ public final class GitHubReadingStore {
         deliver: @escaping @MainActor (GitHubReading) async -> Void,
         tick: Duration? = nil,
         settleDelay: Duration = .seconds(5),
+        limit: Duration = .seconds(120),
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
         now: @Sendable () -> Date = { Date() }
     ) {
@@ -101,6 +110,7 @@ public final class GitHubReadingStore {
         self.deliver = deliver
         self.tick = tick
         self.settleDelay = settleDelay
+        self.limit = limit
         self.sleep = sleep
     }
 
@@ -189,11 +199,12 @@ public final class GitHubReadingStore {
     private func begin(settle: Bool = false) -> Task<Void, Never>? {
         guard let request = request(), !request.projectIDs.isEmpty else { return nil }
         let client = self.client
+        let limit = self.limit
         let task = Task { @MainActor [weak self] in
             defer { self?.inFlight = nil }
-            guard let reading = try? await client.prStatus(
-                projectIDs: request.projectIDs, detail: request.detail, settle: settle),
-                  let self else { return }
+            guard let reading = await Self.reading(within: limit, {
+                try await client.prStatus(projectIDs: request.projectIDs, detail: request.detail, settle: settle)
+            }), let self else { return }
             if let rateLimit = reading.rateLimit { self.rateLimit = rateLimit }
             self.pollAfter = reading.rateLimit?.pollAfterSeconds.map { Duration.seconds($0) }
             self.sessionReadings += 1
@@ -202,6 +213,31 @@ public final class GitHubReadingStore {
         }
         inFlight = task
         return task
+    }
+
+    /// What `read` answers, or nil where it fails or is still running after
+    /// `limit` — then it is cancelled, which ends its nat, and left behind
+    /// rather than waited on: the limit holds even for a read that ignores the
+    /// cancel.
+    nonisolated private static func reading(
+        within limit: Duration, _ read: @escaping @Sendable () async throws -> GitHubReading
+    ) async -> GitHubReading? {
+        let attempt = Task { try await read() }
+        let outcome = FirstOutcome()
+        return await withCheckedContinuation { continuation in
+            outcome.arm(continuation)
+            let timer = Task {
+                try? await Task.sleep(for: limit)
+                guard !Task.isCancelled, outcome.settle(nil) else { return }
+                attempt.cancel()
+                NSLog("GitHubReadingStore: pr-status still running after %@; abandoned, the last reading stands",
+                      String(describing: limit))
+            }
+            Task {
+                let reading = try? await attempt.value
+                if outcome.settle(reading) { timer.cancel() }
+            }
+        }
     }
 
     private func restartTick() {
@@ -217,5 +253,27 @@ public final class GitHubReadingStore {
                 await self.read()
             }
         }
+    }
+}
+
+/// The first of a reading and its time limit to finish, handed to the one
+/// waiting on them; the second is dropped.
+private final class FirstOutcome: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<GitHubReading?, Never>?
+
+    func arm(_ continuation: CheckedContinuation<GitHubReading?, Never>) {
+        lock.withLock { self.continuation = continuation }
+    }
+
+    /// Resumes the waiter with `reading`, answering whether this was first.
+    func settle(_ reading: GitHubReading?) -> Bool {
+        let waiting = lock.withLock {
+            let waiting = continuation
+            continuation = nil
+            return waiting
+        }
+        waiting?.resume(returning: reading)
+        return waiting != nil
     }
 }
