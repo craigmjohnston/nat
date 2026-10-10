@@ -183,6 +183,11 @@ struct SettingsView: View {
         .toolbar(removing: .title)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .navigationTitle("Settings")
+        // About gnat's request, taken whether it was waiting for this
+        // window or arrives while it is open on another section.
+        .onChange(of: appModel.settingsAboutRequested, initial: true) {
+            if appModel.takeSettingsAboutRequest() { selectedTab = .about }
+        }
         .task { await load() }
         .task { agentOptions = await AgentOptionsCache.shared.resolve() }
         // A window closed on a field still focused would otherwise take that

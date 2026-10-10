@@ -102,7 +102,11 @@ the accent; About apart under a rule) beside the section's groups (bold heading,
 sections scroll — reads `nat config-show`, writes one `nat config-set <key>
 <value>` per changed key. Sections: General, Agents, Sources, About. About
 reads `Bundle.main` (`AppVersion`, `dev` where unset) and `nat --version`
-(`NatClient.natVersion`). Stories: `settings`, `settings-agents*`,
+(`NatClient.natVersion`), and is the app's one About: the app menu's About
+gnat (`AboutGnatButton`, replacing the standard panel) leaves
+`AppModel.requestSettingsAbout` and opens Settings, which takes it once
+(`takeSettingsAboutRequest`) on opening or while open; ⌘, asks nothing and
+opens as ever. Stories: `settings`, `settings-agents*`,
 `settings-sources*`, `settings-about`. **Per-project settings are not
 here**: the project menu's Project settings… (a project row's right-click
 or its hover-only three-dot) opens `ProjectSettingsView`, a sheet on the
