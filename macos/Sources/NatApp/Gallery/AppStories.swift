@@ -2707,7 +2707,7 @@ enum AppStories {
         Story(
             name: "claude-update-sheet-confirm",
             summary: "The update window the notice opens, nothing run yet: installed 2.1.294, update to "
-                + "2.1.295, through Claude Code\u{2019}s own updater; Cancel beside Update.",
+                + "2.1.295, through Claude Code itself; Cancel beside Update.",
             size: CGSize(width: 420, height: 190)
         ) {
             ClaudeUpdateSheet(state: .confirming, version: Fixtures.claudeVersionBehind, onUpdate: {}, onDone: {})

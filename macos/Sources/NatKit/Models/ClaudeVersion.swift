@@ -13,7 +13,7 @@ public enum ClaudeUpdateMethod: Equatable, Sendable {
     public var description: String {
         switch self {
         case .homebrew(let cask): "Homebrew (cask \(cask))"
-        case .claudeUpdater: "Claude Code\u{2019}s own updater"
+        case .claudeUpdater: "Claude Code"
         }
     }
 }

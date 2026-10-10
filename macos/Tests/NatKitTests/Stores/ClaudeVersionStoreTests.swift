@@ -45,7 +45,7 @@ final class ClaudeVersionTests: XCTestCase {
     func testMethodAndInstalledWords() {
         XCTAssertEqual(ClaudeUpdateMethod.homebrew(cask: "claude-code@latest").description,
                        "Homebrew (cask claude-code@latest)")
-        XCTAssertEqual(ClaudeUpdateMethod.claudeUpdater.description, "Claude Code\u{2019}s own updater")
+        XCTAssertEqual(ClaudeUpdateMethod.claudeUpdater.description, "Claude Code")
         XCTAssertEqual(Fixtures.claudeVersionBehind.installedText, "2.1.294")
         XCTAssertEqual(ClaudeVersion(installed: nil, latest: "2.1.295", updateAvailable: false).installedText, "unknown")
     }

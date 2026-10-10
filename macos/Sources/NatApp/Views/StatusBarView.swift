@@ -145,7 +145,7 @@ struct ClaudeUpdateSheet: View {
     /// Live agents keep the binary they started with; the window says so
     /// rather than leaving the user to wonder why a pane still runs the old.
     static let agentsNote = "Agents already running keep the version they started with. "
-        + "Agents launched from now on use the new one."
+        + "Agents launched from now on use the new version."
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -170,7 +170,7 @@ struct ClaudeUpdateSheet: View {
                         .ink(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 case .failed(let message):
-                    Text("The update did not finish, so the installed version is unchanged.")
+                    Text("The update did not finish. The installed version is unchanged.")
                         .ink(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     DisclosureGroup("Show details", isExpanded: $detailsShown) {
