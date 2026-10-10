@@ -180,18 +180,30 @@ struct RunTreePicker: View {
             column {
                 ForEach(projects) { project in
                     row(selected: project.id == openID, opens: true) {
-                        StackedFolderGlyph(
-                            open: project.id == openID,
-                            color: DesignTokens.ink(.tertiary, on: .header),
-                            backColor: DesignTokens.ink(.tertiary, on: .header))
-                            .frame(width: 16)
+                        // Scratch is its icon, in the folder's place, and
+                        // its word.
+                        Group {
+                            if project.isScratch {
+                                Image(systemName: DesignTokens.scratchSymbol).font(.system(size: 12)).ink(.tertiary)
+                            } else {
+                                StackedFolderGlyph(
+                                    open: project.id == openID,
+                                    color: DesignTokens.ink(.tertiary, on: .header),
+                                    backColor: DesignTokens.ink(.tertiary, on: .header))
+                            }
+                        }
+                        .frame(width: 16)
                         // The project's badge 6pt before its name, the
                         // folder keeping its column.
                         HStack(spacing: 6) {
-                            if !project.tag.isEmpty {
-                                ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
+                            if project.isScratch {
+                                Text(scratchTitle)
+                            } else {
+                                if !project.tag.isEmpty {
+                                    ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
+                                }
+                                Text(project.name)
                             }
-                            Text(project.name)
                         }
                     } action: {
                         openID = project.id

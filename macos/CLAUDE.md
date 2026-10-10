@@ -629,8 +629,21 @@ so it never moves and the rows' badges line up (`SidebarProject.tag`/`.color`;
 never an Untitled row); both tree pickers' project rows (`CrumbTreePicker`,
 `RunTreePicker` — `RunProject.tag`/`.color`), 6pt before the name,
 after the folder; and the project settings sheet's Colour row. Fold
-headings (Scratch, a source) carry none. Stories: `sidebar-project-colours` (`-light`),
-`titlebar-band-project-colour`, `project-settings-colour-chosen`.
+headings (Scratch, a source) carry none. **Scratch takes no badge**: where a
+badge is drawn it is `ScratchMark` (`ProjectBadgeView(scratch:)`) — its
+square-and-pencil icon (`DesignTokens.scratchSymbol`) then the word Scratch, in
+the surrounding UI font, the grey chip's quiet ink, no capsule — flagged by
+`SidebarActiveRow.isScratch`, `TitlebarIdentity.isScratch` and
+`RunProject.isScratch`; in both tree pickers the icon takes the folder's
+place, then the word. In Active every scratch row nests under one Scratch row
+(`SidebarActiveEntry.scratch`, standing where the first would; a click opens
+the Scratch tab), drawn only while one is active. Menus listing projects as
+choices list the projects, a divider, then Scratch with its icon
+(`SidebarModel.menuTargets`). Stories: `sidebar-project-colours` (`-light`),
+`titlebar-band-project-colour`, `project-settings-colour-chosen`,
+`sidebar-active-scratch`, `sidebar-active-no-scratch`,
+`crumb-tree-picker-scratch`, `titlebar-run-menu-scratch`,
+`titlebar-band-scratch` (`-minimal`).
 
 The gnat hi-fi design (Claude Design project `e81457f6-…`, `gnat.html` with
 `gnat-data/shell/nav/main.jsx` and `gnat.css`) is the spec: `SidebarView`

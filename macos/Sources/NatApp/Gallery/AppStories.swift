@@ -566,6 +566,55 @@ enum AppStories {
                   milestoneID: "Spikes", assignee: "", pr: "", url: "", blocked: false, handedBack: false),
         ])
 
+    /// A scratch plan with two slices under way, one under no milestone and
+    /// one under a milestone, and one still to do.
+    private static let activeScratchPlan = ProjectInfo(
+        project: Project(id: Fixtures.scratchProjectID, name: "Scratch", conventions: ""),
+        milestones: unfiledScratchPlan.milestones,
+        slices: [
+            Slice(id: "f1x7aaaa-0000-4000-8000-000000000001", name: "Try the new tmux hooks", status: "In progress",
+                  milestoneID: "Unfiled", assignee: "Craig Johnston", pr: "", url: "", blocked: false, handedBack: false),
+            Slice(id: "f1x7aaaa-0000-4000-8000-000000000002", name: "Look at the release log", status: "Todo",
+                  milestoneID: "Unfiled", assignee: "", pr: "", url: "", blocked: false, handedBack: false),
+            Slice(id: "f1x7aaaa-0000-4000-8000-000000000003", name: "Profile the diff read", status: "In progress",
+                  milestoneID: "Spikes", assignee: "Craig Johnston", pr: "", url: "", blocked: false, handedBack: false),
+        ])
+
+    /// The sidebar with Scratch folded over the given scratch plan: what
+    /// Active makes of its work.
+    private static func scratchActiveSidebar(_ scratchPlan: ProjectInfo) async -> some View {
+        let appModel = await Fixtures.startedAppModel(
+            client: scratchClient(scratchPlan), config: Fixtures.scratchConfigWithSecondProject)
+        return SidebarView(appModel: appModel, folded: ["work": true])
+            .environment(\.pulsesPaused, true)
+    }
+
+    /// The breadcrumb's tree picker opened on Scratch: its row last, its
+    /// icon in the folder's place and its word, no badge.
+    private static func scratchCrumbTreePicker() async -> some View {
+        let appModel = await Fixtures.startedAppModel(
+            client: scratchClient(activeScratchPlan), config: Fixtures.scratchConfigWithSecondProject)
+        let tree = CrumbTree(model: appModel.sidebarModel, projectID: Fixtures.scratchProjectID, milestone: "Spikes")
+        return CrumbTreePicker(tree: tree, onPick: { _ in })
+            .environment(\.pulsesPaused, true)
+    }
+
+    /// The run tree with Scratch among the projects with runs, opened on it.
+    private static func scratchRunTree() async -> some View {
+        var projects = Fixtures.runsConfig.projects
+        projects[Fixtures.scratchProjectID] = ProjectConfig(
+            name: "Scratch", slicesDSID: "", workingDir: "/Users/craig",
+            runs: [RunCommand(label: "Notes", command: "open ~/notes.md", scope: .global)])
+        let config = NatProjectConfig(
+            projects: projects, agentSplitPercent: 45, pollSeconds: 3600,
+            assigneeUserName: "Craig Johnston", scratchProject: Fixtures.scratchProjectID)
+        let appModel = await Fixtures.startedAppModel(client: scratchClient(activeScratchPlan), config: config)
+        return RunTreePicker(
+            projects: appModel.runProjects, openProjectID: Fixtures.scratchProjectID, isRunning: { _, _ in false }
+        ) { _, _ in }
+            .environment(\.pulsesPaused, true)
+    }
+
     /// A scratch project with nothing in it.
     private static let emptyScratchPlan = ProjectInfo(
         project: Project(id: Fixtures.scratchProjectID, name: "Scratch", conventions: ""),
@@ -1989,7 +2038,7 @@ enum AppStories {
             name: "sidebar-project-colours",
             summary: "Every project's colour as its badge: each Active row reads badge, slash, state dot, "
                 + "title, and each PROJECTS row folder, name, then its badge at the row's trailing edge. "
-                + "Scratch's rows take the quiet grey chip; the source project takes no badge: its card is an "
+                + "Scratch's rows nest under one Scratch row, its icon and word; the source project takes no badge: its card is an "
                 + "Active row of its own — the Shortcut logo and the card's project, MOB, then the card — its "
                 + "tasks nested under it. Fold headings carry none.",
             size: sidebar
@@ -2105,6 +2154,40 @@ enum AppStories {
             size: sidebar
         ) {
             await scratchSidebar(unfiledScratchPlan)
+        },
+
+        Story(
+            name: "sidebar-active-scratch",
+            summary: "Two scratch slices under way: one Scratch row in Active \u{2014} its icon and the word "
+                + "Scratch, no chip \u{2014} with the two nested under it, each its dot and title alone.",
+            size: sidebar
+        ) {
+            await scratchActiveSidebar(activeScratchPlan)
+        },
+
+        Story(
+            name: "sidebar-active-no-scratch",
+            summary: "No scratch slice under way: Active draws no Scratch row.",
+            size: sidebar
+        ) {
+            await scratchActiveSidebar(unfiledScratchPlan)
+        },
+
+        Story(
+            name: "crumb-tree-picker-scratch",
+            summary: "The tree picker opened on Scratch: the projects, then Scratch \u{2014} its icon in the "
+                + "folder\u{2019}s place and the word Scratch, no badge \u{2014} its milestone, its slices.",
+            size: CGSize(width: 693, height: 320)
+        ) {
+            await scratchCrumbTreePicker()
+        },
+
+        Story(
+            name: "titlebar-run-menu-scratch",
+            summary: "The run tree with Scratch among the projects: its icon and the word Scratch, no badge.",
+            size: CGSize(width: 500, height: 240)
+        ) {
+            await scratchRunTree()
         },
 
         Story(
@@ -2461,6 +2544,34 @@ enum AppStories {
             band(
                 tabs: [.terminal, .changes, .pr], selected: .terminal, crumbs: sliceCrumbs("Draw the box"),
                 projectColor: .pink)
+        },
+
+        Story(
+            name: "titlebar-band-scratch",
+            summary: "The band over a scratch slice: the project crumb is Scratch\u{2019}s icon and the word "
+                + "Scratch in the quiet ink, no chip, then its slash.",
+            size: CGSize(width: bandWidth, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes, .pr], selected: .terminal,
+                crumbs: TitlebarCrumbs(project: "Scratch", parent: "Spikes", title: "Profile the diff read"),
+                identity: TitlebarIdentity(
+                    tag: "SCR", state: .working, live: true, title: "Profile the diff read", isScratch: true),
+                projectColor: nil)
+        },
+
+        Story(
+            name: "titlebar-band-scratch-minimal",
+            summary: "The same band past every floor: the Active row\u{2019}s line, Scratch\u{2019}s icon and "
+                + "word, a slash, the dot and the name.",
+            size: CGSize(width: 560, height: GnatMetrics.titlebarHeight)
+        ) {
+            band(
+                tabs: [.terminal, .changes, .pr], selected: .terminal,
+                crumbs: TitlebarCrumbs(project: "Scratch", parent: "Spikes", title: fitBandTitle),
+                identity: TitlebarIdentity(
+                    tag: "SCR", state: .working, live: true, title: fitBandTitle, isScratch: true),
+                projectColor: nil)
         },
 
         Story(

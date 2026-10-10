@@ -94,11 +94,11 @@ public enum DesignTokens {
 
     // MARK: - Symbols
 
-    /// The scratch tab's glyph — a pencil and a scribble — for the tab itself
-    /// and anywhere the scratch project has an empty state to draw. The app
+    /// Scratch's glyph — a square and a pencil — wherever Scratch is named by its icon:
+    /// its Active row, its mark in a badge's place, the pickers and menus. The app
     /// has no icon set of its own, so the one symbol it has picked lives here
     /// beside the colours rather than being spelled at each call site.
-    public static let scratchSymbol = "pencil.and.scribble"
+    public static let scratchSymbol = "square.and.pencil"
 
     // MARK: - Accent Colors
 

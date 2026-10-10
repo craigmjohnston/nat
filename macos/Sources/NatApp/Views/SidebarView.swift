@@ -462,9 +462,9 @@ struct SidebarView: View {
 
     /// The titlebar's `+`: anything the sidebar can make. A project first;
     /// then what goes in one, each asking which project from a submenu —
-    /// every project, then Scratch.
+    /// every project, a divider, then Scratch with its icon.
     private func addAnythingMenu(_ model: SidebarModel) -> some View {
-        let targets = model.projects.filter { $0.kind == .project } + (model.scratch.map { [$0] } ?? [])
+        let targets = model.menuTargets
         return Menu {
             Button("New project\u{2026}", systemImage: "folder.badge.plus", action: onNewProject)
             Divider()
@@ -498,17 +498,21 @@ struct SidebarView: View {
     }
 
     /// One of the `+` menu's items, as a submenu naming the project it goes
-    /// in.
+    /// in: the projects, then a divider and Scratch with its icon.
     private func projectSubmenu(
-        _ title: String, systemImage: String, _ targets: [SidebarProject],
+        _ title: String, systemImage: String, _ targets: (projects: [SidebarProject], scratch: SidebarProject?),
         action: @escaping (SidebarProject) -> Void
     ) -> some View {
         Menu(title, systemImage: systemImage) {
-            ForEach(targets) { project in
-                Button(project.kind == .scratch ? "Scratch" : project.name) { action(project) }
+            ForEach(targets.projects) { project in
+                Button(project.name) { action(project) }
+            }
+            if let scratch = targets.scratch {
+                if !targets.projects.isEmpty { Divider() }
+                Button(scratchTitle, systemImage: DesignTokens.scratchSymbol) { action(scratch) }
             }
         }
-        .disabled(targets.isEmpty)
+        .disabled(targets.projects.isEmpty && targets.scratch == nil)
     }
 
     // MARK: - Sources
@@ -897,9 +901,9 @@ struct SidebarView: View {
         return isSelected(last)
     }
 
-    /// One top-level item of Active: a row, or a source card — its badge
-    /// and a slash, then its title — with its active tasks nested under it,
-    /// each its dot and title alone.
+    /// One top-level item of Active: a row, a source card — its badge and
+    /// a slash, then its title — or the one Scratch row, each with its
+    /// active work nested under it, each its dot and title alone.
     @ViewBuilder
     private func activeEntry(_ entry: SidebarActiveEntry) -> some View {
         switch entry {
@@ -908,7 +912,32 @@ struct SidebarView: View {
         case .card(let card, let rows):
             activeCardRow(card)
             ForEach(rows) { activeRow($0, nested: true) }
+        case .scratch(let projectID, let rows):
+            activeScratchRow(projectID)
+            ForEach(rows) { activeRow($0, nested: true) }
         }
+    }
+
+    /// The Scratch row heading its active work: its icon and the word
+    /// Scratch, in the rows' own font and ink, no chip — a click opens the
+    /// Scratch tab.
+    private func activeScratchRow(_ projectID: String) -> some View {
+        HStack(spacing: 5) {
+            // Its icon's leading edge where the other rows' badges start.
+            Image(systemName: DesignTokens.scratchSymbol)
+                .font(.system(size: 11))
+            Text(scratchTitle)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .ink(.secondary)
+        .font(.system(size: GnatMetrics.body))
+        .padding(.leading, 18)
+        .padding(.trailing, 10)
+        .frame(height: GnatMetrics.sidebarRowHeight)
+        .gnatRow(selected: false)
+        .contentShape(Rectangle())
+        .onTapGesture { Task { await appModel.activateProject(projectID) } }
     }
 
     private func activeCardRow(_ card: SidebarActiveCard) -> some View {
@@ -932,8 +961,9 @@ struct SidebarView: View {
         .onTapGesture { Task { await appModel.selectContainer(card.id, inProject: card.projectID) } }
     }
 
-    /// An Active row; `nested`, a source task's under its card — indented a
-    /// glyph column, with no badge, the card above naming it.
+    /// An Active row; `nested`, a source task's under its card or a scratch
+    /// row's under Scratch — indented a glyph column, with no badge, the row
+    /// above naming it.
     private func activeRow(_ row: SidebarActiveRow, nested: Bool = false) -> some View {
         HStack(spacing: 6) {
             ActiveIdentityLabel(

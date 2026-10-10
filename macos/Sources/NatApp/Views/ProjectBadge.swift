@@ -6,7 +6,8 @@ import NatKit
 /// secondary chip for a project with none (the scratch and source projects,
 /// one nat has not coloured yet). A source project takes none: its tasks are
 /// named by their card's (`CardMarkView`). Its tooltip is the project's full
-/// name.
+/// name. The scratch project (`scratch`) takes no badge: it is drawn as
+/// `ScratchMark` instead.
 struct ProjectBadgeView: View {
     @Environment(\.ground) private var ground
     let tag: String
@@ -14,11 +15,34 @@ struct ProjectBadgeView: View {
     /// The project's full name, for the tooltip; the tag where none is given
     /// or it is empty.
     var name: String?
+    var scratch = false
 
     var body: some View {
-        let colors = color.map { DesignTokens.projectBadge($0, on: ground) }
-        BadgeCapsule(text: tag, ink: colors?.ink, wash: colors?.wash)
-            .help(name.flatMap { $0.isEmpty ? nil : $0 } ?? tag)
+        if scratch {
+            ScratchMark()
+        } else {
+            let colors = color.map { DesignTokens.projectBadge($0, on: ground) }
+            BadgeCapsule(text: tag, ink: colors?.ink, wash: colors?.wash)
+                .help(name.flatMap { $0.isEmpty ? nil : $0 } ?? tag)
+        }
+    }
+}
+
+/// Scratch where another project's badge is drawn: its icon,
+/// `DesignTokens.scratchSymbol`, then the word Scratch, in the
+/// surrounding UI font, with no capsule or wash, in the quiet ink the grey
+/// chip used.
+struct ScratchMark: View {
+    @Environment(\.ground) private var ground
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: DesignTokens.scratchSymbol)
+            Text(scratchTitle)
+        }
+        .foregroundStyle(DesignTokens.chipInk(.labelSecondary, on: ground))
+        .lineLimit(1)
+        .fixedSize()
     }
 }
 

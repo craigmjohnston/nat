@@ -1313,7 +1313,8 @@ public final class AppModel {
     public func titlebarIdentity(for selection: TitlebarSelection) -> TitlebarIdentity {
         NatKit.titlebarIdentity(
             for: selection, projectID: activeProjectID ?? "", active: sidebarModel.active,
-            tags: sidebarTags(sidebarInputs), plan: activeProjectID.flatMap { plan(projectID: $0) })
+            tags: sidebarTags(sidebarInputs), plan: activeProjectID.flatMap { plan(projectID: $0) },
+            scratchProjectID: scratchProjectID)
     }
 
     // MARK: - Task sources
@@ -3136,13 +3137,20 @@ public struct RunProject: Equatable, Identifiable, Sendable {
     /// The project's colour; nil for the quiet chip.
     public let color: ProjectColor?
     public let runs: [RunCommand]
+    /// The scratch project: drawn as Scratch's mark, its icon and the word
+    /// Scratch, rather than a badge and a name.
+    public let isScratch: Bool
 
-    public init(id: String, name: String, tag: String = "", color: ProjectColor? = nil, runs: [RunCommand]) {
+    public init(
+        id: String, name: String, tag: String = "", color: ProjectColor? = nil, runs: [RunCommand],
+        isScratch: Bool = false
+    ) {
         self.id = id
         self.name = name
         self.tag = tag
         self.color = color
         self.runs = runs
+        self.isScratch = isScratch
     }
 }
 
@@ -3161,7 +3169,8 @@ extension AppModel {
             let runs = project.runs.globalRuns
             return runs.isEmpty ? nil : RunProject(
                 id: id, name: tabName(id, fallback: project.name),
-                tag: project.backend == .source ? "" : tags[id] ?? "", color: projectColor(ofProject: id), runs: runs)
+                tag: project.backend == .source ? "" : tags[id] ?? "", color: projectColor(ofProject: id), runs: runs,
+                isScratch: id == scratchProjectID)
         }
         .sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
     }
