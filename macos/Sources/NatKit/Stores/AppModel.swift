@@ -1450,6 +1450,26 @@ public final class AppModel {
         return true
     }
 
+    /// The app menu's About gnat, until the Settings window takes it
+    /// (`takeSettingsAboutRequest`) and puts its About section up — set
+    /// before the window opens, so a window built for it finds it waiting,
+    /// and one already open sees it change.
+    public private(set) var settingsAboutRequested = false
+
+    /// About gnat: Settings asked to show About. Opening the window is the
+    /// menu item's own, since only a view can.
+    public func requestSettingsAbout() {
+        settingsAboutRequested = true
+    }
+
+    /// Whether About was asked for — answered once, the request cleared as
+    /// it is taken, so Settings opened any other way keeps its section.
+    public func takeSettingsAboutRequest() -> Bool {
+        guard settingsAboutRequested else { return false }
+        settingsAboutRequested = false
+        return true
+    }
+
     /// Select an ad hoc session of a project, activating it first.
     public func selectSession(_ sessionID: String, inProject projectID: String) async {
         await select(inProject: projectID) { $0.selectedSessionID = sessionID }

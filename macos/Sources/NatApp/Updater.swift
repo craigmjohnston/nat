@@ -40,6 +40,21 @@ final class UpdaterViewModel: ObservableObject {
     }
 }
 
+/// The app menu's About gnat: Settings opened (or brought to the front) on
+/// its About section, in place of the standard About panel. The request is
+/// left before the window opens, so a window built for it finds it waiting.
+struct AboutGnatButton: View {
+    let appModel: AppModel
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Button("About gnat") {
+            appModel.requestSettingsAbout()
+            openSettings()
+        }
+    }
+}
+
 /// The "Check for updates…" item NatApp adds to `CommandGroup(after:
 /// .appInfo)`, and Settings ▸ About's button (titled as a button is).
 struct CheckForUpdatesView: View {

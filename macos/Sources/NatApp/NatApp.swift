@@ -220,6 +220,11 @@ struct NatApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1360, height: 840)
         .commands {
+            // The one About is Settings ▸ About: the standard panel is
+            // replaced, the item keeping its name and place.
+            CommandGroup(replacing: .appInfo) {
+                AboutGnatButton(appModel: appModel)
+            }
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(model: updaterViewModel)
             }
