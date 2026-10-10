@@ -47,11 +47,11 @@ const sessionIDLen = 8
 // moved into another session.
 const SlicePaneOption = "@nat_slice"
 
-// WaitingPaneOption is the tmux pane option an agent sets on its own pane, with
-// `nat agent-waiting`, to say it has stopped and needs the user — and clears,
-// with `nat agent-working`, once it has its answer. It is the whole of what
-// [Tmux.Activity] reads a waiting agent from: the agent says so itself rather
-// than nat inferring it from the screen. It lives on the pane and nowhere else,
+// WaitingPaneOption is the tmux pane option set on an agent's own pane, with
+// `nat agent-waiting`, to say it has stopped and needs the user — and cleared,
+// with `nat agent-working`, once it has its answer. The embedded mod runs both
+// from the agent's session, off Claude Code's own events. It is the whole of
+// what [Tmux.Activity] reads a waiting agent from, never the screen. It lives on the pane and nowhere else,
 // so it goes with the pane and a relaunch starts clear.
 const WaitingPaneOption = "@nat_waiting"
 
@@ -1029,9 +1029,9 @@ func (t *Tmux) pastePrompt(session, text string) error {
 // in session once a prompt has gone to it: an agent that has just been told
 // something is, by definition, no longer waiting on the user, and every reader
 // of presence would otherwise show it waiting until the agent got round to
-// `nat agent-working` itself. A pane not waiting is left alone, and a flag
-// that cannot be cleared is logged and never fails the send — the agent's own
-// agent-working clears it a turn later all the same.
+// the mod's `nat agent-working` on the turn's start. A pane not waiting is
+// left alone, and a flag that cannot be cleared is logged and never fails the
+// send — the mod's agent-working clears it all the same.
 func (t *Tmux) clearWaiting(session string) {
 	panes, err := t.listPanes("-s", "-t", session)
 	if err != nil {

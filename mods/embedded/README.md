@@ -15,7 +15,12 @@ Tested with Claude Code **2.1.294**.
   modes are left alone. They also set the pane's waiting flag
   (`nat agent-waiting` / `nat agent-working`) while an AskUserQuestion
   dialog, a permission prompt or an MCP elicitation waits on the user, or a
-  turn ended on an error or a refusal; a plain finished turn marks nothing.
+  turn ended on an error or a refusal. A main-loop turn that ends normally
+  waits too, unless one of its Bash calls handed something in (`nat
+  complete-slice`, `slice-followups` or `plan-propose`), since the app shows
+  each of those in its own place; an interrupted turn and a subagent's mark
+  nothing. No prompt tells an agent to run either command: the mod alone
+  marks the wait, and the next turn or prompt clears it.
   And they deliver what nat sends the session: from `session.start`, once a
   second, each file in the inbox `NAT_INBOX` names, in name order, is
   removed and then submitted with `$.prompt.submit({ text, asUser: true })`

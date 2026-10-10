@@ -275,8 +275,9 @@ success, not failure), `agent-send` (`internal/agent.SendPrompt`'s delivery —
 the session's inbox, else a paste — `--text` or stdin, as review comments
 go).
 
-`agent-waiting` / `agent-working` (`agentwaiting.go`): the calling agent
-marks its **own** pane — `$TMUX_PANE`, never an argument — waiting on the
+`agent-waiting` / `agent-working` (`agentwaiting.go`): the embedded mod,
+from Claude Code's own events, marks its session's **own** pane (no prompt
+tells an agent to run them) — `$TMUX_PANE`, never an argument — waiting on the
 user or back at work (`Tmux.SetWaiting`), which is all `status` reads
 `waiting` from. Not project-scoped (no `--project`, refused as an unknown
 flag) and writes nothing to the plan. Idempotent; refused before any tmux

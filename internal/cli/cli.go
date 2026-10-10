@@ -410,12 +410,12 @@ usage:
   nat agent-kill --workshop --project ID
                       end the project's live planning agent instead of a
                       slice's; mutually exclusive with the positional slice
-  nat agent-waiting   said by an agent from its own tmux pane, before ending a
-                      turn on something only the user can supply: marks the
-                      pane waiting, the slice needing attention. No --project:
+  nat agent-waiting   run by the embedded mod from an agent's own tmux pane,
+                      once the agent is waiting on the user: marks the pane
+                      waiting, the slice needing attention. No --project:
                       it acts on $TMUX_PANE alone, refused outside a pane nat
                       launched an agent in
-  nat agent-working   said by that agent once the user has answered: clears
+  nat agent-working   run by the mod once the agent is back at work: clears
                       the mark agent-waiting set. No --project, as above
   nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
                       create a project and its Slices database, register it in

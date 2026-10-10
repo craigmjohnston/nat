@@ -115,6 +115,26 @@ func TestNoSkillTellsTheAgentToPush(t *testing.T) {
 	}
 }
 
+// No skill tells its agent to mark itself waiting or working: the embedded mod
+// marks a nat-launched session's wait itself.
+func TestNoSkillTellsTheAgentToMarkItsWait(t *testing.T) {
+	entries, err := fs.ReadDir(FS(), ".")
+	if err != nil {
+		t.Fatalf("read the embedded skills: %v", err)
+	}
+	for _, e := range entries {
+		body, err := fs.ReadFile(FS(), e.Name()+"/SKILL.md")
+		if err != nil {
+			t.Fatalf("read the %s skill: %v", e.Name(), err)
+		}
+		for _, old := range []string{"agent-waiting", "agent-working"} {
+			if strings.Contains(string(body), old) {
+				t.Errorf("the %s skill still says %q", e.Name(), old)
+			}
+		}
+	}
+}
+
 // A /next-slice agent may well be on the user's tmux server too, so the skill
 // carries the prompts' tmux rule in its own words.
 func TestNextSliceNeverKillsTheTmuxServer(t *testing.T) {

@@ -1,4 +1,4 @@
-import { atom, update } from 'claude-code'
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, SessionRateLimit, StateDollar } from 'claude-code'
 
 import type { Wait } from '../types'
@@ -11,6 +11,39 @@ type RecordEngine = Pick<EngineInterface, 'clock' | 'env' | 'fs' | 'process' | '
 // What the mod last wrote on the pane, held by the host so a hot reload (a
 // fresh module) neither forgets a wait it marked nor writes the flag again.
 const wait = atom({ plugin: 'nat-embedded', key: 'wait' } as const, null)
+
+// Whether the main agent's current turn has handed something in, held by the
+// host for the same reason.
+const handedIn = atom({ plugin: 'nat-embedded', key: 'handedIn' } as const, false)
+
+// A Bash command that hands something in: a hand-back or blocked note, a batch
+// of follow-ups, a proposed plan. The app shows the user each of those in its
+// own place, so a turn that ran one is no wait. Matched as `nat` (or a path
+// ending in it) at the start of a command, `--project` and the rest after.
+const handIn = /(?:^|[\s;&|(/])nat\s+(?:complete-slice|slice-followups|plan-propose)(?:\s|$)/m
+
+type HandInEngine = StateDollar & Pick<EngineInterface, 'ui'>
+
+// Notes, for the turn under way, whether a main-loop Bash call ran a hand-in.
+// A failure is logged: the turn then reads as nothing handed in, a wait.
+async function noteHandIn($: HandInEngine, value: boolean): Promise<void> {
+  try {
+    await update($, handedIn, () => value)
+  } catch (err) {
+    $.ui.log(`hand-in not noted: ${String(err)}`, { to: 'debug' })
+  }
+}
+
+// Whether the turn under way handed something in; one that cannot be read
+// is logged and reads as not, so the user is asked to look rather than not.
+async function handedInThisTurn($: HandInEngine): Promise<boolean> {
+  try {
+    return await read($, handedIn)
+  } catch (err) {
+    $.ui.log(`hand-in not read: ${String(err)}`, { to: 'debug' })
+    return false
+  }
+}
 
 // Sets the pane's waiting flag to `to` — what the agent's own `nat
 // agent-waiting` / `nat agent-working` set — only where it changes; a wait
@@ -246,13 +279,19 @@ export const register: Register = on => {
   )
 
   // The waiting flag gnat's star, dock badge and Active rail read, set and
-  // cleared at the moments the engine itself knows are a wait on the user.
-  // The agent's own `nat agent-waiting` stays for what the engine cannot
-  // see — a question asked in prose at the end of a turn — so a plain
-  // finished turn (`answer`) and an `idle_prompt` notification mark nothing:
-  // that is a hand-back or a planning agent between prompts.
+  // cleared at the moments the engine itself knows are a wait on the user. No
+  // prompt tells the agent to run `nat agent-waiting` itself: once a turn
+  // ends the agent does nothing until someone types, so a main-loop turn that
+  // ends normally with nothing handed in is a wait — a question in prose, or
+  // the agent stopped short. An `idle_prompt` notification marks nothing.
   on('turn.start', async ($, e, next) => {
+    await noteHandIn($, false)
     await mark($, null)
+    return next(e)
+  })
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    if (!e.agentId && handIn.test(e.command)) await noteHandIn($, true)
     return next(e)
   })
 
@@ -311,9 +350,12 @@ export const register: Register = on => {
   })
 
   // A main-loop turn that died on an API error or a refusal leaves the agent
-  // stuck until the user steps in; a subagent's is its spawner's to handle.
+  // stuck until the user steps in; one that answered waits unless it handed
+  // something in. An interrupted turn marks nothing (the user is at the
+  // pane), and a subagent's is its spawner's to handle.
   on('turn.complete', async ($, e, next) => {
     if (!e.agentId && (e.reason === 'error' || e.reason === 'refusal')) await mark($, 'stuck')
+    else if (!e.agentId && e.reason === 'answer' && !(await handedInThisTurn($))) await mark($, 'idle')
     return next(e)
   })
 }

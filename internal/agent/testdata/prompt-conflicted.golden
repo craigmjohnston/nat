@@ -105,8 +105,7 @@ Shape every question so it can be answered without opening the code:
 
 Do not end a turn on a status line ("waiting on CI", "I'll check again
 in five"): wait inside the turn, or end with what you are waiting for
-and when you will report. `nat agent-waiting` is for a question on
-screen.
+and when you will report.
 
 ## Do the work
 
@@ -249,18 +248,6 @@ mid-run, with no record of why. If the work needs a tmux of its own, give
 it a private socket — `tmux -L <name>` on every one of its commands — and
 kill only that socket's server when you are done. Setting `TMUX_TMPDIR`
 does not isolate you: `$TMUX` wins while it is set.
-
-## Waiting on the user
-
-Before you end a turn on a question, a decision or anything else only the
-user can supply, run `nat agent-waiting`: without it the user sees an
-agent still at work and will not look. On the next turn, once the user has
-answered, run `nat agent-working` before doing anything else. They are not
-for hand-back, follow-ups or a blocked note: those have their own commands
-and their own place in the app.
-
-Both act on this session's own tmux pane and take no `--project`: they
-are the one exception to pinning it.
 
 ## Finish
 
