@@ -60,7 +60,7 @@ struct StorageUsageSection: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Text(command)
-                    .font(.system(.body, design: .monospaced))
+                    .font(Typo.mono(size: Typo.input))
                     .textSelection(.enabled)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
