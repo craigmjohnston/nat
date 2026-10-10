@@ -259,6 +259,18 @@ public final class NatClient: Sendable {
         return try decodeJSON(ClaudeVersion.self, from: output)
     }
 
+    /// This month's GitHub artifact storage by project — `nat storage-usage
+    /// --json`, GitHub's billing report for the signed-in gh account. Takes
+    /// no `--project`: the reading is the account's.
+    ///
+    /// - Returns: The reading, or the command that gives gh the scope it lacks
+    /// - Throws: NatError carrying nat's refusal (gh not signed in, GitHub
+    ///   unreachable)
+    public func storageUsage() async throws -> StorageUsageAnswer {
+        let output = try await runNat(arguments: ["storage-usage", "--json"])
+        return try decodeJSON(StorageUsageAnswer.self, from: output)
+    }
+
     /// Runs `claude update` — `nat claude-update --json` — and answers what
     /// it printed. Agents already running keep the binary they started with.
     ///

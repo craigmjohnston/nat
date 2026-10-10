@@ -288,7 +288,8 @@ on: that is the board's own, and the user moves it while an agent works. setup,
 paths, project-create, source-list, source-setup and the plugin-* commands take
 no such flag: none acts on a project already tracked. Nor do status,
 agent-waiting and agent-working, which read or mark tmux panes alone, nor
-usage, claude-version and claude-update, which are this machine's.
+usage, claude-version and claude-update, which are this machine's, nor
+storage-usage, which is the GitHub account's.
 
 usage:
   nat                 open the board
@@ -303,6 +304,11 @@ usage:
                       current Pro/Max rate-limit usage, via a throwaway
                       detached session; prints nothing read where no window
                       is available
+  nat storage-usage [--json]
+                      this month's GitHub artifact storage for the signed-in
+                      gh account, against its plan's allowance, by project
+                      (each project's repositories) and other repositories;
+                      needs gh's "user" scope
   nat claude-version [--json]
                       the installed Claude Code and the newest released on
                       its own channel (latest or stable), read at most
@@ -774,6 +780,8 @@ func runCommand(ctx context.Context, args []string, env Env) error {
 		return status(args[1:], env)
 	case "usage":
 		return usage(args[1:], env)
+	case "storage-usage":
+		return storageUsage(ctx, args[1:], env)
 	case "claude-version":
 		return claudeVersion(ctx, args[1:], env)
 	case "claude-update":

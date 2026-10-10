@@ -3324,6 +3324,60 @@ enum AppStories {
         },
 
         Story(
+            name: "settings-github",
+            summary: "The settings window's GitHub section: this month's artifact storage as one bar — a "
+                + "segment per project in its colour, a grey one for other repositories — the total against "
+                + "the Pro allowance and the days left, then each project's figure.",
+            size: CGSize(width: 760, height: 560),
+            colorScheme: .light
+        ) {
+            let client = FixtureNatClient()
+            let model = StorageUsageModel(client: client)
+            await model.loadIfNeeded()
+            return SettingsView(
+                appModel: await Fixtures.startedAppModel(), client: client, initialTab: .github, storage: model)
+        },
+
+        Story(
+            name: "settings-github-loading",
+            summary: "The GitHub section while storage-usage is still out.",
+            size: CGSize(width: 760, height: 560),
+            colorScheme: .light
+        ) {
+            SettingsView(
+                appModel: await Fixtures.startedAppModel(), client: FixtureNatClient(behaviour: .hanging),
+                initialTab: .github)
+        },
+
+        Story(
+            name: "settings-github-needs-scope",
+            summary: "The GitHub section when gh lacks the \u{201C}user\u{201D} scope the billing report needs: "
+                + "what it would take, the command with a Copy button, Check Again, and that nothing else needs it.",
+            size: CGSize(width: 760, height: 560),
+            colorScheme: .light
+        ) {
+            let client = FixtureNatClient(storage: Fixtures.storageNeedsScope)
+            let model = StorageUsageModel(client: client)
+            await model.loadIfNeeded()
+            return SettingsView(
+                appModel: await Fixtures.startedAppModel(), client: client, initialTab: .github, storage: model)
+        },
+
+        Story(
+            name: "settings-github-failed",
+            summary: "The GitHub section when the read itself failed (gh not signed in): nat's plain "
+                + "sentence in place of the bar.",
+            size: CGSize(width: 760, height: 560),
+            colorScheme: .light
+        ) {
+            let client = FixtureNatClient(behaviour: .refusing(Fixtures.storageUsageRefusal))
+            let model = StorageUsageModel(client: client)
+            await model.loadIfNeeded()
+            return SettingsView(
+                appModel: await Fixtures.startedAppModel(), client: client, initialTab: .github, storage: model)
+        },
+
+        Story(
             name: "settings-sources-loading",
             summary: "The Sources section while plugin-list is still out.",
             size: CGSize(width: 760, height: 560),

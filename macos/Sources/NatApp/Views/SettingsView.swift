@@ -35,7 +35,7 @@ import NatKit
 /// The window's sections, in sidebar order, named so a story can open on one
 /// other than General.
 enum SettingsTab: Hashable, CaseIterable, Identifiable {
-    case general, agents, sources, about
+    case general, agents, sources, github, about
 
     var id: Self { self }
 
@@ -44,6 +44,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         case .general: "General"
         case .agents: "Agents"
         case .sources: "Sources"
+        case .github: "GitHub"
         case .about: "About"
         }
     }
@@ -53,6 +54,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         case .general: "gearshape.fill"
         case .agents: "sparkles"
         case .sources: "puzzlepiece.extension.fill"
+        case .github: "archivebox.fill"
         case .about: "info"
         }
     }
@@ -65,6 +67,7 @@ enum SettingsTab: Hashable, CaseIterable, Identifiable {
         case .general: DesignTokens.tileNavy.gradient
         case .agents: DesignTokens.tileAmber.gradient
         case .sources: DesignTokens.tileAzure.gradient
+        case .github: DesignTokens.tileGraphite.gradient
         case .about: DesignTokens.tileIndigo.gradient
         }
     }
@@ -97,15 +100,19 @@ struct SettingsView: View {
     ///   - plugins: The Sources section's model, already driven — a story's,
     ///     to draw what a Save came to; the window makes its own.
     ///   - diagnosticsExpanded: About's Diagnostics drawn open, for a story.
+    ///   - storage: The GitHub section's model, already read — a story's; the
+    ///     window makes its own, read when the section is first shown.
     init(
         appModel: AppModel, client: NatClientProtocol = NatClient(), updater: UpdaterViewModel? = nil,
-        initialTab: SettingsTab = .general, plugins: PluginsModel? = nil, diagnosticsExpanded: Bool = false
+        initialTab: SettingsTab = .general, plugins: PluginsModel? = nil, diagnosticsExpanded: Bool = false,
+        storage: StorageUsageModel? = nil
     ) {
         self.appModel = appModel
         self.diagnosticsExpanded = diagnosticsExpanded
         self.client = client
         self.updater = updater
         _selectedTab = State(initialValue: initialTab)
+        _storage = State(initialValue: storage ?? StorageUsageModel(client: client))
         _plugins = State(initialValue: plugins ?? PluginsModel(
             client: client, projectsUsing: { [appModel] in appModel.sourceProjectNames(of: $0) }
         ) { [appModel] change in
@@ -145,6 +152,9 @@ struct SettingsView: View {
 
     /// The Sources tab: `nat plugin-list` and the buttons over it.
     @State private var plugins: PluginsModel
+
+    /// The GitHub section: `nat storage-usage`, read when first shown.
+    @State private var storage: StorageUsageModel
 
     /// nat's own version for About, read once that section is first shown:
     /// nil until then, and `natVersionFailed` where the read was refused.
@@ -204,6 +214,7 @@ struct SettingsView: View {
         case .general: generalTab
         case .agents: agentsTab
         case .sources: sourcesTab
+        case .github: githubTab
         case .about: aboutTab
         }
     }
@@ -452,6 +463,24 @@ struct SettingsView: View {
                     .disabled(!plugins.canAddSource)
             }
         }
+    }
+
+    /// GitHub: this month's artifact storage against the plan's allowance, a
+    /// segment of the bar per project in its colour and a grey one for every
+    /// other repository, each project's figure listed under it. Read the first
+    /// time the section is shown and again on Refresh — never polled.
+    private var githubTab: some View {
+        VStack(alignment: .leading, spacing: SettingsLayout.groupSpacing) {
+            settingsGroup(
+                "Artifact storage",
+                footer: "GitHub Actions artifacts kept this month, as GitHub's billing page counts them, against "
+                    + "what your plan includes. A project's share is its repositories'; caches are not counted."
+            ) {
+                StorageUsageSection(model: storage)
+            }
+        }
+        .settingsForm()
+        .task { await storage.loadIfNeeded() }
     }
 
     /// gnat itself: the icon, the name, its version and build, the embedded
