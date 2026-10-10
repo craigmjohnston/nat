@@ -48,10 +48,25 @@ var usagePanelWait = 2 * time.Second
 // never touches the real state directory.
 var usageProbeDirFunc = agent.UsageProbeDir
 
-// usage probes Claude Code's own statusline for the account's current
-// Pro/Max rate-limit usage: a throwaway detached tmux session, seeded with a
-// --settings file whose statusLine command is the only sanctioned,
-// OAuth-free way to read the numbers /usage shows. It requires no --project:
+// agentStatusDirFunc resolves where live agents' usage files are
+// ([agent.ReadAgentUsage]); agent.AgentStatusDir in production, a throwaway
+// directory in tests.
+var agentStatusDirFunc = agent.AgentStatusDir
+
+// The two answers to where a reading came from: a live agent's own
+// measurement, or a probe (one that found nothing included).
+const (
+	usageSourceAgent = "agent"
+	usageSourceProbe = "probe"
+)
+
+// usage reads the account's current Pro/Max rate-limit usage. While an agent
+// nat launched is live it answers what that agent's session last measured
+// ([agentUsage]) — no process, no wait. With none live, or none measured in
+// the last [agent.AgentUsageMaxAge], it probes Claude Code's own statusline: a
+// throwaway detached tmux session, seeded with a --settings file whose
+// statusLine command is the only sanctioned, OAuth-free way to read the
+// numbers /usage shows. It requires no --project:
 // the reading is a property of the logged-in account, not of any tracked
 // project.
 func usage(args []string, env Env) error {
@@ -66,19 +81,40 @@ func usage(args []string, env Env) error {
 		return usageErrorf("usage: takes no arguments, given %d", len(rest))
 	}
 
-	reading, probeErr := probeUsage(env)
-	if probeErr != nil {
-		// Unavailable is a normal answer, not a failure: gnat renders nothing
-		// for it either way, and a probe that could not run (no tmux, no
-		// claude on PATH, a timeout) is not this command's to fail loudly
-		// over.
-		reading = agent.UsageReading{}
+	reading, ok := agentUsage(env)
+	source := usageSourceAgent
+	if !ok {
+		source = usageSourceProbe
+		var probeErr error
+		reading, probeErr = probeUsage(env)
+		if probeErr != nil {
+			// Unavailable is a normal answer, not a failure: gnat renders
+			// nothing for it either way, and a probe that could not run (no
+			// tmux, no claude on PATH, a timeout) is not this command's to
+			// fail loudly over.
+			reading = agent.UsageReading{}
+		}
 	}
 
 	if *asJSON {
-		return writeUsageJSON(env.Out, reading)
+		return writeUsageJSON(env.Out, reading, source)
 	}
 	return writeUsageMarkdown(env.Out, reading)
+}
+
+// agentUsage answers the freshest reading a live agent's mod wrote, and
+// whether there was one. A tmux that cannot list its sessions, or a state
+// directory that cannot be resolved, concludes nothing: the probe runs.
+func agentUsage(env Env) (agent.UsageReading, bool) {
+	live, err := env.NewTmux().LiveSlices()
+	if err != nil || len(live) == 0 {
+		return agent.UsageReading{}, false
+	}
+	dir, err := agentStatusDirFunc()
+	if err != nil {
+		return agent.UsageReading{}, false
+	}
+	return agent.ReadAgentUsage(dir, live, usageNow())
 }
 
 // probeUsage runs one throwaway probe session end to end: lay the settings
@@ -189,17 +225,19 @@ type usageRateLimitJSON struct {
 // usageJSON is the structured form of the usage output. A window not read at
 // all — a probe that never ran, or an account with no such window — is
 // omitted rather than written as zero, so the reader can tell "unknown" from
-// "empty".
+// "empty". Source says where the reading came from: "agent" or "probe".
 type usageJSON struct {
 	FiveHour *usageRateLimitJSON `json:"five_hour,omitempty"`
 	SevenDay *usageRateLimitJSON `json:"seven_day,omitempty"`
+	Source   string              `json:"source"`
 }
 
-// writeUsageJSON encodes the reading as JSON, indented.
-func writeUsageJSON(out io.Writer, reading agent.UsageReading) error {
+// writeUsageJSON encodes the reading and its source as JSON, indented.
+func writeUsageJSON(out io.Writer, reading agent.UsageReading, source string) error {
 	doc := usageJSON{
 		FiveHour: usageRateLimitJSONOf(reading.FiveHour),
 		SevenDay: usageRateLimitJSONOf(reading.SevenDay),
+		Source:   source,
 	}
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")

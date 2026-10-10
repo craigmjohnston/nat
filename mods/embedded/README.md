@@ -30,6 +30,9 @@ Tested with Claude Code **2.1.294**.
   ctrl+o, re-read from the file on `/compact`, kept as recorded (not
   re-read) on `claude --resume`. A session whose mod never loads (an older
   Claude Code) has the opening line alone and asks what to work.
+  And they report the account's rate limits: `session.measure` writes the
+  five-hour and seven-day windows to the file `NAT_USAGE` names (temp file,
+  then `mv`), which `nat usage` answers from while any agent is live.
 - `types/index.d.ts` — the `$.state` contract: the wait last written, so a
   hot reload neither forgets it nor writes the flag again.
 - `tests/` — `claude plugin test` suites.

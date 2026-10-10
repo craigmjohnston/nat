@@ -195,7 +195,9 @@ func TestReadStatusesSweepsStale(t *testing.T) {
 	age(t, payloadPath(dir, "nat-live"), time.Hour)
 	write(t, metaPath(dir, "nat-live"), `{}`)
 	age(t, metaPath(dir, "nat-live"), time.Hour)
-	for _, p := range []string{payloadPath(dir, "nat-dead"), metaPath(dir, "nat-dead"), payloadPath(dir, "nat-dead") + ".tmp"} {
+	write(t, usagePath(dir, "nat-live"), `{}`)
+	age(t, usagePath(dir, "nat-live"), time.Hour)
+	for _, p := range []string{payloadPath(dir, "nat-dead"), metaPath(dir, "nat-dead"), payloadPath(dir, "nat-dead") + ".tmp", usagePath(dir, "nat-dead"), usagePath(dir, "nat-dead") + ".tmp"} {
 		write(t, p, `{}`)
 		age(t, p, time.Hour)
 	}
@@ -214,7 +216,7 @@ func TestReadStatusesSweepsStale(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	want := "nat-live.json nat-live.launch.json nat-new.launch.json"
+	want := "nat-live.json nat-live.launch.json nat-live.usage.json nat-new.launch.json"
 	if strings.Join(names, " ") != want {
 		t.Errorf("files = %v, want %s", names, want)
 	}

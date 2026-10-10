@@ -132,6 +132,24 @@ typed prompt runs it. A non-zero exit or a throw is logged to debug and the
 prompt goes on. The slice prompt says nothing of it; `/next-slice`, run by
 hand with no mod, keeps its own paragraph.
 
+## The usage file
+
+`nat usage` used to start a throwaway Claude Code for every reading. Every
+live agent already has the numbers, so each launch also sets
+`NAT_USAGE=<state dir>/agent-status/<session>.usage.json` with
+`new-session -e`, beside `NAT_INBOX`. The mod's `session.measure` hook (after
+each turn, and whenever a window moves a whole point) writes
+`{"read_at": <ISO 8601>, "rate_limits": {"five_hour": {"used_percentage",
+"resets_at"}, "seven_day": {…}}}` there, each window only where the
+measurement carries it — a measurement with neither writes nothing — to
+`<file>.tmp` first, then `mv`, as the statusline tee does. `nat usage` reads
+the files of live sessions and answers the freshest under ten minutes old
+(`"source": "agent"`), probing only where there is none (`"source":
+"probe"`). The status sweep removes a gone session's file with its others.
+Checked live on 2.1.296: opening `/usage` in a session, no model turn, fires
+the hook and writes the file; `nat usage --json` then answers from it in
+under half a second.
+
 ## The brief
 
 A slice, fix, planning or new-project session is not started with its brief

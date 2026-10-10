@@ -1,5 +1,5 @@
 import { atom, update } from 'claude-code'
-import type { EngineInterface, Register, StateDollar } from 'claude-code'
+import type { EngineInterface, Register, SessionRateLimit, StateDollar } from 'claude-code'
 
 import type { Wait } from '../types'
 
@@ -104,6 +104,40 @@ async function resume($: ResumeEngine, text: string): Promise<void> {
   }
 }
 
+// The rate-limit windows `nat usage` reads, by the name the statusline payload
+// gives them; any other kind (a gateway's spend limit) is not one it shows.
+const windows: ReadonlySet<string> = new Set(['five_hour', 'seven_day'])
+
+type UsageEngine = Pick<EngineInterface, 'clock' | 'env' | 'fs' | 'process' | 'ui'>
+
+// Writes the account's rate-limit windows, as this session last measured them,
+// to the file nat named at launch (`NAT_USAGE`), for `nat usage` to answer
+// from while any agent is live instead of starting a session of its own. Each
+// window is written only where the measurement carries it, and a measurement
+// carrying none (off a subscription, or before the first reading) writes
+// nothing. `$.fs.write` is not atomic, so the file goes through a temp name
+// and an `mv`, as the statusline tee does: nat never reads half of one.
+// Nothing here throws: a failure goes to the debug log.
+async function writeUsage($: UsageEngine, rateLimits: readonly SessionRateLimit[]): Promise<void> {
+  try {
+    const path = await $.env.get('NAT_USAGE')
+    if (!path) return
+    const limits: Record<string, { used_percentage: number; resets_at?: string }> = {}
+    for (const limit of rateLimits) {
+      if (!windows.has(limit.kind)) continue
+      limits[limit.kind] = { used_percentage: limit.percentUsed, ...(limit.resetsAt ? { resets_at: limit.resetsAt } : {}) }
+    }
+    if (Object.keys(limits).length === 0) return
+    const readAt = new Date(await $.clock.now()).toISOString()
+    const tmp = `${path}.tmp`
+    await $.fs.write(tmp, JSON.stringify({ read_at: readAt, rate_limits: limits }))
+    const { exitCode, stderr } = await $.process.run(['mv', tmp, path], { timeoutMs: 10_000 })
+    if (exitCode !== 0) $.ui.log(`usage file not moved into place: mv exited ${exitCode}: ${stderr.trim()}`, { to: 'debug' })
+  } catch (err) {
+    $.ui.log(`usage file not written: ${String(err)}`, { to: 'debug' })
+  }
+}
+
 // nat's hooks into the Claude Code sessions it launches. Written against the
 // public mods reference and the declarations the installed build writes beside
 // a loaded mod; a hook that fails is skipped and a tree that does not validate
@@ -141,6 +175,13 @@ export const register: Register = on => {
       return next(e)
     }
     return next({ ...e, blocks: [...e.blocks, { name: 'natBrief', text }] })
+  })
+
+  // After each turn, and whenever a window moves a whole point, the account's
+  // rate limits go where `nat usage` reads them.
+  on('session.measure', async ($, e, next) => {
+    await writeUsage($, e.rateLimits)
+    return next(e)
   })
 
   // The dim `? for shortcuts` / `esc to interrupt` line under the prompt

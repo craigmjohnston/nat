@@ -640,15 +640,22 @@ proposed meanwhile is never overwritten), then nudges.
 
 ## `usage`
 
-Probes Claude Code's own statusline for the account's Pro/Max rate-limit
+While an agent nat launched is live, answers the freshest reading its mod
+wrote in the last ten minutes (`agentUsage` → `agent.ReadAgentUsage`, through
+`LiveSlices` and `agentStatusDirFunc`; `--json` `"source": "agent"`) — no
+probe, under a second. A tmux that cannot list or no state directory
+concludes nothing. Otherwise (`"source": "probe"`, an unavailable probe
+included) it
+probes Claude Code's own statusline for the account's Pro/Max rate-limit
 state — the only OAuth-free source of what `/usage` shows. One synchronous
 run: lay a throwaway `--settings` file, launch a detached tmux session
-(`agent.LaunchUsageProbe`), send one minimal prompt (`rate_limits` appears
-only after the session's first API response), poll for the sink file up to
+(`agent.LaunchUsageProbe`), type the local `/usage` command and close its
+panel (no model turn), poll for the sink file up to
 `usageProbeTimeout`, then kill the session and delete the sink and the
 probe's own transcript — success or not. Every failure mode (no tmux, a
 timeout, an unparseable payload) reads the same to the caller: both windows
-absent, printed as `{}` under `--json` or "usage unavailable" otherwise —
+absent, printed as `{"source": "probe"}` under `--json` or "usage
+unavailable" otherwise —
 `nat usage` never fails loudly over an account with nothing to report. The
 disk-cache-then-refresh pattern ("show last-known, then probe") is gnat's
 own job (`UsageStore`/`DiskUsageCache` in `macos/Sources/NatKit`), not this
