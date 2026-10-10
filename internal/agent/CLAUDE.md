@@ -74,7 +74,7 @@ running agent's state.
   `domain.MaxBriefOpeningWords`) in every planning prompt after
   `SliceTitleRule`; `summaryPassage`/`prDescriptionPassage` in the slice
   prompt's hand-back. Tests walk each template; the skills carry the same
-  words (next-slice's question rule without the `agent-waiting` sentence).
+  words.
   The writing rule's bad examples quote `complete-slice --branch`, so the
   tests refusing those words in a plan or worktree prompt strip it first.
 - `PromptContext.RepoUnknown` (a source project's task with no repository)
@@ -90,14 +90,9 @@ running agent's state.
   `kill-server` under a `TMUX_TMPDIR` the agent thought isolated it took down
   every running agent twice — `$TMUX` wins while set. A test walks each
   template for it; `/next-slice` carries the rule in its own words.
-- `waitingPassage` (run `nat agent-waiting` before ending a turn on
-  something only the user can supply, `nat agent-working` first thing once
-  answered; not for hand-back, follow-ups or a blocked note) is in every
-  slice, fix, plan and new-project prompt; tests walk each for it. Pinned
-  prompts (`waitingPassage(true)`) also say the two take no `--project` —
-  the only commands `TestEveryCommandInAPromptNamesTheProject` exempts; the
-  new-project prompt, which never names the flag, gets `false`. The skills
-  don't carry it: an agent run by hand isn't in a pane nat launched.
+- No prompt or skill tells an agent to run `nat agent-waiting` or `nat
+  agent-working`: the embedded mod marks the wait itself
+  (`TestNoPromptTellsTheAgentToMarkItsWait`, `TestNoSkillTellsTheAgentToMarkItsWait`).
 - The `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
   worktree path are derived — `actions.SliceBranch`, `worktree.pathSlug`,
   `git.CLI.Base`) is never spelled out in prose: `repoPassage` names `nat
@@ -269,14 +264,15 @@ running agent's state.
   gone, a pane carrying `@nat_waiting` (`WaitingPaneOption`, a field of
   `listPanesFormat`) is waiting, every other live tagged pane is working —
   slices, planning agents and ad hoc sessions alike, keyed by their tag. The
-  agent sets the flag itself (`nat agent-waiting` → `SetWaiting`, cleared by
-  `nat agent-working`); nat never infers it from the screen (the old
-  `capture-pane` match on Claude Code's status line read every finished turn
-  as waiting and broke whenever the line's shape changed). The embedded mod
-  (`mods/embedded`) is a second writer of the same flag through the same two
-  commands, on the waits Claude Code itself knows (an AskUserQuestion
-  dialog, a permission prompt, an MCP elicitation, a turn ended on an error
-  or refusal); `waitingPassage` stays for a question asked in prose. `SetWaiting`
+  embedded mod (`mods/embedded`) sets the flag (`nat agent-waiting` →
+  `SetWaiting`, cleared by `nat agent-working`) from Claude Code's events: an
+  AskUserQuestion dialog, a permission prompt, an MCP elicitation, a turn
+  ended on an error or refusal, and a main-loop turn that ended normally with
+  no hand-in (`complete-slice`, `slice-followups`, `plan-propose`) among its
+  Bash calls — a question in prose, or an agent that stopped short. No
+  prompt tells the agent to run either. nat never infers it from the screen
+  (the old `capture-pane` match on Claude Code's status line broke whenever
+  the line's shape changed). `SetWaiting`
   refuses (`ErrNotAgentPane`) a pane with no `@nat_slice` tag, read back with
   `display-message` by pane ID *and* tag — tmux answers one aimed at a
   missing pane with an empty line, not an error. The flag lives on the pane

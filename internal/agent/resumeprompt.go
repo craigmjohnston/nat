@@ -52,6 +52,5 @@ func ResumePrompt(c ResumeContext) string {
 	fmt.Fprintf(&b, "    nat complete-slice %s --project %s ...\n", c.SliceID, c.ProjectID)
 	b.WriteString(namingPassage)
 	b.WriteString(tmuxPassage)
-	b.WriteString(waitingPassage(true))
 	return b.String()
 }

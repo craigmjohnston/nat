@@ -144,10 +144,60 @@ test('a turn that ends on an error or a refusal waits, cleared by the next turn 
   expect(ran).toEqual([waiting, working, waiting, working])
 })
 
-test('a finished turn, an interrupted one and a subagent error mark nothing', async ($, on) => {
+test('a finished turn with nothing handed in waits, cleared by the next prompt', async ($, on) => {
   const ran = runs(on)
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
+  await $.turn.start({ text: 'go', turnId: 't1' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_1', command: 'nat slice-show x --project p' } as never)
   await $.turn.complete(finished('answer'))
+  expect(ran).toEqual([waiting])
+  await $.prompt.submit({ text: 'yes, do that' } as never)
+  expect(ran).toEqual([waiting, working])
+})
+
+for (const command of [
+  "nat complete-slice s --project p --summary '- done'",
+  'nat complete-slice s --project p --blocked --summary stuck',
+  "cd /w && nat slice-followups s --project p --follow-up 'x'",
+  '/usr/local/bin/nat plan-propose --project p < plan.md',
+]) {
+  test(`a finished turn that ran \`${command}\` marks nothing`, async ($, on) => {
+    const ran = runs(on)
+    on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
+    await $.turn.start({ text: 'go', turnId: 't1' } as never)
+    await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_1', command } as never)
+    await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_2', command: 'git log -1' } as never)
+    await $.turn.complete(finished('answer'))
+    expect(ran).toEqual([])
+  })
+}
+
+test('a hand-in counts for its own turn only', async ($, on) => {
+  const ran = runs(on)
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
+  await $.turn.start({ text: 'go', turnId: 't1' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_1', command: 'nat complete-slice s --project p' } as never)
+  await $.turn.complete(finished('answer'))
+  await $.turn.start({ text: 'one more thing', turnId: 't2' } as never)
+  await $.turn.complete(finished('answer'))
+  expect(ran).toEqual([waiting])
+})
+
+test('a hand-in a subagent ran, or one only named, is no hand-in', async ($, on) => {
+  const ran = runs(on)
+  on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
+  await $.turn.start({ text: 'go', turnId: 't1' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_1', command: 'nat complete-slice s --project p', agentId: 'agent_1' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_2', command: 'grep -rn complete-slice internal' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_3', command: 'nat complete-slices' } as never)
+  await $.turn.complete(finished('answer'))
+  expect(ran).toEqual([waiting])
+})
+
+test('an interrupted turn and a subagent turn or error mark nothing', async ($, on) => {
+  const ran = runs(on)
   await $.turn.complete(finished('aborted'))
+  await $.turn.complete(finished('answer', 'agent_1'))
   await $.turn.complete(finished('error', 'agent_1'))
   expect(ran).toEqual([])
 })
