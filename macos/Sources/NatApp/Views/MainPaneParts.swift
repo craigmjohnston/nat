@@ -269,7 +269,8 @@ struct TitlebarBreadcrumb<Picker: View>: View {
             CardMarkView(badge: identity?.cardBadge, icon: icon, ink: .tertiary)
                 .frame(height: CrumbLine.height)
         } else {
-            ProjectBadgeView(tag: tag, color: projectColor, name: projectName ?? crumbs.project)
+            ProjectBadgeView(
+                tag: tag, color: projectColor, name: projectName ?? crumbs.project, scratch: identity?.isScratch ?? false)
                 .frame(height: CrumbLine.height)
         }
     }
@@ -378,7 +379,8 @@ struct TitlebarIdentityLabel: View {
                 } else if let identity {
                     ActiveIdentityLabel(
                         tag: identity.tag, color: projectColor, projectName: projectName,
-                        cardBadge: identity.cardBadge, cardIcon: identity.cardIcon, state: identity.state,
+                        cardBadge: identity.cardBadge, cardIcon: identity.cardIcon, scratch: identity.isScratch,
+                        state: identity.state,
                         live: identity.live, title: identity.title, symbol: identity.symbol,
                         size: GnatMetrics.titlebarText, titleInk: .tertiary)
                 } else {

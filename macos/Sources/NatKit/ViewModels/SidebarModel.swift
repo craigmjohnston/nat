@@ -442,6 +442,10 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
     /// takes no badge of its own (`projectTag` empty). Nil for every other
     /// row, and for a task whose card neither the tree nor the plan names.
     public let card: SidebarActiveCard?
+    /// A row of the scratch project: Active nests it under the one Scratch
+    /// row (`SidebarModel.activeEntries`), and the titlebar names its project
+    /// by Scratch's mark rather than a badge.
+    public let isScratch: Bool
 
     public var id: String { "\(kind):\(targetID)" }
 
@@ -453,7 +457,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
         kind: SidebarActiveKind, targetID: String, projectID: String, projectName: String,
         projectTag: String? = nil, title: String, state: SliceDisplayState, live: Bool,
         marks: PRMarks = .none, planReady: Bool = false, reconnecting: Bool = false, color: ProjectColor? = nil,
-        card: SidebarActiveCard? = nil
+        card: SidebarActiveCard? = nil, isScratch: Bool = false
     ) {
         self.kind = kind
         self.targetID = targetID
@@ -468,6 +472,7 @@ public struct SidebarActiveRow: Equatable, Identifiable, Sendable {
         self.reconnecting = kind == .workshop && reconnecting
         self.color = color
         self.card = kind == .slice ? card : nil
+        self.isScratch = isScratch
     }
 }
 
@@ -492,16 +497,19 @@ public struct SidebarActiveCard: Equatable, Sendable {
     }
 }
 
-/// One top-level item of the Active fold: a row as it is, or a source card
-/// with its active tasks' rows nested under it.
+/// One top-level item of the Active fold: a row as it is, a source card
+/// with its active tasks' rows nested under it, or the one Scratch row with
+/// the scratch project's rows nested under it.
 public enum SidebarActiveEntry: Equatable, Identifiable, Sendable {
     case row(SidebarActiveRow)
     case card(SidebarActiveCard, rows: [SidebarActiveRow])
+    case scratch(projectID: String, rows: [SidebarActiveRow])
 
     public var id: String {
         switch self {
         case .row(let row): row.id
         case .card(let card, _): "card:\(card.projectID):\(card.id)"
+        case .scratch: "scratch"
         }
     }
 
@@ -509,10 +517,15 @@ public enum SidebarActiveEntry: Equatable, Identifiable, Sendable {
     public var rows: [SidebarActiveRow] {
         switch self {
         case .row(let row): [row]
-        case .card(_, let rows): rows
+        case .card(_, let rows), .scratch(_, let rows): rows
         }
     }
 }
+
+/// What Scratch is called wherever it stands in for a project's badge or
+/// name: its Active row, its mark and its menu items.
+public let scratchTitle = "Scratch"
+
 
 /// Everything one project contributes to the sidebar, as `AppModel` holds it.
 public struct SidebarProjectInput: Sendable {
@@ -565,11 +578,23 @@ public struct SidebarModel: Equatable, Sendable {
     public let scratch: SidebarProject?
 
     /// Active as the sidebar draws it: `active` in order, each source task
-    /// nested under its card, the card standing where its first task would.
+    /// nested under its card, the card standing where its first task would,
+    /// and every scratch row nested under one Scratch row, standing where
+    /// the first of them would.
     public var activeEntries: [SidebarActiveEntry] {
         var entries: [SidebarActiveEntry] = []
         var cardAt: [String: Int] = [:]
+        var scratchAt: Int?
         for row in active {
+            if row.isScratch {
+                if let index = scratchAt, case .scratch(let projectID, let rows) = entries[index] {
+                    entries[index] = .scratch(projectID: projectID, rows: rows + [row])
+                } else {
+                    scratchAt = entries.count
+                    entries.append(.scratch(projectID: row.projectID, rows: [row]))
+                }
+                continue
+            }
             guard let card = row.card else {
                 entries.append(.row(row))
                 continue
@@ -598,6 +623,12 @@ public struct SidebarModel: Equatable, Sendable {
         self.projects = projects
         self.sources = sources
         self.scratch = scratch
+    }
+
+    /// The projects a menu offers as choices: every project, then — after
+    /// a divider the menu draws — Scratch, where there is one.
+    public var menuTargets: (projects: [SidebarProject], scratch: SidebarProject?) {
+        (projects.filter { $0.kind == .project }, scratch)
     }
 
     /// The source project with `id`, if it is one.
@@ -699,6 +730,7 @@ public func buildSidebarModel(
         // A source project takes no badge: its rows carry no tag, a task's
         // its card's badge instead.
         let tag = project.isSourceProject ? "" : tags[project.id] ?? ""
+        let scratch = project.kind == .scratch
 
         if let planner = planningAgents[project.id] {
             let state: SliceDisplayState = planner == .waiting ? .waiting : .working
@@ -706,21 +738,22 @@ public func buildSidebarModel(
             active.append(SidebarActiveRow(
                 kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tag,
                 title: workshopRowTitle, state: state, live: true,
-                planReady: proposedWorkshops.contains(project.id), color: project.color))
+                planReady: proposedWorkshops.contains(project.id), color: project.color, isScratch: scratch))
         } else if reconnectingWorkshops.contains(project.id) {
             // Running when the app last quit, and not yet read again: drawn
             // as a launch is, until the first reading confirms or ends it.
             active.append(SidebarActiveRow(
                 kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tag,
                 title: workshopRowTitle, state: .working, live: false,
-                planReady: proposedWorkshops.contains(project.id), reconnecting: true, color: project.color))
+                planReady: proposedWorkshops.contains(project.id), reconnecting: true, color: project.color,
+                isScratch: scratch))
         } else if pinnedWorkshops.contains(project.id) || launchingWorkshop == project.id {
             // Opened and not yet running: a draft being written, or a launch
             // on its way — the row holds the workshop's place until then.
             active.append(SidebarActiveRow(
                 kind: .workshop, targetID: project.id, projectID: project.id, projectName: project.name, projectTag: tag,
                 title: workshopRowTitle, state: launchingWorkshop == project.id ? .working : .todo, live: false,
-                planReady: proposedWorkshops.contains(project.id), color: project.color))
+                planReady: proposedWorkshops.contains(project.id), color: project.color, isScratch: scratch))
         }
 
         if project.id == sessionsProjectID {
@@ -736,7 +769,8 @@ public func buildSidebarModel(
                 if state.needsYou { needsYou += 1 }
                 active.append(SidebarActiveRow(
                     kind: .session, targetID: session.id, projectID: project.id, projectName: project.name, projectTag: tag,
-                    title: sessionRowTitle, state: state, live: liveAgents[session.tag] != nil, color: project.color))
+                    title: sessionRowTitle, state: state, live: liveAgents[session.tag] != nil, color: project.color,
+                    isScratch: scratch))
             }
         }
 
@@ -767,7 +801,8 @@ public func buildSidebarModel(
                     kind: .slice, targetID: row.sliceID, projectID: project.id, projectName: project.name, projectTag: tag,
                     title: row.title, state: row.state, live: row.live, marks: activeMarks[row.sliceID] ?? .none,
                     color: project.color,
-                    card: activeCard(filedUnder[row.sliceID] ?? "", projectID: project.id, plan: plan)))
+                    card: activeCard(filedUnder[row.sliceID] ?? "", projectID: project.id, plan: plan),
+                    isScratch: scratch))
             }
 
             // A source project's tasks are drawn under the plugin's own tree,

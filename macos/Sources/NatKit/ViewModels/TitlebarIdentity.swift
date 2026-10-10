@@ -23,10 +23,13 @@ public struct TitlebarIdentity: Equatable, Sendable {
     /// The source's icon, leading `cardBadge` — or alone, where the card has
     /// none; nil outside a source project.
     public let cardIcon: SourceIcon?
+    /// The scratch project's work: named by Scratch's mark — its icon and
+    /// the word Scratch — in the project badge's place.
+    public let isScratch: Bool
 
     public init(
         tag: String, state: SliceDisplayState, live: Bool, title: String, icon: SourceIcon? = nil,
-        symbol: String? = nil, cardBadge: SourceBadge? = nil, cardIcon: SourceIcon? = nil
+        symbol: String? = nil, cardBadge: SourceBadge? = nil, cardIcon: SourceIcon? = nil, isScratch: Bool = false
     ) {
         self.tag = tag
         self.state = state
@@ -36,6 +39,7 @@ public struct TitlebarIdentity: Equatable, Sendable {
         self.symbol = symbol
         self.cardBadge = cardBadge
         self.cardIcon = cardIcon
+        self.isScratch = isScratch
     }
 
     /// A source container's identity: its card's badge, if it has one, its
@@ -74,9 +78,10 @@ public enum TitlebarSelection: Equatable, Sendable {
 /// A container is never in Active: it is its card's badge, its source's icon
 /// and its title. In a source project (`plan` carrying `source`) there is
 /// no tag: a task is named by its card's badge instead, read off `plan`.
+/// In the scratch project (`scratchProjectID`) it is named by Scratch's mark.
 public func titlebarIdentity(
     for selection: TitlebarSelection, projectID: String, active: [SidebarActiveRow], tags: [String: String],
-    plan: ProjectInfo? = nil
+    plan: ProjectInfo? = nil, scratchProjectID: String? = nil
 ) -> TitlebarIdentity {
     let kind: SidebarActiveKind
     let targetID: String
@@ -97,10 +102,12 @@ public func titlebarIdentity(
     if let row = active.first(where: { $0.kind == kind && $0.targetID == targetID && $0.projectID == projectID }) {
         return TitlebarIdentity(
             tag: row.projectTag, state: row.state, live: row.live, title: title, symbol: symbol,
-            cardBadge: row.card?.badge, cardIcon: row.card?.icon ?? plan?.source?.icon)
+            cardBadge: row.card?.badge, cardIcon: row.card?.icon ?? plan?.source?.icon, isScratch: row.isScratch)
     }
     guard let plan, let info = plan.source else {
-        return TitlebarIdentity(tag: tags[projectID] ?? "", state: fallback, live: false, title: title, symbol: symbol)
+        return TitlebarIdentity(
+            tag: tags[projectID] ?? "", state: fallback, live: false, title: title, symbol: symbol,
+            isScratch: projectID == scratchProjectID)
     }
     let card = kind == .slice
         ? plan.slices.first { $0.id == targetID }.flatMap { activeCard($0.milestoneID, projectID: projectID, plan: plan) }

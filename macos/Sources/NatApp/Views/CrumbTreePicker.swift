@@ -22,10 +22,12 @@ struct CrumbTreePicker: View {
             column {
                 ForEach(tree.projects) { project in
                     row(selected: project.id == tree.projectID, opens: true) {
-                        // A source project is its source's icon; every other
-                        // a folder of folders.
+                        // A source project is its source's icon, Scratch its
+                        // own; every other a folder of folders.
                         Group {
-                            if let icon = project.source?.icon {
+                            if project.kind == .scratch {
+                                Image(systemName: DesignTokens.scratchSymbol).font(.system(size: 12)).ink(.tertiary)
+                            } else if let icon = project.source?.icon {
                                 SourceIconView(icon: icon, size: 13).ink(.tertiary)
                             } else {
                                 StackedFolderGlyph(
@@ -37,12 +39,17 @@ struct CrumbTreePicker: View {
                         .frame(width: 16)
                         // The project's badge 6pt before its name, the
                         // folder keeping its column — never an Untitled
-                        // row, nor a source project, which takes none.
+                        // row, nor a source project, which takes none. Scratch
+                        // is its icon, in the folder's place, and its word.
                         HStack(spacing: 6) {
-                            if project.kind != .untitled && !project.tag.isEmpty {
-                                ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
+                            if project.kind == .scratch {
+                                Text(scratchTitle)
+                            } else {
+                                if project.kind != .untitled && !project.tag.isEmpty {
+                                    ProjectBadgeView(tag: project.tag, color: project.color, name: project.name)
+                                }
+                                Text(project.name)
                             }
-                            Text(project.name)
                         }
                     } action: {
                         tree.open(project: project.id)
