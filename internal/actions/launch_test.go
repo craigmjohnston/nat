@@ -37,10 +37,13 @@ type launchCall struct {
 	model                                                     config.AgentModel
 }
 
-// fakeLauncher stands in for tmux: only the one method Launch itself calls.
+// fakeLauncher stands in for tmux: only the two methods Launch itself calls.
+// A resumed launch is recorded in launches too, its resumption beside it in
+// resumes.
 type fakeLauncher struct {
 	launchErr error
 	launches  []launchCall
+	resumes   []agent.Resumption
 }
 
 var _ Launcher = (*fakeLauncher)(nil)
@@ -48,6 +51,11 @@ var _ Launcher = (*fakeLauncher)(nil)
 func (f *fakeLauncher) Launch(session, workdir, promptFile, opening, sliceID, projectID string, model config.AgentModel) error {
 	f.launches = append(f.launches, launchCall{session, workdir, promptFile, opening, sliceID, projectID, model})
 	return f.launchErr
+}
+
+func (f *fakeLauncher) LaunchResumed(session, workdir, promptFile, opening, sliceID, projectID string, r agent.Resumption, model config.AgentModel) error {
+	f.resumes = append(f.resumes, r)
+	return f.Launch(session, workdir, promptFile, opening, sliceID, projectID, model)
 }
 
 // TestLaunchStartsTheAgentInAWorktree covers the ordinary path: a worktree

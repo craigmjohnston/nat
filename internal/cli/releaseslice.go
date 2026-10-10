@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/store"
 )
@@ -74,6 +75,8 @@ func releaseSlice(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
+	// The next launch is a fresh claim, never a resume of this one's session.
+	agent.ForgetSliceSession(s.ID)
 
 	env.nudged()
 	_, err = io.WriteString(env.Out, releasedMarkdown(released))

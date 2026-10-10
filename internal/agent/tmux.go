@@ -487,7 +487,36 @@ func (t *Tmux) breakOutAll(panes []pane, want func(pane) bool) (int, error) {
 // could not be tagged is left running — its agent is already working — but the
 // failure is reported, because until it is tagged nothing will find it again.
 func (t *Tmux) Launch(session, workdir, promptFile, opening, sliceID, projectID string, m config.AgentModel) error {
-	out, err := t.run(launchArgs(session, workdir, promptFile, opening, m, t.supportsSessionEnv(), prepareStatusSink(session, m), prepareMod(), sliceEnvArgs(sliceID, projectID))...)
+	sink, mod := prepareStatusSink(session, m), prepareMod()
+	command := agentCommand(workdir, promptFile, opening, m, sink, mod)
+	return t.launchTagged(session, workdir, sliceID, projectID, command, "agent launched")
+}
+
+// Resumption is the earlier Claude Code session a relaunch takes back up
+// ([Tmux.LaunchResumed]): its id, off the session's [SessionRecord], and the
+// file holding the short prompt it is resumed with ([ResumePrompt]).
+type Resumption struct {
+	SessionID  string
+	PromptFile string
+}
+
+// LaunchResumed is [Tmux.Launch] resuming the earlier Claude Code session r
+// names in place of starting a fresh one ([resumeCommand]): the transcript
+// already holds the brief, so the agent is handed r's short prompt, not the
+// brief again. promptFile and opening are the fresh launch's, kept for a
+// compaction to re-read the brief and for the fresh start the pane falls back
+// to where Claude Code will not resume the session.
+func (t *Tmux) LaunchResumed(session, workdir, promptFile, opening, sliceID, projectID string, r Resumption, m config.AgentModel) error {
+	sink, mod := prepareStatusSink(session, m), prepareMod()
+	command := resumeCommand(workdir, promptFile, opening, r, m, sink, mod)
+	return t.launchTagged(session, workdir, sliceID, projectID, command, "agent launched resuming its earlier session",
+		"claude_session", r.SessionID)
+}
+
+// launchTagged starts session running command and tags its pane with
+// sliceID, as [Tmux.Launch] describes, logging what as the launch.
+func (t *Tmux) launchTagged(session, workdir, sliceID, projectID, command, what string, extra ...any) error {
+	out, err := t.run(sessionArgs(session, workdir, t.supportsSessionEnv(), sliceEnvArgs(sliceID, projectID), command)...)
 	if err != nil {
 		return fmt.Errorf("launch tmux session %s: %w", session, err)
 	}
@@ -496,7 +525,7 @@ func (t *Tmux) Launch(session, workdir, promptFile, opening, sliceID, projectID 
 		"set-option", "-p", "-t", pane, SlicePaneOption, sliceID); err != nil {
 		return fmt.Errorf("tag tmux pane %s for slice %s: %w", pane, sliceID, err)
 	}
-	logging.Action("agent launched", "session", session, "slice", sliceID, "workdir", workdir, "pane", pane)
+	logging.Action(what, append([]any{"session", session, "slice", sliceID, "workdir", workdir, "pane", pane}, extra...)...)
 	t.sweepMods()
 	return nil
 }
@@ -532,10 +561,10 @@ const noUpdates = "DISABLE_UPDATES=1"
 // sessionEnv says this tmux takes them ([Tmux.supportsSessionEnv]): the
 // launching process's PATH — so the agent's nat commands resolve whoever
 // started the tmux server; an empty one writes nothing rather than clobbering
-// the server's — the session's inbox ([inboxEnvArgs]) and usage file
-// ([usageEnvArgs]), [noUpdates] and, a slice's, [sliceEnvArgs]. An older tmux
-// gets none of them: it loses the quiet, the inbox and the usage file, never
-// the launch.
+// the server's — the session's inbox ([inboxEnvArgs]), usage file
+// ([usageEnvArgs]) and record ([sessionRecordEnvArgs]), [noUpdates] and, a
+// slice's, [sliceEnvArgs]. An older tmux gets none of them: it loses the
+// quiet, the inbox, the usage file and the resume, never the launch.
 func agentEnvArgs(session string, sessionEnv bool, slice []string) []string {
 	if !sessionEnv {
 		return nil
@@ -546,6 +575,7 @@ func agentEnvArgs(session string, sessionEnv bool, slice []string) []string {
 	}
 	args = append(args, inboxEnvArgs(session)...)
 	args = append(args, usageEnvArgs(session)...)
+	args = append(args, sessionRecordEnvArgs(session)...)
 	args = append(args, slice...)
 	return append(args, "-e", noUpdates)
 }
@@ -574,6 +604,12 @@ func sliceEnvArgs(sliceID, projectID string) []string {
 // — "" launches without that statusline or that mod — and the slice's
 // [sliceEnvArgs].
 func launchArgs(session, workdir, promptFile, opening string, m config.AgentModel, sessionEnv bool, sink, mod string, slice []string) []string {
+	return sessionArgs(session, workdir, sessionEnv, slice, agentCommand(workdir, promptFile, opening, m, sink, mod))
+}
+
+// sessionArgs is the new-session argv of an agent session running command,
+// the shape [launchArgs] and [Tmux.LaunchResumed] share.
+func sessionArgs(session, workdir string, sessionEnv bool, slice []string, command string) []string {
 	args := []string{
 		"new-session", "-d",
 		"-s", session,
@@ -582,7 +618,7 @@ func launchArgs(session, workdir, promptFile, opening string, m config.AgentMode
 	args = append(args, agentEnvArgs(session, sessionEnv, slice)...)
 	args = append(args,
 		"-P", "-F", "#{pane_id}",
-		"sh", "-c", agentCommand(workdir, promptFile, opening, m, sink, mod),
+		"sh", "-c", command,
 	)
 	args = append(args, statusOffArgs(session)...)
 	args = append(args, mouseOnArgs(session)...)
@@ -871,10 +907,42 @@ func modelFlags(m config.AgentModel, sink, mod string) string {
 // a compaction re-reads the file, so it stays where [WritePromptFile] put it
 // for as long as the session lives.
 func agentCommand(workdir, promptFile, opening string, m config.AgentModel, sink, mod string) string {
+	return inWorkdir(workdir, freshCommand(promptFile, opening, m, sink, mod))
+}
+
+// freshCommand is [agentCommand] without the cd: the claude a fresh launch
+// runs, and a resume falls back to.
+func freshCommand(promptFile, opening string, m config.AgentModel, sink, mod string) string {
 	if mod == "" {
-		return inWorkdir(workdir, fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m, sink, mod), shellQuote(promptFile)))
+		return fmt.Sprintf(`claude%s "$(cat %s)"`, modelFlags(m, sink, mod), shellQuote(promptFile))
 	}
-	return inWorkdir(workdir, briefEnv+"="+shellQuote(promptFile)+" claude"+modelFlags(m, sink, mod)+" "+shellQuote(opening))
+	return briefEnv + "=" + shellQuote(promptFile) + " claude" + modelFlags(m, sink, mod) + " " + shellQuote(opening)
+}
+
+// resumeFailWindow is how soon, in seconds, a resume that exits with an error
+// is read as Claude Code refusing it — a session id this machine has no
+// transcript for exits 1 in about two seconds (checked live on 2.1.296) —
+// rather than a resumed session that ran and then ended badly, which is left
+// ended as a fresh one would be. A variable so a test can close it.
+var resumeFailWindow = 15
+
+// resumeCommand is the shell command of a resumed launch: `claude --resume`
+// with r's session id and, as its positional prompt, r's short resumption
+// prompt read back from its file — checked live on 2.1.296, a prompt given
+// with --resume is sent as the next turn of the resumed transcript. With the
+// mod, NAT_BRIEF still names the full brief: the transcript already holds it
+// and the resume does not re-read it, but a compaction does. A resume that
+// fails within [resumeFailWindow] — no transcript for that id here — falls
+// through to [freshCommand] in the same pane, so the launch still starts an
+// agent, briefed afresh.
+func resumeCommand(workdir, promptFile, opening string, r Resumption, m config.AgentModel, sink, mod string) string {
+	brief := ""
+	if mod != "" {
+		brief = briefEnv + "=" + shellQuote(promptFile) + " "
+	}
+	resume := fmt.Sprintf(`%sclaude --resume %s%s "$(cat %s)"`, brief, shellQuote(r.SessionID), modelFlags(m, sink, mod), shellQuote(r.PromptFile))
+	return inWorkdir(workdir, fmt.Sprintf(`{ s=$(date +%%s); %s || { [ $(($(date +%%s) - s)) -lt %d ] && %s; }; }`,
+		resume, resumeFailWindow, freshCommand(promptFile, opening, m, sink, mod)))
 }
 
 // briefEnv is the variable the embedded mod reads a session's brief file from.
@@ -1124,6 +1192,18 @@ func BriefDir() (string, error) {
 // the user's alone, so the predictable path is no one else's to plant a file
 // at — the agent obeys whatever it reads there.
 func WritePromptFile(session, prompt string) (string, error) {
+	return writeBriefFile(session, prompt)
+}
+
+// WriteResumePromptFile writes a resumed launch's short prompt ([ResumePrompt])
+// to <state dir>/agent-brief/<session>.resume.md, beside the session's brief
+// and swept with it, returning the file's path.
+func WriteResumePromptFile(session, prompt string) (string, error) {
+	return writeBriefFile(session+".resume", prompt)
+}
+
+// writeBriefFile writes prompt to <base>.md in [BriefDir].
+func writeBriefFile(base, prompt string) (string, error) {
 	dir, err := BriefDir()
 	if err == nil {
 		err = os.MkdirAll(dir, 0o700)
@@ -1131,14 +1211,14 @@ func WritePromptFile(session, prompt string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("create prompt dir: %w", err)
 	}
-	return writePromptInto(dir, session, prompt)
+	return writePromptInto(dir, base, prompt)
 }
 
-// writePromptInto writes the prompt file inside dir, under a temp name renamed
-// into place, so a session compacting while its next launch writes never reads
-// half a brief.
-func writePromptInto(dir, session, prompt string) (string, error) {
-	path := filepath.Join(dir, session+".md")
+// writePromptInto writes the prompt file <base>.md inside dir, under a temp
+// name renamed into place, so a session compacting while its next launch
+// writes never reads half a brief.
+func writePromptInto(dir, base, prompt string) (string, error) {
+	path := filepath.Join(dir, base+".md")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(prompt), 0o600); err != nil {
 		_ = os.Remove(tmp)

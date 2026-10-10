@@ -3,6 +3,7 @@ package actions
 import (
 	"strings"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/logging"
@@ -37,8 +38,11 @@ func RemoveWorktree(w Worktrees, dir, branch string) bool {
 // and on the branch the launch placed its agent by: [WorkdirFor] and
 // [AgentBranch], the pair that must never disagree. A slice with no
 // repository at all (a source project's task that never recorded one,
-// [RepoUnknown]) has nothing to remove, and git is not asked.
+// [RepoUnknown]) has nothing to remove, and git is not asked. The slice's
+// session record goes too ([agent.ForgetSliceSession]): with the work ended,
+// there is nothing left for a launch to resume.
 func RemoveSliceWorktree(w Worktrees, s domain.Slice, p config.ProjectConfig) bool {
+	agent.ForgetSliceSession(s.ID)
 	dir := sliceRepo(s, p)
 	if dir == "" {
 		return true
@@ -53,8 +57,11 @@ func RemoveSliceWorktree(w Worktrees, s domain.Slice, p config.ProjectConfig) bo
 // [AgentBranch], so the caller passes the slice as it stood before any write
 // cleared its Branch. A slice with no repository has nothing to discard. A
 // refusal from git is logged and left, never the caller's failure — the slice
-// write has happened regardless — and reported false.
+// write has happened regardless — and reported false. The slice's session
+// record goes with them, as [RemoveSliceWorktree]'s does: a resumed transcript
+// would bring the discarded work back.
 func DiscardSliceWorktree(w Worktrees, s domain.Slice, p config.ProjectConfig) bool {
+	agent.ForgetSliceSession(s.ID)
 	dir := sliceRepo(s, p)
 	if dir == "" {
 		return true
@@ -131,6 +138,7 @@ func SweepLanded(w Worktrees, live func() (map[string]string, error), p config.P
 		if _, ok := running[j.id]; ok {
 			continue
 		}
+		agent.ForgetSliceSession(j.id)
 		RemoveWorktree(w, j.dir, j.branch)
 	}
 }

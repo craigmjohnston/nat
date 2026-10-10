@@ -79,6 +79,7 @@ func agentKill(ctx context.Context, args []string, env Env) error {
 		if err := tmux.Kill(session); err != nil {
 			return fmt.Errorf("kill the session: %w", err)
 		}
+		agent.RemoveSessionRecord(session)
 		return nil
 	}
 
@@ -93,6 +94,11 @@ func agentKill(ctx context.Context, args []string, env Env) error {
 
 	if err := tmux.Kill(session); err != nil {
 		return fmt.Errorf("kill the session: %w", err)
+	}
+	// A slice's record outlives its session, for the relaunch to resume; an
+	// ad hoc session is never relaunched, so its record goes with it.
+	if agent.IsSessionTag(id) {
+		agent.RemoveSessionRecord(session)
 	}
 	return nil
 }

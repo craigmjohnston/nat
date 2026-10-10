@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
 	"github.com/craigmjohnston/nat/internal/store"
 )
@@ -95,6 +96,8 @@ func releaseSlice(st store.Store, s domain.Slice, assignee string) tea.Cmd {
 		if _, err := st.ReleaseSlice(ctx, s.ID, shape, assignee); err != nil {
 			return fail(err)
 		}
+		// The next launch is a fresh claim, never a resume of this one's session.
+		agent.ForgetSliceSession(s.ID)
 		return sliceSavedMsg{note: fmt.Sprintf("Released %q back to Todo.", s.Name), sliceID: s.ID}
 	}
 }
