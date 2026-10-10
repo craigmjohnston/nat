@@ -11,7 +11,6 @@ package git
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -20,6 +19,8 @@ import (
 	"time"
 
 	"github.com/craigmjohnston/nat/internal/logging"
+
+	"github.com/craigmjohnston/nat/internal/subprocess"
 )
 
 // Binary is git as it is invoked, found on PATH.
@@ -30,7 +31,7 @@ const Binary = "git"
 // that outruns this bound is the same as one that could not reach the remote,
 // which leaves the repository at the state it last fetched rather than stopping
 // anything. The bound matters because the board is waiting on all of it.
-const gitTimeout = 30 * time.Second
+var gitTimeout = 30 * time.Second
 
 // DefaultBase is what a slice's branch is diffed against, and what a slice's
 // worktree is cut from, when the repository does not say what its default
@@ -59,15 +60,8 @@ var _ Runner = ExecRunner{}
 // which explains the failure better than the exit code does; anything else — a
 // git that is not installed, say — is returned as os/exec reported it.
 func (ExecRunner) Run(dir, name string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if err := subprocess.Run(gitTimeout, dir, nil, &stdout, &stderr, name, args...); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return stdout.String(), &ExitError{Code: exitErr.ExitCode(), Stderr: stderr.String()}

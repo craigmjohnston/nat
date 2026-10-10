@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/craigmjohnston/nat/internal/logging"
+
+	"github.com/craigmjohnston/nat/internal/subprocess"
 )
 
 // callTimeout bounds one call to a plugin. A plugin is usually a round trip to
@@ -72,29 +74,15 @@ func (r ExecRunner) run(dir string, stdin io.Reader, name string, args ...string
 	if timeout == 0 {
 		timeout = callTimeout
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
-	cmd.Stdin = stdin
-	// A plugin that is a script may leave a child holding its pipes after it
-	// is killed; without a delay the wait would last as long as the child.
-	cmd.WaitDelay = time.Second
 	var stderr bytes.Buffer
 	stdout := &capWriter{max: maxStdout}
-	cmd.Stdout = stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err := subprocess.Run(timeout, dir, stdin, stdout, &stderr, name, args...)
 	if stdout.over {
 		// Checked first: a plugin cut off mid-write dies of the closed pipe, and
 		// its exit says nothing about why.
 		return "", fmt.Errorf("%s wrote more than %d bytes to stdout", name, maxStdout)
 	}
 	if err != nil {
-		if ctx.Err() != nil {
-			return "", fmt.Errorf("%s timed out after %s", name, timeout)
-		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return stdout.String(), &ExitError{Code: exitErr.ExitCode(), Stderr: stderr.String()}

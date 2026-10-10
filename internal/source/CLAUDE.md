@@ -73,7 +73,8 @@ input is the sharpest case: `TestSetupNeverLogsTheInput` opens the real log
   both package vars so tests can shorten them. `New` builds two
   `ExecRunner`s, one per timeout; `ExecRunner{}` (zero `Timeout`) means
   `callTimeout`. A timeout is reported as one, not as the killed process's
-  exit code; `WaitDelay` stops a script's orphaned child holding the pipes.
+  exit code. Every call runs through `internal/subprocess`, which kills the
+  plugin's whole process group at the limit and bounds the wait on its pipes.
 - `Discover(configDir)`: `<configDir>/plugins/<name>/nat-source-<name>` first,
   then PATH (`pathEnv`, a test seam); the plugins dir wins a name clash. A
   plugin must be a regular file (a symlink to one counts) with an execute

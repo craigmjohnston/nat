@@ -46,10 +46,11 @@ final class GitHubReadingStoreTests: XCTestCase {
 
     private func store(
         _ client: FixtureNatClient, request: GitHubReadingStore.Request? = .init(projectIDs: ["p-1", "p-2"]),
-        tick: Duration? = nil, sleeps: Sleeps = Sleeps(), delivered: @escaping @MainActor (GitHubReading) -> Void = { _ in }
+        tick: Duration? = nil, limit: Duration = .seconds(120), sleeps: Sleeps = Sleeps(),
+        delivered: @escaping @MainActor (GitHubReading) -> Void = { _ in }
     ) -> GitHubReadingStore {
         GitHubReadingStore(
-            client: client, request: { request }, deliver: { delivered($0) }, tick: tick,
+            client: client, request: { request }, deliver: { delivered($0) }, tick: tick, limit: limit,
             sleep: { await sleeps.sleep($0) })
     }
 
@@ -118,6 +119,39 @@ final class GitHubReadingStoreTests: XCTestCase {
         XCTAssertEqual(client.prStatusRuns.count, 1)
         client.releasePRStatus()
         await first.value
+    }
+
+    /// A reading whose nat never answers — a cancel included — is abandoned
+    /// once the limit passes, counted as failed (nothing handed on), and the
+    /// next tick takes a reading of its own.
+    func testAStuckReadingIsAbandonedAndTheNextTickReads() async {
+        let client = FixtureNatClient()
+        client.holdPRStatus()
+        defer { client.releasePRStatus() }
+        let sleeps = Sleeps()
+        var delivered = 0
+        let reading = store(
+            client, tick: .seconds(30), limit: .milliseconds(50), sleeps: sleeps, delivered: { _ in delivered += 1 })
+        reading.start()
+        await waitUntil { sleeps.held == 1 }
+
+        sleeps.release()
+        await waitUntil { client.prStatusRuns.count == 1 }
+        await waitUntil { !reading.isReading && sleeps.held == 1 }
+        XCTAssertEqual(delivered, 0, "an abandoned reading is no news")
+        XCTAssertEqual(reading.sessionReadings, 0)
+
+        sleeps.release()
+        await waitUntil { client.prStatusRuns.count == 2 }
+        reading.stop()
+    }
+
+    /// A reading that answers inside the limit is handed on as ever.
+    func testAReadingInsideTheLimitLands() async {
+        let client = FixtureNatClient()
+        var delivered = 0
+        await store(client, limit: .seconds(10), delivered: { _ in delivered += 1 }).read()
+        XCTAssertEqual(delivered, 1)
     }
 
     /// The tick reads once per interval, whatever else is going on.

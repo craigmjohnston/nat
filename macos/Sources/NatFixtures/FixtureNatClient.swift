@@ -212,7 +212,8 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         checksHang.set(true)
     }
 
-    /// Hold every `pr-status` read from now on mid-call, until `releasePRStatus`.
+    /// Hold every `pr-status` read from now on mid-call, until `releasePRStatus`
+    /// — a cancel included, as a nat that never answers would.
     public func holdPRStatus() {
         prStatusHeld.set(true)
     }
@@ -463,7 +464,11 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         for id in projectIDs { prStatusRecorded.append(id) }
         prStatusSettleRecorded.append(settle ? "settle" : "poll")
         prStatusRunRecorded.append(projectIDs.joined(separator: ",") + (detail.map { " " + $0 } ?? ""))
-        while prStatusHeld.get() { try await Task.sleep(for: .milliseconds(1)) }
+        while prStatusHeld.get() {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(1)) { continuation.resume() }
+            }
+        }
         var projects: [String: PRStatusDoc] = [:]
         for id in projectIDs {
             if let doc = prStatusByProject.get()[id] {

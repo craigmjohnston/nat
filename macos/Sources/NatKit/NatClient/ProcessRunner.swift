@@ -46,29 +46,37 @@ public final class ProcessRunner: CommandRunning {
         async let stdoutData = drain(stdoutPipe)
         async let stderrData = drain(stderrPipe)
 
-        let exitCode: Int32 = try await withCheckedThrowingContinuation { continuation in
-            process.terminationHandler = { continuation.resume(returning: $0.terminationStatus) }
-            do {
-                try process.run()
-            } catch {
-                process.terminationHandler = nil
-                // A process that never ran writes nothing and closes
-                // nothing: the drains above are already blocked reading
-                // pipes whose write ends only a launch would have handed
-                // over, and leaving this scope awaits them (an abandoned
-                // async let is awaited, not abandoned) — so the write ends
-                // are closed here, which is the EOF that lets the drains
-                // finish and the error actually surface. Without it, a
-                // machine with no nat at all hangs instead of erroring.
-                try? stdoutPipe.fileHandleForWriting.close()
-                try? stderrPipe.fileHandleForWriting.close()
-                continuation.resume(throwing: error)
-                return
+        // A cancelled call ends its process — `GitHubReadingStore` abandoning
+        // a stuck `pr-status`, say — and so closes the pipes the drains read.
+        let stopper = Stopper(process)
+        let exitCode: Int32 = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                process.terminationHandler = { continuation.resume(returning: $0.terminationStatus) }
+                do {
+                    try process.run()
+                    stopper.launched()
+                } catch {
+                    process.terminationHandler = nil
+                    // A process that never ran writes nothing and closes
+                    // nothing: the drains above are already blocked reading
+                    // pipes whose write ends only a launch would have handed
+                    // over, and leaving this scope awaits them (an abandoned
+                    // async let is awaited, not abandoned) — so the write ends
+                    // are closed here, which is the EOF that lets the drains
+                    // finish and the error actually surface. Without it, a
+                    // machine with no nat at all hangs instead of erroring.
+                    try? stdoutPipe.fileHandleForWriting.close()
+                    try? stderrPipe.fileHandleForWriting.close()
+                    continuation.resume(throwing: error)
+                    return
+                }
+                if let standardInput = standardInput {
+                    stdinPipe.fileHandleForWriting.write(standardInput)
+                }
+                try? stdinPipe.fileHandleForWriting.close()
             }
-            if let standardInput = standardInput {
-                stdinPipe.fileHandleForWriting.write(standardInput)
-            }
-            try? stdinPipe.fileHandleForWriting.close()
+        } onCancel: {
+            stopper.cancel()
         }
 
         return (await stdoutData, await stderrData, exitCode)
@@ -123,5 +131,33 @@ public final class ProcessRunner: CommandRunning {
 
         // If not found in PATH, assume it's available in the current environment
         return executable
+    }
+}
+
+/// Ends a process on its call's cancel, whichever of the cancel and the launch
+/// comes first: a process not yet launched cannot be terminated (Foundation
+/// raises), so a cancel before the launch is kept until the launch.
+private final class Stopper: @unchecked Sendable {
+    private let lock = NSLock()
+    private let process: Process
+    private var isLaunched = false
+    private var isCancelled = false
+
+    init(_ process: Process) {
+        self.process = process
+    }
+
+    func launched() {
+        lock.withLock {
+            isLaunched = true
+            if isCancelled { process.terminate() }
+        }
+    }
+
+    func cancel() {
+        lock.withLock {
+            isCancelled = true
+            if isLaunched { process.terminate() }
+        }
     }
 }

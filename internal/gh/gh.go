@@ -9,7 +9,6 @@ package gh
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +17,8 @@ import (
 	"time"
 
 	"github.com/craigmjohnston/nat/internal/logging"
+
+	"github.com/craigmjohnston/nat/internal/subprocess"
 )
 
 // Binary is the GitHub CLI as it is invoked, found on PATH.
@@ -70,16 +71,8 @@ func (ExecRunner) RunWithStdin(dir string, stdin io.Reader, name string, args ..
 // run is Run and RunWithStdin's shared implementation, so the timeout, the
 // working directory and the exit handling are written once.
 func run(dir string, stdin io.Reader, name string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
-	cmd.Stdin = stdin
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if err := subprocess.Run(ghTimeout, dir, stdin, &stdout, &stderr, name, args...); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return stdout.String(), &ExitError{Code: exitErr.ExitCode(), Stderr: stderr.String()}
