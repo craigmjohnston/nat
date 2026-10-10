@@ -31,6 +31,11 @@ type usageFakeRunner struct {
 	readyContent  string
 	readyOnEscape int
 
+	// panes is what list-panes prints — the live agents — and listErr fails
+	// it.
+	panes   string
+	listErr error
+
 	escapeCount int
 	calls       []usageCall
 }
@@ -51,6 +56,8 @@ func (f *usageFakeRunner) Run(name string, args ...string) (string, error) {
 		sub = args[0]
 	}
 	switch sub {
+	case "list-panes":
+		return f.panes, f.listErr
 	case "new-session":
 		return "", f.launchErr
 	case "send-keys":
@@ -92,8 +99,9 @@ func (c *usageClock) Advance(d time.Duration) { c.now = c.now.Add(d) }
 func setUsageTestKnobs(t *testing.T, dir string) *usageClock {
 	t.Helper()
 	origDirFunc, origSleep, origNow := usageProbeDirFunc, usageSleep, usageNow
-	origSettle, origPanel := usagePromptSettleWait, usagePanelWait
+	origSettle, origPanel, origStatusDir := usagePromptSettleWait, usagePanelWait, agentStatusDirFunc
 	usageProbeDirFunc = func() (string, error) { return dir, nil }
+	agentStatusDirFunc = func() (string, error) { return dir, nil }
 	usagePromptSettleWait = 0
 	usagePanelWait = 0
 	clock := &usageClock{now: time.Now()}
@@ -101,7 +109,7 @@ func setUsageTestKnobs(t *testing.T, dir string) *usageClock {
 	usageSleep = func(d time.Duration) { clock.Advance(d) }
 	t.Cleanup(func() {
 		usageProbeDirFunc, usageSleep, usageNow = origDirFunc, origSleep, origNow
-		usagePromptSettleWait, usagePanelWait = origSettle, origPanel
+		usagePromptSettleWait, usagePanelWait, agentStatusDirFunc = origSettle, origPanel, origStatusDir
 	})
 	return clock
 }
@@ -143,6 +151,9 @@ func TestUsagePrintsReadingAsJSON(t *testing.T) {
 	}
 	if doc.SevenDay == nil || doc.SevenDay.UsedPercentage != 81 || doc.SevenDay.ResetsAt != 2000 {
 		t.Errorf("seven_day = %+v, want 81%% resetting at 2000", doc.SevenDay)
+	}
+	if doc.Source != "probe" {
+		t.Errorf("source = %q, want probe", doc.Source)
 	}
 
 	// The probe cleans up after itself: no sink and no transcript left.
@@ -367,7 +378,10 @@ func TestUsageUnavailableWhenDirCannotBeResolved(t *testing.T) {
 	usageProbeDirFunc = func() (string, error) { return "", errors.New("no home directory") }
 	t.Cleanup(func() { usageProbeDirFunc = origDirFunc })
 
-	env := Env{Out: &strings.Builder{}}
+	env := Env{
+		NewTmux: func() *agent.Tmux { return agent.NewTmuxWithRunner(&usageFakeRunner{}) },
+		Out:     &strings.Builder{},
+	}
 	if err := Run(context.Background(), []string{"usage"}, env); err != nil {
 		t.Fatalf("usage: %v", err)
 	}
@@ -521,7 +535,102 @@ func TestUsageNoRateLimitsIsUnavailable(t *testing.T) {
 	if err := Run(context.Background(), []string{"usage", "--json"}, env); err != nil {
 		t.Fatalf("usage: %v", err)
 	}
-	if got := env.Out.(*strings.Builder).String(); strings.TrimSpace(got) != "{}" {
-		t.Errorf("output = %q, want an empty object", got)
+	if got := env.Out.(*strings.Builder).String(); strings.Join(strings.Fields(got), "") != `{"source":"probe"}` {
+		t.Errorf("output = %q, want no window, from the probe", got)
+	}
+}
+
+// livePane is one tagged agent pane as list-panes prints it.
+func livePane(session string) string {
+	return "3b738308f654815fa843dce9c020efb4\t%1\t" + session + "\t@1\t0\t\n"
+}
+
+// writeAgentUsage writes session's usage file into dir as the mod does, read
+// at at.
+func writeAgentUsage(t *testing.T, dir, session string, at time.Time) {
+	t.Helper()
+	doc := `{"read_at":"` + at.Format(time.RFC3339) + `","rate_limits":{` +
+		`"five_hour":{"used_percentage":23.5,"resets_at":"2026-10-10T15:00:00Z"},` +
+		`"seven_day":{"used_percentage":61,"resets_at":"2026-10-14T09:00:00Z"}}}`
+	if err := os.WriteFile(filepath.Join(dir, session+".usage.json"), []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// launched says whether the runner was asked to start a probe session.
+func launched(r *usageFakeRunner) bool {
+	for _, c := range r.calls {
+		if len(c.args) > 1 && c.args[1] == "new-session" {
+			return true
+		}
+	}
+	return false
+}
+
+// A live agent's fresh reading answers, and no probe is launched.
+func TestUsageReadsALiveAgentInsteadOfProbing(t *testing.T) {
+	dir := t.TempDir()
+	clock := setUsageTestKnobs(t, dir)
+	writeAgentUsage(t, dir, "nat-1", clock.Now().Add(-time.Minute))
+	runner := &usageFakeRunner{panes: livePane("nat-1")}
+	env := Env{
+		NewTmux: func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) },
+		Out:     &strings.Builder{},
+	}
+	if err := Run(context.Background(), []string{"usage", "--json"}, env); err != nil {
+		t.Fatalf("usage: %v", err)
+	}
+	if launched(runner) {
+		t.Error("a probe was launched with a fresh agent reading to hand")
+	}
+	var doc usageJSON
+	if err := json.Unmarshal([]byte(env.Out.(*strings.Builder).String()), &doc); err != nil {
+		t.Fatalf("unmarshal output: %v", err)
+	}
+	if doc.Source != "agent" {
+		t.Errorf("source = %q, want agent", doc.Source)
+	}
+	if doc.FiveHour == nil || doc.FiveHour.UsedPercentage != 23.5 || doc.FiveHour.ResetsAt != time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC).Unix() {
+		t.Errorf("five_hour = %+v, want 23.5%% resetting 15:00Z", doc.FiveHour)
+	}
+	if doc.SevenDay == nil || doc.SevenDay.UsedPercentage != 61 {
+		t.Errorf("seven_day = %+v, want 61%%", doc.SevenDay)
+	}
+}
+
+// An agent's reading ten minutes old falls through to the probe; so does one
+// that cannot be looked for, tmux's listing or the state directory failing.
+func TestUsageProbesWithNoFreshAgentReading(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		listErr error
+		dirErr  error
+	}{
+		{name: "stale"},
+		{name: "no listing", listErr: errors.New("no server")},
+		{name: "no state dir", dirErr: errors.New("no home directory")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			clock := setUsageTestKnobs(t, dir)
+			writeAgentUsage(t, dir, "nat-1", clock.Now().Add(-agent.AgentUsageMaxAge))
+			if tt.dirErr != nil {
+				agentStatusDirFunc = func() (string, error) { return "", tt.dirErr }
+			}
+			runner := &usageFakeRunner{panes: livePane("nat-1"), listErr: tt.listErr, launchErr: errors.New("no tmux")}
+			env := Env{
+				NewTmux: func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) },
+				Out:     &strings.Builder{},
+			}
+			if err := Run(context.Background(), []string{"usage", "--json"}, env); err != nil {
+				t.Fatalf("usage: %v", err)
+			}
+			if !launched(runner) {
+				t.Error("no probe launched")
+			}
+			if got := strings.Join(strings.Fields(env.Out.(*strings.Builder).String()), ""); got != `{"source":"probe"}` {
+				t.Errorf("output = %q, want the failed probe's empty reading", got)
+			}
+		})
 	}
 }

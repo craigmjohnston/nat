@@ -538,9 +538,10 @@ const noUpdates = "DISABLE_UPDATES=1"
 // sessionEnv says this tmux takes them ([Tmux.supportsSessionEnv]): the
 // launching process's PATH — so the agent's nat commands resolve whoever
 // started the tmux server; an empty one writes nothing rather than clobbering
-// the server's — the session's inbox ([inboxEnvArgs]), [noUpdates] and slice,
-// a slice's [sliceEnvArgs]. An older tmux gets none of them: it loses the
-// quiet and the inbox, never the launch.
+// the server's — the session's inbox ([inboxEnvArgs]) and usage file
+// ([usageEnvArgs]), [noUpdates] and, a slice's, [sliceEnvArgs]. An older tmux
+// gets none of them: it loses the quiet, the inbox and the usage file, never
+// the launch.
 func agentEnvArgs(session string, sessionEnv bool, slice []string) []string {
 	if !sessionEnv {
 		return nil
@@ -550,6 +551,7 @@ func agentEnvArgs(session string, sessionEnv bool, slice []string) []string {
 		args = append(args, "-e", "PATH="+path)
 	}
 	args = append(args, inboxEnvArgs(session)...)
+	args = append(args, usageEnvArgs(session)...)
 	args = append(args, slice...)
 	return append(args, "-e", noUpdates)
 }

@@ -122,6 +122,22 @@ running agent's state.
   each independently `nil` when absent — unknown, never 0%. `internal/cli`'s
   `usage` command is what actually drives the probe end to end (launch,
   prompt, poll, clean up); this file is only the mechanics it drives.
+- **A live agent answers first** (`agentusage.go`): every `Launch`/`LaunchBare`
+  carries `-e NAT_USAGE=<state dir>/agent-status/<session>.usage.json`
+  (`usageEnvArgs`, beside the inbox, under the `-e` gate — the whole path,
+  as for `NAT_INBOX`, never a session name the mod would have to resolve).
+  The mod's `session.measure` hook (after each turn, and when a window moves
+  a whole point) writes `{read_at, rate_limits: {five_hour, seven_day}}` there,
+  each window only where measured, nothing where none is (temp + `mv`).
+  `ReadAgentUsage` takes the freshest `read_at` of a live session younger than
+  `AgentUsageMaxAge` (10 min); a file that does not parse or carries no window
+  is logged and skipped, a window with no readable `resets_at` is unknown.
+  `nat usage` answers that (`"source": "agent"`) and probes only with none
+  (`"source": "probe"`); gnat ignores `source`. `ReadStatuses`' sweep removes
+  the file with the session's others (same prefix, same `sweepGrace`).
+  Checked live on 2.1.296: opening `/usage` alone, no model turn, fires the
+  hook; a second `/usage` whose numbers moved under a point by the engine's
+  reading writes nothing.
 
 ## Agent statusline (`agentstatus.go`)
 

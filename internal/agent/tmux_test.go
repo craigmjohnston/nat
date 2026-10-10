@@ -329,6 +329,9 @@ func TestLaunch(t *testing.T) {
 			// The session's inbox, which the embedded mod submits nat's
 			// sends from.
 			"-e", "NAT_INBOX=" + inbox,
+			// The file the mod writes the account's rate limits to, which
+			// `nat usage` reads in place of a probe.
+			"-e", "NAT_USAGE=" + filepath.Join(statusDir, "nat-b4463d8f.usage.json"),
 			// No "Update available!" line in an agent's pane: gnat says
 			// once that a newer Claude Code exists.
 			"-e", "DISABLE_UPDATES=1",
