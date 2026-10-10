@@ -19,6 +19,37 @@ final class ClaudeVersionTests: XCTestCase {
         XCTAssertFalse(version.updateAvailable)
     }
 
+    /// The update method as nat names it: Homebrew with its cask, Claude
+    /// Code's own updater, or nothing from a nat that predates it.
+    func testDecodesTheUpdateMethod() throws {
+        func method(_ json: String) throws -> ClaudeUpdateMethod? {
+            try JSONDecoder().decode(ClaudeVersion.self, from: Data(json.utf8)).updateMethod
+        }
+        XCTAssertEqual(try method(#"{"update_available": false, "update_method": "homebrew", "homebrew_cask": "claude-code"}"#),
+                       .homebrew(cask: "claude-code"))
+        XCTAssertEqual(try method(#"{"update_available": false, "update_method": "homebrew"}"#), .homebrew(cask: ""))
+        XCTAssertEqual(try method(#"{"update_available": false, "update_method": "claude"}"#), .claudeUpdater)
+        XCTAssertNil(try method(#"{"update_available": false}"#))
+        XCTAssertNil(try method(#"{"update_available": false, "update_method": "snap"}"#))
+    }
+
+    /// Encoding round-trips every method.
+    func testEncodesTheUpdateMethod() throws {
+        for version in [Fixtures.claudeVersionBehind, Fixtures.claudeVersionBehindHomebrew,
+                        ClaudeVersion(installed: nil, latest: nil, updateAvailable: false)] {
+            let data = try JSONEncoder().encode(version)
+            XCTAssertEqual(try JSONDecoder().decode(ClaudeVersion.self, from: data), version)
+        }
+    }
+
+    func testMethodAndInstalledWords() {
+        XCTAssertEqual(ClaudeUpdateMethod.homebrew(cask: "claude-code@latest").description,
+                       "Homebrew (cask claude-code@latest)")
+        XCTAssertEqual(ClaudeUpdateMethod.claudeUpdater.description, "Claude Code")
+        XCTAssertEqual(Fixtures.claudeVersionBehind.installedText, "2.1.294")
+        XCTAssertEqual(ClaudeVersion(installed: nil, latest: "2.1.295", updateAvailable: false).installedText, "unknown")
+    }
+
     func testDecodesTheUpdateOutput() throws {
         let json = #"{"output": "Successfully updated\n"}"#
         XCTAssertEqual(try JSONDecoder().decode(ClaudeUpdateResult.self, from: Data(json.utf8)).output,
@@ -58,13 +89,37 @@ final class ClaudeVersionStoreTests: XCTestCase {
         XCTAssertNil(store.version)
     }
 
-    /// The update runs through nat's `claude-update`, its output the sheet's.
-    func testUpdateRecordsClaudeUpdateAndShowsItsOutput() async {
+    /// The notice's click opens the window and runs nothing; closing it
+    /// runs nothing either.
+    func testConfirmRunsNothing() async {
         let client = FixtureNatClient(claudeVersion: Fixtures.claudeVersionBehind)
         let store = ClaudeVersionStore(client: client)
+        store.confirmUpdate()
+        XCTAssertEqual(store.update, .confirming)
+        store.dismissUpdate()
+        XCTAssertNil(store.update)
+        XCTAssertEqual(client.writes, [])
+    }
+
+    /// A click while the window is already up leaves it as it stands.
+    func testConfirmLeavesAnOpenWindowAlone() async {
+        let store = ClaudeVersionStore(client: FixtureNatClient())
+        await store.runUpdate()
+        XCTAssertEqual(store.update, .finished)
+        store.confirmUpdate()
+        XCTAssertEqual(store.update, .finished)
+    }
+
+    /// Update runs nat's `claude-update`, then reads the version again so
+    /// the window shows the one now installed.
+    func testUpdateRecordsClaudeUpdateAndRereadsTheVersion() async {
+        let client = FixtureNatClient(claudeVersion: Fixtures.claudeVersionBehind)
+        let store = ClaudeVersionStore(client: client)
+        store.confirmUpdate()
         await store.runUpdate()
         XCTAssertEqual(client.writes, ["claude-update"])
-        XCTAssertEqual(store.update, .finished(output: Fixtures.claudeUpdateOutput))
+        XCTAssertEqual(store.update, .finished)
+        XCTAssertEqual(store.version, Fixtures.claudeVersionBehind)
         store.dismissUpdate()
         XCTAssertNil(store.update)
     }

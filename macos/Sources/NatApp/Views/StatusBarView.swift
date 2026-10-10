@@ -7,8 +7,8 @@ import NatKit
 /// (bar the warning tint where a reading runs high); then, only while nat
 /// throttles or has paused polling, GitHub's budget (`GitHubBudgetReadout`,
 /// off the last reading); then, only where a newer Claude Code exists, the
-/// one update notice (`ClaudeUpdateNotice`), which runs the update and shows
-/// its outcome in a sheet (`ClaudeUpdateSheet`); at the trailing edge
+/// one update notice (`ClaudeUpdateNotice`), which opens the update window
+/// (`ClaudeUpdateSheet`) that runs it; at the trailing edge
 /// (`trailing`), the selection's live agent's model, effort and context in
 /// the same (`AgentModelHeading`) — a slice's, a session's, the planning
 /// agent's — or nothing. Where the selection sits is the titlebar band's
@@ -44,7 +44,7 @@ struct StatusBarView<Trailing: View>: View {
             }
             if let versions = appModel.claudeVersionStore, let notice = versions.notice {
                 StatusBarDivider()
-                ClaudeUpdateNotice(text: notice) { Task { await versions.runUpdate() } }
+                ClaudeUpdateNotice(text: notice) { versions.confirmUpdate() }
             }
             Spacer(minLength: 16)
             trailing()
@@ -62,8 +62,11 @@ struct StatusBarView<Trailing: View>: View {
             get: { appModel.claudeVersionStore?.update != nil },
             set: { if !$0 { appModel.claudeVersionStore?.dismissUpdate() } }
         )) {
-            if let state = appModel.claudeVersionStore?.update {
-                ClaudeUpdateSheet(state: state) { appModel.claudeVersionStore?.dismissUpdate() }
+            if let versions = appModel.claudeVersionStore, let state = versions.update {
+                ClaudeUpdateSheet(
+                    state: state, version: versions.version,
+                    onUpdate: { Task { await versions.runUpdate() } },
+                    onDone: { versions.dismissUpdate() })
             }
         }
     }
@@ -110,31 +113,39 @@ private struct GitHubBudgetText: View {
     }
 }
 
-/// gnat's Claude Code update notice, as a small accent chip, the attention the sidebar's Plan ready badge draws in.
-/// A click runs the update.
+/// gnat's Claude Code update notice, as a small chip in the theme's orange.
+/// A click opens the update window; nothing runs until its Update.
 struct ClaudeUpdateNotice: View {
     let text: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Chip(text, tone: .accent, size: .small, systemImage: "arrow.down.circle").fixedSize()
+            Chip(text, tone: .attention, size: .small, systemImage: "arrow.down.circle").fixedSize()
         }
         .buttonStyle(.plain)
         .help("Update Claude Code")
     }
 }
 
-/// What the update did: under way, then `claude update`'s own output or
-/// nat's refusal, and what an update means for agents already running.
+/// The update window: before the update, which version is installed, which
+/// it would update to and how, with Cancel and Update; while it runs, a
+/// spinner and nothing to press; then that it worked, with the version now
+/// installed and what that means for agents already running, or that it
+/// failed, the updater's words folded under Show details.
 struct ClaudeUpdateSheet: View {
     let state: ClaudeUpdateState
+    /// nat's latest reading — after a success, the one read since.
+    let version: ClaudeVersion?
+    let onUpdate: () -> Void
     let onDone: () -> Void
 
-    /// Live agents keep the binary they started with; the sheet says so
+    @State private var detailsShown = false
+
+    /// Live agents keep the binary they started with; the window says so
     /// rather than leaving the user to wonder why a pane still runs the old.
     static let agentsNote = "Agents already running keep the version they started with. "
-        + "Agents launched from now on use the new one."
+        + "Agents launched from now on use the new version."
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -143,21 +154,29 @@ struct ClaudeUpdateSheet: View {
                     .font(.system(size: Typo.headline, weight: .semibold))
                     .ink(.primary)
                 switch state {
+                case .confirming:
+                    facts
                 case .running:
+                    facts
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Running claude update\u{2026}").ink(.secondary)
+                        Text("Updating Claude Code\u{2026}").ink(.secondary)
                     }
-                case .finished(let output):
-                    outputText(output).ink(.secondary)
-                case .failed(let message):
-                    outputText(message).ink(.danger)
-                }
-                if case .failed = state {} else {
+                case .finished:
+                    Text("Claude Code \(version?.installedText ?? "unknown") is installed.")
+                        .ink(.secondary)
                     Text(Self.agentsNote)
                         .font(.system(size: Typo.subhead))
                         .ink(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
+                case .failed(let message):
+                    Text("The update did not finish. The installed version is unchanged.")
+                        .ink(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    DisclosureGroup("Show details", isExpanded: $detailsShown) {
+                        outputText(message).ink(.danger).padding(.top, 6)
+                    }
+                    .font(.system(size: Typo.subhead))
                 }
             }
             .padding(.horizontal, 20)
@@ -166,12 +185,23 @@ struct ClaudeUpdateSheet: View {
             Rule()
                 .padding(.top, 14)
 
-            HStack {
+            HStack(spacing: 8) {
                 Spacer()
-                Button("Done", action: onDone)
-                    .buttonStyle(PrimaryButtonStyle())
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(state == .running)
+                switch state {
+                case .confirming, .running:
+                    Button("Cancel", action: onDone)
+                        .buttonStyle(SecondaryButtonStyle())
+                        .keyboardShortcut(.cancelAction)
+                        .disabled(state == .running)
+                    Button("Update", action: onUpdate)
+                        .buttonStyle(PrimaryButtonStyle())
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(state == .running)
+                case .finished, .failed:
+                    Button("Done", action: onDone)
+                        .buttonStyle(PrimaryButtonStyle())
+                        .keyboardShortcut(.defaultAction)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 14)
@@ -179,9 +209,29 @@ struct ClaudeUpdateSheet: View {
         }
         .frame(width: 420)
         .surface(.card)
+        .interactiveDismissDisabled(state == .running)
     }
 
-    /// claude's own words, or nat's refusal, as printed: monospaced,
+    /// Installed, the version it would update to, and how — the method's
+    /// row only where nat said one.
+    private var facts: some View {
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
+            factRow("Installed", version?.installedText ?? "unknown")
+            factRow("Update to", version?.latest ?? "unknown")
+            if let method = version?.updateMethod {
+                factRow("Updates with", method.description)
+            }
+        }
+    }
+
+    private func factRow(_ key: String, _ value: String) -> some View {
+        GridRow {
+            Text(key).ink(.tertiary)
+            Text(value).ink(.primary).textSelection(.enabled)
+        }
+    }
+
+    /// nat's refusal, carrying the updater's words, as printed: monospaced,
     /// selectable, scrolling past a few lines.
     private func outputText(_ text: String) -> some View {
         ScrollView {
@@ -197,6 +247,7 @@ struct ClaudeUpdateSheet: View {
 
     private var title: String {
         switch state {
+        case .confirming: "Update Claude Code"
         case .running: "Updating Claude Code"
         case .finished: "Claude Code updated"
         case .failed: "Claude Code could not update"
