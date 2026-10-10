@@ -33,6 +33,9 @@ Tested with Claude Code **2.1.294**.
   And they report the account's rate limits: `session.measure` writes the
   five-hour and seven-day windows to the file `NAT_USAGE` names (temp file,
   then `mv`), which `nat usage` answers from while any agent is live.
+  And they record the session for a relaunch to resume: `session.start`
+  writes the session id, its directory and its start time to the file
+  `NAT_SESSION_RECORD` names (temp file, then `mv`).
 - `types/index.d.ts` — the `$.state` contract: the wait last written, so a
   hot reload neither forgets it nor writes the flag again.
 - `tests/` — `claude plugin test` suites.

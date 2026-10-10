@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/craigmjohnston/nat/internal/actions"
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
@@ -47,6 +48,7 @@ func (a *App) removeLanded(ids []string) tea.Cmd {
 	return func() tea.Msg {
 		msg := worktreesRemovedMsg{}
 		for _, j := range jobs {
+			agent.ForgetSliceSession(j.id)
 			if removeWorktree(w, j.dir, j.branch) {
 				msg.ids = append(msg.ids, j.id)
 			}

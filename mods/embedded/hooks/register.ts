@@ -6,6 +6,7 @@ import type { Wait } from '../types'
 type Engine = StateDollar & Pick<EngineInterface, 'process' | 'ui'>
 type InboxEngine = Pick<EngineInterface, 'clock' | 'fs' | 'process' | 'prompt' | 'ui'>
 type ResumeEngine = Pick<EngineInterface, 'env' | 'process' | 'ui'>
+type RecordEngine = Pick<EngineInterface, 'clock' | 'env' | 'fs' | 'process' | 'session' | 'ui'>
 
 // What the mod last wrote on the pane, held by the host so a hot reload (a
 // fresh module) neither forgets a wait it marked nor writes the flag again.
@@ -73,6 +74,31 @@ function pollInbox($: InboxEngine, dir: string): void {
       busy = false
     }
   })
+}
+
+// Records this Claude Code session in the file nat named (`NAT_SESSION_RECORD`,
+// set on every launch), so a relaunch after the session has gone can resume
+// its transcript (`claude --resume`) rather than brief a fresh one. Written
+// under a temp name and moved into place, as nat's own writers do, so nat
+// never reads half a record. A resume or a `/clear` starts the session again
+// and rewrites it. Nothing here throws: a record not written is a relaunch
+// that starts fresh.
+async function record($: RecordEngine, cwd: string): Promise<void> {
+  try {
+    const path = await $.env.get('NAT_SESSION_RECORD')
+    if (!path) return
+    const text = JSON.stringify({
+      session_id: await $.session.id(),
+      cwd,
+      started_at: new Date(await $.clock.now()).toISOString(),
+    })
+    const tmp = `${path}.tmp`
+    await $.fs.write(tmp, text)
+    const { exitCode, stderr } = await $.process.run(['mv', tmp, path], { timeoutMs: 10_000 })
+    if (exitCode !== 0) $.ui.log(`session record not moved into place: ${stderr.trim()}`, { to: 'debug' })
+  } catch (err) {
+    $.ui.log(`session record not written: ${String(err)}`, { to: 'debug' })
+  }
 }
 
 // The origins of a prompt the user wrote themselves: Enter in the pane (gnat's
@@ -151,10 +177,12 @@ async function writeUsage($: UsageEngine, rateLimits: readonly SessionRateLimit[
 // mode labels (`SessionMode`) are information and are left alone.
 export const register: Register = on => {
   // Prompts nat sends this session arrive through its inbox; a session nat
-  // launched with none (an older tmux) is sent them by a paste instead.
+  // launched with none (an older tmux) is sent them by a paste instead. The
+  // session is recorded for a later relaunch to resume.
   on('session.start', async ($, e, next) => {
     const dir = await $.env.get('NAT_INBOX')
     if (dir) pollInbox($, dir)
+    await record($, e.cwd)
     return next(e)
   })
 

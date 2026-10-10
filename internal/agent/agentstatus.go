@@ -190,8 +190,10 @@ func ReadStatuses(live map[string]string) map[string]AgentStatus {
 
 // sweepSessionFiles removes the files in dir of sessions not in keep, once
 // they are older than [sweepGrace]. A file belongs to the session its name
-// starts with, up to the first dot: session names have none. Failures are
-// ignored: a leftover is swept next poll.
+// starts with, up to the first dot: session names have none. A session record
+// ([SessionRecord]) is never swept: it is what a relaunch after the session has
+// gone resumes, and is removed only where the work ends. Failures are ignored:
+// a leftover is swept next poll.
 func sweepSessionFiles(dir string, keep map[string]bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -200,7 +202,7 @@ func sweepSessionFiles(dir string, keep map[string]bool) {
 	for _, e := range entries {
 		name := e.Name()
 		session, _, _ := strings.Cut(name, ".")
-		if keep[session] {
+		if keep[session] || strings.HasSuffix(name, sessionRecordSuffix) {
 			continue
 		}
 		if info, err := e.Info(); err != nil || time.Since(info.ModTime()) < sweepGrace {

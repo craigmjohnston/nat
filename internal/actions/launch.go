@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
@@ -24,6 +25,7 @@ import (
 // anything a launch itself does.
 type Launcher interface {
 	Launch(session, workdir, promptFile, opening, sliceID, projectID string, model config.AgentModel) error
+	LaunchResumed(session, workdir, promptFile, opening, sliceID, projectID string, r agent.Resumption, model config.AgentModel) error
 }
 
 // PRReviewReader is what a launch needs of gh to gather a pull request's
@@ -141,7 +143,9 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 	// time. Either write's own failure is logged and never fails the
 	// launch — the agent is started either way, and the gap is one line in
 	// a log, not lost work.
-	if store.HasHistory(store.TaskEvents(brief)) {
+	events := store.TaskEvents(brief)
+	relaunch := store.HasHistory(events)
+	if relaunch {
 		if err := st.RecordRelaunch(ctx, c.Slice.ID); err != nil {
 			logging.Action("could not record a relaunch", "slice", c.Slice.ID, "err", err)
 		}
@@ -154,10 +158,94 @@ func Launch(ctx context.Context, l Launcher, w Worktrees, r Repo, st Store, view
 	if err != nil {
 		return LaunchResult{}, fmt.Errorf("launch agent: %w", err)
 	}
-	if err := l.Launch(session, c.WorkingDir, file, agent.OpeningLine(c), c.Slice.ID, c.ProjectID, m); err != nil {
+	if r, ok := resumption(session, c, relaunch, events); ok {
+		err = l.LaunchResumed(session, c.WorkingDir, file, agent.OpeningLine(c), c.Slice.ID, c.ProjectID, r, m)
+	} else {
+		err = l.Launch(session, c.WorkingDir, file, agent.OpeningLine(c), c.Slice.ID, c.ProjectID, m)
+	}
+	if err != nil {
 		return LaunchResult{}, err
 	}
 	return LaunchResult{Context: c, Session: session, Toast: p.Toast, Sev: p.Sev}, nil
+}
+
+// resumption is the earlier Claude Code session a relaunch of session takes
+// back up, and whether there is one to: only where the launch picks work up
+// — [agent.Resuming], or a task log with history (relaunch) — and the
+// session's [agent.SessionRecord] names a directory still there. Its short
+// prompt ([agent.ResumePrompt]) carries what events recorded since the session
+// started. A record that does not qualify, or a prompt that cannot be written,
+// is logged and the launch goes fresh.
+func resumption(session string, c agent.PromptContext, relaunch bool, events []store.TaskEvent) (agent.Resumption, bool) {
+	if !relaunch && !agent.Resuming(c) {
+		return agent.Resumption{}, false
+	}
+	rec, ok := agent.ReadSessionRecord(session)
+	if !ok {
+		return agent.Resumption{}, false
+	}
+	if info, err := os.Stat(rec.Cwd); err != nil || !info.IsDir() {
+		logging.Action("launching fresh: the earlier session's directory is gone", "session", session, "cwd", rec.Cwd)
+		return agent.Resumption{}, false
+	}
+	prompt := agent.ResumePrompt(agent.ResumeContext{
+		SliceName: c.Slice.Name, SliceID: c.Slice.ID, ProjectID: c.ProjectID,
+		StartedAt: rec.StartedAt, Changes: eventsSince(events, rec.StartedAt),
+	})
+	file, err := agent.WriteResumePromptFile(session, prompt)
+	if err != nil {
+		logging.Action("launching fresh: could not write the resume prompt", "session", session, "err", err)
+		return agent.Resumption{}, false
+	}
+	return agent.Resumption{SessionID: rec.SessionID, PromptFile: file}, true
+}
+
+// eventLabels names each task-log kind as its section's heading does; the
+// launch lines are left out of [eventsSince], since one is the launch itself.
+var eventLabels = map[string]string{
+	store.HandedBackKind:   "Handed back",
+	store.SentBackKind:     "Sent back",
+	"resumed":              "Resumed",
+	"blocked":              "Blocked",
+	"summary":              "Summary",
+	"released":             "Released",
+	store.CancelledKind:    "Cancelled",
+	"follow_ups":           "Follow-ups",
+	"note":                 "Note",
+	store.ChecksFailedKind: "Checks failed",
+}
+
+// eventsSince renders the task-log events written after since, each under its
+// heading and time, then every follow-up decided after it: what a resumed
+// session did not see happen. An event with no time (written before sections
+// were stamped) is older than any session record, and left out.
+func eventsSince(events []store.TaskEvent, since time.Time) string {
+	var b strings.Builder
+	var decided []string
+	for _, e := range events {
+		for _, f := range e.FollowUps {
+			if f.Decision != "" && f.DecidedAt.After(since) {
+				decided = append(decided, fmt.Sprintf("- %q: %s", f.Title, f.Decision))
+			}
+		}
+		label, ok := eventLabels[e.Kind]
+		if !ok || !e.At.After(since) {
+			continue
+		}
+		fmt.Fprintf(&b, "### %s, at %s", label, e.At.Format(time.RFC3339))
+		if e.By != "" {
+			fmt.Fprintf(&b, ", by %s", e.By)
+		}
+		b.WriteString("\n\n")
+		if e.Note != "" {
+			b.WriteString(e.Note + "\n\n")
+		}
+	}
+	if len(decided) > 0 {
+		b.WriteString("### Follow-ups the user decided\n\n")
+		b.WriteString(strings.Join(decided, "\n") + "\n")
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // promptContainer reads the container a source project's slice hangs off — its

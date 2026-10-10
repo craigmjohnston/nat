@@ -155,6 +155,38 @@ running agent's state.
   absent (empty/nil) when unknown, never zero. It also sweeps files of
   sessions not live, but only once older than `sweepGrace`: a launch writes
   its record before tmux has tagged the pane. `nat status --json` surfaces it.
+  It never sweeps a `.session.json` (below).
+
+## Session records and resumed relaunches (`sessionrecord.go`, `resumeprompt.go`)
+
+- Every `Launch`/`LaunchBare` carries `-e NAT_SESSION_RECORD=<state
+  dir>/agent-status/<session>.session.json` (`sessionRecordEnvArgs`, under
+  the `-e` gate). The mod's `session.start` writes `{session_id, cwd,
+  started_at}` there (`SessionRecord`; `ReadSessionRecord` reads one, false
+  for none or garbage). The record must **outlive** its session — that is its
+  point — so the status sweep passes it over. It is removed
+  (`RemoveSessionRecord`, `ForgetSliceSession`) only where the work ends: every
+  `actions.RemoveSliceWorktree`/`DiscardSliceWorktree` (merge, Done with no
+  PR, trash, cancel), `SweepLanded` and the board's landed removal for what
+  they sweep, `release-slice` and the board's `R` (the next launch is a fresh
+  claim), and `agent-kill` of a planning or ad hoc session — **never** of a
+  slice's, which is exactly the session a relaunch resumes.
+- `actions.Launch` resumes where `Resuming(c)` or a task log with history
+  applies and the record's `cwd` is still a directory: it writes the full
+  brief as always, then `ResumePrompt` (slice, "this transcript is your own
+  earlier session", the task log's events after `started_at`, rendered by
+  `actions.eventsSince`, and the walked rules: `--project` pinning, naming,
+  tmux, waiting) to `<session>.resume.md` beside it (`WriteResumePromptFile`,
+  swept with the brief), and calls `LaunchResumed`. Anything short of that
+  launches fresh.
+- `resumeCommand`: `[NAT_BRIEF=<brief>] claude --resume <id> <flags>
+  "$(cat <resume file>)"` — checked live on 2.1.296: an initial prompt with
+  `--resume` is sent as the resumed transcript's next turn; NAT_BRIEF stays
+  for a later compaction, which re-reads it. A resume that exits non-zero
+  within `resumeFailWindow` (15 s; an unknown id exits 1 in about 2 s) falls
+  through to `freshCommand` in the same pane, so a failed resume is retried
+  fresh in the same launch. That fallback happens in the pane's shell, so
+  nat's log records the resume attempt (`claude_session`), not its outcome.
 - Tests in this package run with `HOME`/`XDG_STATE_HOME` pinned (`TestMain`).
 
 ## Sessions (`tmux.go`)

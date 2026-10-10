@@ -185,6 +185,19 @@ exactly as before. A session whose mod is written but never loads (an older
 Claude Code with no mods) starts on the opening line alone and asks what to
 work — visible, not silent.
 
+## The session record
+
+A relaunch (`actions.Launch` of a slice picking work up) resumes the slice's
+earlier Claude Code session where it can, rather than briefing a fresh one.
+Every launch sets `NAT_SESSION_RECORD=<state dir>/agent-status/<session>.session.json`
+with `new-session -e`, beside `NAT_INBOX` (the whole path: the state directory
+is nat's to resolve, never the mod's), and the mod's `session.start` writes
+`{ "session_id": $.session.id(), "cwd": e.cwd, "started_at": <ISO 8601> }`
+there — `$.fs.write` to `<path>.tmp`, then `mv` into place. A resume or a
+`/clear` starts the session again and rewrites it. A failure is logged to
+debug; with no record, the relaunch is fresh. Nat's side — when it is read,
+removed and resumed — is in `internal/agent/CLAUDE.md`.
+
 ## Agents never know
 
 Nothing in any agent prompt or embedded skill mentions the mod. It changes

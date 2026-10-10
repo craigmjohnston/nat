@@ -226,6 +226,12 @@ func (f *fakeLauncher) Launch(session, workdir, promptFile, opening, sliceID, pr
 	return f.launchErr
 }
 
+// LaunchResumed is recorded as a launch: the board's tests ask what was
+// launched, and the resume itself is [actions.Launch]'s to test.
+func (f *fakeLauncher) LaunchResumed(session, workdir, promptFile, opening, sliceID, projectID string, _ agent.Resumption, model config.AgentModel) error {
+	return f.Launch(session, workdir, promptFile, opening, sliceID, projectID, model)
+}
+
 func (f *fakeLauncher) SendPrompt(session, text string) error {
 	f.prompts = append(f.prompts, sendCall{session: session, text: text})
 	return f.sendErr
