@@ -94,7 +94,7 @@ func runClaudeVersion(t *testing.T) string {
 func TestClaudeVersionBothSides(t *testing.T) {
 	f := newClaudeVersionFixture(t, "2.1.294 (Claude Code)\n", nil, http.StatusOK, `{"tag_name":"v2.1.295"}`)
 	got := runClaudeVersion(t)
-	want := "{\n  \"installed\": \"2.1.294\",\n  \"latest\": \"2.1.295\",\n  \"update_available\": true\n}\n"
+	want := "{\n  \"installed\": \"2.1.294\",\n  \"latest\": \"2.1.295\",\n  \"update_available\": true,\n  \"update_method\": \"claude\"\n}\n"
 	if got != want {
 		t.Errorf("output = %q, want %q", got, want)
 	}
@@ -116,7 +116,7 @@ func TestClaudeVersionUpToDate(t *testing.T) {
 func TestClaudeVersionInstalledUnreadable(t *testing.T) {
 	newClaudeVersionFixture(t, "", errors.New("not found"), http.StatusOK, `{"tag_name":"v2.1.295"}`)
 	got := runClaudeVersion(t)
-	want := "{\n  \"latest\": \"2.1.295\",\n  \"update_available\": false\n}\n"
+	want := "{\n  \"latest\": \"2.1.295\",\n  \"update_available\": false,\n  \"update_method\": \"claude\"\n}\n"
 	if got != want {
 		t.Errorf("output = %q, want %q", got, want)
 	}
@@ -146,7 +146,7 @@ func TestClaudeVersionLatestUnreadable(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newClaudeVersionFixture(t, "2.1.294\n", nil, tt.status, tt.body)
 			got := runClaudeVersion(t)
-			want := "{\n  \"installed\": \"2.1.294\",\n  \"update_available\": false\n}\n"
+			want := "{\n  \"installed\": \"2.1.294\",\n  \"update_available\": false,\n  \"update_method\": \"claude\"\n}\n"
 			if got != want {
 				t.Errorf("output = %q, want %q", got, want)
 			}
@@ -249,9 +249,19 @@ func TestClaudeVersionText(t *testing.T) {
 	if err := Run(context.Background(), []string{"claude-version"}, Env{Out: &out}); err != nil {
 		t.Fatalf("claude-version: %v", err)
 	}
-	want := "installed: unknown\nlatest: 2.1.295\nupdate available: false\n"
+	want := "installed: unknown\nlatest: 2.1.295\nupdate available: false\nupdates with: claude update\n"
 	if out.String() != want {
 		t.Errorf("output = %q, want %q", out.String(), want)
+	}
+
+	// A Homebrew install names the brew command, cask and all.
+	claudePath = func() (string, error) { return "/opt/homebrew/Caskroom/claude-code@latest/2.1.294/claude", nil }
+	out.Reset()
+	if err := Run(context.Background(), []string{"claude-version"}, Env{Out: &out}); err != nil {
+		t.Fatalf("claude-version: %v", err)
+	}
+	if !strings.HasSuffix(out.String(), "updates with: brew upgrade claude-code@latest\n") {
+		t.Errorf("homebrew output = %q", out.String())
 	}
 }
 
@@ -431,7 +441,7 @@ func TestClaudeUpdateFailure(t *testing.T) {
 func TestClaudeVersionChannelByCask(t *testing.T) {
 	f := newClaudeVersionFixture(t, "2.1.285\n", nil, http.StatusOK, `{"tag_name":"v2.1.294"}`)
 	claudePath = func() (string, error) { return "/opt/homebrew/Caskroom/claude-code/2.1.285/claude", nil }
-	want := "{\n  \"installed\": \"2.1.285\",\n  \"latest\": \"2.1.286\",\n  \"update_available\": true\n}\n"
+	want := "{\n  \"installed\": \"2.1.285\",\n  \"latest\": \"2.1.286\",\n  \"update_available\": true,\n  \"update_method\": \"homebrew\",\n  \"homebrew_cask\": \"claude-code\"\n}\n"
 	if got := runClaudeVersion(t); got != want {
 		t.Errorf("stable cask: output = %q, want %q", got, want)
 	}

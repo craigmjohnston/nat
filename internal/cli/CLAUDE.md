@@ -179,7 +179,9 @@ below — a property of the logged-in Claude account, not of any project),
 `downloads.claude.ai/claude-code-releases/stable` pointer, each one
 unauthenticated HTTPS read — no gh — kept per channel in `<state
 dir>/claude-version-<channel>.json` for an hour; either side unread is absent and
-`update_available` false, never a failure) and `claude-update` (`brew upgrade
+`update_available` false, never a failure; `update_method` — `homebrew`, with
+`homebrew_cask`, or `claude` — and the text's `updates with:` line say how
+`claude-update` would run, from the same `claudeUpdateMethod` it runs by) and `claude-update` (`brew upgrade
 <cask>` where claude's real path holds `/Caskroom/<cask>/` — there `claude
 update` installs nothing, only printing the brew command and exiting 0 —
 else `claude update`; output relayed, `--json` `{output}`, a failure the

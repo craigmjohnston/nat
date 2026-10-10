@@ -2692,8 +2692,8 @@ enum AppStories {
 
         Story(
             name: "status-bar-claude-update",
-            summary: "A newer Claude Code released: one accent chip after the usage windows, "
-                + "\u{201C}Claude Code 2.1.295 available\u{201D} \u{2014} a click runs the update.",
+            summary: "A newer Claude Code released: one orange chip after the usage windows, "
+                + "\u{201C}Claude Code 2.1.295 available\u{201D} \u{2014} a click opens the update window.",
             size: CGSize(width: 1320, height: GnatMetrics.statusBarHeight)
         ) {
             StatusBarView(
@@ -2705,30 +2705,52 @@ enum AppStories {
         },
 
         Story(
-            name: "claude-update-sheet-running",
-            summary: "The update sheet while claude update runs: a spinner, Done disabled.",
-            size: CGSize(width: 420, height: 160)
+            name: "claude-update-sheet-confirm",
+            summary: "The update window the notice opens, nothing run yet: installed 2.1.294, update to "
+                + "2.1.295, through Claude Code\u{2019}s own updater; Cancel beside Update.",
+            size: CGSize(width: 420, height: 190)
         ) {
-            ClaudeUpdateSheet(state: .running) {}
+            ClaudeUpdateSheet(state: .confirming, version: Fixtures.claudeVersionBehind, onUpdate: {}, onDone: {})
+        },
+
+        Story(
+            name: "claude-update-sheet-confirm-homebrew",
+            summary: "The update window for a Homebrew install: the method names the cask.",
+            size: CGSize(width: 420, height: 190)
+        ) {
+            ClaudeUpdateSheet(
+                state: .confirming, version: Fixtures.claudeVersionBehindHomebrew, onUpdate: {}, onDone: {})
+        },
+
+        Story(
+            name: "claude-update-sheet-running",
+            summary: "The update window while the update runs: the versions and method kept, a spinner, "
+                + "Cancel and Update disabled.",
+            size: CGSize(width: 420, height: 220)
+        ) {
+            ClaudeUpdateSheet(state: .running, version: Fixtures.claudeVersionBehind, onUpdate: {}, onDone: {})
         },
 
         Story(
             name: "claude-update-sheet-finished",
-            summary: "The update sheet once it has run: claude update\u{2019}s own output, then that agents "
-                + "already running keep their version and ones launched from now on get the new one.",
-            size: CGSize(width: 420, height: 230)
+            summary: "The update window once it has run: the version now installed, read again from nat, "
+                + "then that agents already running keep their version and ones launched from now on get "
+                + "the new one. No updater output.",
+            size: CGSize(width: 420, height: 190)
         ) {
-            ClaudeUpdateSheet(state: .finished(output: Fixtures.claudeUpdateOutput)) {}
+            ClaudeUpdateSheet(state: .finished, version: Fixtures.claudeVersionCurrent, onUpdate: {}, onDone: {})
         },
 
         Story(
             name: "claude-update-sheet-failed",
-            summary: "The update sheet when claude update failed: nat\u{2019}s refusal, carrying claude\u{2019}s "
-                + "own words, and no note about agents \u{2014} nothing changed.",
-            size: CGSize(width: 420, height: 160)
+            summary: "The update window when the update failed: a plain sentence, the updater\u{2019}s words "
+                + "folded under Show details.",
+            size: CGSize(width: 420, height: 170)
         ) {
-            ClaudeUpdateSheet(state: .failed(
-                message: "nat: claude update: exit status 1: Error: could not write to the install directory")) {}
+            ClaudeUpdateSheet(
+                state: .failed(
+                    message: "nat: claude update: exit status 1: Error: could not write to the install directory"),
+                version: Fixtures.claudeVersionBehind, onUpdate: {}, onDone: {})
         },
 
         // MARK: - The header

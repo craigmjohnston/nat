@@ -3,7 +3,9 @@ import SwiftUI
 /// What a chip is saying, which is the only thing its call site should have to
 /// choose. See `InkRole` for why these are outcomes and not colour names.
 public enum Tone: Sendable {
-    case accent, success, danger, warning, neutral
+    /// `attention`: something new the user may act on that is not trouble —
+    /// the status bar's Claude Code update notice — in the theme's orange.
+    case accent, success, danger, warning, neutral, attention
 
     var chipTint: DesignTokens.ChipTint {
         switch self {
@@ -12,6 +14,7 @@ public enum Tone: Sendable {
         case .danger: .red
         case .warning: .yellow
         case .neutral: .labelSecondary
+        case .attention: .orange
         }
     }
 }

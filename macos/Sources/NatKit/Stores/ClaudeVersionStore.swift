@@ -3,19 +3,25 @@ import Foundation
 /// Where a Claude Code update the user asked for stands — what the update
 /// sheet draws.
 public enum ClaudeUpdateState: Equatable, Sendable {
+    /// The window is up and nothing has run: the user has yet to press
+    /// Update, and may close it instead.
+    case confirming
     /// `nat claude-update` is running.
     case running
-    /// It finished; `output` is what the update printed.
-    case finished(output: String)
-    /// It failed; `message` is nat's refusal, carrying the updater's words.
+    /// It finished. What the updater printed is not kept: the window shows
+    /// the installed version as read again.
+    case finished
+    /// It failed; `message` is nat's refusal, carrying the updater's words —
+    /// the window's folded details.
     case failed(message: String)
 }
 
 /// gnat's Claude Code update notice: the app says once, in the status bar,
-/// that a newer Claude Code exists, and updates it on a click. Reads
-/// `nat claude-version` at launch and every `refreshIntervalSeconds` after
-/// (nat keeps the release feed's answer an hour itself), and runs `nat
-/// claude-update` when the notice is clicked.
+/// that a newer Claude Code exists, and on a click opens a window saying what
+/// an update would do, which runs it only on Update. Reads `nat
+/// claude-version` at launch and every `refreshIntervalSeconds` after (nat
+/// keeps the release feed's answer an hour itself), and runs `nat
+/// claude-update` when Update is pressed.
 @MainActor
 @Observable
 public final class ClaudeVersionStore {
@@ -48,16 +54,24 @@ public final class ClaudeVersionStore {
         version = fresh
     }
 
-    /// Runs `claude update` through nat, the sheet showing it under way and
-    /// then its outcome; a success reads the version again, so the notice
-    /// goes. One at a time: asked again while one runs, nothing happens.
+    /// Opens the update window, running nothing — the notice's click. A
+    /// window already up is left as it stands.
+    public func confirmUpdate() {
+        guard update == nil else { return }
+        update = .confirming
+    }
+
+    /// Runs the update through nat — the window's Update — the window showing
+    /// it under way and then its outcome; a success reads the version again,
+    /// so the window shows the new one and the notice goes. One at a time:
+    /// asked again while one runs, nothing happens.
     public func runUpdate() async {
         guard update != .running else { return }
         update = .running
         do {
-            let output = try await client.claudeUpdate()
-            update = .finished(output: output)
+            _ = try await client.claudeUpdate()
             await refresh()
+            update = .finished
         } catch {
             update = .failed(message: error.localizedDescription)
         }

@@ -77,14 +77,19 @@ fuller structure and theme system.
 started and stopped beside `usageStore`) reads `nat claude-version` at launch
 and hourly; where `update_available`, the status bar draws
 `ClaudeUpdateNotice` after the usage windows (and any GitHub budget) — a small
-accent `Chip`, "Claude Code 2.1.295 available". A click runs `nat
-claude-update` (`runUpdate`, one at a time) and `ClaudeUpdateSheet` shows it
-running, then the output (and that running agents keep their version, new
-launches get the new one) or the refusal; a success re-reads the version.
+`Chip` in the orange tint (`Tone.attention`), "Claude Code 2.1.295 available".
+A click runs nothing: it opens `ClaudeUpdateSheet` (`confirmUpdate`,
+`.confirming`) — installed (unknown where unread), the version it would update
+to and how (`ClaudeVersion.updateMethod`, nat's `update_method`/`homebrew_cask`,
+never worked out in Swift), Cancel and Update. Update runs `nat claude-update`
+(`runUpdate`, one at a time; the window can't close while it runs), re-reads
+the version, and shows the one now installed and that running agents keep
+their version — no updater output — or a plain failure sentence with nat's
+refusal folded under Show details.
 Agent panes show none of Claude Code's own update line: nat launches every
 session with `DISABLE_UPDATES=1` (see `internal/agent/CLAUDE.md`). Stories:
-`status-bar-claude-update`, `claude-update-sheet-running`, `-finished`,
-`-failed`.
+`status-bar-claude-update`, `claude-update-sheet-confirm`, `-confirm-homebrew`,
+`-running`, `-finished`, `-failed`.
 
 ## Settings and Done means merged
 

@@ -134,12 +134,36 @@ type claudeVersionCache struct {
 	ReadAt time.Time `json:"read_at"`
 }
 
+// The two ways `claude-update` updates Claude Code.
+const (
+	updateMethodHomebrew = "homebrew"
+	updateMethodClaude   = "claude"
+)
+
+// claudeUpdateMethod is how `claude-update` will update this install, and the
+// one place that is decided: `brew upgrade <cask>` where claude's real path
+// is in a Caskroom ([homebrewCask]), else `claude update` — a claude not
+// found included, whose own update then says why. The cask is "" for the
+// latter.
+func claudeUpdateMethod() (method, cask string) {
+	if path, err := claudePath(); err == nil {
+		if cask := homebrewCask(path); cask != "" {
+			return updateMethodHomebrew, cask
+		}
+	}
+	return updateMethodClaude, ""
+}
+
 // claudeVersionJSON is `claude-version --json`'s answer. A side not read is
-// absent, never empty, and then update_available is false.
+// absent, never empty, and then update_available is false. update_method is
+// always there: how `claude-update` would run, homebrew_cask naming the cask
+// where it is Homebrew's.
 type claudeVersionJSON struct {
 	Installed       string `json:"installed,omitempty"`
 	Latest          string `json:"latest,omitempty"`
 	UpdateAvailable bool   `json:"update_available"`
+	UpdateMethod    string `json:"update_method"`
+	HomebrewCask    string `json:"homebrew_cask,omitempty"`
 }
 
 // claudeVersion answers which Claude Code is installed and the newest one
@@ -160,15 +184,24 @@ func claudeVersion(ctx context.Context, args []string, env Env) error {
 
 	doc := claudeVersionJSON{Installed: installedClaude(ctx), Latest: latestClaude(ctx)}
 	doc.UpdateAvailable = doc.Installed != "" && doc.Latest != "" && newerVersion(doc.Latest, doc.Installed)
+	doc.UpdateMethod, doc.HomebrewCask = claudeUpdateMethod()
 
 	if *asJSON {
 		enc := json.NewEncoder(env.Out)
 		enc.SetIndent("", "  ")
 		return enc.Encode(doc)
 	}
-	_, err = fmt.Fprintf(env.Out, "installed: %s\nlatest: %s\nupdate available: %t\n",
-		orUnknown(doc.Installed), orUnknown(doc.Latest), doc.UpdateAvailable)
+	_, err = fmt.Fprintf(env.Out, "installed: %s\nlatest: %s\nupdate available: %t\nupdates with: %s\n",
+		orUnknown(doc.Installed), orUnknown(doc.Latest), doc.UpdateAvailable, updateCommand(doc.UpdateMethod, doc.HomebrewCask))
 	return err
+}
+
+// updateCommand is the command [claudeUpdateMethod]'s answer runs.
+func updateCommand(method, cask string) string {
+	if method == updateMethodHomebrew {
+		return "brew upgrade " + cask
+	}
+	return "claude update"
 }
 
 // orUnknown is a version for the plain-text answer, "unknown" where unread.
@@ -333,10 +366,8 @@ func claudeUpdate(ctx context.Context, args []string, env Env) error {
 		return usageErrorf("claude-update: takes no arguments, given %d", len(rest))
 	}
 	name, updateArgs := "claude", []string{"update"}
-	if path, err := claudePath(); err == nil {
-		if cask := homebrewCask(path); cask != "" {
-			name, updateArgs = "brew", []string{"upgrade", cask}
-		}
+	if method, cask := claudeUpdateMethod(); method == updateMethodHomebrew {
+		name, updateArgs = "brew", []string{"upgrade", cask}
 	}
 	out, err := claudeRun(ctx, name, updateArgs...)
 	if err != nil {

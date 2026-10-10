@@ -27,11 +27,17 @@ public enum Fixtures {
 
     /// Up to date: no notice — every story but the notice's own.
     public static let claudeVersionCurrent = ClaudeVersion(
-        installed: "2.1.295", latest: "2.1.295", updateAvailable: false)
+        installed: "2.1.295", latest: "2.1.295", updateAvailable: false, updateMethod: .claudeUpdater)
 
-    /// A newer Claude Code released: the status bar's notice.
+    /// A newer Claude Code released: the status bar's notice, updated by
+    /// Claude Code's own updater.
     public static let claudeVersionBehind = ClaudeVersion(
-        installed: "2.1.294", latest: "2.1.295", updateAvailable: true)
+        installed: "2.1.294", latest: "2.1.295", updateAvailable: true, updateMethod: .claudeUpdater)
+
+    /// A newer Claude Code released to a Homebrew install.
+    public static let claudeVersionBehindHomebrew = ClaudeVersion(
+        installed: "2.1.294", latest: "2.1.295", updateAvailable: true,
+        updateMethod: .homebrew(cask: "claude-code@latest"))
 
     /// What `claude update` prints on success.
     public static let claudeUpdateOutput = "Current version: 2.1.294\nChecking for updates...\n"
