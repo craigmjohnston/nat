@@ -41,8 +41,8 @@ func TestPRMergeRemovesTheSlicesWorktree(t *testing.T) {
 	env.NewGH = func() GH { return gh.NewWithRunner(&multiRunner{viewOut: readyToMergePRJSON}) }
 	w := withWorktree(&env)
 
-	if err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-merge: %v", err)
+	if err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr merge: %v", err)
 	}
 	if want := []removal{{"/tmp/nat", "slice/write-the-ui"}}; !reflect.DeepEqual(w.removed, want) {
 		t.Errorf("removed = %+v, want %+v", w.removed, want)
@@ -63,8 +63,8 @@ func TestPRMergeSucceedsThoughTheRemovalIsRefused(t *testing.T) {
 	w := withWorktree(&env)
 	w.removeErr = refusedRemoval
 
-	if err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1", "--json"}, env); err != nil {
-		t.Fatalf("pr-merge: %v", err)
+	if err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1", "--json"}, env); err != nil {
+		t.Fatalf("pr merge: %v", err)
 	}
 	if len(w.removed) != 1 {
 		t.Errorf("removed = %+v, want the one attempt", w.removed)
@@ -74,7 +74,7 @@ func TestPRMergeSucceedsThoughTheRemovalIsRefused(t *testing.T) {
 	}
 }
 
-// A merge pr-status settles takes the slice's worktree with it — off the
+// A merge pr status settles takes the slice's worktree with it — off the
 // reading alone, with no view of the pull request.
 func TestPRStatusRemovesASettledSlicesWorktree(t *testing.T) {
 	api := &fakeAPI{
@@ -88,8 +88,8 @@ func TestPRStatusRemovesASettledSlicesWorktree(t *testing.T) {
 	env.NewGH = func() GH { return reader }
 	w := withWorktree(&env)
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if want := []removal{{"/tmp/nat", "slice/merged-on-github"}}; !reflect.DeepEqual(w.removed, want) {
 		t.Errorf("removed = %+v, want %+v", w.removed, want)
@@ -115,8 +115,8 @@ func TestPRStatusKeepsAClosedPRsWorktree(t *testing.T) {
 	w := withWorktree(&env)
 	w.branches = map[string][]string{"/tmp/nat": {"slice/closed-on-github"}}
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if len(w.removed) != 0 {
 		t.Errorf("removed = %+v, want nothing", w.removed)
@@ -161,8 +161,8 @@ func TestPRStatusSweepsLandedWorktrees(t *testing.T) {
 		"/repo/unread": {"slice/unread"},
 	}
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	want := []removal{{"/tmp/nat", "slice/merged"}, {"/tmp/nat", "slice/no-pr"}}
 	if !reflect.DeepEqual(w.removed, want) {
@@ -193,8 +193,8 @@ func TestPRStatusSweepSurvivesARefusedRemoval(t *testing.T) {
 	w.branches = map[string][]string{"/tmp/nat": {"slice/no-pr"}}
 	w.removeErr = refusedRemoval
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1", "--json"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1", "--json"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if len(w.removed) != 1 {
 		t.Errorf("removed = %+v, want the one attempt", w.removed)
@@ -204,7 +204,7 @@ func TestPRStatusSweepSurvivesARefusedRemoval(t *testing.T) {
 	}
 }
 
-// complete-slice closing a slice Done — no branch, no pull request — removes
+// slice complete closing a slice Done — no branch, no pull request — removes
 // its worktree: no merge is coming to.
 func TestCompleteSliceDoneRemovesTheWorktree(t *testing.T) {
 	api := completableAPI()
@@ -212,10 +212,10 @@ func TestCompleteSliceDoneRemovesTheWorktree(t *testing.T) {
 	w := withWorktree(&env)
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--no-branch", "--summary", "Wrote the docs.", "--project", "project-1",
+		"slice", "complete", sliceID, "--no-branch", "--summary", "Wrote the docs.", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("complete-slice: %v", err)
+		t.Fatalf("slice complete: %v", err)
 	}
 	if len(w.removed) != 1 || w.removed[0].dir != "/tmp/nat" ||
 		!strings.HasPrefix(w.removed[0].branch, "slice/") {
@@ -230,11 +230,11 @@ func TestCompleteSliceHandBackKeepsTheWorktree(t *testing.T) {
 	w := withWorktree(&env)
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--branch", "slice/render-the-board",
+		"slice", "complete", sliceID, "--branch", "slice/render-the-board",
 		"--summary", "Wrote the renderer.", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("complete-slice: %v", err)
+		t.Fatalf("slice complete: %v", err)
 	}
 	if len(w.removed) != 0 {
 		t.Errorf("removed = %+v, want nothing", w.removed)
@@ -247,8 +247,8 @@ func TestSliceDeleteRemovesTheWorktree(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 	w := withWorktree(&env)
 
-	if err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-delete: %v", err)
+	if err := Run(context.Background(), []string{"slice", "delete", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice delete: %v", err)
 	}
 	if want := []removal{{"/tmp/nat", "slice/render-the-board"}}; !reflect.DeepEqual(w.removed, want) {
 		t.Errorf("removed = %+v, want %+v", w.removed, want)
@@ -262,8 +262,8 @@ func TestSliceDeleteSucceedsThoughTheRemovalIsRefused(t *testing.T) {
 	w := withWorktree(&env)
 	w.removeErr = refusedRemoval
 
-	if err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-delete: %v", err)
+	if err := Run(context.Background(), []string{"slice", "delete", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice delete: %v", err)
 	}
 	if len(w.removed) != 1 {
 		t.Errorf("removed = %+v, want the one attempt", w.removed)

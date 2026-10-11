@@ -25,7 +25,7 @@ var httpClientRefusing = http.Client{Transport: refusing{}}
 
 func TestDescribe(t *testing.T) {
 	h := newHarness(t)
-	// source-list describes with an empty project.
+	// source list describes with an empty project.
 	code, out, errs := h.run(`{"project":{"id":"","name":"","working_dir":""}}`, "describe")
 	if code != 0 {
 		t.Fatalf("describe: exit %d, %q", code, errs)

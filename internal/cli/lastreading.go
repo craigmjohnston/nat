@@ -24,14 +24,14 @@ func DefaultReadingPath() (string, error) {
 	return filepath.Join(dir, lastReadingFileName), nil
 }
 
-// lastReading is what pr-status's batched reading found that a command run
+// lastReading is what pr status's batched reading found that a command run
 // later wants and has no reason to spend a GitHub call on again: the branch
-// each pull request merges into (slice-diff's base), and each ad hoc
-// session's branches' pull requests (session-list's and session-status's).
-// Written by every pr-status, merged over the last — a pull request or a
+// each pull request merges into (slice diff's base), and each ad hoc
+// session's branches' pull requests (session list's and session status's).
+// Written by every pr status, merged over the last — a pull request or a
 // session this reading did not ask about keeps what an earlier one found.
 //
-// Something not in it is unread: slice-diff diffs against the default
+// Something not in it is unread: slice diff diffs against the default
 // branch, as it does where gh cannot answer, and a session's branch reads as
 // stale, never as having no pull requests.
 type lastReading struct {

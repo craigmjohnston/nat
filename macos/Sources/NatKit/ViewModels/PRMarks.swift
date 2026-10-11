@@ -89,7 +89,7 @@ public struct CheckRowMark: Equatable, Sendable {
     }
 }
 
-/// One project's `nat pr-status` reading as the app keeps it — the last that
+/// One project's `nat pr status` reading as the app keeps it — the last that
 /// arrived, replaced only by a newer one.
 public struct PRReading: Equatable, Sendable {
     public let doc: PRStatusDoc
@@ -123,7 +123,7 @@ public struct PRReading: Equatable, Sendable {
     /// The checks the PR section lists for a slice's pull request: the
     /// reading's — the one the heading and the sidebar marks come from —
     /// wherever it read the slice's checks, each carrying what only the
-    /// detail (`pr-view`) knows of the check by that name (`rerunnable`,
+    /// detail (`pr view`) knows of the check by that name (`rerunnable`,
     /// `run`); else the detail's own (`detail`), as for an ad hoc session's
     /// pull request, which the reading lists under no slice, or before any
     /// reading has landed.
@@ -183,7 +183,7 @@ public struct PRReading: Equatable, Sendable {
 }
 
 /// The conflict the PR section draws for the pull request at `prURL`: the
-/// `pr-status` reading's, unless a loaded `pr-view` of that same pull request
+/// `pr status` reading's, unless a loaded `pr view` of that same pull request
 /// is in hand — a `PRDetail` is the fresher reading, so it decides,
 /// conflicting by the merge box's own rule (`mergeableVerdict`), else not. A
 /// detail of some other pull request (the store's last, before the slice's
@@ -253,7 +253,7 @@ public func conflictNotice(slice: Slice, conflict: BranchConflict?, hasLiveAgent
 
 /// The conflict notice the Changes section draws for a handed-back branch
 /// with no pull request, or nil where there is none: only a slice in review
-/// whose branch `pr-status` tested conflicting — never one it could not test.
+/// whose branch `pr status` tested conflicting — never one it could not test.
 public func branchConflictNotice(slice: Slice, conflict: BranchConflict?, hasLiveAgent: Bool) -> ConflictNotice? {
     guard let conflict, inReview(slice) else { return nil }
     return ConflictNotice(

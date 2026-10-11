@@ -8,9 +8,9 @@ import (
 	"strings"
 )
 
-// PRCommenter is what pr-comment needs of the GitHub CLI: one comment posted
+// PRCommenter is what pr comment needs of the GitHub CLI: one comment posted
 // on a pull request already open, in the slice's repository. It names exactly
-// the one gh call this command makes, the way [PRViewer] does for pr-view.
+// the one gh call this command makes, the way [PRViewer] does for pr view.
 type PRCommenter interface {
 	CommentPR(dir, ref, body string) (string, error)
 }
@@ -20,12 +20,12 @@ type PRCommenter interface {
 // write on a slice's pull request happens.
 //
 // Only a slice with a pull request recorded has one to comment on, the same
-// refusal pr-view and pr-merge give a slice with none; with --session, the
+// refusal pr view and pr merge give a slice with none; with --session, the
 // pull request is one of that ad hoc session's instead ([prTarget]). Nothing is written to
 // Notion by this: the comment lands on GitHub alone, exactly where a reviewer
 // leaving it by hand would have put it.
 func prComment(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("pr-comment", flag.ContinueOnError)
+	flags := flag.NewFlagSet("pr comment", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	body := flags.String("body", stdinRef, "the comment text; `-` or absent reads it from stdin")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
@@ -36,18 +36,18 @@ func prComment(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	target, err := parsePRTarget("pr-comment", *sessionID, rest)
+	target, err := parsePRTarget("pr comment", *sessionID, rest)
 	if err != nil {
 		return err
 	}
 	// The comment is settled before anything is read from Notion, so a
-	// pr-comment whose stdin cannot be read fails having posted nothing.
+	// pr comment whose stdin cannot be read fails having posted nothing.
 	text, err := commentText(*body, env.In)
 	if err != nil {
 		return err
 	}
 	if text == "" {
-		return usageErrorf("pr-comment: no comment given: pass --body or pipe one in")
+		return usageErrorf("pr comment: no comment given: pass --body or pipe one in")
 	}
 
 	workdir, pr, err := target.resolve(ctx, env, *projectRef, "comment on")

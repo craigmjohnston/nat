@@ -5,7 +5,7 @@ import NatKit
 
 /// A project whose milestones are a task-source plugin's containers — "Work",
 /// made over the demo plugin (`examples/nat-source-demo/`), as `info`,
-/// `container-show`, `slice-show` and `source-list` report it. The shapes
+/// `container show`, `slice show` and `source list` report it. The shapes
 /// follow `docs/design/task-sources/README.md` field for field.
 extension Fixtures {
     /// The Shortcut plugin's icon as its `describe` sends it — the SVG mark
@@ -228,7 +228,7 @@ extension Fixtures {
         Slice(
             id: sourceReviewTaskID, name: "Jump between comment threads", status: "In progress",
             milestoneID: sourceCardID, assignee: "Craig Johnston",
-            // #214, the number the fixture client's `pr-view` answers with,
+            // #214, the number the fixture client's `pr view` answers with,
             // so the PR view reads it as this task's.
             pr: "https://github.com/acme/app/pull/214",
             url: "nat://\(sourceReviewTaskID)",
@@ -306,7 +306,7 @@ extension Fixtures {
         taskNote: sourceCardTaskNote
     )
 
-    /// `container-show` for any card: the first card's full detail, else a
+    /// `container show` for any card: the first card's full detail, else a
     /// plain one built from the sidebar row, with the plan's tasks under it.
     public static func sourceContainerShow(id: String) -> ContainerShow {
         let tasks = sourceTasks.filter { $0.milestoneID == id }
@@ -325,13 +325,13 @@ extension Fixtures {
         )
     }
 
-    /// `slice-show`'s `state` word for the tasks that have one.
+    /// `slice show`'s `state` word for the tasks that have one.
     static let sourceTaskStates: [String: String] = [
         sourceWorkingTaskID: "working",
         sourceReviewTaskID: "awaiting review",
     ]
 
-    /// `slice-show` for each task of the Work project, `container` filled.
+    /// `slice show` for each task of the Work project, `container` filled.
     public static var sourceSliceDetails: [String: SliceDetail] {
         let firstCard = SliceContainer(
             id: sourceCardID, title: sourceCardDetail.title, externalURL: sourceCardDetail.externalURL,
@@ -381,7 +381,7 @@ extension Fixtures {
         ])
     }
 
-    /// `source-list --json`: the demo plugin, described, and one that
+    /// `source list --json`: the demo plugin, described, and one that
     /// refused to describe.
     public static let sourcePlugins: [SourcePlugin] = [
         SourcePlugin(

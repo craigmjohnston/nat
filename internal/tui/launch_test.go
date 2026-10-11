@@ -778,7 +778,7 @@ func TestAppLaunchStartsTheSessionAndAttaches(t *testing.T) {
 
 	// The slice was claimed on the way, so the row says an agent has it from the
 	// moment the key was pressed rather than once the session gets to
-	// start-slice.
+	// slice start.
 	client := app.client.(*fakeNotion)
 	if len(client.updated) != 1 || client.updated[0].pageID != "s5" {
 		t.Fatalf("writes = %+v, want exactly the launched slice claimed", client.updated)
@@ -817,7 +817,7 @@ func todoPage(id string, assignee bool) *notion.Page {
 }
 
 // The claim is the board's own write and it happens before tmux is asked for
-// anything: a fresh Claude Code takes seconds to reach start-slice, and a row
+// anything: a fresh Claude Code takes seconds to reach slice start, and a row
 // that reads Todo all the while is one a second agent can be launched on.
 func TestAppLaunchClaimsTheSliceBeforeTheSession(t *testing.T) {
 	tests := []struct {
@@ -1292,7 +1292,7 @@ func TestAppLaunchRefusesASliceItCannotStart(t *testing.T) {
 
 // A slice in progress with nothing running on it is the one a session died
 // under, or one the board has been restarted since: l puts an agent back on it
-// rather than refusing, and nothing in Notion is touched — start-slice re-opens
+// rather than refusing, and nothing in Notion is touched — slice start re-opens
 // a slice its holder already claimed, so the agent's own claim is the write.
 func TestAppLaunchStartsASliceInProgressWithNoSession(t *testing.T) {
 	app, launcher, workdir := launchApp(t)
@@ -1449,7 +1449,7 @@ func TestAppLaunchResumesAPublishedSlice(t *testing.T) {
 		"## The pull request",
 		"- Branch: " + publishedBranch,
 		"gh pr view https://example.test/pr/1 --comments",
-		"nat complete-slice s3 --project " + testProjectID + " \\\n        --summary",
+		"nat slice complete s3 --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("prompt does not say %q:\n%s", want, prompt)

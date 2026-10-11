@@ -1,6 +1,6 @@
 import Foundation
 
-/// `nat pr-status --json`: the board's PR-readiness reading taken headlessly —
+/// `nat pr status --json`: the board's PR-readiness reading taken headlessly —
 /// one entry per slice whose pull request anything might still be waiting on,
 /// in the plan's own order.
 public struct PRStatusDoc: Codable, Equatable, Sendable {
@@ -24,7 +24,7 @@ public struct PRStatusDoc: Codable, Equatable, Sendable {
     }
 }
 
-/// One handed-back branch with no pull request, as `nat pr-status` tested it:
+/// One handed-back branch with no pull request, as `nat pr status` tested it:
 /// whether it still merges into `base`, the repository's default branch.
 public struct PRStatusBranch: Codable, Equatable, Sendable {
     public let sliceID: String
@@ -117,7 +117,7 @@ public struct PRStatusSlice: Codable, Equatable, Sendable {
     }
 }
 
-/// One open pull request's checks, as `nat pr-status` reads them: the
+/// One open pull request's checks, as `nat pr status` reads them: the
 /// verdict — "passing", "failing", "pending" or "none" — every check that
 /// failed, by name and run URL, and every check at all (`checks`, in
 /// GitHub's order) — nil from an older `nat` that sent no such list.

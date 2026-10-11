@@ -15,7 +15,7 @@ import (
 )
 
 // makePlanFolder lays down a local plan in a fresh folder the way
-// project-create --local does, and returns the folder and the plan's ID.
+// project create --local does, and returns the folder and the plan's ID.
 func makePlanFolder(t *testing.T, name string) (string, string) {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "plans")
@@ -31,8 +31,8 @@ func TestProjectOpenFolderRecordsThePlan(t *testing.T) {
 	env, out, saved := noNotionEnv(t, config.Config{}, false)
 	dir, id := makePlanFolder(t, "Found")
 
-	if err := Run(context.Background(), []string{"project-open-folder", dir, "--json"}, env); err != nil {
-		t.Fatalf("project-open-folder: %v", err)
+	if err := Run(context.Background(), []string{"project", "open", "folder", dir, "--json"}, env); err != nil {
+		t.Fatalf("project open folder: %v", err)
 	}
 	var got projectCreatedJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -49,7 +49,7 @@ func TestProjectOpenFolderRecordsThePlan(t *testing.T) {
 	// Opened again, the entry that is there answers, and config is not rewritten.
 	saved.Projects[id] = config.ProjectConfig{Name: "Renamed", WorkingDir: "/src", Backend: "local", PlanDir: dir}
 	out.Reset()
-	if err := Run(context.Background(), []string{"project-open-folder", dir}, env); err != nil {
+	if err := Run(context.Background(), []string{"project", "open", "folder", dir}, env); err != nil {
 		t.Fatalf("second open: %v", err)
 	}
 	if saved.Projects[id].Name != "Renamed" {
@@ -124,12 +124,12 @@ func TestProjectOpenFolderRefusals(t *testing.T) {
 		{"two plans", []string{two}, "2 plans found"},
 		{"no folder", nil, "want exactly one folder"},
 		{"a blank folder", []string{"  "}, "the folder is empty"},
-		{"a bad flag", []string{"--nope", empty}, "project-open-folder"},
+		{"a bad flag", []string{"--nope", empty}, "project open folder"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			env, _, saved := noNotionEnv(t, config.Config{}, false)
-			err := Run(ctx, append([]string{"project-open-folder"}, c.args...), env)
+			err := Run(ctx, append([]string{"project", "open", "folder"}, c.args...), env)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("err = %v, want it to say %q", err, c.want)
 			}
@@ -146,7 +146,7 @@ func TestProjectOpenFolderRefusals(t *testing.T) {
 func TestProjectOpenFolderNeedsAWorkingDirectoryForARelativePath(t *testing.T) {
 	env, _, _ := noNotionEnv(t, config.Config{}, false)
 	stubGetwd(t, "", os.ErrNotExist)
-	if err := Run(context.Background(), []string{"project-open-folder", "rel"}, env); err == nil {
+	if err := Run(context.Background(), []string{"project", "open", "folder", "rel"}, env); err == nil {
 		t.Error("a relative folder with no working directory was accepted")
 	}
 }
@@ -155,13 +155,13 @@ func TestProjectOpenFolderConfigFailures(t *testing.T) {
 	dir, _ := makePlanFolder(t, "P")
 	env, _, _ := noNotionEnv(t, config.Config{}, false)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, os.ErrPermission }
-	if err := Run(context.Background(), []string{"project-open-folder", dir}, env); err == nil {
+	if err := Run(context.Background(), []string{"project", "open", "folder", dir}, env); err == nil {
 		t.Error("an unreadable config was not reported")
 	}
 
 	env, _, _ = noNotionEnv(t, config.Config{}, false)
 	env.Save = func(config.Config) error { return os.ErrPermission }
-	err := Run(context.Background(), []string{"project-open-folder", dir}, env)
+	err := Run(context.Background(), []string{"project", "open", "folder", dir}, env)
 	if err == nil || !strings.Contains(err.Error(), "save config") {
 		t.Errorf("err = %v", err)
 	}

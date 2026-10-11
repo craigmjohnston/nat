@@ -3,7 +3,7 @@ import XCTest
 import NatFixtures
 
 final class ClaudeVersionTests: XCTestCase {
-    /// `nat claude-version --json`, both sides read.
+    /// `nat claude version --json`, both sides read.
     func testDecodesBothSides() throws {
         let json = #"{"installed": "2.1.294", "latest": "2.1.295", "update_available": true}"#
         let version = try JSONDecoder().decode(ClaudeVersion.self, from: Data(json.utf8))
@@ -110,14 +110,14 @@ final class ClaudeVersionStoreTests: XCTestCase {
         XCTAssertEqual(store.update, .finished)
     }
 
-    /// Update runs nat's `claude-update`, then reads the version again so
+    /// Update runs nat's `claude update`, then reads the version again so
     /// the window shows the one now installed.
     func testUpdateRecordsClaudeUpdateAndRereadsTheVersion() async {
         let client = FixtureNatClient(claudeVersion: Fixtures.claudeVersionBehind)
         let store = ClaudeVersionStore(client: client)
         store.confirmUpdate()
         await store.runUpdate()
-        XCTAssertEqual(client.writes, ["claude-update"])
+        XCTAssertEqual(client.writes, ["claude update"])
         XCTAssertEqual(store.update, .finished)
         XCTAssertEqual(store.version, Fixtures.claudeVersionBehind)
         store.dismissUpdate()

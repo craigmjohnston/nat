@@ -41,7 +41,7 @@ Re-read the review before you hand back, since it can have moved since launch:
 
     gh pr view https://github.test/craig/nat/pull/12 --comments
 
-That is the only `gh` you may run — read CI with the `slice-checks` command
+That is the only `gh` you may run — read CI with the `slice checks` command
 below.
 Never open, merge, close or reopen a pull request: merging this one is
 the user's, once they are satisfied.
@@ -74,7 +74,7 @@ before you ask.
 Raise an architecture question — a decision neither the brief nor a Done
 slice in the milestone settles — before you write code, not at
 hand-back, where an hour of the wrong shape is already sunk. Never run
-`complete-slice` on work whose shape is still unsettled that way: a
+`slice complete` on work whose shape is still unsettled that way: a
 hand-back is a claim the shape is right.
 
 Shape every question so it can be answered without opening the code:
@@ -143,7 +143,7 @@ The project's checks run on the pull request, once the slice is approved.
 If you are told they failed, read how they stand — each check, and each
 failed step's log — with:
 
-    nat slice-checks 3b738308-f654-8170-8c99-eccab4463d8f --log --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+    nat slice checks 3b738308-f654-8170-8c99-eccab4463d8f --log --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
 The same command shows what a check still running is doing — the step
 it is on and for how long — so a check that has sat pending far longer
@@ -154,7 +154,7 @@ That is the one way to read CI: never `gh`.
 Where a check failed or stalled for a reason that is not the change's —
 a flake, a runner that died, a job that has stalled — re-run it with:
 
-    nat slice-checks-rerun 3b738308-f654-8170-8c99-eccab4463d8f --check '<check name>' --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
+    nat slice checks rerun 3b738308-f654-8170-8c99-eccab4463d8f --check '<check name>' --project 3b738308-f654-8117-9f2e-c3b0a9b7f001
 
 (`--failed` instead of `--check` re-runs every failed job.) A check still
 running is cancelled first by the re-run itself, and a cancel stops every
@@ -168,7 +168,7 @@ If this session finds out something a *later* slice needs to know — a
 constraint, a seam that moved, an assumption in another slice's brief
 that is no longer true — leave a note on that slice, named by its name:
 
-    nat slice-note '<slice name>' --from 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+    nat slice note '<slice name>' --from 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
         --note '<what it needs to know, and why>'
 
 Add `--milestone '<milestone name>'` where that name is filed under more
@@ -221,8 +221,8 @@ the first sentence.
 For example. A title: not "Catch the modified enters with a key monitor
 — performKeyEquivalent never sees them" but "Make shift+enter insert a
 newline in the agent terminal". A summary line: not
-"DiffStore.sendComments now always sends the complete-slice --branch
-instruction and runs slice-rework after agent-send succeeds" but "Review
+"DiffStore.sendComments now always sends the slice complete --branch
+instruction and runs slice rework after agent send succeeds" but "Review
 comments sent to an agent now always ask it to hand the work back again,
 so a slice cannot get stuck in review". A question: not "Where the
 'already there' baseline comes from: a comment counts as new when no
@@ -248,9 +248,9 @@ does not isolate you: `$TMUX` wins while it is set.
 If what you changed is visible — a pane, a page, a rendered component —
 and the project already has a cheap or usual way to render it (a gallery
 story, a screenshot script, a storybook), render the result and hand the
-images in before `complete-slice`:
+images in before `slice complete`:
 
-    nat slice-visuals 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+    nat slice visuals 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
         --visual '<what it shows, one line>
 <absolute path to the image>'
 
@@ -270,7 +270,7 @@ any, arrive here as a message.
 
 On completion, record the outcome:
 
-    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+    nat slice complete 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
         --summary '- <what now works, in the user's words>\n- <a decision you made>' \
         --pr-description '<title line>
 
@@ -319,7 +319,7 @@ on stdin instead of passing `--summary`.
 If you cannot complete it, say what stopped you and leave the slice
 in progress, so nobody else picks it up on top of your work:
 
-    nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
+    nat slice complete 3b738308-f654-8170-8c99-eccab4463d8f --project 3b738308-f654-8117-9f2e-c3b0a9b7f001 \
         --blocked --summary '<what is blocking>'
 
 ## Guardrails

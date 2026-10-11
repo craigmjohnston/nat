@@ -15,7 +15,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
-// proposeEnv builds an Env with no Notion client at all — plan-propose talks
+// proposeEnv builds an Env with no Notion client at all — plan propose talks
 // to none — and points the proposal directory at a temp dir of the test's
 // own, restoring the real one when the test ends.
 func proposeEnv(t *testing.T) (Env, *bytes.Buffer) {
@@ -34,7 +34,7 @@ func runPropose(t *testing.T, doc string, args ...string) (string, *int, error) 
 	env, out := proposeEnv(t)
 	nudges := nudgeCounter(&env)
 	env.In = strings.NewReader(doc)
-	err := Run(context.Background(), append([]string{"plan-propose"}, args...), env)
+	err := Run(context.Background(), append([]string{"plan", "propose"}, args...), env)
 	return out.String(), nudges, err
 }
 
@@ -49,7 +49,7 @@ const validProposalDoc = `{
 func TestPlanProposeWritesTheProposalFileAndNudges(t *testing.T) {
 	out, nudges, err := runPropose(t, validProposalDoc, "--workspace", "ws-1", "--name", "importer")
 	if err != nil {
-		t.Fatalf("plan-propose: %v", err)
+		t.Fatalf("plan propose: %v", err)
 	}
 	if *nudges != 1 {
 		t.Errorf("nudges = %d, want 1", *nudges)
@@ -70,22 +70,22 @@ func TestPlanProposeWritesTheProposalFileAndNudges(t *testing.T) {
 	}
 }
 
-// Running plan-propose again for the same workspace replaces the proposal —
+// Running plan propose again for the same workspace replaces the proposal —
 // that is how a revision lands.
 func TestPlanProposeReplacesAnExistingProposal(t *testing.T) {
 	env, _ := proposeEnv(t)
 	nudges := nudgeCounter(&env)
 	env.In = strings.NewReader(validProposalDoc)
-	if err := Run(context.Background(), []string{"plan-propose", "--workspace", "ws-1", "--name", "first"}, env); err != nil {
-		t.Fatalf("first plan-propose: %v", err)
+	if err := Run(context.Background(), []string{"plan", "propose", "--workspace", "ws-1", "--name", "first"}, env); err != nil {
+		t.Fatalf("first plan propose: %v", err)
 	}
 
 	revised := `{"milestones": [{"name": "M1: Groundwork"}], "slices": [
 		{"title": "Lay the foundation", "milestone": "M1: Groundwork"}
 	]}`
 	env.In = strings.NewReader(revised)
-	if err := Run(context.Background(), []string{"plan-propose", "--workspace", "ws-1", "--name", "second"}, env); err != nil {
-		t.Fatalf("second plan-propose: %v", err)
+	if err := Run(context.Background(), []string{"plan", "propose", "--workspace", "ws-1", "--name", "second"}, env); err != nil {
+		t.Fatalf("second plan propose: %v", err)
 	}
 	if *nudges != 2 {
 		t.Errorf("nudges = %d, want 2", *nudges)
@@ -178,7 +178,7 @@ func TestPlanProposeRefusesACyclicDependsOn(t *testing.T) {
 	assertNothingWritten(t, "ws-1")
 }
 
-// readProposal reads back the proposal file plan-propose wrote for a
+// readProposal reads back the proposal file plan propose wrote for a
 // workspace, using the test's own stateDir override.
 func readProposal(t *testing.T, workspace string) proposalDoc {
 	t.Helper()
@@ -213,7 +213,7 @@ func assertNothingWritten(t *testing.T, workspace string) {
 
 // proposeProjectEnv builds an Env that can both resolve a tracked project
 // (like testEnv) and write a proposal file to a temp proposals directory
-// (like proposeEnv) — what plan-propose --project needs of both.
+// (like proposeEnv) — what plan propose --project needs of both.
 func proposeProjectEnv(t *testing.T, cfg config.Config, api *fakeAPI) (Env, *bytes.Buffer) {
 	t.Helper()
 	env, out := testEnv(cfg, api)
@@ -229,14 +229,14 @@ func proposeProjectEnv(t *testing.T, cfg config.Config, api *fakeAPI) (Env, *byt
 func TestPlanProposeRequiresExactlyOneOfWorkspaceOrProject(t *testing.T) {
 	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
 	env.In = strings.NewReader(validProposalDoc)
-	if err := Run(context.Background(), []string{"plan-propose", "--name", "importer"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "propose", "--name", "importer"}, env); err == nil ||
 		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
 		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
 	}
 
 	env2, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
 	env2.In = strings.NewReader(validProposalDoc)
-	err := Run(context.Background(), []string{"plan-propose", "--workspace", "ws-1", "--project", "project-1", "--name", "importer"}, env2)
+	err := Run(context.Background(), []string{"plan", "propose", "--workspace", "ws-1", "--project", "project-1", "--name", "importer"}, env2)
 	if err == nil || !strings.Contains(err.Error(), "exactly one of --workspace or --project") {
 		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
 	}
@@ -248,8 +248,8 @@ func TestPlanProposeWithProjectNameIsOptional(t *testing.T) {
 	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
 	nudges := nudgeCounter(&env)
 	env.In = strings.NewReader(validProposalDoc)
-	if err := Run(context.Background(), []string{"plan-propose", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("plan-propose --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "propose", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("plan propose --project: %v", err)
 	}
 	if *nudges != 1 {
 		t.Errorf("nudges = %d, want 1", *nudges)
@@ -274,19 +274,19 @@ func TestPlanProposeWithProjectValidatesAgainstTheLiveProject(t *testing.T) {
 	doc := `{"slices": [{"title": "A slice", "milestone": "M1: Client"}]}`
 	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
 	env.In = strings.NewReader(doc)
-	if err := Run(context.Background(), []string{"plan-propose", "--project", "project-1", "--name", "x"}, env); err != nil {
-		t.Fatalf("plan-propose --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "propose", "--project", "project-1", "--name", "x"}, env); err != nil {
+		t.Fatalf("plan propose --project: %v", err)
 	}
 }
 
 // A milestone the live project does not have is refused, the same way
-// plan-apply refuses it — the shared [validateAgainstProject] is what keeps
+// plan apply refuses it — the shared [validateAgainstProject] is what keeps
 // the two from drifting.
 func TestPlanProposeWithProjectRefusesAnUnknownMilestone(t *testing.T) {
 	doc := `{"slices": [{"title": "A slice", "milestone": "No such milestone"}]}`
 	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
 	env.In = strings.NewReader(doc)
-	err := Run(context.Background(), []string{"plan-propose", "--project", "project-1", "--name", "x"}, env)
+	err := Run(context.Background(), []string{"plan", "propose", "--project", "project-1", "--name", "x"}, env)
 	if err == nil {
 		t.Fatal("expected a refusal for a milestone the project does not have")
 	}
@@ -300,8 +300,8 @@ func TestPlanProposeWithProjectAllowsTopLevelDependencies(t *testing.T) {
 	doc := `{"dependencies": [{"slice": "Render the board", "on": ["Notion client"]}]}`
 	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
 	env.In = strings.NewReader(doc)
-	if err := Run(context.Background(), []string{"plan-propose", "--project", "project-1", "--name", "x"}, env); err != nil {
-		t.Fatalf("plan-propose --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "propose", "--project", "project-1", "--name", "x"}, env); err != nil {
+		t.Fatalf("plan propose --project: %v", err)
 	}
 }
 
@@ -310,14 +310,14 @@ func TestPlanProposeWithProjectAllowsTopLevelDependencies(t *testing.T) {
 func TestPlanProposeRefusesAnUnknownProject(t *testing.T) {
 	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
 	env.In = strings.NewReader(validProposalDoc)
-	err := Run(context.Background(), []string{"plan-propose", "--project", "nope", "--name", "x"}, env)
+	err := Run(context.Background(), []string{"plan", "propose", "--project", "nope", "--name", "x"}, env)
 	if err == nil {
 		t.Fatal("expected a refusal for an unknown project")
 	}
 }
 
 // A project whose store cannot be opened — its plan file damaged — fails
-// plan-propose --project at the store, before validation is even reached.
+// plan propose --project at the store, before validation is even reached.
 func TestPlanProposeWithProjectFailsWhereTheStoreCannotBeOpened(t *testing.T) {
 	env, _ := proposeProjectEnv(t, testConfig(t), populatedAPI(t))
 	// project-1's plan has already been hydrated by populatedAPI's own fakeAPI
@@ -340,7 +340,7 @@ func TestPlanProposeWithProjectFailsWhereTheStoreCannotBeOpened(t *testing.T) {
 	_ = db.Close()
 
 	env.In = strings.NewReader(validProposalDoc)
-	err = Run(context.Background(), []string{"plan-propose", "--project", "project-1", "--name", "x"}, env)
+	err = Run(context.Background(), []string{"plan", "propose", "--project", "project-1", "--name", "x"}, env)
 	if err == nil {
 		t.Error("expected a refusal for a damaged plan file")
 	}
@@ -349,7 +349,7 @@ func TestPlanProposeWithProjectFailsWhereTheStoreCannotBeOpened(t *testing.T) {
 func TestPlanProposeJSONOutput(t *testing.T) {
 	out, _, err := runPropose(t, validProposalDoc, "--workspace", "ws-1", "--name", "importer", "--json")
 	if err != nil {
-		t.Fatalf("plan-propose: %v", err)
+		t.Fatalf("plan propose: %v", err)
 	}
 	var doc proposalDoc
 	if err := json.Unmarshal([]byte(out), &doc); err != nil {
@@ -363,7 +363,7 @@ func TestPlanProposeJSONOutput(t *testing.T) {
 func TestPlanProposeWantsAtMostOnePlanFile(t *testing.T) {
 	env, _ := proposeEnv(t)
 	env.In = strings.NewReader(validProposalDoc)
-	err := Run(context.Background(), []string{"plan-propose", "a.json", "b.json", "--workspace", "ws-1", "--name", "x"}, env)
+	err := Run(context.Background(), []string{"plan", "propose", "a.json", "b.json", "--workspace", "ws-1", "--name", "x"}, env)
 	if err == nil {
 		t.Fatal("expected a refusal for two plan files")
 	}
@@ -372,7 +372,7 @@ func TestPlanProposeWantsAtMostOnePlanFile(t *testing.T) {
 func TestPlanProposeRefusesABadFlag(t *testing.T) {
 	env, _ := proposeEnv(t)
 	env.In = strings.NewReader(validProposalDoc)
-	err := Run(context.Background(), []string{"plan-propose", "--nope"}, env)
+	err := Run(context.Background(), []string{"plan", "propose", "--nope"}, env)
 	if err == nil {
 		t.Fatal("expected a refusal for an unknown flag")
 	}
@@ -385,9 +385,9 @@ func TestPlanProposeReadsAPlanFromAFile(t *testing.T) {
 	if err := os.WriteFile(file, []byte(validProposalDoc), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := Run(context.Background(), []string{"plan-propose", file, "--workspace", "ws-1", "--name", "importer"}, env)
+	err := Run(context.Background(), []string{"plan", "propose", file, "--workspace", "ws-1", "--name", "importer"}, env)
 	if err != nil {
-		t.Fatalf("plan-propose: %v", err)
+		t.Fatalf("plan propose: %v", err)
 	}
 	if out.Len() == 0 {
 		t.Error("no output written")
@@ -396,7 +396,7 @@ func TestPlanProposeReadsAPlanFromAFile(t *testing.T) {
 
 func TestPlanProposeRefusesAMissingPlanFile(t *testing.T) {
 	env, _ := proposeEnv(t)
-	err := Run(context.Background(), []string{"plan-propose", "/no/such/plan.json", "--workspace", "ws-1", "--name", "importer"}, env)
+	err := Run(context.Background(), []string{"plan", "propose", "/no/such/plan.json", "--workspace", "ws-1", "--name", "importer"}, env)
 	if err == nil {
 		t.Fatal("expected a refusal for a plan file that does not exist")
 	}
@@ -408,7 +408,7 @@ func TestPlanProposeRefusesUnresolvableState(t *testing.T) {
 	prev := stateDir
 	stateDir = func() (string, error) { return "", errors.New("no home directory") }
 	t.Cleanup(func() { stateDir = prev })
-	err := Run(context.Background(), []string{"plan-propose", "--workspace", "ws-1", "--name", "importer"}, env)
+	err := Run(context.Background(), []string{"plan", "propose", "--workspace", "ws-1", "--name", "importer"}, env)
 	if err == nil {
 		t.Fatal("expected a refusal when the state directory cannot be resolved")
 	}
@@ -420,7 +420,7 @@ func TestPlanProposeRefusesAMarshalFailure(t *testing.T) {
 	prev := marshalIndent
 	marshalIndent = func(v any, prefix, indent string) ([]byte, error) { return nil, errors.New("boom") }
 	t.Cleanup(func() { marshalIndent = prev })
-	err := Run(context.Background(), []string{"plan-propose", "--workspace", "ws-1", "--name", "importer"}, env)
+	err := Run(context.Background(), []string{"plan", "propose", "--workspace", "ws-1", "--name", "importer"}, env)
 	if err == nil || !strings.Contains(err.Error(), "encode the proposal") {
 		t.Fatalf("err = %v, want it to name encoding the proposal", err)
 	}
@@ -482,7 +482,7 @@ func TestPlanProposeRefusesWhenTheProposalCannotBeWritten(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "proposals"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err = Run(context.Background(), []string{"plan-propose", "--workspace", "ws-1", "--name", "importer"}, env)
+	err = Run(context.Background(), []string{"plan", "propose", "--workspace", "ws-1", "--name", "importer"}, env)
 	if err == nil || !strings.Contains(err.Error(), "write the proposal file") {
 		t.Fatalf("err = %v, want it to name writing the proposal file", err)
 	}

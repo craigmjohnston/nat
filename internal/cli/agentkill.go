@@ -23,10 +23,10 @@ import (
 // itself: detaching a viewer leaves it running, which is right while there is
 // still work in it and is how a finished slice's session sits on the server
 // forever. A slice (or planning agent) nothing is running on is refused
-// rather than passed over silently, exactly as agent-interrupt's is: the
+// rather than passed over silently, exactly as agent interrupt's is: the
 // caller named a session it believed in, and saying so is the whole answer.
 func agentKill(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("agent-kill", flag.ContinueOnError)
+	flags := flag.NewFlagSet("agent kill", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	projectRef := projectFlag(flags)
 	workshop := flags.Bool("workshop", false, "kill the project's planning agent instead of a slice")
@@ -36,17 +36,17 @@ func agentKill(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if *workshop && len(rest) != 0 {
-		return usageErrorf("agent-kill: --workshop takes no slice argument, given %d", len(rest))
+		return usageErrorf("agent kill: --workshop takes no slice argument, given %d", len(rest))
 	}
 	if !*workshop && len(rest) != 1 {
-		return usageErrorf("agent-kill: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("agent kill: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
 	ws := strings.TrimSpace(*workspace)
 	if ws != "" && !*workshop {
-		return usageErrorf("agent-kill: --workspace only names a planning agent, with --workshop")
+		return usageErrorf("agent kill: --workspace only names a planning agent, with --workshop")
 	}
 	if ws != "" && strings.TrimSpace(*projectRef) != "" {
-		return usageErrorf("agent-kill: --workspace and --project name different sessions, not both")
+		return usageErrorf("agent kill: --workspace and --project name different sessions, not both")
 	}
 
 	// A workspace's planning agent is keyed by the tab's own id and belongs to
@@ -83,7 +83,7 @@ func agentKill(ctx context.Context, args []string, env Env) error {
 		return nil
 	}
 
-	id, err := tagOrPageID("agent-kill", rest[0])
+	id, err := tagOrPageID("agent kill", rest[0])
 	if err != nil {
 		return err
 	}

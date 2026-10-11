@@ -12,7 +12,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/domain"
 )
 
-// The keys config-set answers to: the settings form's own fields, plus one
+// The keys config set answers to: the settings form's own fields, plus one
 // project's working directory, run commands, colour, name, model pairs, merge
 // method, delete-branch switch, base branch and tag, addressed by its page ID. Nothing else in the
 // file is reachable this way — see configShow's doc comment for why.
@@ -53,14 +53,14 @@ const (
 // everything else — matching the settings form's own rule that a field
 // cleared back to empty is "unset" rather than a value to keep.
 func configSet(args []string, env Env) error {
-	flags := flag.NewFlagSet("config-set", flag.ContinueOnError)
+	flags := flag.NewFlagSet("config set", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 2 {
-		return usageErrorf("config-set: want exactly a key and a value, given %d", len(rest))
+		return usageErrorf("config set: want exactly a key and a value, given %d", len(rest))
 	}
 	key, value := rest[0], rest[1]
 
@@ -83,7 +83,7 @@ func configSet(args []string, env Env) error {
 	return err
 }
 
-// reportedValue is what config-set says it wrote: the value given, except a
+// reportedValue is what config set says it wrote: the value given, except a
 // colour set to auto, which says the name the save chose — read off cfg, whose
 // map the save filled in — and a tag, which says it as stored, uppercased.
 func reportedValue(cfg config.Config, key, value string) string {
@@ -111,7 +111,7 @@ func applyConfigSet(cfg *config.Config, key, value string) error {
 			return err
 		}
 		if verr := config.ValidSplitPercent(n); verr != nil {
-			return fmt.Errorf("config-set: %w", verr)
+			return fmt.Errorf("config set: %w", verr)
 		}
 		cfg.AgentSplitPercent = n
 	case key == keyPollSeconds:
@@ -120,7 +120,7 @@ func applyConfigSet(cfg *config.Config, key, value string) error {
 			return err
 		}
 		if verr := config.ValidPollSeconds(n); verr != nil {
-			return fmt.Errorf("config-set: %w", verr)
+			return fmt.Errorf("config set: %w", verr)
 		}
 		cfg.PollSeconds = n
 	case key == keyWorkshopModel:
@@ -145,9 +145,9 @@ func applyConfigSet(cfg *config.Config, key, value string) error {
 				return applyProjectField(cfg, key, f.suffix, value, f.set)
 			}
 		}
-		return usageErrorf("config-set: unknown key %q", key)
+		return usageErrorf("config set: unknown key %q", key)
 	default:
-		return usageErrorf("config-set: unknown key %q", key)
+		return usageErrorf("config set: unknown key %q", key)
 	}
 	return nil
 }
@@ -157,7 +157,7 @@ func applyConfigSet(cfg *config.Config, key, value string) error {
 // command matches one — as written, then with dashes and case ignored, since
 // an ID copied out of a page URL has none — but the config already loaded is
 // what it is matched against rather than a second read of the file, since
-// config-set has that config in hand already.
+// config set has that config in hand already.
 func applyProjectWorkingDir(cfg *config.Config, key, value string) error {
 	id := strings.TrimSuffix(strings.TrimPrefix(key, projectKeyPrefix), workingDirKeySuffix)
 	pid, err := projectKeyFor(*cfg, id)
@@ -184,11 +184,11 @@ func applyProjectRuns(cfg *config.Config, key, value string) error {
 	var runs []config.RunCommand
 	if strings.TrimSpace(value) != "" {
 		if err := json.Unmarshal([]byte(value), &runs); err != nil {
-			return usageErrorf("config-set: %s wants a JSON array of runs, like "+
+			return usageErrorf("config set: %s wants a JSON array of runs, like "+
 				`[{"label":"Run","command":"make run","scope":"slice"}]: %v`, key, err)
 		}
 		if err := config.ValidRuns(runs); err != nil {
-			return fmt.Errorf("config-set: %w", err)
+			return fmt.Errorf("config set: %w", err)
 		}
 	}
 	p := cfg.Projects[pid]
@@ -213,10 +213,10 @@ func applyProjectColor(cfg *config.Config, key, value string) error {
 		return err
 	}
 	if !cfg.Colorable(pid) {
-		return fmt.Errorf("config-set: %s is the scratch project or a source project, which take no colour", id)
+		return fmt.Errorf("config set: %s is the scratch project or a source project, which take no colour", id)
 	}
 	if value != autoColor && !config.ValidProjectColor(value) {
-		return usageErrorf("config-set: %s wants one of %s, or %s, given %q",
+		return usageErrorf("config set: %s wants one of %s, or %s, given %q",
 			key, strings.Join(config.ProjectColors, ", "), autoColor, value)
 	}
 	p := cfg.Projects[pid]
@@ -242,11 +242,11 @@ func applyProjectName(cfg *config.Config, key, value string) error {
 	}
 	p := cfg.Projects[pid]
 	if p.IsSource() {
-		return fmt.Errorf("config-set: %s is a source project, named by its plugin, not its config entry", id)
+		return fmt.Errorf("config set: %s is a source project, named by its plugin, not its config entry", id)
 	}
 	name := strings.TrimSpace(value)
 	if name == "" {
-		return usageErrorf("config-set: %s wants a name, given none", key)
+		return usageErrorf("config set: %s wants a name, given none", key)
 	}
 	p.Name = name
 	cfg.Projects[pid] = p
@@ -278,7 +278,7 @@ var projectFieldSetters = []projectFieldSetter{
 // setMergeMethod writes a merge word, refusing one gh pr merge has no flag for.
 func setMergeMethod(p *config.ProjectConfig, key, value string) error {
 	if !config.ValidMergeMethod(value) {
-		return usageErrorf("config-set: %s wants one of %s, or nothing for the default, given %q",
+		return usageErrorf("config set: %s wants one of %s, or nothing for the default, given %q",
 			key, strings.Join(config.MergeMethods, ", "), value)
 	}
 	p.MergeMethod = value
@@ -294,7 +294,7 @@ func setDeleteBranch(p *config.ProjectConfig, key, value string) error {
 	}
 	b, err := strconv.ParseBool(strings.TrimSpace(value))
 	if err != nil {
-		return usageErrorf("config-set: %s wants true or false, given %q", key, value)
+		return usageErrorf("config set: %s wants true or false, given %q", key, value)
 	}
 	p.DeleteBranch = b
 	return nil
@@ -305,7 +305,7 @@ func setDeleteBranch(p *config.ProjectConfig, key, value string) error {
 func setTag(p *config.ProjectConfig, key, value string) error {
 	tag, err := config.NormaliseTag(value)
 	if err != nil {
-		return usageErrorf("config-set: %s: %v", key, err)
+		return usageErrorf("config set: %s: %v", key, err)
 	}
 	p.Tag = tag
 	return nil
@@ -332,7 +332,7 @@ func applyProjectField(cfg *config.Config, key, suffix, value string,
 // matched as written first and normalised afterwards, the same two-step
 // [Env.namedProject] resolves --project by. It is its own small copy rather
 // than a call to namedProject because that helper re-reads the config file
-// from disk, and config-set already has the one copy of it that is about to
+// from disk, and config set already has the one copy of it that is about to
 // be written back.
 func projectKeyFor(cfg config.Config, id string) (string, error) {
 	if _, ok := cfg.Projects[id]; ok {
@@ -356,7 +356,7 @@ func parseConfigInt(key, value string) (int, error) {
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil {
-		return 0, usageErrorf("config-set: %s wants a number, given %q", key, value)
+		return 0, usageErrorf("config set: %s wants a number, given %q", key, value)
 	}
 	return n, nil
 }

@@ -33,12 +33,12 @@ import (
 // name rather than filing a plan that lost its history.
 //
 // Everything that can be refused is refused before Notion is touched. After
-// that there is no rollback, in the same stance plan-apply takes: a run that
+// that there is no rollback, in the same stance plan apply takes: a run that
 // fails while filing leaves the project page and what was filed, with the new
 // entry in config beside the old one, and says so — the local project is
 // untouched until the plan is entirely in.
 func projectMirror(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("project-mirror", flag.ContinueOnError)
+	flags := flag.NewFlagSet("project mirror", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -49,7 +49,7 @@ func projectMirror(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("project-mirror: takes no arguments, given %d", len(rest))
+		return usageErrorf("project mirror: takes no arguments, given %d", len(rest))
 	}
 	parent, err := mirrorParent(strings.TrimSpace(*parentID), strings.TrimSpace(*parentKind))
 	if err != nil {
@@ -61,10 +61,10 @@ func projectMirror(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if project.IsSource() {
-		return fmt.Errorf("project-mirror: %q is a source project, whose tasks hang off the %s plugin's containers — Notion has nowhere to keep them, so it is not mirrored", project.Name, project.Source)
+		return fmt.Errorf("project mirror: %q is a source project, whose tasks hang off the %s plugin's containers — Notion has nowhere to keep them, so it is not mirrored", project.Name, project.Source)
 	}
 	if !project.IsLocal() {
-		return fmt.Errorf("project-mirror: %q is already tracked in Notion: only a project of nat's own is mirrored", project.Name)
+		return fmt.Errorf("project mirror: %q is already tracked in Notion: only a project of nat's own is mirrored", project.Name)
 	}
 	oldStore, err := env.storeFor(ctx, oldID, project)
 	if err != nil {
@@ -96,7 +96,7 @@ func projectMirror(ctx context.Context, args []string, env Env) error {
 	s, err := client.CreateProjectIn(ctx, parent, project.Name, assignee)
 	switch {
 	case s != nil:
-		// As project-create has it: a structure with an error is a project that
+		// As project create has it: a structure with an error is a project that
 		// exists but whose schema did not read back as expected. It is recorded
 		// rather than orphaned, and the error reported at the end.
 	case err != nil:
@@ -162,8 +162,8 @@ func projectMirror(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// projectMirroredJSON is project-mirror's structured output: the project as
-// project-create reports it, the ID of the local project it replaces, and how
+// projectMirroredJSON is project mirror's structured output: the project as
+// project create reports it, the ID of the local project it replaces, and how
 // much of the plan went in.
 type projectMirroredJSON struct {
 	Project    createdProjectJSON `json:"project"`
@@ -176,7 +176,7 @@ type projectMirroredJSON struct {
 // project page is created under.
 func mirrorParent(id, kind string) (notion.Parent, error) {
 	if id == "" {
-		return notion.Parent{}, usageErrorf("project-mirror: no --parent given: the page or database to put the project page under")
+		return notion.Parent{}, usageErrorf("project mirror: no --parent given: the page or database to put the project page under")
 	}
 	switch kind {
 	case parentKindPage:
@@ -184,7 +184,7 @@ func mirrorParent(id, kind string) (notion.Parent, error) {
 	case parentKindDatabase:
 		return notion.DataSourceParent(id), nil
 	}
-	return notion.Parent{}, usageErrorf("project-mirror: --parent-kind is %q, want %q or %q", kind, parentKindPage, parentKindDatabase)
+	return notion.Parent{}, usageErrorf("project mirror: --parent-kind is %q, want %q or %q", kind, parentKindPage, parentKindDatabase)
 }
 
 // refuseStarted refuses a plan any of whose slices has left Todo or carries a
@@ -192,7 +192,7 @@ func mirrorParent(id, kind string) (notion.Parent, error) {
 func refuseStarted(slices []domain.Slice) error {
 	for _, s := range slices {
 		if s.Status != domain.SliceTodo || s.Branch != "" || s.PRURL != "" {
-			return fmt.Errorf("project-mirror: %q has been started (%s): only a plan nobody has begun is mirrored, "+
+			return fmt.Errorf("project mirror: %q has been started (%s): only a plan nobody has begun is mirrored, "+
 				"since its history would not follow it to Notion", s.Name, s.StatusName)
 		}
 	}

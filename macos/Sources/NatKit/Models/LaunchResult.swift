@@ -1,6 +1,6 @@
 import Foundation
 
-/// Result from `nat slice-launch`, containing session info and optional warning.
+/// Result from `nat slice launch`, containing session info and optional warning.
 public struct LaunchResult: Codable, Equatable, Sendable {
     public let session: String
     public let workdir: String

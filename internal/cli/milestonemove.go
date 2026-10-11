@@ -19,7 +19,7 @@ import (
 // place among the others, so a move leaves every name as it was and every slice
 // filed where it was, which is what the store arranges and says out loud.
 func milestoneMove(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("milestone-move", flag.ContinueOnError)
+	flags := flag.NewFlagSet("milestone move", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	beforeRef := flags.String("before", "", "the milestone to sit directly before, by name")
 	afterRef := flags.String("after", "", "the milestone to sit directly after, by name")
@@ -30,11 +30,11 @@ func milestoneMove(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("milestone-move: want exactly one milestone name, given %d", len(rest))
+		return usageErrorf("milestone move: want exactly one milestone name, given %d", len(rest))
 	}
 	name := strings.TrimSpace(rest[0])
 	if name == "" {
-		return usageErrorf("milestone-move: the milestone name is empty")
+		return usageErrorf("milestone move: the milestone name is empty")
 	}
 	target, before, err := placement(*beforeRef, *afterRef)
 	if err != nil {
@@ -82,14 +82,14 @@ func placement(beforeRef, afterRef string) (string, bool, error) {
 	before, after := strings.TrimSpace(beforeRef), strings.TrimSpace(afterRef)
 	switch {
 	case before != "" && after != "":
-		return "", false, usageErrorf("milestone-move: --before and --after name two places at once: pass one")
+		return "", false, usageErrorf("milestone move: --before and --after name two places at once: pass one")
 	case before != "":
 		return before, true, nil
 	case after != "":
 		return after, false, nil
 	default:
 		return "", false, usageErrorf(
-			"milestone-move: no destination given: pass --before or --after, naming the milestone to sit beside")
+			"milestone move: no destination given: pass --before or --after, naming the milestone to sit beside")
 	}
 }
 

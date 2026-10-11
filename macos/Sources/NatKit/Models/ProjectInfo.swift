@@ -108,7 +108,7 @@ public struct Slice: Codable, Equatable, Identifiable, Sendable {
     public let blocked: Bool
     public let handedBack: Bool
     /// The slice was resumed after its hand-back: In progress, a PR
-    /// recorded and its `Branch` cleared (`nat slice-resume`), on a project
+    /// recorded and its `Branch` cleared (`nat slice resume`), on a project
     /// whose shape has a Branch column — nat's own reading, never re-derived
     /// here, since a project with no Branch column holds a PR and no branch
     /// legitimately. Left by the agent's next hand-back. False where nat does
@@ -245,7 +245,7 @@ public struct NatProjectConfig: Codable, Equatable, Sendable {
     public let assigneeUserName: String?
     /// The reserved local project ad hoc work lives in — one of `projects`,
     /// which the strip pins first and draws icon-only. Nil until `nat
-    /// scratch-open` has run.
+    /// scratch open` has run.
     public let scratchProject: String?
 
     enum CodingKeys: String, CodingKey {
@@ -313,7 +313,7 @@ public enum PlanBackend: String, Equatable, Sendable {
     case local
     case source
 
-    /// The backend a config file's (or `config-show`'s) word for it means.
+    /// The backend a config file's (or `config show`'s) word for it means.
     public init(word: String?) {
         switch word {
         case PlanBackend.local.rawValue: self = .local

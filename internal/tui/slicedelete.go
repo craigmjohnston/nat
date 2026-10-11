@@ -97,7 +97,7 @@ func (f *DeleteSliceForm) save(a *App) tea.Cmd {
 
 // deleteSlice moves a slice's page to the trash. Notion has no hard delete, so
 // a slice deleted by mistake is still recoverable in the Notion UI. It is
-// [actions.Delete], the flow `nat slice-delete` runs: a slice in progress has
+// [actions.Delete], the flow `nat slice delete` runs: a slice in progress has
 // its agent stopped first — refused where it cannot be — and its worktree and
 // branch discarded after; any other has its worktree removed the safe way. The
 // milestone it was filed under is removed where the delete left it with no

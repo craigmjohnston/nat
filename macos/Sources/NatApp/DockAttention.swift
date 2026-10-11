@@ -21,7 +21,7 @@ final class DockAttention: NSObject {
     private var rows: [DockMenuRow] = []
 
     /// Follows `model` for the life of the app: every plan read, activity
-    /// re-read and `pr-status` reading that changes `dockAttention` lands
+    /// re-read and `pr status` reading that changes `dockAttention` lands
     /// here through observation, with no poll of its own.
     func start(_ model: AppModel) {
         self.model = model

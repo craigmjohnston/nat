@@ -1087,7 +1087,7 @@ enum AppStories {
 
         Story(
             name: "window-resumed-pr-open",
-            summary: "The approved slice at its open pull request, the PR section open and the conversation up, then sent back to its live agent (slice-resume, agent-send, the plan re-read resumed): the navigator lands on Task with the terminal up, and the PR section stays — folded, wearing Reworking — with its PR tab in the titlebar; no Merge in the bar.",
+            summary: "The approved slice at its open pull request, the PR section open and the conversation up, then sent back to its live agent (slice resume, agent send, the plan re-read resumed): the navigator lands on Task with the terminal up, and the PR section stays — folded, wearing Reworking — with its PR tab in the titlebar; no Merge in the bar.",
             size: window
         ) {
             await resumedFromPullRequest()
@@ -3195,7 +3195,7 @@ enum AppStories {
                 fields: ProjectSettingsFields(projectID: Fixtures.projectID, config: appModel.config),
                 write: { change in
                     throw NatError.commandFailed(change.key == nameKey
-                        ? "config-set: \(nameKey) wants a name, given none"
+                        ? "config set: \(nameKey) wants a name, given none"
                         : "working_dir: /Users/craig/nowhere is not a directory")
                 },
                 reload: {})
@@ -3228,7 +3228,7 @@ enum AppStories {
                 plan: .local(file: Fixtures.planFile(projectID: Fixtures.projectID)),
                 write: { _ in
                     throw NatError.commandFailed(
-                        "config-set: run 4: the label \"Gallery\" is offered twice in the titlebar")
+                        "config set: run 4: the label \"Gallery\" is offered twice in the titlebar")
                 },
                 reload: {})
             model.edited.runs[3].label = "Gallery"
@@ -3340,7 +3340,7 @@ enum AppStories {
 
         Story(
             name: "settings-github-loading",
-            summary: "The GitHub section while storage-usage is still out.",
+            summary: "The GitHub section while storage usage is still out.",
             size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
@@ -3379,7 +3379,7 @@ enum AppStories {
 
         Story(
             name: "settings-sources-loading",
-            summary: "The Sources section while plugin-list is still out.",
+            summary: "The Sources section while plugin list is still out.",
             size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
@@ -3390,7 +3390,7 @@ enum AppStories {
 
         Story(
             name: "settings-sources-error",
-            summary: "The Sources section when plugin-list itself failed: nat's reason in place of the groups.",
+            summary: "The Sources section when plugin list itself failed: nat's reason in place of the groups.",
             size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
@@ -3429,7 +3429,7 @@ enum AppStories {
 
         Story(
             name: "settings-sources-setup-saved",
-            summary: "The same section after a token was saved and plugin-list re-read: \u{201C}API token set\u{201D}, "
+            summary: "The same section after a token was saved and plugin list re-read: \u{201C}API token set\u{201D}, "
                 + "the field cleared with a \u{201C}Replace …\u{201D} placeholder, and the plugin's "
                 + "\u{201C}Logged in to …\u{201D} under it with a green check.",
             size: CGSize(width: 760, height: 560),

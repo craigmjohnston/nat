@@ -111,7 +111,7 @@ final class ApprovePendingTests: XCTestCase {
         XCTAssertFalse(restarted.isApprovePending(sliceID: "s-1"))
     }
 
-    /// gh's refusal at the delayed approve is shown as slice-approve's own,
+    /// gh's refusal at the delayed approve is shown as slice approve's own,
     /// and the slice goes back to being reviewed by hand.
     @MainActor
     func testARefusedApproveSurfacesLikeTheButtonsAndIsNotRetried() async {

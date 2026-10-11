@@ -19,7 +19,7 @@ where the config dir is `$XDG_CONFIG_HOME/notion-agent-tracker`, else
 mkdir -p ~/.config/notion-agent-tracker/plugins/demo && ln -s "$PWD/examples/nat-source-demo/nat-source-demo" ~/.config/notion-agent-tracker/plugins/demo/nat-source-demo
 ```
 
-Then `nat source-list` lists it and `nat project-create --source demo`
+Then `nat source list` lists it and `nat project create --source demo`
 makes a project backed by it. Remove the symlink to uninstall.
 
 ## Try it from a shell

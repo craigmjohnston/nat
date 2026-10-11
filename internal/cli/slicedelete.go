@@ -22,7 +22,7 @@ import (
 // branch are discarded with the work in them after the trash — all
 // [actions.Delete]'s, which the board's d runs too.
 func sliceDelete(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-delete", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice delete", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -31,9 +31,9 @@ func sliceDelete(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-delete: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice delete: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-delete", rest[0])
+	id, err := pageID("slice delete", rest[0])
 	if err != nil {
 		return err
 	}

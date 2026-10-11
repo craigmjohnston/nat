@@ -92,7 +92,7 @@ public enum ProjectMergeMethod: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// Where a project's plan lives, as the sheet's read-only Plan row says it.
-/// Nothing in the sheet moves a plan: `nat project-mirror` is how a local
+/// Nothing in the sheet moves a plan: `nat project mirror` is how a local
 /// one goes into Notion.
 public enum ProjectPlanLocation: Equatable, Sendable {
     /// In Notion, at the project's page — nil where the ID is no page ID.
@@ -116,7 +116,7 @@ public enum ProjectPlanLocation: Equatable, Sendable {
 
 /// The project settings sheet (the project menu's Project settings…): the
 /// project's fields as config read them, the edits made over them, and the
-/// Save that writes the difference — Settings' own rule, one `nat config-set
+/// Save that writes the difference — Settings' own rule, one `nat config set
 /// <key> <value>` per changed key, a refusal kept beside its key with the
 /// baseline left as read, and config re-read once anything landed so every
 /// launch and Reveal uses the new value at once. The view only binds.
@@ -154,7 +154,7 @@ public final class ProjectSettingsModel {
     private let readDefaultBase: @Sendable () async throws -> String?
 
     /// - Parameters:
-    ///   - write: one `config-set` — `NatClient.configSet` in the app.
+    ///   - write: one `config set` — `NatClient.configSet` in the app.
     ///   - reload: re-reads the app's config (`AppModel.reloadConfig`).
     ///   - readPlanFile: a local plan's file — `NatClient.planFile` in the app.
     ///   - readDefaultBase: the repository's default branch —
@@ -207,19 +207,19 @@ public final class ProjectSettingsModel {
             readDefaultBase: { try await client.defaultBase(projectID: projectID) })
     }
 
-    /// The working directory's `config-set` key.
+    /// The working directory's `config set` key.
     public var workingDirKey: String { SettingsModel.workingDirKey(projectID: projectID) }
 
-    /// The colour's `config-set` key.
+    /// The colour's `config set` key.
     public var colorKey: String { SettingsModel.colorKey(projectID: projectID) }
 
-    /// The name's `config-set` key.
+    /// The name's `config set` key.
     public var nameKey: String { SettingsModel.nameKey(projectID: projectID) }
 
-    /// The run commands' `config-set` key.
+    /// The run commands' `config set` key.
     public var runsKey: String { SettingsModel.runsKey(projectID: projectID) }
 
-    /// The per-project settings' `config-set` keys.
+    /// The per-project settings' `config set` keys.
     public var sliceModelKey: String { SettingsModel.sliceModelKey(projectID: projectID) }
     public var sliceEffortKey: String { SettingsModel.sliceEffortKey(projectID: projectID) }
     public var workshopModelKey: String { SettingsModel.workshopModelKey(projectID: projectID) }
@@ -302,7 +302,7 @@ public final class ProjectSettingsModel {
         Self.changes(projectID: projectID, from: original, to: edited)
     }
 
-    /// The `config-set` writes that carry `edited` onto `original`: one per
+    /// The `config set` writes that carry `edited` onto `original`: one per
     /// field that changed, in field order.
     public static func changes(
         projectID: String, from original: ProjectSettingsFields, to edited: ProjectSettingsFields
@@ -339,7 +339,7 @@ public final class ProjectSettingsModel {
         return changes
     }
 
-    /// The runs as `config-set project.<id>.runs` takes them: the whole list
+    /// The runs as `config set project.<id>.runs` takes them: the whole list
     /// as a JSON array, each run as nat writes it (no scope for both), and
     /// the empty string — the key space's unset — for none.
     static func runsValue(_ runs: [RunCommand]) -> String {
@@ -382,7 +382,7 @@ public final class ProjectSettingsModel {
         return result
     }
 
-    /// Writes every change, each its own `config-set`; true once all of them
+    /// Writes every change, each its own `config set`; true once all of them
     /// landed (nothing to write included), which is when the sheet closes.
     /// A refused key keeps its edit and nat's message; a second Save while
     /// one is under way does nothing.

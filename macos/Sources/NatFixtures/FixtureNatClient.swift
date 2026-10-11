@@ -37,7 +37,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// fixed `agents` — a launch puts one in the next reading and a kill
     /// takes it out, as tmux would.
     private let workspaceAgents = Box<[AgentStatus]>([])
-    /// The plan a workshop has proposed, as `plan-proposal` reads it back —
+    /// The plan a workshop has proposed, as `plan proposal` reads it back —
     /// nil until something sets one, as a workshop that has not drafted yet.
     private let proposalBox = Box<PlanProposal?>(nil)
     /// What each project's own workshop has proposed, by project.
@@ -59,25 +59,25 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     private let usageReading: UsageReading
     private let claudeVersionReading: ClaudeVersion
     private let storageReading: StorageUsageAnswer
-    /// What `claude-update` answers: its output, or nil to refuse.
+    /// What `claude update` answers: its output, or nil to refuse.
     private let claudeUpdateOutput: String?
     private let sessionsList: [Session]
-    /// What `slice-show` answers, by slice — `Fixtures.sliceDetails` unless a
+    /// What `slice show` answers, by slice — `Fixtures.sliceDetails` unless a
     /// story wants another reading of one (a slice with follow-ups pending).
     private let details: [String: SliceDetail]
-    /// What `pr-status` answers — `Fixtures.prStatusDoc` unless a story
+    /// What `pr status` answers — `Fixtures.prStatusDoc` unless a story
     /// reads another.
     private let prStatusDoc: PRStatusDoc
-    /// What `pr-status` answers for a project other than the fixture's own
+    /// What `pr status` answers for a project other than the fixture's own
     /// reading — `.some(nil)` a reading that fails — set at init or later, as
     /// a test moves a project's pull requests on.
     private let prStatusByProject: Box<[String: PRStatusDoc?]>
-    /// What `plugin-list` answers — the same listing after every install,
+    /// What `plugin list` answers — the same listing after every install,
     /// since nothing here is installed.
     private let plugins: PluginListing
-    /// What `source-list` answers.
+    /// What `source list` answers.
     private let sources: [SourcePlugin]
-    /// The setup fields `source-setup` has set, as `plugin/field`.
+    /// The setup fields `source setup` has set, as `plugin/field`.
     private let setUpFields = Box<Set<String>>([])
 
     /// Every write this client was asked to make, in order — a preview never
@@ -92,43 +92,43 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// The projects `info` has read, in order.
     public var infoReads: [String] { infoRecorded.all() }
 
-    /// Every `config-set` that landed, key and value, in order — `writes`
+    /// Every `config set` that landed, key and value, in order — `writes`
     /// names the key alone.
     private let configSets = Recorder()
 
-    /// Each `config-set` that landed, as `key=value`.
+    /// Each `config set` that landed, as `key=value`.
     public var configSetValues: [String] { configSets.all() }
 
-    /// Every project `pr-status` was asked for, in order — a test of the
+    /// Every project `pr status` was asked for, in order — a test of the
     /// reading's own cadence counts here.
     private let prStatusRecorded = Recorder()
-    /// The projects `pr-status` has read, in order, one entry a project.
+    /// The projects `pr status` has read, in order, one entry a project.
     public var prStatusReads: [String] { prStatusRecorded.all() }
-    /// Every `pr-status` run, its projects joined with commas and any
+    /// Every `pr status` run, its projects joined with commas and any
     /// `--detail` after a space — one entry a run.
     private let prStatusRunRecorded = Recorder()
     public var prStatusRuns: [String] { prStatusRunRecorded.all() }
     private let prStatusSettleRecorded = Recorder()
-    /// Each `pr-status` run's kind, in order: "settle" for one after an
+    /// Each `pr status` run's kind, in order: "settle" for one after an
     /// action (`--settle`), else "poll".
     public var prStatusKinds: [String] { prStatusSettleRecorded.all() }
-    /// Every `pr-view` of a slice's pull request, by slice ref.
+    /// Every `pr view` of a slice's pull request, by slice ref.
     private let prViewRecorded = Recorder()
     public var prViewReads: [String] { prViewRecorded.all() }
-    /// Every `session-list`, by project.
+    /// Every `session list`, by project.
     private let sessionListRecorded = Recorder()
     public var sessionListReads: [String] { sessionListRecorded.all() }
-    /// Every `slice-status`, as `slice-status --project <id> <slice>`.
+    /// Every `slice status`, as `slice status --project <id> <slice>`.
     private let sliceStatusRecorded = Recorder()
     public var sliceStatusReads: [String] { sliceStatusRecorded.all() }
-    /// What `slice-status` answers, by slice (`setSliceStatus`).
+    /// What `slice status` answers, by slice (`setSliceStatus`).
     private let sliceStatuses = Box<[String: SliceStatusResult]>([:])
-    /// The pull request `pr-status --detail` reads where a test set one
+    /// The pull request `pr status --detail` reads where a test set one
     /// (`setDetail`) — else the fixture's.
     private let detailPR = Box<PRDetail?>(nil)
-    /// The rate limit `pr-status` reads — none unless a test says.
+    /// The rate limit `pr status` reads — none unless a test says.
     private let rateLimit = Box<GitHubRateLimit?>(nil)
-    /// Set while `pr-status` reads are held mid-call.
+    /// Set while `pr status` reads are held mid-call.
     private let prStatusHeld = Box(false)
 
     /// Set once a caller wants every `sliceDiff` read from here on to refuse
@@ -186,7 +186,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         planBox.set(plan)
     }
 
-    /// Say what the workshop has proposed, as `plan-propose` would have.
+    /// Say what the workshop has proposed, as `plan propose` would have.
     public func setProposal(_ proposal: PlanProposal?) {
         proposalBox.set(proposal)
     }
@@ -215,13 +215,13 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         checksHang.set(true)
     }
 
-    /// Hold every `pr-status` read from now on mid-call, until `releasePRStatus`
+    /// Hold every `pr status` read from now on mid-call, until `releasePRStatus`
     /// — a cancel included, as a nat that never answers would.
     public func holdPRStatus() {
         prStatusHeld.set(true)
     }
 
-    /// Let every held `pr-status` read answer.
+    /// Let every held `pr status` read answer.
     public func releasePRStatus() {
         prStatusHeld.set(false)
     }
@@ -344,7 +344,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await answer("main")
     }
 
-    /// The listing, with every field `source-setup` has set reading `set`
+    /// The listing, with every field `source setup` has set reading `set`
     /// from then on — as the plugin's describe would.
     public func pluginList() async throws -> PluginListing {
         let done = setUpFields.get()
@@ -360,7 +360,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// Records the plugin and field only — never the value, which stands for
     /// a token — and answers as the Shortcut plugin does.
     public func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult {
-        try await record("source-setup \(plugin) --id \(id)")
+        try await record("source setup \(plugin) --id \(id)")
         var done = setUpFields.get()
         done.insert("\(plugin)/\(id)")
         setUpFields.set(done)
@@ -370,12 +370,12 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// Records the project made — a connected plugin's section, here — and
     /// answers with an id of its own.
     public func projectCreate(name: String, repo: String?, description: String?, source: String?) async throws -> CreatedProject {
-        try await record("project-create \(name)" + (source.map { " --source \($0)" } ?? ""))
+        try await record("project create \(name)" + (source.map { " --source \($0)" } ?? ""))
         return CreatedProject(id: "f1x8500c-0000-4000-8000-\(source ?? "project")", name: name, source: source)
     }
 
     public func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled {
-        try await record("plugin-install \(name) --source \(source ?? "")")
+        try await record("plugin install \(name) --source \(source ?? "")")
         return PluginInstalled(
             name: name, path: "/Users/craig/.config/notion-agent-tracker/plugins/\(name)/nat-source-\(name)",
             source: source ?? "craigmjohnston/nat", version: version ?? "1.0.57",
@@ -385,7 +385,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// Records the uninstall; `deleteProjects` answers with the config's
     /// source projects of the plugin, by id, as deleted (nothing is).
     public func pluginUninstall(name: String, deleteProjects: Bool) async throws -> PluginUninstalled {
-        try await record("plugin-uninstall \(name)" + (deleteProjects ? " --delete-projects" : ""))
+        try await record("plugin uninstall \(name)" + (deleteProjects ? " --delete-projects" : ""))
         let deleted = deleteProjects
             ? config.projects.filter { $0.value.source == name }.sorted { $0.key < $1.key }
                 .map { PluginUninstalled.DeletedProject(id: $0.key, name: $0.value.name) }
@@ -395,12 +395,12 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func pluginSourceAdd(repo: String) async throws -> PluginSourceList {
-        try await record("plugin-source-add \(repo)")
+        try await record("plugin source add \(repo)")
         return PluginSourceList(sources: plugins.sources.map(\.repo) + [repo])
     }
 
     public func pluginSourceRemove(repo: String) async throws -> PluginSourceList {
-        try await record("plugin-source-remove \(repo)")
+        try await record("plugin source remove \(repo)")
         return PluginSourceList(sources: plugins.sources.map(\.repo).filter { $0 != repo })
     }
 
@@ -421,10 +421,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         try await answer(storageReading)
     }
 
-    /// Recorded as `claude-update`; refused, with claude's own words, where
+    /// Recorded as `claude update`; refused, with claude's own words, where
     /// the fixture was given no output.
     public func claudeUpdate() async throws -> String {
-        try await record("claude-update")
+        try await record("claude update")
         guard let claudeUpdateOutput else {
             throw NatError.commandFailed("claude update: exit status 1: Error: could not write to the install directory")
         }
@@ -489,18 +489,18 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
             projects: projects, rateLimit: rateLimit.get(), detail: detail == nil ? nil : detailPR.get() ?? pr))
     }
 
-    /// Say what `pr-status --detail` reads from here on, in place of the
-    /// fixture's pull request `pr-view` still answers with.
+    /// Say what `pr status --detail` reads from here on, in place of the
+    /// fixture's pull request `pr view` still answers with.
     public func setDetail(_ pr: PRDetail?) {
         detailPR.set(pr)
     }
 
-    /// Say what rate limit `pr-status` reads from here on.
+    /// Say what rate limit `pr status` reads from here on.
     public func setRateLimit(_ limit: GitHubRateLimit?) {
         rateLimit.set(limit)
     }
 
-    /// Say what `pr-status` reads for one project from here on — nil, a
+    /// Say what `pr status` reads for one project from here on — nil, a
     /// reading that fails.
     public func setPRStatus(_ doc: PRStatusDoc?, forProject projectID: String) {
         var all = prStatusByProject.get()
@@ -508,7 +508,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         prStatusByProject.set(all)
     }
 
-    /// Say what `slice-status` answers for one slice, on any project — In
+    /// Say what `slice status` answers for one slice, on any project — In
     /// progress for a slice none was set for.
     public func setSliceStatus(_ result: SliceStatusResult, forSlice sliceID: String) {
         var all = sliceStatuses.get()
@@ -517,7 +517,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
-        sliceStatusRecorded.append("slice-status --project \(projectID) \(sliceRef)")
+        sliceStatusRecorded.append("slice status --project \(projectID) \(sliceRef)")
         return try await answer(sliceStatuses.get()[sliceRef] ?? .found(status: "In progress", trashed: false))
     }
 
@@ -528,7 +528,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     // MARK: - Writes
 
     public func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult {
-        try await record("slice-edit \(sliceRef)")
+        try await record("slice edit \(sliceRef)")
         return SliceEditResult(
             id: sliceRef,
             name: Fixtures.sliceDetail.name,
@@ -540,7 +540,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     public func sliceLaunch(
         projectID: String, sliceRef: String, model: String?, effort: String?
     ) async throws -> LaunchResult {
-        try await record("slice-launch \(sliceRef)")
+        try await record("slice launch \(sliceRef)")
         return LaunchResult(
             session: TmuxSession.name(forSlicePageID: sliceRef),
             workdir: "/Users/craig/Projects/notion-agent-tracker.worktrees/slice-fixture",
@@ -550,32 +550,32 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func agentSend(projectID: String, sliceRef: String, text: String) async throws {
-        try await record("agent-send \(sliceRef)")
+        try await record("agent send \(sliceRef)")
     }
 
     public func agentKill(projectID: String, sliceRef: String) async throws {
-        try await record("agent-kill --project \(projectID) \(sliceRef)")
+        try await record("agent kill --project \(projectID) \(sliceRef)")
     }
 
     public func agentKillWorkshop(projectID: String) async throws {
-        try await record("agent-kill --workshop")
+        try await record("agent kill --workshop")
     }
 
     public func sliceApprove(projectID: String, sliceRef: String) async throws -> String {
-        try await record("slice-approve \(sliceRef)")
+        try await record("slice approve \(sliceRef)")
         return Fixtures.prURL
     }
 
     public func sliceRework(projectID: String, sliceRef: String, comments: String) async throws {
-        try await record("slice-rework \(sliceRef)")
+        try await record("slice rework \(sliceRef)")
     }
 
     public func sliceResume(projectID: String, sliceRef: String, note: String) async throws {
-        try await record("slice-resume \(sliceRef) \(note)")
+        try await record("slice resume \(sliceRef) \(note)")
     }
 
     public func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult {
-        try await record("slice-triage \(sliceRef) queue=\(queue) fold=\(fold) drop=\(drop)")
+        try await record("slice triage \(sliceRef) queue=\(queue) fold=\(fold) drop=\(drop)")
         let followUps = details[sliceRef]?.followUps ?? []
         let titles = { (indexes: [Int]) in followUps.filter { indexes.contains($0.index) }.map(\.title) }
         return TriageResult(
@@ -586,19 +586,19 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func prMerge(projectID: String, sliceRef: String) async throws {
-        try await record("pr-merge \(sliceRef)")
+        try await record("pr merge \(sliceRef)")
     }
 
     public func prComment(projectID: String, sliceRef: String, body: String) async throws {
-        try await record("pr-comment \(sliceRef)")
+        try await record("pr comment \(sliceRef)")
     }
 
     public func prComment(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
-        try await record("pr-comment \(sliceRef)")
+        try await record("pr comment \(sliceRef)")
     }
 
     public func prEdit(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
-        try await record("pr-edit \(sliceRef)")
+        try await record("pr edit \(sliceRef)")
     }
 
     /// The fixture repository's collaborators, the pull request's own
@@ -607,7 +607,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         projectID: String, sliceRef: String, add: [String], remove: [String]
     ) async throws -> PRReviewers {
         if !add.isEmpty || !remove.isEmpty {
-            try await record("pr-reviewers \(sliceRef) +\(add.joined(separator: ",")) -\(remove.joined(separator: ","))")
+            try await record("pr reviewers \(sliceRef) +\(add.joined(separator: ",")) -\(remove.joined(separator: ","))")
         }
         let requested = (pr.reviewRequests + add).filter { !remove.contains($0) }
         return try await answer(PRReviewers(
@@ -620,7 +620,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// and re-run whole; otherwise the mode's own checks.
     public func sliceChecksRerun(projectID: String, sliceRef: String, mode: ChecksRerunMode) async throws -> ChecksActionResult {
         if checksHang.get() { try await Self.never() }
-        try await record("slice-checks-rerun \(sliceRef) \(mode)")
+        try await record("slice checks rerun \(sliceRef) \(mode)")
         let actions = pr.checks.filter(\.rerunnable)
         let touched: [PRCheck] = switch mode {
         case .all: actions
@@ -646,7 +646,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// going: every check still going in each run touched.
     public func sliceChecksCancel(projectID: String, sliceRef: String, checks: [String]) async throws -> ChecksActionResult {
         if checksHang.get() { try await Self.never() }
-        try await record("slice-checks-cancel \(sliceRef) \(checks)")
+        try await record("slice checks cancel \(sliceRef) \(checks)")
         let going = pr.checks.filter { $0.rerunnable && checkOutcome(state: $0.state) == .pending }
         let runs = Set(checks.isEmpty ? going.compactMap(\.run) : pr.checks.filter { checks.contains($0.name) }.compactMap(\.run))
         return ChecksActionResult(cancelled: going.filter { $0.run.map(runs.contains) ?? false }.map(\.name))
@@ -656,7 +656,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         projectID: String, model: String?, effort: String?, request: String?
     ) async throws -> WorkshopLaunchResult {
         if launchHangs.get() { try await Self.never() }
-        try await record("workshop-launch \(projectID)")
+        try await record("workshop launch \(projectID)")
         return WorkshopLaunchResult(
             session: TmuxSession.planSessionName(projectID: projectID),
             workdir: "/Users/craig/Projects/notion-agent-tracker"
@@ -667,7 +667,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         workspaceID: String, model: String?, effort: String?, request: String
     ) async throws -> WorkshopLaunchResult {
         if launchHangs.get() { try await Self.never() }
-        try await record("workshop-launch --workspace \(workspaceID)")
+        try await record("workshop launch --workspace \(workspaceID)")
         workspaceAgents.set(workspaceAgents.get() + [AgentStatus(
             sliceID: TmuxSession.planTag(projectID: workspaceID),
             session: TmuxSession.planSessionName(projectID: workspaceID),
@@ -680,7 +680,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func agentKillWorkspace(workspaceID: String) async throws {
-        try await record("agent-kill --workshop --workspace \(workspaceID)")
+        try await record("agent kill --workshop --workspace \(workspaceID)")
         let tag = TmuxSession.planTag(projectID: workspaceID)
         workspaceAgents.set(workspaceAgents.get().filter { $0.sliceID != tag })
     }
@@ -696,7 +696,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     public func planAccept(projectID: String) async throws -> PlanAccepted {
         if acceptHangs.get() { try await Self.never() }
         if let refusal = acceptRefusal.get() { throw NatError.commandFailed(refusal) }
-        try await record("plan-accept --project \(projectID)")
+        try await record("plan accept --project \(projectID)")
         let proposal = projectProposals.get()[projectID]
         setProposal(nil, forProject: projectID)
         return PlanAccepted(
@@ -708,7 +708,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted {
         if acceptHangs.get() { try await Self.never() }
-        try await record("plan-accept --workspace \(workspaceID) --name \(name)")
+        try await record("plan accept --workspace \(workspaceID) --name \(name)")
         let proposal = proposalBox.get()
         proposalBox.set(nil)
         return PlanAccepted(
@@ -721,30 +721,30 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// Takes the proposal down as nat does — the file gone, so the next
     /// reading finds none — and records the call.
     public func planWithdraw(workspaceID: String) async throws {
-        try await record("plan-withdraw --workspace \(workspaceID)")
+        try await record("plan withdraw --workspace \(workspaceID)")
         proposalBox.set(nil)
     }
 
     public func planWithdraw(projectID: String) async throws {
-        try await record("plan-withdraw --project \(projectID)")
+        try await record("plan withdraw --project \(projectID)")
         setProposal(nil, forProject: projectID)
     }
 
     public func notionSearch(query: String) async throws -> [NotionPlace] {
-        try await record("notion-search \(query)")
+        try await record("notion search \(query)")
         let needle = query.lowercased()
         return Fixtures.notionPlaces.filter { needle.isEmpty || $0.title.lowercased().contains(needle) }
     }
 
     public func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored {
-        try await record("project-mirror \(projectID) --parent \(parent.id)")
+        try await record("project mirror \(projectID) --parent \(parent.id)")
         return ProjectMirrored(
             project: ProjectEntry(id: Fixtures.mirroredProjectID, name: "rust-importer", slicesDSID: "f1x75111-ds"),
             replaced: projectID, milestones: 4, slices: 14)
     }
 
     public func sliceAdd(projectID: String, title: String, milestone: String, description: String?) async throws -> SliceAddResult {
-        try await record("slice-add \(title)")
+        try await record("slice add \(title)")
         return SliceAddResult(
             id: "f1x75111-0000-4000-8000-000000000099",
             name: title,
@@ -757,14 +757,14 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     }
 
     public func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult {
-        try await record("slice-add \(title) --container \(container)")
+        try await record("slice add \(title) --container \(container)")
         return SliceAddResult(
             id: "f1x7500c-0000-4000-8000-000000000099", name: title, status: "Todo",
             milestoneID: container, milestoneName: container, repo: "", url: "nat://f1x7500c-0000-4000-8000-000000000099")
     }
 
     public func configSet(key: String, value: String) async throws {
-        try await record("config-set \(key)")
+        try await record("config set \(key)")
         configSets.append("\(key)=\(value)")
     }
 
@@ -774,19 +774,19 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         projectID: String, action: String, group: String?, container: String?, input: String?
     ) async throws -> SourceActionResult {
         let target = group.map { " --group \($0)" } ?? container.map { " --container \($0)" } ?? ""
-        try await record("source-action \(action)\(target)")
+        try await record("source action \(action)\(target)")
         return SourceActionResult(message: "Ran \(action).")
     }
 
     // MARK: - Scratch project
 
     public func scratchOpen() async throws -> ScratchOpenResult {
-        try await record("scratch-open")
+        try await record("scratch open")
         return ScratchOpenResult(id: Fixtures.scratchProjectID, created: false)
     }
 
     public func doneClear(projectID: String) async throws -> DoneClearResult {
-        try await record("done-clear \(projectID)")
+        try await record("project done clear \(projectID)")
         if let message = doneClearFailureMessage.get() {
             throw NatError.commandFailed(message)
         }
@@ -804,7 +804,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     public func sessionLaunch(
         projectID: String, dir: String?, model: String?, effort: String?
     ) async throws -> SessionLaunchResult {
-        try await record("session-launch \(dir ?? "")")
+        try await record("session launch \(dir ?? "")")
         let id = "f1x75e55-0000-4000-8000-000000000001"
         return SessionLaunchResult(
             session: "nat-session-f1x75e55",
@@ -832,7 +832,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public func sessionStatus(projectID: String, sessionID: String, discard: Bool) async throws -> SessionStatusDoc {
         let session = sessionsList.first { $0.id == sessionID } ?? Fixtures.liveSession
-        try await record("session-status \(sessionID)")
+        try await record("session status \(sessionID)")
         return SessionStatusDoc(
             id: session.id,
             live: session.live,

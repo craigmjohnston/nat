@@ -22,7 +22,7 @@ final class FakePlanCache: PlanCaching, @unchecked Sendable {
         stored[projectID] = info
     }
 
-    /// The `pr-status` readings kept, by project.
+    /// The `pr status` readings kept, by project.
     var storedPRStatus: [String: PRStatusDoc] = [:]
 
     func readPRStatus(projectID: String) async -> PRStatusDoc? { storedPRStatus[projectID] }
@@ -70,7 +70,7 @@ final class PlanCacheTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    /// A project's `pr-status` reading is kept beside its plan, round-trips
+    /// A project's `pr status` reading is kept beside its plan, round-trips
     /// whole — its conflicts included — and reads as nothing where none or a
     /// corrupt one was written.
     func testPRStatusRoundTrip() async throws {

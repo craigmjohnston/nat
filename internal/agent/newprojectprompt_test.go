@@ -18,7 +18,7 @@ func TestNewProjectPrompt(t *testing.T) {
 func TestNewProjectPromptPinsTheWorkspace(t *testing.T) {
 	got := NewProjectPrompt(testWorkspaceID, "Some request.")
 	for _, want := range []string{
-		"nat plan-propose --workspace " + testWorkspaceID,
+		"nat plan propose --workspace " + testWorkspaceID,
 		"--workspace " + testWorkspaceID,
 	} {
 		if !strings.Contains(got, want) {
@@ -38,11 +38,11 @@ func TestNewProjectPromptCarriesTheDescriptionVerbatim(t *testing.T) {
 }
 
 // The agent proposes; the user's Accept is what creates the project and
-// files the plan. A session that ran project-create or plan-apply itself
+// files the plan. A session that ran project create or plan apply itself
 // would skip the review the proposal is for.
 func TestNewProjectPromptNeverRunsProjectCreateOrPlanApply(t *testing.T) {
 	got := NewProjectPrompt(testWorkspaceID, "Some request.")
-	for _, want := range []string{"Never run `nat project-create` or `nat plan-apply`", "nat plan-propose"} {
+	for _, want := range []string{"Never run `nat project create` or `nat plan apply`", "nat plan propose"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q", want)
 		}

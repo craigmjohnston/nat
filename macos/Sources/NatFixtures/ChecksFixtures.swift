@@ -4,10 +4,10 @@ import NatKit
 // MARK: - CI failure feedback
 
 extension Fixtures {
-    /// The approved slice's failed check, as `nat pr-status` names it.
+    /// The approved slice's failed check, as `nat pr status` names it.
     public static let failingRunURL = "https://github.com/craigmjohnston/notion-agent-tracker/actions/runs/9001/job/42"
 
-    /// `nat pr-status --json` with the approved slice's pull request red: its
+    /// `nat pr status --json` with the approved slice's pull request red: its
     /// `test` check failed.
     public static let prStatusChecksFailing = PRStatusDoc(slices: [
         PRStatusSlice(
@@ -20,7 +20,7 @@ extension Fixtures {
     ])
 
     /// The plan with the approved slice resumed — sent back to its agent
-    /// after its approval (`nat slice-resume`), its Branch cleared, as nat
+    /// after its approval (`nat slice resume`), its Branch cleared, as nat
     /// reads `resumed`.
     public static var resumedProjectInfo: ProjectInfo {
         ProjectInfo(
@@ -52,7 +52,7 @@ extension Fixtures {
     public static let resumedNote = "Checks are failing on the pull request: CI / test."
 
     /// The approved slice's task log once resumed: the hand-back, the Work
-    /// resumed — then the approve `slice-show` adds from its properties.
+    /// resumed — then the approve `slice show` adds from its properties.
     public static var resumedSliceDetails: [String: SliceDetail] {
         sliceDetails.merging([approveSliceID: approvedSliceDetail(last: TaskLogEvent(
             .resumed, note: resumedNote, at: now.addingTimeInterval(-25 * 60)))]) { _, new in new }
@@ -81,7 +81,7 @@ extension Fixtures {
     public static let failedChecksNote = "The pull request's checks failed:\n\n- test: \(failingRunURL)"
 
     /// The approved slice's task log, its last recorded event `last` — then
-    /// the approve `slice-show` adds from the slice's own properties.
+    /// the approve `slice show` adds from the slice's own properties.
     public static func approvedSliceDetail(last: TaskLogEvent, visuals: [VisualChange] = []) -> SliceDetail {
         SliceDetail(
             id: approveSliceID,
@@ -100,7 +100,7 @@ extension Fixtures {
             brief: "Approving a hand-back opens its pull request and records it on the slice.",
             visuals: visuals,
             events: [
-                TaskLogEvent(.handedBack, note: "Approve opens the pull request through `nat slice-approve`."),
+                TaskLogEvent(.handedBack, note: "Approve opens the pull request through `nat slice approve`."),
                 last,
                 TaskLogEvent(.approved, pr: prURL),
             ])

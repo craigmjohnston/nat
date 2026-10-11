@@ -218,7 +218,7 @@ const localSchemaVersion = 5
 // created it. Every column maps one-to-one onto [domain.Slice] or
 // [domain.Milestone], so this store produces the same structs the Notion
 // mapper does and everything above them — domain.Blockers, StateOf, HandedBack,
-// the board, next-slice — is untouched.
+// the board, slice next — is untouched.
 //
 // body and conventions hold markdown verbatim, which is the brief exactly as an
 // agent receives it: the one constraint the format could not trade away.

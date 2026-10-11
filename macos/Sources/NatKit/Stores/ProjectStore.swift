@@ -84,17 +84,17 @@ extension NatClientProtocol {
     /// and the fixture client implement these, the same reasoning as
     /// `natVersion`.
     public func claudeVersion() async throws -> ClaudeVersion {
-        throw NatError.commandFailed("claude-version: not supported by this client")
+        throw NatError.commandFailed("claude version: not supported by this client")
     }
 
     public func claudeUpdate() async throws -> String {
-        throw NatError.commandFailed("claude-update: not supported by this client")
+        throw NatError.commandFailed("claude update: not supported by this client")
     }
 
     /// Settings ▸ GitHub's read: only `NatClient` and the fixture client
     /// implement it, the same reasoning as `natVersion`.
     public func storageUsage() async throws -> StorageUsageAnswer {
-        throw NatError.commandFailed("storage-usage: not supported by this client")
+        throw NatError.commandFailed("storage usage: not supported by this client")
     }
 
     /// The project settings sheet's Plan row: only `NatClient` and the
@@ -122,13 +122,13 @@ extension NatClientProtocol {
     public func sliceFile(
         projectID: String, sliceRef: String, commit: String?, path: String, from: Int, to: Int?
     ) async throws -> SliceFileLines {
-        throw NatError.commandFailed("slice-file: not supported by this client")
+        throw NatError.commandFailed("slice file: not supported by this client")
     }
 
     /// Reviewers: only `NatClient` and the fixture client implement this,
     /// the same reasoning as `workspaceLaunch`.
     public func prReviewers(projectID: String, sliceRef: String, add: [String], remove: [String]) async throws -> PRReviewers {
-        throw NatError.commandFailed("pr-reviewers: not supported by this client")
+        throw NatError.commandFailed("pr reviewers: not supported by this client")
     }
 
     /// A comment on a slice's pull request (`sessionID` nil) is every
@@ -137,7 +137,7 @@ extension NatClientProtocol {
     /// `workspaceLaunch`.
     public func prComment(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
         guard sessionID == nil else {
-            throw NatError.commandFailed("pr-comment --session: not supported by this client")
+            throw NatError.commandFailed("pr comment --session: not supported by this client")
         }
         try await prComment(projectID: projectID, sliceRef: sliceRef, body: body)
     }
@@ -145,23 +145,23 @@ extension NatClientProtocol {
     /// Editing a pull request's description: only `NatClient` and the
     /// fixture client implement this, the same reasoning as `workspaceLaunch`.
     public func prEdit(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
-        throw NatError.commandFailed("pr-edit: not supported by this client")
+        throw NatError.commandFailed("pr edit: not supported by this client")
     }
 
     /// Re-running and cancelling checks: only `NatClient` and the fixture
     /// client implement these, the same reasoning as `workspaceLaunch`.
     public func sliceChecksRerun(projectID: String, sliceRef: String, mode: ChecksRerunMode) async throws -> ChecksActionResult {
-        throw NatError.commandFailed("slice-checks-rerun: not supported by this client")
+        throw NatError.commandFailed("slice checks rerun: not supported by this client")
     }
 
     public func sliceChecksCancel(projectID: String, sliceRef: String, checks: [String]) async throws -> ChecksActionResult {
-        throw NatError.commandFailed("slice-checks-cancel: not supported by this client")
+        throw NatError.commandFailed("slice checks cancel: not supported by this client")
     }
 
     /// Triaging follow-ups: only `NatClient` and the fixture client
     /// implement these, the same reasoning as `workspaceLaunch`.
     public func sliceTriage(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) async throws -> TriageResult {
-        throw NatError.commandFailed("slice-triage: not supported by this client")
+        throw NatError.commandFailed("slice triage: not supported by this client")
     }
 
     /// The Untitled tab's planning agent: only `NatClient` and the fixture
@@ -169,74 +169,74 @@ extension NatClientProtocol {
     /// launches one need not say so — the same reason `sliceRework` is a
     /// default.
     public func workspaceLaunch(workspaceID: String, model: String?, effort: String?, request: String) async throws -> WorkshopLaunchResult {
-        throw NatError.commandFailed("workshop-launch --workspace: not supported by this client")
+        throw NatError.commandFailed("workshop launch --workspace: not supported by this client")
     }
 
     public func agentKillWorkspace(workspaceID: String) async throws {
-        throw NatError.commandFailed("agent-kill --workspace: not supported by this client")
+        throw NatError.commandFailed("agent kill --workspace: not supported by this client")
     }
 
     /// Opening a plan folder as a project: same reasoning, only `NatClient`
     /// implements it.
     public func projectOpenFolder(path: String) async throws -> ProjectEntry {
-        throw NatError.commandFailed("project-open-folder: not supported by this client")
+        throw NatError.commandFailed("project open folder: not supported by this client")
     }
 
     /// The Untitled tab's proposal: same reasoning, only `NatClient` and the
     /// fixture client implement them.
     public func planProposal(workspaceID: String) async throws -> PlanProposal? {
-        throw NatError.commandFailed("plan-proposal: not supported by this client")
+        throw NatError.commandFailed("plan proposal: not supported by this client")
     }
 
     public func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted {
-        throw NatError.commandFailed("plan-accept: not supported by this client")
+        throw NatError.commandFailed("plan accept: not supported by this client")
     }
 
     /// A project workshop's proposal: same reasoning.
     public func planProposal(projectID: String) async throws -> PlanProposal? {
-        throw NatError.commandFailed("plan-proposal --project: not supported by this client")
+        throw NatError.commandFailed("plan proposal --project: not supported by this client")
     }
 
     public func planAccept(projectID: String) async throws -> PlanAccepted {
-        throw NatError.commandFailed("plan-accept --project: not supported by this client")
+        throw NatError.commandFailed("plan accept --project: not supported by this client")
     }
 
     /// Taking a proposal down: same reasoning.
     public func planWithdraw(workspaceID: String) async throws {
-        throw NatError.commandFailed("plan-withdraw: not supported by this client")
+        throw NatError.commandFailed("plan withdraw: not supported by this client")
     }
 
     public func planWithdraw(projectID: String) async throws {
-        throw NatError.commandFailed("plan-withdraw --project: not supported by this client")
+        throw NatError.commandFailed("plan withdraw --project: not supported by this client")
     }
 
     /// Making a project — what connecting a plugin does for its section:
     /// same reasoning, only `NatClient` and the fixture client implement it.
     public func projectCreate(name: String, repo: String?, description: String?, source: String?) async throws -> CreatedProject {
-        throw NatError.commandFailed("project-create: not supported by this client")
+        throw NatError.commandFailed("project create: not supported by this client")
     }
 
     /// Mirroring a local project into Notion: same reasoning, only `NatClient`
     /// and the fixture client implement them.
     public func notionSearch(query: String) async throws -> [NotionPlace] {
-        throw NatError.commandFailed("notion-search: not supported by this client")
+        throw NatError.commandFailed("notion search: not supported by this client")
     }
 
     public func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored {
-        throw NatError.commandFailed("project-mirror: not supported by this client")
+        throw NatError.commandFailed("project mirror: not supported by this client")
     }
 
     /// A conformer that never reworks a slice — every test double but the
     /// ones exercising the approve-over-comments flow — need not say so:
     /// `NatClient` and the fixture client are the two that implement it.
     public func sliceRework(projectID: String, sliceRef: String, comments: String) async throws {
-        throw NatError.commandFailed("slice-rework: not supported by this client")
+        throw NatError.commandFailed("slice rework: not supported by this client")
     }
 
     /// Resuming a handed-back slice: only `NatClient` and the fixture client
     /// implement it, and the tests of Send back to agent stub it themselves.
     public func sliceResume(projectID: String, sliceRef: String, note: String) async throws {
-        throw NatError.commandFailed("slice-resume: not supported by this client")
+        throw NatError.commandFailed("slice resume: not supported by this client")
     }
 
     /// The whole-branch diff, without naming a commit — `sliceDiff(projectID:sliceRef:commit:)`
@@ -253,7 +253,7 @@ extension NatClientProtocol {
     /// second protocol requirement. `SessionStore`'s own tests, and
     /// `FixtureNatClient`, override every one of these for real.
     public func sessionLaunch(projectID: String, dir: String?, model: String?, effort: String?) async throws -> SessionLaunchResult {
-        throw NatError.commandFailed("session-launch: not stubbed by this test client")
+        throw NatError.commandFailed("session launch: not stubbed by this test client")
     }
 
     public func sessionList(projectID: String) async throws -> [Session] { [] }
@@ -261,7 +261,7 @@ extension NatClientProtocol {
     /// The batched GitHub reading: only `NatClient`, the fixture client and
     /// the tests of the stores it feeds answer it.
     public func prStatus(projectIDs: [String], detail: String?, settle: Bool) async throws -> GitHubReading {
-        throw NatError.commandFailed("pr-status: not stubbed by this test client")
+        throw NatError.commandFailed("pr status: not stubbed by this test client")
     }
 
     /// A run command: only `NatClient` and the fixture client implement it,
@@ -271,26 +271,26 @@ extension NatClientProtocol {
     }
 
     public func sessionStatus(projectID: String, sessionID: String, discard: Bool) async throws -> SessionStatusDoc {
-        throw NatError.commandFailed("session-status: not stubbed by this test client")
+        throw NatError.commandFailed("session status: not stubbed by this test client")
     }
 
     public func sessionDiff(projectID: String, sessionID: String, branch: String?) async throws -> SliceDiff {
-        throw NatError.commandFailed("session-diff: not stubbed by this test client")
+        throw NatError.commandFailed("session diff: not stubbed by this test client")
     }
 
     public func sessionPRView(projectID: String, sessionID: String, prURL: String) async throws -> PRDetail {
-        throw NatError.commandFailed("pr-view --session: not stubbed by this test client")
+        throw NatError.commandFailed("pr view --session: not stubbed by this test client")
     }
 
     /// Defaults for the scratch project's two commands, for the same reason:
     /// only `AppModel.start()` calls them, and a mock written for any other
     /// store has nothing to say to either.
     public func scratchOpen() async throws -> ScratchOpenResult {
-        throw NatError.commandFailed("scratch-open: not stubbed by this test client")
+        throw NatError.commandFailed("scratch open: not stubbed by this test client")
     }
 
     public func doneClear(projectID: String) async throws -> DoneClearResult {
-        throw NatError.commandFailed("done-clear: not stubbed by this test client")
+        throw NatError.commandFailed("project done clear: not stubbed by this test client")
     }
 
     /// Task sources: only `NatClient` and the fixture client implement
@@ -301,47 +301,47 @@ extension NatClientProtocol {
     }
 
     public func containerShow(projectID: String, containerID: String) async throws -> ContainerShow {
-        throw NatError.commandFailed("container-show: not supported by this client")
+        throw NatError.commandFailed("container show: not supported by this client")
     }
 
     public func sourceAction(
         projectID: String, action: String, group: String?, container: String?, input: String?
     ) async throws -> SourceActionResult {
-        throw NatError.commandFailed("source-action: not supported by this client")
+        throw NatError.commandFailed("source action: not supported by this client")
     }
 
     public func sourceList() async throws -> [SourcePlugin] {
-        throw NatError.commandFailed("source-list: not supported by this client")
+        throw NatError.commandFailed("source list: not supported by this client")
     }
 
     /// Plugin install: only `NatClient` and the fixture client implement
     /// these, the same reasoning as `workspaceLaunch`.
     public func pluginList() async throws -> PluginListing {
-        throw NatError.commandFailed("plugin-list: not supported by this client")
+        throw NatError.commandFailed("plugin list: not supported by this client")
     }
 
     public func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled {
-        throw NatError.commandFailed("plugin-install: not supported by this client")
+        throw NatError.commandFailed("plugin install: not supported by this client")
     }
 
     public func pluginUninstall(name: String, deleteProjects: Bool) async throws -> PluginUninstalled {
-        throw NatError.commandFailed("plugin-uninstall: not supported by this client")
+        throw NatError.commandFailed("plugin uninstall: not supported by this client")
     }
 
     public func pluginSourceAdd(repo: String) async throws -> PluginSourceList {
-        throw NatError.commandFailed("plugin-source-add: not supported by this client")
+        throw NatError.commandFailed("plugin source add: not supported by this client")
     }
 
     public func pluginSourceRemove(repo: String) async throws -> PluginSourceList {
-        throw NatError.commandFailed("plugin-source-remove: not supported by this client")
+        throw NatError.commandFailed("plugin source remove: not supported by this client")
     }
 
     public func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult {
-        throw NatError.commandFailed("source-setup: not supported by this client")
+        throw NatError.commandFailed("source setup: not supported by this client")
     }
 
     public func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult {
-        throw NatError.commandFailed("slice-add --container: not supported by this client")
+        throw NatError.commandFailed("slice add --container: not supported by this client")
     }
 }
 

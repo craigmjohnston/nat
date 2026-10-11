@@ -12,7 +12,7 @@ import (
 // [TaskEvents] in the order it was written. Kind is one of: "handed_back",
 // "sent_back", "resumed", "launched", "relaunched", "released", "cancelled",
 // "blocked", "summary", "follow_ups", "note", "checks_failed".
-// `nat slice-show --json` adds two more of its own, read off the slice's
+// `nat slice show --json` adds two more of its own, read off the slice's
 // properties rather than its body — see its own doc comment.
 type TaskEvent struct {
 	Kind string
@@ -346,7 +346,7 @@ func TaskEvents(body string) []TaskEvent {
 }
 
 // HasHistory reports whether a task log says the slice has been worked: any
-// event at all but a note. A note alone is not history — `slice-note` leaves
+// event at all but a note. A note alone is not history — `slice note` leaves
 // one on a slice nobody has launched yet, as context for whoever first does —
 // so a slice carrying only notes launches as a fresh launch, not a relaunch.
 // It is the one statement of the rule; gnat's Thread applies the same one
@@ -361,7 +361,7 @@ func HasHistory(events []TaskEvent) bool {
 }
 
 // The kinds [TaskEvent.Kind] takes — the snake_case wire vocabulary
-// `nat slice-show --json` speaks, independent of whichever words the
+// `nat slice show --json` speaks, independent of whichever words the
 // headings they are read from happen to use.
 const (
 	handedBackKind = "handed_back"
@@ -375,19 +375,19 @@ const (
 	followUpsKind  = "follow_ups"
 	noteKind       = "note"
 	// CancelledKind is exported because a hand-back before a cancel is
-	// work thrown away: actions.Launch and slice-diff read only the
+	// work thrown away: actions.Launch and slice diff read only the
 	// hand-backs after the last one.
 	CancelledKind = "cancelled"
 	// ChecksFailedKind and SentBackKind are exported, unlike the rest,
 	// because actions.NoticeFailingChecks reads them back to tell a failure
-	// already on the record from news; HandedBackKind because slice-diff
+	// already on the record from news; HandedBackKind because slice diff
 	// reads a resumed slice's branch only where one is on the record.
 	ChecksFailedKind = "checks_failed"
 	SentBackKind     = sentBackKind
 	HandedBackKind   = handedBackKind
 )
 
-// notePrefix opens the provenance paragraph `slice-note` writes first in a
+// notePrefix opens the provenance paragraph `slice note` writes first in a
 // Note section.
 const notePrefix = "From "
 

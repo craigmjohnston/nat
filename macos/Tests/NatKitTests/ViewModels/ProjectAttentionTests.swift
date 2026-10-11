@@ -1,7 +1,7 @@
 import XCTest
 @testable import NatKit
 
-/// A `pr-status` reading of each slice at the given readiness word, its
+/// A `pr status` reading of each slice at the given readiness word, its
 /// checks' verdict the one that word implies — passing for ready to merge,
 /// failing for checks failing, pending otherwise — and `conflicting` the
 /// slices named.

@@ -18,7 +18,7 @@ project's one checkout with every other agent and the user.
 - This is nat's own rule, not git's, and it must be re-derivable on every
   relaunch — a relaunch has to arrive at the exact same path a first launch
   did. It is spelled here alone: an agent cutting its own worktree runs `nat
-  slice-worktree` or `nat slice-repo` (`actions.EnsureWorktree`) rather
+  slice worktree` or `nat slice repo` (`actions.EnsureWorktree`) rather
   than following prose (see root CLAUDE.md).
 
 ## Operations
@@ -38,7 +38,7 @@ project's one checkout with every other agent and the user.
   has worked yet.
 - `Branches(dir)` is the same one listing for the whole repository: every
   linked worktree's branch by short name, the main worktree (the first
-  record) and detached ones left out — `pr-status`'s sweep, one git per
+  record) and detached ones left out — `pr status`'s sweep, one git per
   repository rather than a `Path` per slice.
 - `Remove(dir, branch)` finds that path and runs `git worktree remove
   <path>`, leaving to git whatever removal refuses — a worktree holding

@@ -180,7 +180,7 @@ func TestPromptCarriesTheMilestoneDigestInline(t *testing.T) {
 func TestPromptRoutesEverythingThroughTheCLI(t *testing.T) {
 	got := Prompt(testContext())
 	for _, want := range []string{
-		"nat complete-slice 3b738308-f654-8170-8c99-eccab4463d8f --project " + testProjectID,
+		"nat slice complete 3b738308-f654-8170-8c99-eccab4463d8f --project " + testProjectID,
 		"--branch",
 		"--blocked",
 	} {
@@ -196,7 +196,7 @@ func TestPromptRoutesEverythingThroughTheCLI(t *testing.T) {
 }
 
 // The board already claims a slice as it launches the agent for it, so the
-// prompt must never tell a board-launched agent to run start-slice itself —
+// prompt must never tell a board-launched agent to run slice start itself —
 // that command is for a session started outside the board, which has no
 // claim of its own yet.
 func TestPromptNeverTellsTheAgentToRunStartSlice(t *testing.T) {
@@ -205,8 +205,8 @@ func TestPromptNeverTellsTheAgentToRunStartSlice(t *testing.T) {
 		"worktree": Prompt(worktreeContext()),
 		"resume":   Prompt(resumeContext()),
 	} {
-		if strings.Contains(got, "start-slice") {
-			t.Errorf("%s prompt still tells the agent to run start-slice:\n%s", name, got)
+		if strings.Contains(got, "slice start") {
+			t.Errorf("%s prompt still tells the agent to run slice start:\n%s", name, got)
 		}
 	}
 }
@@ -383,9 +383,9 @@ func TestPlanPromptRoutesEverythingThroughThePlanningCommands(t *testing.T) {
 		"/Users/craig/Projects/notion-agent-tracker",
 		"/queue-work",
 		"nat info",
-		"nat plan-apply",
-		"nat milestone-add",
-		"nat slice-add",
+		"nat plan apply",
+		"nat milestone add",
+		"nat slice add",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("plan prompt does not mention %q", want)
@@ -393,7 +393,7 @@ func TestPlanPromptRoutesEverythingThroughThePlanningCommands(t *testing.T) {
 	}
 	// The writing rule's bad example quotes a hand-back instruction; it
 	// is an example of prose, not a command the planner is given.
-	for _, unwanted := range []string{"start-slice", "complete-slice", "next-slice", "Notion"} {
+	for _, unwanted := range []string{"slice start", "slice complete", "slice next", "Notion"} {
 		if strings.Contains(strings.ReplaceAll(got, writingPassage, ""), unwanted) {
 			t.Errorf("plan prompt should not mention %q", unwanted)
 		}
@@ -484,7 +484,7 @@ func TestPromptWithNoRepositoryYet(t *testing.T) {
 }
 
 // A task with no repository is sent to find it first: from the card, asking
-// the user where it cannot tell, recorded with slice-repo, and the worktree
+// the user where it cannot tell, recorded with slice repo, and the worktree
 // cut by nat's own naming — and is told nothing that assumes it is already in
 // a checkout.
 func TestPromptSendsAnAgentWithNoRepositoryToFindIt(t *testing.T) {
@@ -495,11 +495,11 @@ func TestPromptSendsAnAgentWithNoRepositoryToFindIt(t *testing.T) {
 		"## First, find the repository",
 		"whichever repository its card is about",
 		"ask the user\nhere in the terminal, and do nothing else until they answer",
-		"    nat slice-repo " + c.Slice.ID + " --project " + testProjectID + " --repo <absolute path to the checkout>",
+		"    nat slice repo " + c.Slice.ID + " --project " + testProjectID + " --repo <absolute path to the checkout>",
 		"That also cuts this slice's own worktree in that repository",
 		"prints its path on the `Worktree:` line",
 		"Cut no worktree or branch of your own",
-		"Work in the worktree slice-repo printed",
+		"Work in the worktree slice repo printed",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
@@ -533,7 +533,7 @@ func TestPromptTellsAWorktreeAgentToUseItsBranch(t *testing.T) {
 		"git worktree cut for this slice alone",
 		"The hand-back below pushes\nthe branch",
 		"Do not create a branch of your\nown",
-		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
+		"nat slice complete " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
@@ -553,7 +553,7 @@ func TestPromptWithoutAWorktreeStillAsksForABranch(t *testing.T) {
 	got := Prompt(testContext())
 	for _, want := range []string{
 		"If the work is code: branch for the slice",
-		"nat complete-slice " + testContext().Slice.ID + " --project " + testProjectID,
+		"nat slice complete " + testContext().Slice.ID + " --project " + testProjectID,
 		"--branch <branch> \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
@@ -590,7 +590,7 @@ func TestPromptTellsAResumingAgentTheWorkIsAlreadyThere(t *testing.T) {
 		"You are continuing that work, not starting again.",
 		"the work an earlier\nsession pushed is already on it",
 		"Commit your own work there, on the same\nbranch",
-		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
+		"nat slice complete " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
@@ -713,7 +713,7 @@ func TestPromptFlagsAWorktreesOverrideByItsCheckout(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // merely says "the `nat` commands" is not read as one.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-followups|slice-visuals|slice-checks-rerun|slice-checks-cancel|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|plan-propose|project-create|agent-waiting|agent-working)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|slice next|slice start|slice complete|slice followups|slice visuals|slice checks rerun|slice checks cancel|slice checks|slice release|milestone add|slice add|slice depends|plan apply|plan propose|project create|agent waiting|agent working)\b`)
 
 // natCommands are the invocations a prompt names: each from the command word to
 // the end of its line, and on through the lines a trailing backslash continues
@@ -735,7 +735,7 @@ func natCommands(text string) []string {
 	return cmds
 }
 
-// Every slice prompt, whatever launched it, names slice-checks as the one way
+// Every slice prompt, whatever launched it, names slice checks as the one way
 // to read CI, and no `gh` read at all.
 func TestSlicePromptReadsCIWithSliceChecks(t *testing.T) {
 	for _, f := range []Frontend{FrontendTUI, FrontendGnat, ""} {
@@ -743,10 +743,10 @@ func TestSlicePromptReadsCIWithSliceChecks(t *testing.T) {
 		c.Frontend = f
 		got := Prompt(c)
 		for _, want := range []string{
-			"    nat slice-checks " + c.Slice.ID + " --log --project " + testProjectID + "\n",
+			"    nat slice checks " + c.Slice.ID + " --log --project " + testProjectID + "\n",
 			"That is the one way to read CI: never `gh`.",
 			"shows what a check still running is doing",
-			"    nat slice-checks-rerun " + c.Slice.ID + " --check '<check name>' --project " + testProjectID + "\n",
+			"    nat slice checks rerun " + c.Slice.ID + " --check '<check name>' --project " + testProjectID + "\n",
 			"never a way to retry a\nreal failure without a fix",
 		} {
 			if !strings.Contains(got, want) {
@@ -766,8 +766,8 @@ func TestOnlyAGnatPromptProposesFollowUps(t *testing.T) {
 	c.Frontend = FrontendGnat
 	gnat := Prompt(c)
 	for _, want := range []string{
-		"    nat slice-followups " + c.Slice.ID + " --project " + testProjectID + " \\\n        --follow-up '<title line>",
-		"`complete-slice` refuses while the\ndecision is outstanding.",
+		"    nat slice followups " + c.Slice.ID + " --project " + testProjectID + " \\\n        --follow-up '<title line>",
+		"`slice complete` refuses while the\ndecision is outstanding.",
 		"A later hand-in carries only\nwhat is new — never a repeat of a follow-up already handed in.",
 		"\nDone when: <how anyone checks it is finished>'",
 		followUpBriefPassage,
@@ -781,7 +781,7 @@ func TestOnlyAGnatPromptProposesFollowUps(t *testing.T) {
 	}
 	for _, f := range []Frontend{FrontendTUI, ""} {
 		c.Frontend = f
-		if got := Prompt(c); strings.Contains(got, "slice-followups") || !strings.Contains(got, "Follow-ups worth queueing go in a last bullet") {
+		if got := Prompt(c); strings.Contains(got, "slice followups") || !strings.Contains(got, "Follow-ups worth queueing go in a last bullet") {
 			t.Errorf("the %q prompt should keep follow-ups in the summary", f)
 		}
 	}
@@ -798,7 +798,7 @@ func TestEverySlicePromptHandsInVisualChanges(t *testing.T) {
 	}
 	for name, text := range prompts {
 		for _, want := range []string{
-			"    nat slice-visuals " + testContext().Slice.ID + " --project " + testProjectID + " \\\n        --visual '",
+			"    nat slice visuals " + testContext().Slice.ID + " --project " + testProjectID + " \\\n        --visual '",
 			"Do not build a way to render",
 			"Hand in only what is new or\nre-rendered",
 			"`--remove '<its name>'`",
@@ -811,8 +811,8 @@ func TestEverySlicePromptHandsInVisualChanges(t *testing.T) {
 		}
 	}
 	for name, c := range map[string]PromptContext{"slice": testContext(), "published": publishedContext()} {
-		if !strings.Contains(Prompt(c), "images in before `complete-slice`") {
-			t.Errorf("the %s prompt does not hand the images in before complete-slice", name)
+		if !strings.Contains(Prompt(c), "images in before `slice complete`") {
+			t.Errorf("the %s prompt does not hand the images in before slice complete", name)
 		}
 	}
 }
@@ -847,7 +847,7 @@ func TestEveryCommandInAPromptNamesTheProject(t *testing.T) {
 	}
 }
 
-// pushInstruction is a line telling an agent to push: complete-slice pushes
+// pushInstruction is a line telling an agent to push: slice complete pushes
 // the branch it hands back, so an agent told to push as well would race it,
 // and one told to push in place of handing back would skip the dirty check.
 // skills/skills_test.go carries the same pattern for the skills.
@@ -971,7 +971,7 @@ func TestEverySlicePromptCarriesTheQuestionRule(t *testing.T) {
 }
 
 // Every planning prompt says how a brief is shaped — a summary paragraph of
-// its own first, the one plan-apply caps and gnat shows.
+// its own first, the one plan apply caps and gnat shows.
 func TestEveryPlanningPromptCarriesTheBriefShape(t *testing.T) {
 	const name, dir = "notion-agent-tracker", "/Users/craig/Projects/notion-agent-tracker"
 	for prompt, text := range map[string]string{
@@ -1034,7 +1034,7 @@ func TestNoPromptTellsTheAgentToMarkItsWait(t *testing.T) {
 		"plan gnat":      PlanPrompt(testProjectID, name, dir, "", "", FrontendGnat),
 		"new project":    NewProjectPrompt("ws-1", "A todo app."),
 	} {
-		for _, old := range []string{"agent-waiting", "agent-working", "Waiting on the user"} {
+		for _, old := range []string{"nat agent waiting", "nat agent working", "Waiting on the user"} {
 			if strings.Contains(text, old) {
 				t.Errorf("the %s prompt still says %q", prompt, old)
 			}
@@ -1053,7 +1053,7 @@ func TestSlicePromptsCarryTheNoteCommand(t *testing.T) {
 		"slice no repo":  repoUnknownContext(),
 		"published":      publishedContext(),
 	} {
-		want := "nat slice-note '<slice name>' --from " + c.Slice.ID + " --project " + testProjectID
+		want := "nat slice note '<slice name>' --from " + c.Slice.ID + " --project " + testProjectID
 		if text := Prompt(c); !strings.Contains(text, want) {
 			t.Errorf("the %s prompt does not say %q", prompt, want)
 		}
@@ -1133,7 +1133,7 @@ func TestEveryNamingPromptCarriesTheTitleCap(t *testing.T) {
 // proposal, so every turn answering them proposes the whole plan again; the
 // TUI's, which proposes nothing, does not.
 func TestGnatPlanningPromptsCarryTheWithdrawnRule(t *testing.T) {
-	for _, want := range []string{"withdraws the proposal", "ends with plan-propose run again, the whole plan, even\nunchanged",
+	for _, want := range []string{"withdraws the proposal", "ends with plan propose run again, the whole plan, even\nunchanged",
 		"never assume your last proposal is still on screen"} {
 		if !strings.Contains(ProposalWithdrawnRule, want) {
 			t.Errorf("the rule does not say %q", want)
@@ -1183,7 +1183,7 @@ func TestPromptSourceSpellsOutNoWorktreeNaming(t *testing.T) {
 	}
 	for _, banned := range []string{".worktrees", "symbolic-ref"} {
 		if strings.Contains(string(src), banned) {
-			t.Errorf("prompt.go says %q: name nat slice-repo or slice-worktree instead", banned)
+			t.Errorf("prompt.go says %q: name nat slice repo or slice worktree instead", banned)
 		}
 	}
 }

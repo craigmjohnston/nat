@@ -76,7 +76,7 @@ jobs:
         run: APP_VERSION="$VERSION" APP_BUILD="${{ github.run_number }}" ./macos/Scripts/make-app.sh
 
       # Every plugins/<name>/ with a plugin.json, universal, plus the
-      # nat-plugins.json manifest `nat plugin-install` reads from the latest
+      # nat-plugins.json manifest `nat plugin install` reads from the latest
       # release. No plugins still writes a manifest, with an empty list.
       - name: Build plugins
         run: APP_VERSION="$VERSION" ./macos/Scripts/make-plugins.sh

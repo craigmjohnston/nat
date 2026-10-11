@@ -28,7 +28,7 @@ import (
 // belongs to no project, refuses every project, since it is the one any of them
 // would attach.
 func workshopLaunch(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("workshop-launch", flag.ContinueOnError)
+	flags := flag.NewFlagSet("workshop launch", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	model := flags.String("model", "", "Claude model for the agent, overriding the config's workshop_agent")
@@ -42,19 +42,19 @@ func workshopLaunch(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("workshop-launch: takes no arguments, given %d", len(rest))
+		return usageErrorf("workshop launch: takes no arguments, given %d", len(rest))
 	}
-	request, err := briefText("workshop-launch", "--request", *requestFlag, env.In)
+	request, err := briefText("workshop launch", "--request", *requestFlag, env.In)
 	if err != nil {
 		return err
 	}
 	frontend, err := agent.ParseFrontend(*frontendFlag)
 	if err != nil {
-		return usageErrorf("workshop-launch: %v", err)
+		return usageErrorf("workshop launch: %v", err)
 	}
 	if ws := strings.TrimSpace(*workspace); ws != "" {
 		if strings.TrimSpace(*projectRef) != "" {
-			return usageErrorf("workshop-launch: --workspace and --project name different sessions, not both")
+			return usageErrorf("workshop launch: --workspace and --project name different sessions, not both")
 		}
 		return workshopLaunchWorkspace(env, ws, request, *model, *effort, *asJSON)
 	}
@@ -115,7 +115,7 @@ func workspaceDir(workspaceID string) (string, error) {
 	return filepath.Join(dir, workspacesDirName, workspaceID), nil
 }
 
-// workshopLaunchWorkspace is workshop-launch for a new-project tab of the app:
+// workshopLaunchWorkspace is workshop launch for a new-project tab of the app:
 // a planning agent on [agent.NewProjectPrompt], keyed by the tab's workspace
 // id where every other one is keyed by a project, so it collides with no
 // project's own planning agent, and refuses a second launch on the same
@@ -126,7 +126,7 @@ func workspaceDir(workspaceID string) (string, error) {
 // It is never logged — it is the user's own words.
 func workshopLaunchWorkspace(env Env, workspace, request, model, effort string, asJSON bool) error {
 	if request == "" {
-		return usageErrorf("workshop-launch: --workspace needs a --request: what the new project is")
+		return usageErrorf("workshop launch: --workspace needs a --request: what the new project is")
 	}
 	if live, err := env.NewTmux().LiveSlices(); err == nil {
 		if session := live[agent.PlanTag(workspace)]; session != "" {

@@ -6,7 +6,7 @@
 // os/exec's CommandContext alone kills the program at the limit and then
 // waits for its output pipes to close. A program's own child (the ssh under a
 // git fetch) inherits those pipes and outlives the kill, and the wait lasts as
-// long as it does: on 9 October a pr-status waited nineteen hours on an ssh
+// long as it does: on 9 October a pr status waited nineteen hours on an ssh
 // left on a dead connection. Here the program runs in a process group of its
 // own, the limit kills the whole group, and the wait on the pipes is itself
 // bounded.

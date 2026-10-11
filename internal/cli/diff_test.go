@@ -38,12 +38,12 @@ type fakeGitRunner struct {
 	// diffArgs is the last diff invocation verbatim, for asserting which
 	// base the comparison was actually made against.
 	diffArgs []string
-	// showOut/showErr answer show, the file read slice-file makes; showArgs
+	// showOut/showErr answer show, the file read slice file makes; showArgs
 	// is the last such invocation verbatim.
 	showOut  string
 	showErr  error
 	showArgs []string
-	// statusOut answers the porcelain status complete-slice's dirty check
+	// statusOut answers the porcelain status slice complete's dirty check
 	// reads (none is a clean tree); pushErr fails a push, and pushes records
 	// every push asked for, with the directory it ran in.
 	statusOut string
@@ -132,13 +132,13 @@ func TestSliceDiffRefusesNotHandedBack(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--project", "project-1",
+		"slice", "diff", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Fatal("slice-diff: expected error for non-handed-back slice")
+		t.Fatal("slice diff: expected error for non-handed-back slice")
 	}
 	if !strings.Contains(err.Error(), "not handed back") {
-		t.Errorf("slice-diff error: %v, want 'not handed back'", err)
+		t.Errorf("slice diff error: %v, want 'not handed back'", err)
 	}
 }
 
@@ -161,13 +161,13 @@ func TestSliceDiffReadsADoneSlicesBranch(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--project", "project-1",
+		"slice", "diff", testSliceID, "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff on a Done slice: unexpected error: %v", err)
+		t.Fatalf("slice diff on a Done slice: unexpected error: %v", err)
 	}
 	if out.String() != sampleDiff {
-		t.Errorf("slice-diff output = %q, want git's own diff verbatim", out.String())
+		t.Errorf("slice diff output = %q, want git's own diff verbatim", out.String())
 	}
 	if prs.calls != 0 {
 		t.Errorf("gh was asked %d times about a slice with no pull request, want 0", prs.calls)
@@ -195,10 +195,10 @@ func TestSliceDiffUsesThePullRequestsBase(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--project", "project-1",
+		"slice", "diff", testSliceID, "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff: unexpected error: %v", err)
+		t.Fatalf("slice diff: unexpected error: %v", err)
 	}
 	want := []string{"diff", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/",
 		"--merge-base", "origin/release", "slice/ui"}
@@ -235,10 +235,10 @@ func TestSliceDiffFallsBackWhenThePullRequestCannotBeRead(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--project", "project-1",
+		"slice", "diff", testSliceID, "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff: unexpected error: %v", err)
+		t.Fatalf("slice diff: unexpected error: %v", err)
 	}
 	if len(runner.diffArgs) == 0 || runner.diffArgs[len(runner.diffArgs)-2] != "main" {
 		t.Errorf("diff args = %v, want the default base main", runner.diffArgs)
@@ -268,13 +268,13 @@ func TestSliceDiffReadsDiff(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--project", "project-1",
+		"slice", "diff", testSliceID, "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff: unexpected error: %v", err)
+		t.Fatalf("slice diff: unexpected error: %v", err)
 	}
 	if out.String() != sampleDiff {
-		t.Errorf("slice-diff output = %q, want git's own diff verbatim", out.String())
+		t.Errorf("slice diff output = %q, want git's own diff verbatim", out.String())
 	}
 	if runner.dir != "/tmp/nat" {
 		t.Errorf("diff ran in %q, want the project's working directory", runner.dir)
@@ -297,10 +297,10 @@ func TestSliceDiffFailure(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--project", "project-1",
+		"slice", "diff", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "branch not found") {
-		t.Errorf("slice-diff error = %v, want git's own reason", err)
+		t.Errorf("slice diff error = %v, want git's own reason", err)
 	}
 }
 
@@ -321,10 +321,10 @@ func TestSliceDiffJSON(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--json", "--project", "project-1",
+		"slice", "diff", testSliceID, "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff: unexpected error: %v", err)
+		t.Fatalf("slice diff: unexpected error: %v", err)
 	}
 
 	var got diffJSON
@@ -379,10 +379,10 @@ func TestSliceDiffJSONOmitsTokensWithoutALanguage(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--json", "--project", "project-1",
+		"slice", "diff", testSliceID, "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff: unexpected error: %v", err)
+		t.Fatalf("slice diff: unexpected error: %v", err)
 	}
 	if strings.Contains(out.String(), `"language"`) {
 		t.Errorf("output names a language for an unmatched path:\n%s", out.String())
@@ -409,10 +409,10 @@ func TestSliceDiffJSONOmitsTokensForADescribedFile(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--json", "--project", "project-1",
+		"slice", "diff", testSliceID, "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff: unexpected error: %v", err)
+		t.Fatalf("slice diff: unexpected error: %v", err)
 	}
 	var got diffJSON
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -435,13 +435,13 @@ func TestSliceDiffRefusesWrongArgumentCount(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", "--project", "project-1",
+		"slice", "diff", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Fatal("slice-diff: expected error for missing slice")
+		t.Fatal("slice diff: expected error for missing slice")
 	}
 	if !strings.Contains(err.Error(), "want exactly one") {
-		t.Errorf("slice-diff error: %v, want 'want exactly one'", err)
+		t.Errorf("slice diff error: %v, want 'want exactly one'", err)
 	}
 }
 
@@ -451,17 +451,17 @@ func TestSliceDiffRefusesAnInvalidSliceID(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", "not-a-uuid", "--project", "project-1",
+		"slice", "diff", "not-a-uuid", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
-		t.Errorf("slice-diff error = %v, want 'not a slice'", err)
+		t.Errorf("slice diff error = %v, want 'not a slice'", err)
 	}
 }
 
 func TestSliceDiffRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-diff", testSliceID, "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "diff", testSliceID, "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -472,7 +472,7 @@ func TestSliceDiffRefusesAnUnknownFlag(t *testing.T) {
 func TestSliceDiffRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-diff", testSliceID, "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"slice", "diff", testSliceID, "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -483,7 +483,7 @@ func TestSliceDiffReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-diff", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "diff", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -498,7 +498,7 @@ func TestSliceDiffReportsAFailedHydrate(t *testing.T) {
 	api := &fakeAPI{dataSourceErr: boom}
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-diff", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "diff", testSliceID, "--project", "project-1"}, env)
 
 	if !errors.Is(err, boom) {
 		t.Errorf("err = %v, want %v", err, boom)
@@ -524,10 +524,10 @@ func TestSliceDiffCommitsListsTheHistory(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--commits", "--project", "project-1",
+		"slice", "diff", testSliceID, "--commits", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff --commits: %v", err)
+		t.Fatalf("slice diff --commits: %v", err)
 	}
 	for _, want := range []string{"origin/main..feature/ui", "aaa11111 Add the viewer — Craig Johnston, 2026-08-28",
 		"bbb22222 Wire the diff screen — Craig Johnston, 2026-08-27"} {
@@ -551,10 +551,10 @@ func TestSliceDiffCommitsJSON(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--commits", "--json", "--project", "project-1",
+		"slice", "diff", testSliceID, "--commits", "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff --commits --json: %v", err)
+		t.Fatalf("slice diff --commits --json: %v", err)
 	}
 	var got commitsDoc
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -583,10 +583,10 @@ func TestSliceDiffCommitsOfAnEmptyRange(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--commits", "--project", "project-1",
+		"slice", "diff", testSliceID, "--commits", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff --commits: %v", err)
+		t.Fatalf("slice diff --commits: %v", err)
 	}
 	if !strings.Contains(out.String(), "_none_") {
 		t.Errorf("output = %q, want it to say there are none", out.String())
@@ -610,10 +610,10 @@ func TestSliceDiffCommitsShortSHA(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--commits", "--project", "project-1",
+		"slice", "diff", testSliceID, "--commits", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff --commits: %v", err)
+		t.Fatalf("slice diff --commits: %v", err)
 	}
 	if !strings.Contains(out.String(), "abc1234 Short sha") {
 		t.Errorf("output missing the whole short sha:\n%s", out.String())
@@ -633,7 +633,7 @@ func TestSliceDiffCommitsFailure(t *testing.T) {
 	}
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--commits", "--project", "project-1",
+		"slice", "diff", testSliceID, "--commits", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "bad revision") {
 		t.Errorf("err = %v, want git's own reason", err)
@@ -652,10 +652,10 @@ func TestSliceDiffCommitDiffsOneCommit(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--commit", "aaa111", "--project", "project-1",
+		"slice", "diff", testSliceID, "--commit", "aaa111", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff --commit: %v", err)
+		t.Fatalf("slice diff --commit: %v", err)
 	}
 	if out.String() != sampleDiff {
 		t.Errorf("output = %q, want git's own diff verbatim", out.String())
@@ -674,10 +674,10 @@ func TestSliceDiffCommitJSON(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--commit", "aaa111", "--json", "--project", "project-1",
+		"slice", "diff", testSliceID, "--commit", "aaa111", "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-diff --commit --json: %v", err)
+		t.Fatalf("slice diff --commit --json: %v", err)
 	}
 	var got diffJSON
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -703,7 +703,7 @@ func TestSliceDiffCommitRefusesARootCommit(t *testing.T) {
 	}
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--commit", "root111", "--project", "project-1",
+		"slice", "diff", testSliceID, "--commit", "root111", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "no parent to diff against") {
 		t.Errorf("err = %v, want the root-commit refusal", err)
@@ -714,7 +714,7 @@ func TestSliceDiffRefusesCommitsAndCommitTogether(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-diff", testSliceID, "--commits", "--commit", "aaa111", "--project", "project-1",
+		"slice", "diff", testSliceID, "--commits", "--commit", "aaa111", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "two different reads") {
 		t.Errorf("err = %v, want the mutual-exclusion refusal", err)

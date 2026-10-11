@@ -81,7 +81,7 @@ func blockSessionUpdates(t *testing.T, db *sql.DB) {
 func badFlagTests(t *testing.T, command, id string) {
 	t.Helper()
 	env, _ := sessionTestEnv(t)
-	args := []string{command}
+	args := strings.Fields(command)
 	if id != "" {
 		args = append(args, id)
 	}
@@ -93,10 +93,10 @@ func badFlagTests(t *testing.T, command, id string) {
 }
 
 func TestSessionCommandsRefuseUnknownFlags(t *testing.T) {
-	badFlagTests(t, "session-launch", "")
-	badFlagTests(t, "session-list", "")
-	badFlagTests(t, "session-status", testSessionUUID)
-	badFlagTests(t, "session-diff", testSessionUUID)
+	badFlagTests(t, "session launch", "")
+	badFlagTests(t, "session list", "")
+	badFlagTests(t, "session status", testSessionUUID)
+	badFlagTests(t, "session diff", testSessionUUID)
 }
 
 const testSessionUUID = "8f654180-9b8d-53fb-1024-9ee08f654180"
@@ -107,10 +107,10 @@ func TestSessionCommandsRefuseAnUnknownProject(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"session-launch", []string{"session-launch", "--project", "nope"}},
-		{"session-list", []string{"session-list", "--project", "nope"}},
-		{"session-status", []string{"session-status", testSessionUUID, "--project", "nope"}},
-		{"session-diff", []string{"session-diff", testSessionUUID, "--project", "nope"}},
+		{"session launch", []string{"session", "launch", "--project", "nope"}},
+		{"session list", []string{"session", "list", "--project", "nope"}},
+		{"session status", []string{"session", "status", testSessionUUID, "--project", "nope"}},
+		{"session diff", []string{"session", "diff", testSessionUUID, "--project", "nope"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -128,10 +128,10 @@ func TestSessionCommandsFailWhenThePlanCannotBeHydrated(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"session-launch", []string{"session-launch", "--dir", t.TempDir(), "--project", "project-1"}},
-		{"session-list", []string{"session-list", "--project", "project-1"}},
-		{"session-status", []string{"session-status", testSessionUUID, "--project", "project-1"}},
-		{"session-diff", []string{"session-diff", testSessionUUID, "--project", "project-1"}},
+		{"session launch", []string{"session", "launch", "--dir", t.TempDir(), "--project", "project-1"}},
+		{"session list", []string{"session", "list", "--project", "project-1"}},
+		{"session status", []string{"session", "status", testSessionUUID, "--project", "project-1"}},
+		{"session diff", []string{"session", "diff", testSessionUUID, "--project", "project-1"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -146,18 +146,18 @@ func TestSessionCommandsFailWhenThePlanCannotBeHydrated(t *testing.T) {
 
 func TestSessionStatusAndDiffRefuseAnInvalidID(t *testing.T) {
 	env, _ := sessionTestEnv(t)
-	if err := Run(context.Background(), []string{"session-status", "not-a-uuid", "--project", "project-1"}, env); err == nil {
-		t.Error("session-status with an invalid ID: want a refusal")
+	if err := Run(context.Background(), []string{"session", "status", "not-a-uuid", "--project", "project-1"}, env); err == nil {
+		t.Error("session status with an invalid ID: want a refusal")
 	}
-	if err := Run(context.Background(), []string{"session-diff", "not-a-uuid", "--project", "project-1"}, env); err == nil {
-		t.Error("session-diff with an invalid ID: want a refusal")
+	if err := Run(context.Background(), []string{"session", "diff", "not-a-uuid", "--project", "project-1"}, env); err == nil {
+		t.Error("session diff with an invalid ID: want a refusal")
 	}
 }
 
 func TestSessionDiffRefusesAnUnknownSession(t *testing.T) {
 	env, _ := sessionTestEnv(t)
-	if err := Run(context.Background(), []string{"session-diff", testSessionUUID, "--project", "project-1"}, env); err == nil {
-		t.Error("session-diff of an unknown session: want a refusal")
+	if err := Run(context.Background(), []string{"session", "diff", testSessionUUID, "--project", "project-1"}, env); err == nil {
+		t.Error("session diff of an unknown session: want a refusal")
 	}
 }
 
@@ -166,9 +166,9 @@ func TestSessionListAndStatusAndDiffReportAFailedSessionsRead(t *testing.T) {
 	env.NewGit = func() GitCLI { return &fakeSessionRepo{} }
 	seedHydratedProject(t, "project-1", func(db *sql.DB) { dropSessionsTable(t, db) })
 	tests := [][]string{
-		{"session-list", "--project", "project-1"},
-		{"session-status", testSessionUUID, "--project", "project-1"},
-		{"session-diff", testSessionUUID, "--project", "project-1"},
+		{"session", "list", "--project", "project-1"},
+		{"session", "status", testSessionUUID, "--project", "project-1"},
+		{"session", "diff", testSessionUUID, "--project", "project-1"},
 	}
 	for _, args := range tests {
 		if err := Run(context.Background(), args, env); err == nil || !strings.Contains(err.Error(), "read the sessions") {
@@ -186,11 +186,11 @@ func TestSessionListAndStatusReportAFailedLiveTmuxRead(t *testing.T) {
 	env.NewGit = func() GitCLI { return &fakeSessionRepo{} }
 	keepSessionReading(t, &env, &fakeSessionGH{})
 
-	if err := Run(context.Background(), []string{"session-list", "--project", "project-1"}, env); err == nil {
-		t.Error("session-list with a broken tmux read: want an error")
+	if err := Run(context.Background(), []string{"session", "list", "--project", "project-1"}, env); err == nil {
+		t.Error("session list with a broken tmux read: want an error")
 	}
-	if err := Run(context.Background(), []string{"session-status", id, "--project", "project-1"}, env); err == nil {
-		t.Error("session-status with a broken tmux read: want an error")
+	if err := Run(context.Background(), []string{"session", "status", id, "--project", "project-1"}, env); err == nil {
+		t.Error("session status with a broken tmux read: want an error")
 	}
 }
 
@@ -205,8 +205,8 @@ func TestSessionLaunchMarkdownInARepoNamesTheBranch(t *testing.T) {
 	env.NewGit = func() GitCLI { return &fakeSessionRepo{base: "origin/main"} }
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
-	if err := Run(context.Background(), []string{"session-launch", "--dir", dir, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("session-launch: %v", err)
+	if err := Run(context.Background(), []string{"session", "launch", "--dir", dir, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("session launch: %v", err)
 	}
 	if !strings.Contains(out.String(), "- Branch: session/") {
 		t.Errorf("markdown output = %q, want the branch named", out.String())
@@ -234,9 +234,9 @@ func TestSessionLaunchRefusesAWorktreeFailure(t *testing.T) {
 	env.NewGit = func() GitCLI { return &fakeSessionRepo{} }
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
-	err := Run(context.Background(), []string{"session-launch", "--dir", dir, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"session", "launch", "--dir", dir, "--project", "project-1"}, env)
 	if err == nil {
-		t.Fatal("session-launch with a worktree failure: want a refusal")
+		t.Fatal("session launch with a worktree failure: want a refusal")
 	}
 }
 
@@ -249,9 +249,9 @@ func TestSessionLaunchReportsATmuxFailure(t *testing.T) {
 		return agent.NewTmuxWithRunner(&agentTestRunner{launchErr: "duplicate session"})
 	}
 
-	err := Run(context.Background(), []string{"session-launch", "--dir", dir, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"session", "launch", "--dir", dir, "--project", "project-1"}, env)
 	if err == nil {
-		t.Fatal("session-launch with a tmux failure: want a refusal")
+		t.Fatal("session launch with a tmux failure: want a refusal")
 	}
 }
 
@@ -280,7 +280,7 @@ func TestSessionLaunchReportsAFailedRecord(t *testing.T) {
 	}
 
 	if err := Run(context.Background(), []string{
-		"session-launch", "--dir", dir, "--project", "project-1",
+		"session", "launch", "--dir", dir, "--project", "project-1",
 	}, env); err == nil || !strings.Contains(err.Error(), "could not record the session") {
 		t.Errorf("err = %v, want the failed record reported", err)
 	}
@@ -297,8 +297,8 @@ func TestSessionLaunchDefaultsToTheProjectsWorkingDir(t *testing.T) {
 	env.NewWorktrees = func() actions.Worktrees { return nil }
 	env.NewGit = func() GitCLI { return nil }
 
-	if err := Run(context.Background(), []string{"session-launch", "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("session-launch: %v", err)
+	if err := Run(context.Background(), []string{"session", "launch", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("session launch: %v", err)
 	}
 	var doc sessionLaunchJSON
 	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
@@ -319,15 +319,15 @@ func TestSessionListReadsSuccessfulPullRequests(t *testing.T) {
 	}})
 	var out strings.Builder
 	env.Out = &out
-	if err := Run(context.Background(), []string{"session-list", "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("session-list: %v", err)
+	if err := Run(context.Background(), []string{"session", "list", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("session list: %v", err)
 	}
 	var docs []sessionListJSON
 	if err := json.Unmarshal([]byte(out.String()), &docs); err != nil {
 		t.Fatalf("unmarshal: %v (%s)", err, out.String())
 	}
 	if len(docs) != 1 || len(docs[0].PRs) != 1 || docs[0].PRs[0].Number != 1 {
-		t.Fatalf("session-list = %+v, want the one pull request", docs)
+		t.Fatalf("session list = %+v, want the one pull request", docs)
 	}
 	if docs[0].PRsStale {
 		t.Error("PRsStale = true, want a successful read")
@@ -366,8 +366,8 @@ func TestSessionListMarkdownEveryState(t *testing.T) {
 	}})
 	var out strings.Builder
 	env.Out = &out
-	if err := Run(context.Background(), []string{"session-list", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("session-list: %v", err)
+	if err := Run(context.Background(), []string{"session", "list", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("session list: %v", err)
 	}
 	md := out.String()
 	for _, want := range []string{"live: nat-session-x", "ended", "gone", "1 open", "1 merged", "1 closed"} {
@@ -392,8 +392,8 @@ func TestSessionStatusReflogFailureIsLoggedAndSkipped(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	if err := Run(context.Background(), []string{"session-status", id, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("session-status: %v", err)
+	if err := Run(context.Background(), []string{"session", "status", id, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("session status: %v", err)
 	}
 	var doc sessionStatusJSON
 	if err := json.Unmarshal([]byte(out.String()), &doc); err != nil {
@@ -429,8 +429,8 @@ func TestSessionStatusReportsAnAlreadyEndedSessionEvenWithoutEndingItAgain(t *te
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	var out strings.Builder
 	env.Out = &out
-	if err := Run(context.Background(), []string{"session-status", id, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("session-status: %v", err)
+	if err := Run(context.Background(), []string{"session", "status", id, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("session status: %v", err)
 	}
 	if !strings.Contains(out.String(), "State: ended") {
 		t.Errorf("markdown output = %q, want it reported ended", out.String())
@@ -460,7 +460,7 @@ func TestSessionStatusReportsAFailedEnd(t *testing.T) {
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	env.NewWorktrees = func() actions.Worktrees { return &fakeSessionWorktrees{} }
 
-	err = Run(context.Background(), []string{"session-status", id, "--project", "project-1"}, env)
+	err = Run(context.Background(), []string{"session", "status", id, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "end the session") {
 		t.Errorf("err = %v, want the failed end reported", err)
 	}
@@ -473,7 +473,7 @@ func TestSessionDiffWorkingTreeFailure(t *testing.T) {
 	env.NewGit = func() GitCLI {
 		return &fakeSessionRepo{currentBranch: "session/one", diffWorkingTreeErr: errListFailed}
 	}
-	if err := Run(context.Background(), []string{"session-diff", id, "--project", "project-1"}, env); err == nil {
-		t.Fatal("session-diff with a failed working tree read: want an error")
+	if err := Run(context.Background(), []string{"session", "diff", id, "--project", "project-1"}, env); err == nil {
+		t.Fatal("session diff with a failed working tree read: want an error")
 	}
 }

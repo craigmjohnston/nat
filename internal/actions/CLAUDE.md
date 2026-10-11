@@ -2,7 +2,7 @@
 
 The board's launch, approve, merge and worktree-removal flows without the
 board: the writes and subprocesses that the `l`/`a`/`m` keys and their
-headless `nat` counterparts (`slice-launch`, `slice-approve`, `pr-merge`, …)
+headless `nat` counterparts (`slice launch`, `slice approve`, `pr merge`, …)
 actually run, with no bubbletea in the mix. `internal/tui` and `internal/cli`
 both call into this package rather than each having their own copy — grep
 either for `actions.` to see the call sites. `internal/tui/claim.go` no
@@ -32,7 +32,7 @@ etc.) — this file is the mechanics, not a restatement of the rules.
 - `ClaimSlice` re-reads the slice for its current `Shape` before writing —
   a project converted in the Notion UI since the last read may have changed
   it — then writes Status + Assignee. It does **not** verify the claim stuck;
-  that's `start-slice`'s job when the agent's own session reaches it.
+  that's `slice start`'s job when the agent's own session reaches it.
 - `Launch` is the whole flow in order: `PlaceAgent` (worktree), claim, read
   the brief, write the prompt file, start tmux. A slice with a PR recorded
   is an ordinary relaunch that also gathers `reviewSnapshot` (comments and
@@ -61,7 +61,7 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   shared checkout (`OK: true`, a warning toast); a `git` that ran and refused
   is a hard failure (`OK: false`) — nothing is launched half-placed.
 - `EnsureWorktree` is the same find-or-fetch-and-cut (`worktreeOn`, shared
-  with `PlaceAgent`) for `nat slice-worktree`/`slice-repo`, with no shared
+  with `PlaceAgent`) for `nat slice worktree`/`slice repo`, with no shared
   checkout to fall back to: a directory outside any repository is git's
   refusal, the error. It answers `SliceWorktree` (path, branch, `Repo.Base`,
   created) — the one place an agent cutting its own worktree gets nat's
@@ -86,10 +86,10 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   `WorkdirFor` came back empty) is launched with no `PlaceAgent` and no git
   snapshot: the session starts in the home directory and
   `PromptContext.RepoUnknown` sends the agent to find and record it (`nat
-  slice-repo`, which cuts the worktree through `EnsureWorktree`). `LaunchDir` is `ExistingDir` with
+  slice repo`, which cuts the worktree through `EnsureWorktree`). `LaunchDir` is `ExistingDir` with
   that one case let through — the TUI's launch checks use it; every other
   empty directory is still refused. Once the repo is recorded, relaunch,
-  approve (`slice-approve`), merge (`pr-merge`) and the TUI's worktree
+  approve (`slice approve`), merge (`pr merge`) and the TUI's worktree
   removal all go through `WorkdirFor`, which never needs the project's own
   directory then.
 - A launch of a slice with a `MilestoneID`, on a store answering
@@ -103,7 +103,7 @@ etc.) — this file is the mechanics, not a restatement of the rules.
 - `Resume(st, s, note)` — refuses not In progress (Done by name); no
   `Branch` writes nothing and answers false; otherwise `TakeBack` with
   `RecordResumed`. `TakeBack(st, id, record)` is the one statement of
-  record-then-`ClearBranch`, shared with `slice-rework`'s `Sent back`.
+  record-then-`ClearBranch`, shared with `slice rework`'s `Sent back`.
   `ResumeStore` (`RecordResumed` + `ClearBranch`) is what it needs.
 
 ## Cancel / delete (`cancel.go`)
@@ -117,14 +117,14 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   slice as read (its Branch still recorded).
 - `Delete(st, t, w, sp, p, s)` — In progress: `StopAgent`, trash,
   `DiscardSliceWorktree`; anything else: trash, `RemoveSliceWorktree`; then
-  `PruneEmptied`. `slice-delete` and the board's `d` both run it.
+  `PruneEmptied`. `slice delete` and the board's `d` both run it.
 - `DiscardSliceWorktree` (`landed.go`) is `RemoveSliceWorktree`'s forced
   sibling (`Worktrees.Discard`); a refusal is logged and reported false.
 - `handedBack` reads only hand-backs since the last `cancelled` event.
 
 ## Hand-back push (`handback.go`)
 
-- `PushHandBack(w, g, s, p, branch)` is `complete-slice`'s git half, run
+- `PushHandBack(w, g, s, p, branch)` is `slice complete`'s git half, run
   before any page write: the branch is the one named, else
   `HandBackGit.CurrentBranch` in the worktree `Worktrees.Path` finds for
   `AgentBranch` in `sliceRepo`'s repository (`ErrNoWorktree` with none, or
@@ -135,8 +135,8 @@ etc.) — this file is the mechanics, not a restatement of the rules.
 ## Emptied milestones (`prune.go`)
 
 - `PruneEmptied(st, sp, left...)` is every slice write's tail that takes a
-  slice out of a milestone (`slice-move`/`-delete`/refiling `-reorder`,
-  `plan-apply` once at the end, the board's move and delete): one fresh
+  slice out of a milestone (`slice move`/`-delete`/refiling `-reorder`,
+  `plan apply` once at the end, the board's move and delete): one fresh
   `Plan` read, then `RemoveMilestone` for each named milestone no slice of
   any status is filed under, `Shape` re-read between removals. Skips a
   source project (`sp.Source`) and empty IDs without reading; a failed read
@@ -144,7 +144,7 @@ etc.) — this file is the mechanics, not a restatement of the rules.
 
 ## CI failures (`checks.go`)
 
-- `NoticeFailingChecks` acts on a reading's red PRs (`nat pr-status`, the
+- `NoticeFailingChecks` acts on a reading's red PRs (`nat pr status`, the
   TUI's `refreshPRStates`): identity is the set of failing run URLs (name
   where none), compared with the latest `Checks failed`/`Sent back` event's
   bullets (`sameFailure`). Live session → `Resume` (note
@@ -159,7 +159,7 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   (`PRTitleBody` splits it: first line title, rest body) and hands it to
   `PRCreator`; an empty description lets `gh --fill` build it from commits.
   Claude Code's attribution footer is dropped first
-  (`StripAgentAttribution`, `attribution.go`; `complete-slice` strips it
+  (`StripAgentAttribution`, `attribution.go`; `slice complete` strips it
   before filing too). `RecordPR` writes the URL only — the slice stays `In progress`.
 - `MarkDone` is the **only** function that writes Done, and always re-reads
   `Shape` first. `SettleMerged` (nat not running when a merge happened on
@@ -168,7 +168,7 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   whose PR is still open) are both built on it — see root CLAUDE.md's
   `StateOf`/Done rules.
 - `PRsWorthAsking(w, p, slices)` (`prreadings.go`) is what a batched reading
-  asks about, for `pr-status` and the board alike: every In progress slice
+  asks about, for `pr status` and the board alike: every In progress slice
   with a PR, and a Done one only while its `AgentBranch` has a worktree (one
   `Worktrees.Branches` per repository; a failed listing asks about none of
   its Done slices). `ListedOnce(w)` memoises `Branches` for one run, so the
@@ -179,10 +179,10 @@ etc.) — this file is the mechanics, not a restatement of the rules.
   what happens to the checkout.
 - `RemoveSliceWorktree(w, s, p)` is that for one slice: `WorkdirFor` (`~`
   expanded) and `AgentBranch`; an empty repository (`RepoUnknown`) asks git
-  nothing. `pr-merge`, `pr-status`'s settle, a Done-closing `complete-slice`
-  and `slice-delete` call it.
+  nothing. `pr merge`, `pr status`'s settle, a Done-closing `slice complete`
+  and `slice delete` call it.
 - `SweepLanded(w, live, p, landed)` takes the slices the caller judged
-  landed (`pr-status`'s `landed`), lists each repository once
+  landed (`pr status`'s `landed`), lists each repository once
   (`Worktrees.Branches`, a failure logged and that repository skipped),
   and removes only a slice whose `AgentBranch` the listing names. `live`
   (tmux `LiveSlices`) is asked only once something matched; a live slice

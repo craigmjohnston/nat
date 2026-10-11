@@ -30,8 +30,8 @@ import (
 // Beside what it creates, a plan may remove, move and edit Todo slices the
 // project already has — the work a workshop supersedes — named by title in its
 // remove, move and edit lists. Nothing else already filed is the plan's to
-// change, and those three only what `slice-delete`, `slice-move` and
-// `slice-edit` would.
+// change, and those three only what `slice delete`, `slice move` and
+// `slice edit` would.
 //
 // Where the plan lands is the command line's rather than the document's:
 // --project names a project of the config file, and a run that names none
@@ -39,7 +39,7 @@ import (
 // which is what lets one drafted plan be applied to whichever project the
 // session is planning for.
 func planApply(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("plan-apply", flag.ContinueOnError)
+	flags := flag.NewFlagSet("plan apply", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -48,7 +48,7 @@ func planApply(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) > 1 {
-		return usageErrorf("plan-apply: want at most one plan file, given %d", len(rest))
+		return usageErrorf("plan apply: want at most one plan file, given %d", len(rest))
 	}
 	// The plan is read and parsed before Notion is touched at all, so a missing
 	// file or unreadable stdin fails having written nothing.
@@ -100,7 +100,7 @@ func planApply(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// plan is the document plan-apply reads: the milestones to create and the
+// plan is the document plan apply reads: the milestones to create and the
 // slices to file, each slice naming the milestone it belongs under. Statuses,
 // orders and assignees are absent by design — they are not the plan's to choose,
 // and a document that could set them would be a way to smuggle a claim past the
@@ -127,7 +127,7 @@ type planMilestone struct {
 
 // planSlice is a slice to file. Milestone names one of the plan's own new
 // milestones or an existing one of the project, by name — the same way
-// slice-add's --milestone does, and for the same reason: a milestone is an
+// slice add's --milestone does, and for the same reason: a milestone is an
 // option of the slices' Milestone column and so is nothing but its name.
 //
 // DependsOn names the slices this one waits on, by title. A title may be one
@@ -148,7 +148,7 @@ type planSlice struct {
 // slice waits on, and work already on the board waits on new work often enough
 // that a plan needs a way to say so.
 //
-// It is additive, exactly as `nat slice-depends --on` is: what On names is
+// It is additive, exactly as `nat slice depends --on` is: what On names is
 // added to whatever the slice already waits on. A document has no business
 // dropping a dependency somebody recorded by hand, and nothing here says to.
 type planDependency struct {
@@ -179,7 +179,7 @@ func readPlan(source string, in io.Reader) (plan, error) {
 	var err error
 	if source == stdinRef {
 		if in == nil {
-			return plan{}, usageErrorf("plan-apply: no plan file given and there is nothing to read")
+			return plan{}, usageErrorf("plan apply: no plan file given and there is nothing to read")
 		}
 		raw, err = io.ReadAll(in)
 	} else {
@@ -262,8 +262,8 @@ type planTargets struct {
 
 // validateAgainstProject reads a project's current shape — and, only if the
 // plan names any dependency, its slices — and validates the plan against
-// them exactly as [validatePlan] always has. plan-apply, plan-propose
-// (--project) and plan-accept (--project) all call this rather than each
+// them exactly as [validatePlan] always has. plan apply, plan propose
+// (--project) and plan accept (--project) all call this rather than each
 // rolling the same read-then-validate sequence by hand, so the three can
 // never drift apart on what a project-scoped proposal is checked against: a
 // plan a live project would refuse is refused the same way whichever of the
@@ -271,7 +271,7 @@ type planTargets struct {
 // here rather than half-applied.
 func validateAgainstProject(ctx context.Context, st store.Store, sp store.Project, p plan) (store.Shape, planTargets, error) {
 	// A source project's tasks stay under the container they were filed under,
-	// as slice-move is refused there — said before anything is read.
+	// as slice move is refused there — said before anything is read.
 	if sp.Source != "" && len(p.Move) > 0 {
 		return store.Shape{}, planTargets{}, fmt.Errorf("the plan moves %d %s, but this project's milestones are %s's "+
 			"containers: a task stays under the one it was filed under", len(p.Move), plural("slice", len(p.Move)), sp.Source)
@@ -885,7 +885,7 @@ func pageRef(id, url string) string {
 	return id
 }
 
-// warnStandingCycles tells whoever ran plan-apply of the cycles already on the
+// warnStandingCycles tells whoever ran plan apply of the cycles already on the
 // board that the plan was let through beside: nothing the document did, but
 // no slice in one can ever be unblocked until somebody clears an edge of it.
 // A warning that will not write is nothing to fail a filed plan over.
@@ -894,7 +894,7 @@ func warnStandingCycles(w io.Writer, standing []string) {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "warning: the plan leaves %d %s of dependencies already on the board as it found them, "+
-		"and no slice in a cycle can ever be unblocked: %s — nat slice-depends --clear breaks one\n",
+		"and no slice in a cycle can ever be unblocked: %s — nat slice depends --clear breaks one\n",
 		len(standing), plural("cycle", len(standing)), strings.Join(standing, "; "))
 }
 

@@ -27,10 +27,10 @@ import (
 // session.
 //
 // The record goes on the page before the message goes to the agent, since the
-// record is what stops complete-slice refusing: an agent that hands back the
+// record is what stops slice complete refusing: an agent that hands back the
 // moment the message lands finds the way already clear.
 func sliceTriage(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-triage", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice triage", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var queue, fold, drop indexList
 	flags.Var(&queue, "queue", "a follow-up to queue as a slice, by index; repeat for more")
@@ -44,18 +44,18 @@ func sliceTriage(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-triage: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice triage: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	ref, err := pageID("slice-triage", rest[0])
+	ref, err := pageID("slice triage", rest[0])
 	if err != nil {
 		return err
 	}
 	named := len(queue) + len(fold) + len(drop)
 	switch {
 	case *dropAll && named > 0:
-		return usageErrorf("slice-triage: --drop-all decides every follow-up: give it alone")
+		return usageErrorf("slice triage: --drop-all decides every follow-up: give it alone")
 	case !*dropAll && named == 0:
-		return usageErrorf("slice-triage: nothing decided: pass --queue, --fold and --drop by index, or --drop-all")
+		return usageErrorf("slice triage: nothing decided: pass --queue, --fold and --drop by index, or --drop-all")
 	}
 
 	_, projectID, project, err := env.projectFor(*projectRef)
@@ -170,7 +170,7 @@ func (l *indexList) String() string {
 func (l *indexList) Set(v string) error {
 	n, err := strconv.Atoi(strings.TrimSpace(v))
 	if err != nil || n < 1 {
-		return fmt.Errorf("%q is not a follow-up's index: give the number slice-show prints", v)
+		return fmt.Errorf("%q is not a follow-up's index: give the number slice show prints", v)
 	}
 	*l = append(*l, n)
 	return nil
@@ -253,7 +253,7 @@ func indexesOf(pending []store.FollowUp) string {
 
 // liveSessionFor is the tmux session of the slice's agent, and whether there
 // is one. A launch tags the pane with the slice's own ID; the ID as the caller
-// typed it is tried as well, the way agent-send takes it.
+// typed it is tried as well, the way agent send takes it.
 func liveSessionFor(env Env, ids ...string) (string, bool, error) {
 	live, err := env.NewTmux().LiveSlices()
 	if err != nil {
@@ -301,7 +301,7 @@ func triageMessage(decided []store.FollowUp, decisions map[int]store.Decision) s
 		fmt.Fprintf(&b, " Dropped: %s.", strings.Join(dropped, ", "))
 	}
 	if len(folds) == 0 {
-		b.WriteString("\nNothing to fold in — hand back now with nat complete-slice as usual.")
+		b.WriteString("\nNothing to fold in — hand back now with nat slice complete as usual.")
 		return b.String()
 	}
 	b.WriteString("\nFold in before handing back:\n")
@@ -309,7 +309,7 @@ func triageMessage(decided []store.FollowUp, decisions map[int]store.Decision) s
 		marker := strconv.Itoa(f.Index) + ". "
 		fmt.Fprintf(&b, "\n%s%s\n%s\n", marker, f.Title, indented(strings.Repeat(" ", len(marker)), f.Brief))
 	}
-	b.WriteString("\nThen hand back with nat complete-slice as usual.")
+	b.WriteString("\nThen hand back with nat slice complete as usual.")
 	return b.String()
 }
 
@@ -324,7 +324,7 @@ func indented(indent, text string) string {
 	return strings.Join(lines, "\n")
 }
 
-// triageJSON is what slice-triage --json prints: what became of each
+// triageJSON is what slice triage --json prints: what became of each
 // follow-up.
 type triageJSON struct {
 	Queued  []queuedJSON `json:"queued"`

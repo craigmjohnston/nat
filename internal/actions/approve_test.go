@@ -84,7 +84,7 @@ func TestOpenPR(t *testing.T) {
 }
 
 // TestOpenPRStripsTheAgentAttribution opens a hand-back filed before
-// complete-slice stripped Claude Code's footer: the pull request goes without.
+// slice complete stripped Claude Code's footer: the pull request goes without.
 func TestOpenPRStripsTheAgentAttribution(t *testing.T) {
 	client := &fakeClient{blocks: func(string) ([]notion.Block, error) {
 		return []notion.Block{

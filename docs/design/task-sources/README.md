@@ -100,7 +100,7 @@ Where the source customises display:
 
 - **Plugin-owned tasks.** Tasks are always nat slices in a local plan; a
   plugin cannot supply, store or mutate one.
-- **Moving a task between containers** (`slice-move`, a cross-container
+- **Moving a task between containers** (`slice move`, a cross-container
   reorder). Refused on a source project, since there is no event to tell
   the plugin.
 - **A `moved` event**, for the same reason. Added with the move itself.
@@ -125,7 +125,7 @@ looks for it, in order:
 
 The plugins directory wins over `PATH`. The file must be executable; one
 that isn't is not a plugin, and is not discovered (nor listed by
-`source-list`).
+`source list`).
 `<name>` is lower-case letters, digits and `-`. A symlink is fine — the
 installed path may point into a checkout.
 
@@ -242,8 +242,8 @@ Setup     { id, label, input: "secret" | "text", hint?, set? }
 
 ### `describe`
 
-Who the plugin is. Called by `source-list`, `plugin-list`, `source-setup`,
-on `project-create --source`, and on every `info`.
+Who the plugin is. Called by `source list`, `plugin list`, `source setup`,
+on `project create --source`, and on every `info`.
 
 **`describe` is static: it must answer without any credential.** It is how
 nat learns what a plugin needs set up, so a plugin missing its token still
@@ -515,7 +515,7 @@ Response:
     "input": "{\"epic\":[],\"labels\":[\"bug\"],\"project\":[],\"team\":[\"board\"]}" }
   ```
 - `message` (optional) is shown to the user (a toast in gnat; printed by
-  `nat source-action`).
+  `nat source action`).
 - **nat re-reads `sidebar` after every action**, successful or not, and
   gnat re-reads the open container's detail — an action never needs to
   return the new state.
@@ -546,7 +546,7 @@ Response:
 | `event` | fired after | `task.status` |
 |---|---|---|
 | `created` | a task is filed under the container | `Todo` |
-| `claimed` | a task is claimed (launch, `start-slice`) | `In progress` |
+| `claimed` | a task is claimed (launch, `slice start`) | `In progress` |
 | `released` | a task is released back | `Todo` |
 | `handed_back` | an agent hands back **with a branch** | `In progress` |
 | `approved` | the PR is opened and recorded | `In progress` |
@@ -586,7 +586,7 @@ Response:
 ```
 
 - `message` is shown beside the field (a green check in gnat; printed by
-  `nat source-setup`).
+  `nat source setup`).
 - Refuse an unknown `id`, an empty `input`, or a value the remote rejects
   the usual way: non-zero exit, one stderr line — which **must not quote
   the input**.
@@ -603,10 +603,10 @@ Response:
 
 All project-scoped commands take `--project <id>` as everywhere else.
 
-### New: `source-list`
+### New: `source list`
 
 ```
-nat source-list [--json]
+nat source list [--json]
 ```
 
 Every discovered plugin, each `describe`d best-effort. A plugin that won't
@@ -627,10 +627,10 @@ name, path, then `title (tag)` or `error: …`.
 `working_dir` all `""`), since no project is in question; a plugin must
 answer `describe` without one.
 
-### New: `container-show`
+### New: `container show`
 
 ```
-nat container-show <container id> --project <id> --json
+nat container show <container id> --project <id> --json
 ```
 
 `{ "container": <the plugin's container response, as-is>, "tasks": [ … ] }`
@@ -639,10 +639,10 @@ shape `info --json` gives a slice. Refused on a project that isn't a
 source project. A failed plugin read is the command's error. Without
 `--json` it prints the title, the external URL, the facts and the tasks.
 
-### New: `source-action`
+### New: `source action`
 
 ```
-nat source-action --project <id> --action <action id> [--group <id> | --container <id>] [--input <text> | --input -] [--json]
+nat source action --project <id> --action <action id> [--group <id> | --container <id>] [--input <text> | --input -] [--json]
 ```
 
 Runs `action` with the target built from `--group`/`--container` (neither:
@@ -653,10 +653,10 @@ Prints the plugin's `message` (`Ran <action id>.` when it gave none);
 no `--action`, and with both `--group` and `--container`. A board running
 on the machine is nudged after a successful action.
 
-### New: `source-setup`
+### New: `source setup`
 
 ```
-nat source-setup <plugin name> --id <setup field id> [--json] < value
+nat source setup <plugin name> --id <setup field id> [--json] < value
 ```
 
 Sends the plugin's `setup` the value read from **stdin** — all of it, one
@@ -667,10 +667,10 @@ describe is refused with that error), and an empty value. Prints the
 plugin's `message`; `--json` prints `{ "message": "…" }`. Acts on no
 project.
 
-### `project-create --source`
+### `project create --source`
 
 ```
-nat project-create [<name>] --source <plugin name> [--plan-dir <dir>] [--description -] …
+nat project create [<name>] --source <plugin name> [--plan-dir <dir>] [--description -] …
 ```
 
 In order: the plugin must be discovered and `describe` with protocol 1
@@ -678,17 +678,17 @@ In order: the plugin must be discovered and `describe` with protocol 1
 the config entry (backend `source`, `source: <plugin name>`, `plan_dir`
 as for a local project, **no `name`**). A source project is called what its
 plugin calls itself — its `describe` `title`, else the plugin's name — read
-fresh wherever nat names it (`info`'s `project.name`, `config-show`, every
+fresh wherever nat names it (`info`'s `project.name`, `config show`, every
 message), so `<name>` is optional here and never recorded, and a `name` an
 older entry carries is ignored. Mutually exclusive with `--local`. Needs no
 Notion token. **A source project has no working directory** — its cards
 come from anywhere, so the repository is each task's own (`Repo`) — and
 `--repo` is refused with `--source`.
 
-### New: `slice-repo`
+### New: `slice repo`
 
 ```
-nat slice-repo <slice> --repo <path> [--json] --project <id>
+nat slice repo <slice> --repo <path> [--json] --project <id>
 ```
 
 Records the repository a task is worked in (a directory; `~` expanded, made
@@ -698,7 +698,7 @@ Notion. A task launched with no repository on a project with none — a
 source project's — starts in the home directory with no worktree cut and no
 git read, and its prompt tells the agent to work the repository out from
 the card's facts and links (asking the user in the terminal where it
-cannot tell), record it with `slice-repo`, which cuts the slice's worktree there
+cannot tell), record it with `slice repo`, which cuts the slice's worktree there
 and prints its path. From then on relaunch, approve, merge and the
 merge's worktree removal all find it through the task's `Repo`. `--json` prints the project as `--local` does, with
 `"backend": "source"` and `"source": "<plugin name>"`.
@@ -740,7 +740,7 @@ A source project's info gains `source`:
 - Containers otherwise appear in `milestones` exactly as milestones do
   (their `id` is the container id), so every existing reader keeps working.
 
-### `slice-show --json`
+### `slice show --json`
 
 A task in a source project gains `container`:
 
@@ -756,10 +756,10 @@ A task in a source project gains `container`:
 On a failed `container` read, only `id` and the cached `title` are filled.
 Absent for a non-source project.
 
-### `slice-add --container`
+### `slice add --container`
 
 ```
-nat slice-add <title> --container <container id> [--description TEXT|-] … --project <id>
+nat slice add <title> --container <container id> [--description TEXT|-] … --project <id>
 ```
 
 Source projects only; there `--milestone` is refused, `--container` is
@@ -770,26 +770,26 @@ refused if that read fails (nat won't file under a container it can't
 name). A task given no `--repo` starts from the repository of the
 container's latest task that has one. Fires `created`.
 
-### `config-show`
+### `config show`
 
 Each project's entry carries `source` (the plugin name) where its backend
 is `source` (`source=<name>` in the plain form).
 
 ### Refusals and fixes
 
-- `project-mirror` refuses a source project by name: its tasks hang off the
+- `project mirror` refuses a source project by name: its tasks hang off the
   plugin's containers, which Notion has nowhere to keep.
-- `done-clear` refuses a source project by name: each Done task deleted
+- `project done clear` refuses a source project by name: each Done task deleted
   would tell the plugin `deleted` of work that merged, and the containers
   it would then remove are the plugin's.
-- `slice-status` takes the local path for a source project.
-- `milestone-add`, `milestone-rename`, `milestone-remove`,
-  `milestone-move`, `slice-move`, and a `slice-reorder` across containers
+- `slice status` takes the local path for a source project.
+- `milestone add`, `milestone rename`, `milestone remove`,
+  `milestone move`, `slice move`, and a `slice reorder` across containers
   are refused on a source project, in the store's own words ("cards belong
-  to Shortcut; nat can't …"). `plan-apply` reaches the same refusal for
+  to Shortcut; nat can't …"). `plan apply` reaches the same refusal for
   any milestone it would create.
 - The TUI's `n` (add slice) is refused with a toast on a source project;
-  tasks are added from gnat or `nat slice-add --container`.
+  tasks are added from gnat or `nat slice add --container`.
 
 ## Installing plugins
 
@@ -859,7 +859,7 @@ read regardless.
 
 ### Installed
 
-`nat plugin-install <name>` installs from `--source`, else the first source
+`nat plugin install <name>` installs from `--source`, else the first source
 offering the name. The binary is downloaded beside where it goes, its digest
 checked (a mismatch refuses and deletes it), made executable and renamed
 into `<config dir>/plugins/<name>/nat-source-<name>` in one step; then
@@ -875,13 +875,13 @@ there by hand — and installing over it is refused, naming the path: nat
 never overwrites what someone placed themselves. A plugin found on PATH is a
 **path** install.
 
-`nat plugin-uninstall <name>` removes `<config dir>/plugins/<name>/`, managed
+`nat plugin uninstall <name>` removes `<config dir>/plugins/<name>/`, managed
 or manual. It is refused for a plugin found only on PATH (naming where), and
 while any project is a source project of that plugin (naming them, and
 `--delete-projects`). With `--delete-projects` it deletes each of those
 projects first — its plan file (and SQLite's `-wal`/`-shm` beside it; one
 already gone is fine), then its config entry, saved, clearing the active
-project where it was one — the reverse of `project-create`'s plan-then-config
+project where it was one — the reverse of `project create`'s plan-then-config
 order, so a plan the OS refuses to remove stops the uninstall with that
 project whole and the plugin still installed. gnat asks before passing it,
 naming the projects.
@@ -892,7 +892,7 @@ a version that doesn't read that way is never newer.
 
 ### The `nat` contract
 
-- `plugin-list --json` →
+- `plugin list --json` →
   `{"sources": [{"repo", "version", "error", "default"}], "installed": [{"name", "path", "kind", "source", "version", "update", "setup", "describe_error"}], "available": [{"name", "title", "description", "source", "version", "installed"}]}`.
   `kind` is `managed`, `manual` or `path`; `source`/`version` are a managed
   install's alone; `update` is the newer version, else empty; `setup` is the
@@ -902,12 +902,12 @@ a version that doesn't read that way is never newer.
   installed plugin is described once per listing; `available` is
   every source's latest release's plugins, `installed` true where a plugin of
   that name is installed by any means.
-- `plugin-install <name> [--source owner/repo] [--version V] --json` → the
+- `plugin install <name> [--source owner/repo] [--version V] --json` → the
   record above plus `name` and `path`.
-- `plugin-uninstall <name> [--delete-projects] --json` →
+- `plugin uninstall <name> [--delete-projects] --json` →
   `{"name", "path", "projects_deleted": [{"id", "name"}]}` (`projects_deleted`
   always an array, empty without the flag).
-- `plugin-source-add <owner/repo>` / `plugin-source-remove <owner/repo>`
+- `plugin source add <owner/repo>` / `plugin source remove <owner/repo>`
   (`--json` → `{"sources": [...]}`, every source in reading order).
   Removing nat's own is refused, as is anything not shaped `owner/repo`.
 
@@ -952,7 +952,7 @@ a version that doesn't read that way is never newer.
   Projects and Scratch are: plugin icon (`icon_svg`, else `icon_symbol`),
   the plugin's `title`, the header `menu` (the `sidebar` response's, else
   `describe`'s). Inside, group headers with `count` and their `menu`
-  (actions → `source-action`; `text` through a small sheet, `choice`
+  (actions → `source action`; `text` through a small sheet, `choice`
   through a submenu, `filter` through the filter editor, `destructive`
   confirmed), one level of sub-groups, then container rows (title,
   `badges`, `meta` on hover, `menu`, and under the pointer a `+` in the
@@ -963,7 +963,7 @@ a version that doesn't read that way is never newer.
   ones.
 - **No `+` entry: connecting makes the section.** Once a plugin's `describe`
   says every `setup` field is set (`set` never `false`; for Shortcut, the
-  token), gnat makes exactly one source project for it — `project-create
+  token), gnat makes exactly one source project for it — `project create
   --source`, which is always named by the plugin's `title` (never by
   config), with no working directory —
   and its section appears. Checked whenever the plugins are read: at start
@@ -990,8 +990,8 @@ a version that doesn't read that way is never newer.
   beneath it ("<label> not set" as a warning where `set` is false, a quiet
   "<label> set" and a "Replace …" placeholder where it is true; a secure
   field for `secret`, a text field for `text`, the
-  hint as a caption, Save → `nat source-setup` with the value on stdin; the
-  plugin's message or refusal inline, then `plugin-list` re-read).
+  hint as a caption, Save → `nat source setup` with the value on stdin; the
+  plugin's message or refusal inline, then `plugin list` re-read).
 - **Gallery stories**: `sidebar-source`, `sidebar-source-hover`,
   `sidebar-source-projects-open`, `sidebar-source-folded`,
   `sidebar-source-all-folded`, `source-filter-popover`,
@@ -1023,7 +1023,7 @@ a version that doesn't read that way is never newer.
 - **Project id changes**: never; a plugin may key settings on it.
 - **Secrets**: the plugin owns them; nat never stores or logs one, and logs
   only a failing plugin's first stderr line. The one secret nat handles is a
-  `setup` input, and only in passing: stdin in (`nat source-setup`), the
+  `setup` input, and only in passing: stdin in (`nat source setup`), the
   plugin's stdin out, never argv, never a log line (method, plugin and `id`
   only), never an error. gnat sends it on `nat`'s stdin and keeps it out of
   its own request log.
@@ -1042,16 +1042,16 @@ a version that doesn't read that way is never newer.
   round trip, the collision rename.
 - **`internal/cli`**: each new command's statements and refusals;
   `info --json`'s `source` (including `_unlisted` and the failed-read
-  shape), `slice-show`'s `container`, `slice-add --container`,
-  `project-create --source`.
+  shape), `slice show`'s `container`, `slice add --container`,
+  `project create --source`.
 - **`internal/agent` / `internal/tui`**: the `## The card` block present
   and absent; one golden render of a source project; `n` refused.
 - **gnat**: decoding of every new model leniently; `NatClient` arguments;
   the seven stories rendered and compared, cropped, against the mock's
   Shortcut-specific parts.
-- **End to end**: `examples/nat-source-demo` installed — `source-list`,
-  `project-create --source demo`, `info --expand done`, `slice-add
-  --container c1`, `container-show c1`, `source-action`, and the demo's
+- **End to end**: `examples/nat-source-demo` installed — `source list`,
+  `project create --source demo`, `info --expand done`, `slice add
+  --container c1`, `container show c1`, `source action`, and the demo's
   `events.log` showing `created` (see that README).
 
 ## Alternatives considered

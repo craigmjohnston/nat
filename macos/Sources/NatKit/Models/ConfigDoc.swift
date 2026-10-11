@@ -1,6 +1,6 @@
 import Foundation
 
-/// The structured form of `nat config-show --json`: the fields the settings
+/// The structured form of `nat config show --json`: the fields the settings
 /// scene edits and nothing else — the raw stored values, zero and empty
 /// meaning unset exactly as the config file itself writes them, rather than
 /// the resolved defaults a launch would swap in. This is what is on disk, not
@@ -12,7 +12,7 @@ public struct ConfigDoc: Codable, Equatable, Sendable {
     public let sliceAgent: AgentModel
     public let projects: [String: ConfigDocProject]
     /// The reserved scratch project's ID, so the app finds it without a second
-    /// call. Nil until `nat scratch-open` has run, and from an older `nat`.
+    /// call. Nil until `nat scratch open` has run, and from an older `nat`.
     public let scratchProject: String?
 
     enum CodingKeys: String, CodingKey {
@@ -41,9 +41,9 @@ public struct ConfigDoc: Codable, Equatable, Sendable {
     }
 }
 
-/// One tracked project's share of the config file, as `config-show` prints
+/// One tracked project's share of the config file, as `config show` prints
 /// it: its name, for labelling the settings field without a second lookup,
-/// its working directory, the one field `config-set` can change on it, and
+/// its working directory, the one field `config set` can change on it, and
 /// where its plan lives — said out loud for every project, the Notion ones
 /// whose config entry leaves it unwritten included.
 public struct ConfigDocProject: Codable, Equatable, Sendable {

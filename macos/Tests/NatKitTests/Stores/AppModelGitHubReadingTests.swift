@@ -2,11 +2,11 @@ import XCTest
 @testable import NatKit
 @testable import NatFixtures
 
-/// The app's one read of GitHub, counted at the client: `pr-status` runs, the
-/// PR tab's `pr-view`s and `session-list`s. A nudge makes none of them; a
-/// tick makes one `pr-status` whatever the number of tabs; an action makes one
+/// The app's one read of GitHub, counted at the client: `pr status` runs, the
+/// PR tab's `pr view`s and `session list`s. A nudge makes none of them; a
+/// tick makes one `pr status` whatever the number of tabs; an action makes one
 /// settle read, however many come inside its window; an open PR tab makes no
-/// `pr-view` after its first load.
+/// `pr view` after its first load.
 @MainActor
 final class AppModelGitHubReadingTests: XCTestCase {
     private func started(settleDelay: Duration = .zero) async -> (AppModel, FixtureNatClient) {
@@ -82,7 +82,7 @@ final class AppModelGitHubReadingTests: XCTestCase {
     }
 
     /// An open PR tab's pull request rides the reading as its detail: after
-    /// its first load, no `pr-view`.
+    /// its first load, no `pr view`.
     func testAnOpenPRTabMakesNoViewAfterItsFirstLoad() async {
         let (model, client) = await started()
         let prStore = model.prStore(projectID: Fixtures.projectID)
@@ -94,7 +94,7 @@ final class AppModelGitHubReadingTests: XCTestCase {
         await model.githubReadingStore?.read()
 
         XCTAssertEqual(client.prStatusRuns.last?.hasSuffix(" " + Fixtures.prGreen.url), true)
-        XCTAssertEqual(client.prViewReads, [Fixtures.approveSliceID], "no pr-view after the first load")
+        XCTAssertEqual(client.prViewReads, [Fixtures.approveSliceID], "no pr view after the first load")
         XCTAssertEqual(prStore.loadState.pr, Fixtures.prGreen)
 
         prStore.setVisible(false)
@@ -103,7 +103,7 @@ final class AppModelGitHubReadingTests: XCTestCase {
     }
 
     /// The PR section's body read stale while its heading went green: the
-    /// tab's first `pr-view` read two checks running, then a reading of all
+    /// tab's first `pr view` read two checks running, then a reading of all
     /// checks passing carried the slice's pull request as its detail. The
     /// detail lands on the store, so the body the detail feeds agrees with
     /// the heading the reading feeds.

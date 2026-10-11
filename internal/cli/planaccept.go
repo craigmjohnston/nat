@@ -15,7 +15,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/logging"
 )
 
-// planProposal reads back the proposal file plan-propose wrote for a
+// planProposal reads back the proposal file plan propose wrote for a
 // workspace or a project — the app's new-project tab, or a tracked project's
 // own workshop, polls it on every nudge, so a proposal reaches the rail
 // without the app knowing where nat keeps the file. No proposal yet is the
@@ -24,9 +24,9 @@ import (
 // have to tell apart from a real failure.
 //
 // A file that will not parse is an error, not a null: the app logs it and
-// leaves the rail as it was, and the agent's next plan-propose replaces it.
+// leaves the rail as it was, and the agent's next plan propose replaces it.
 func planProposal(_ context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("plan-proposal", flag.ContinueOnError)
+	flags := flag.NewFlagSet("plan proposal", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	_ = flags.Bool("json", false, "accepted for symmetry: the answer is always JSON")
 	workspace := flags.String("workspace", "", "the app's own id for the new-project session (exclusive with --project)")
@@ -36,12 +36,12 @@ func planProposal(_ context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("plan-proposal: takes no arguments, given %d", len(rest))
+		return usageErrorf("plan proposal: takes no arguments, given %d", len(rest))
 	}
 	ws := strings.TrimSpace(*workspace)
 	proj := strings.TrimSpace(*projectRef)
 	if (ws == "") == (proj == "") {
-		return usageErrorf("plan-proposal: give exactly one of --workspace or --project")
+		return usageErrorf("plan proposal: give exactly one of --workspace or --project")
 	}
 	key := ws
 	if key == "" {
@@ -60,12 +60,12 @@ func planProposal(_ context.Context, args []string, env Env) error {
 // planWithdraw takes a proposal down — the app's doing, once the user writes
 // to the workshop's agent after it proposed: whatever it says next makes the
 // proposal stale, and the agent proposes again on its next turn. Exactly one
-// of --workspace or --project names it, as plan-proposal's. No proposal is
+// of --workspace or --project names it, as plan proposal's. No proposal is
 // nothing to withdraw, not an error; a proposal an accept has claimed
 // (`.accepting-<pid>`) is no longer at the proposal path, so it is never
 // touched.
 func planWithdraw(_ context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("plan-withdraw", flag.ContinueOnError)
+	flags := flag.NewFlagSet("plan withdraw", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "answer as JSON")
 	workspace := flags.String("workspace", "", "the app's own id for the new-project session (exclusive with --project)")
@@ -75,12 +75,12 @@ func planWithdraw(_ context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("plan-withdraw: takes no arguments, given %d", len(rest))
+		return usageErrorf("plan withdraw: takes no arguments, given %d", len(rest))
 	}
 	ws := strings.TrimSpace(*workspace)
 	proj := strings.TrimSpace(*projectRef)
 	if (ws == "") == (proj == "") {
-		return usageErrorf("plan-withdraw: give exactly one of --workspace or --project")
+		return usageErrorf("plan withdraw: give exactly one of --workspace or --project")
 	}
 	key := ws
 	if key == "" {
@@ -113,13 +113,13 @@ func planWithdraw(_ context.Context, args []string, env Env) error {
 	return err
 }
 
-// withdrawAnswer is plan-withdraw's JSON: whether a proposal was there to
+// withdrawAnswer is plan withdraw's JSON: whether a proposal was there to
 // take down.
 type withdrawAnswer struct {
 	Withdrawn bool `json:"withdrawn"`
 }
 
-// proposalAnswer is plan-proposal's output: the proposal, or null.
+// proposalAnswer is plan proposal's output: the proposal, or null.
 type proposalAnswer struct {
 	Proposal *proposalDoc `json:"proposal"`
 }
@@ -146,7 +146,7 @@ func readProposalFile(path, key string) (proposalDoc, error) {
 	return doc, nil
 }
 
-// claimedProposal is a proposal plan-accept has taken out of the proposal
+// claimedProposal is a proposal plan accept has taken out of the proposal
 // path before filing anything, so that it is accepted exactly once: what is
 // filed is what was claimed, a second accept finds no proposal, and a reader
 // can never see a proposal whose plan is already filed — whether or not the
@@ -217,10 +217,10 @@ func (c *claimedProposal) drop() {
 // Settings' to say. --name is required and --project is not given.
 //
 // --project applies the proposal's plan — remove, move and edit lists
-// included, in plan-apply's order — to a project that already exists —
+// included, in plan apply's order — to a project that already exists —
 // no --name, which the project already has — validated against that
-// project's *current* plan with the same [validateAgainstProject] plan-apply
-// and plan-propose both run, so a plan the live project has since outgrown
+// project's *current* plan with the same [validateAgainstProject] plan apply
+// and plan propose both run, so a plan the live project has since outgrown
 // (a milestone renamed, a slice the proposal's depends_on named since
 // deleted) is refused here rather than half-applied. The proposal file is
 // dropped only once the plan is in, same order as --workspace.
@@ -235,9 +235,9 @@ func (c *claimedProposal) drop() {
 // A run that fails after the claim leaves the project (made or already
 // there) and whatever was filed, puts the proposal back (unless a revision
 // was proposed meanwhile, which wins), nudges, and says so — the same
-// no-rollback stance plan-apply takes.
+// no-rollback stance plan apply takes.
 func planAccept(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("plan-accept", flag.ContinueOnError)
+	flags := flag.NewFlagSet("plan accept", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	workspace := flags.String("workspace", "", "the app's own id for the new-project session (exclusive with --project)")
@@ -248,22 +248,22 @@ func planAccept(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("plan-accept: takes no arguments, given %d", len(rest))
+		return usageErrorf("plan accept: takes no arguments, given %d", len(rest))
 	}
 	ws := strings.TrimSpace(*workspace)
 	proj := strings.TrimSpace(*projectRef)
 	if (ws == "") == (proj == "") {
-		return usageErrorf("plan-accept: give exactly one of --workspace or --project")
+		return usageErrorf("plan accept: give exactly one of --workspace or --project")
 	}
 	projectName := strings.TrimSpace(*name)
 	if ws != "" {
 		if projectName == "" {
-			return usageErrorf("plan-accept: no --name given: the project's name")
+			return usageErrorf("plan accept: no --name given: the project's name")
 		}
 		return acceptIntoNewProject(ctx, env, ws, projectName, *asJSON)
 	}
 	if projectName != "" {
-		return usageErrorf("plan-accept: --name is not given with --project: the project already has one")
+		return usageErrorf("plan accept: --name is not given with --project: the project already has one")
 	}
 	return acceptIntoProject(ctx, env, proj, *asJSON)
 }
@@ -400,8 +400,8 @@ func acceptIntoProject(ctx context.Context, env Env, projectRef string, asJSON b
 	return err
 }
 
-// planAcceptedJSON is plan-accept's structured output: the project as
-// project-create --local reports it, how much of the plan went in, and how
+// planAcceptedJSON is plan accept's structured output: the project as
+// project create --local reports it, how much of the plan went in, and how
 // many slices already on the board it edited, moved and removed (always 0 for
 // a new project, which has none).
 type planAcceptedJSON struct {

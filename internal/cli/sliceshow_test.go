@@ -25,8 +25,8 @@ func TestSliceShowPrintsSliceAsMarkdown(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show: %v", err)
 	}
 
 	result := out.String()
@@ -56,8 +56,8 @@ func TestSliceShowPrintsJSON(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 
 	var got sliceShowJSON
@@ -103,8 +103,8 @@ func TestSliceShowBase(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 	runner := &fakeGitRunner{base: "origin/trunk"}
 	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 	var got sliceShowJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -120,8 +120,8 @@ func TestSliceShowBase(t *testing.T) {
 	cfg.Projects["project-1"] = project
 	env, out = testEnv(cfg, api)
 	env.NewGit = func() GitCLI { t.Fatal("git asked with no repo to ask in"); return nil }
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 	if strings.Contains(out.String(), `"base"`) {
 		t.Errorf("output = %s, want no base with no repo", out.String())
@@ -142,8 +142,8 @@ func TestSliceShowComputesBlocked(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 
 	var got sliceShowJSON
@@ -171,8 +171,8 @@ func TestSliceShowComputesNotBlocked(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 
 	var got sliceShowJSON
@@ -201,8 +201,8 @@ func TestSliceShowIncludeBrief(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 
 	var got sliceShowJSON
@@ -246,8 +246,8 @@ func TestSliceShowEventsFromTheBody(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 
 	var got sliceShowJSON
@@ -321,8 +321,8 @@ func TestSliceShowEventsIsAnEmptyArrayNotNull(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 	if !strings.Contains(out.String(), `"events": []`) {
 		t.Errorf("output =\n%s\nwant an empty events array", out.String())
@@ -350,8 +350,8 @@ func TestSliceShowEventsIncludesApproved(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 	var got sliceShowJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -376,8 +376,8 @@ func TestSliceShowEventsIncludesApprovedAndMerged(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 	var got sliceShowJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -402,8 +402,8 @@ func TestSliceShowEventsMergedWithNoPR(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 	var got sliceShowJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -426,8 +426,8 @@ func TestSliceShowNoDependencies(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 
 	var got sliceShowJSON
@@ -456,8 +456,8 @@ func TestSliceShowByURL(t *testing.T) {
 
 	// Use a URL that will be parsed to extract the ID
 	url := "https://www.notion.so/3b738308f65481708c99eccab4463d8f"
-	if err := Run(context.Background(), []string{"slice-show", url, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show with URL: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", url, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show with URL: %v", err)
 	}
 
 	if !strings.Contains(out.String(), "Test slice") {
@@ -469,9 +469,9 @@ func TestSliceShowInvalidSliceRef(t *testing.T) {
 	api := &fakeAPI{}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-show", "not-a-url-or-id", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "show", "not-a-url-or-id", "--project", "project-1"}, env)
 	if err == nil {
-		t.Fatal("slice-show with invalid ref: want error, got nil")
+		t.Fatal("slice show with invalid ref: want error, got nil")
 	}
 	if !strings.Contains(err.Error(), "not a slice") {
 		t.Errorf("err = %v, want it to mention 'not a slice'", err)
@@ -483,9 +483,9 @@ func TestSliceShowMissingProject(t *testing.T) {
 	api := &fakeAPI{}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-show", sliceID}, env)
+	err := Run(context.Background(), []string{"slice", "show", sliceID}, env)
 	if err == nil {
-		t.Fatal("slice-show without --project: want error, got nil")
+		t.Fatal("slice show without --project: want error, got nil")
 	}
 	if !strings.Contains(err.Error(), "no project given") {
 		t.Errorf("err = %v, want it to mention 'no project given'", err)
@@ -496,9 +496,9 @@ func TestSliceShowNoArgument(t *testing.T) {
 	api := &fakeAPI{}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-show", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "show", "--project", "project-1"}, env)
 	if err == nil {
-		t.Fatal("slice-show without slice arg: want error, got nil")
+		t.Fatal("slice show without slice arg: want error, got nil")
 	}
 	if !strings.Contains(err.Error(), "want exactly one slice") {
 		t.Errorf("err = %v, want it to mention 'want exactly one slice'", err)
@@ -510,9 +510,9 @@ func TestSliceShowTooManyArguments(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
-	err := Run(context.Background(), []string{"slice-show", sliceID, "extra", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "show", sliceID, "extra", "--project", "project-1"}, env)
 	if err == nil {
-		t.Fatal("slice-show with extra args: want error, got nil")
+		t.Fatal("slice show with extra args: want error, got nil")
 	}
 	if !strings.Contains(err.Error(), "want exactly one slice") {
 		t.Errorf("err = %v, want it to mention 'want exactly one slice'", err)
@@ -526,9 +526,9 @@ func TestSliceShowSchemaReadError(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
-	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "show", sliceID, "--project", "project-1"}, env)
 	if err == nil {
-		t.Fatal("slice-show with schema error: want error, got nil")
+		t.Fatal("slice show with schema error: want error, got nil")
 	}
 	if !strings.Contains(err.Error(), "load the slices schema") {
 		t.Errorf("err = %v, want it to mention 'load the slices schema'", err)
@@ -548,10 +548,10 @@ func TestSliceShowReportsAFailedLocalShapeRead(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "show", sliceID, "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Error("slice-show over a plan that cannot read its own shape: want an error")
+		t.Error("slice show over a plan that cannot read its own shape: want an error")
 	}
 }
 
@@ -568,7 +568,7 @@ func TestSliceShowReportsAFailedBriefRead(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "show", sliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "could not read the slice's brief") {
 		t.Errorf("err = %v, want the failed brief read named", err)
@@ -585,9 +585,9 @@ func TestSliceShowPageLoadError(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	const sliceID = "3b738308f65481708c99eccab4463d8f"
-	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "show", sliceID, "--project", "project-1"}, env)
 	if err == nil {
-		t.Fatal("slice-show with page load error: want error, got nil")
+		t.Fatal("slice show with page load error: want error, got nil")
 	}
 	if !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want it to mention 'load the slice'", err)
@@ -615,9 +615,9 @@ func TestSliceShowBriefReadError(t *testing.T) {
 	}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "show", sliceID, "--project", "project-1"}, env)
 	if err == nil {
-		t.Fatal("slice-show with brief read error: want error, got nil")
+		t.Fatal("slice show with brief read error: want error, got nil")
 	}
 	if !strings.Contains(err.Error(), "load the slice") || !strings.Contains(err.Error(), "brief read failed") {
 		t.Errorf("err = %v, want it to say the slice load failed and name the underlying error", err)
@@ -637,9 +637,9 @@ func TestSliceShowJSONWriteError(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 	env.Out = failingWriter{}
 
-	err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env)
 	if err == nil {
-		t.Fatal("slice-show JSON with write error: want error, got nil")
+		t.Fatal("slice show JSON with write error: want error, got nil")
 	}
 }
 
@@ -656,9 +656,9 @@ func TestSliceShowMarkdownWriteError(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 	env.Out = failingWriter{}
 
-	err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "show", sliceID, "--project", "project-1"}, env)
 	if err == nil {
-		t.Fatal("slice-show markdown with write error: want error, got nil")
+		t.Fatal("slice show markdown with write error: want error, got nil")
 	}
 }
 
@@ -670,9 +670,9 @@ func TestSliceShowBadFlag(t *testing.T) {
 		Out:       &strings.Builder{},
 	}
 
-	err := Run(context.Background(), []string{"slice-show", "--badFlag"}, env)
+	err := Run(context.Background(), []string{"slice", "show", "--badFlag"}, env)
 	if err == nil {
-		t.Fatal("slice-show with bad flag: want error, got nil")
+		t.Fatal("slice show with bad flag: want error, got nil")
 	}
 }
 
@@ -700,8 +700,8 @@ func TestSliceShowAllOptionalFields(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show: %v", err)
 	}
 
 	result := out.String()
@@ -740,8 +740,8 @@ func TestSliceShowJSONWithRepo(t *testing.T) {
 	}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-show --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "show", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice show --json: %v", err)
 	}
 
 	var got sliceShowJSON

@@ -58,12 +58,12 @@ func (fp *followUpsPlan) bodyOf(t *testing.T, id string) string {
 
 // A note from the agent's own slice, on another named by name and milestone,
 // ends that slice's brief with nat's provenance — the slice and milestone by
-// name, no ID — and reads back as a note event from slice-show.
+// name, no ID — and reads back as a note event from slice show.
 func TestSliceNoteByNameFromASlice(t *testing.T) {
 	fp := newNotePlan(t, nil)
-	if err := fp.run("slice-note", " draw IT ", "--milestone", "m2", "--from", sliceID,
+	if err := fp.run("slice", "note", " draw IT ", "--milestone", "m2", "--from", sliceID,
 		"--note", "The menu moved to the toolbar."); err != nil {
-		t.Fatalf("slice-note: %v", err)
+		t.Fatalf("slice note: %v", err)
 	}
 	want := "Draw the menu.\n\n### Note\n\nAt <stamp>\n\nFrom \"Render the board\" (M1)\n\nThe menu moved to the toolbar."
 	if got := fp.bodyOf(t, drawM2ID); got != want {
@@ -79,12 +79,12 @@ func TestSliceNoteByNameFromASlice(t *testing.T) {
 		t.Errorf("output = %q, want %q", fp.out.String(), want)
 	}
 
-	if err := fp.run("slice-show", drawM2ID, "--json"); err != nil {
-		t.Fatalf("slice-show: %v", err)
+	if err := fp.run("slice", "show", drawM2ID, "--json"); err != nil {
+		t.Fatalf("slice show: %v", err)
 	}
 	var shown sliceShowJSON
 	if err := json.Unmarshal(fp.out.Bytes(), &shown); err != nil {
-		t.Fatalf("decode slice-show: %v", err)
+		t.Fatalf("decode slice show: %v", err)
 	}
 	// The note names the slice it came from by name and milestone, and when it
 	// was left, which is a time of the wall clock's own here.
@@ -105,8 +105,8 @@ func TestSliceNoteByNameFromASlice(t *testing.T) {
 func TestSliceNoteFromThePersonByID(t *testing.T) {
 	fp := newNotePlan(t, nil)
 	fp.env.In = strings.NewReader("  Mind the cache.\n")
-	if err := fp.run("slice-note", sliceID, "--note", "-"); err != nil {
-		t.Fatalf("slice-note: %v", err)
+	if err := fp.run("slice", "note", sliceID, "--note", "-"); err != nil {
+		t.Fatalf("slice note: %v", err)
 	}
 	if got, want := fp.bodyOf(t, sliceID), "Do the thing.\n\n### Note\n\nAt <stamp>\n\nFrom Craig Johnston\n\nMind the cache."; got != want {
 		t.Errorf("body = %q, want %q", got, want)
@@ -116,8 +116,8 @@ func TestSliceNoteFromThePersonByID(t *testing.T) {
 // A --from slice under no milestone is named without one.
 func TestSliceNoteFromASliceWithNoMilestone(t *testing.T) {
 	fp := newNotePlan(t, nil)
-	if err := fp.run("slice-note", "Loose end", "--from", "Loose end", "--note", "Self."); err != nil {
-		t.Fatalf("slice-note: %v", err)
+	if err := fp.run("slice", "note", "Loose end", "--from", "Loose end", "--note", "Self."); err != nil {
+		t.Fatalf("slice note: %v", err)
 	}
 	if got := fp.bodyOf(t, looseID); !strings.HasSuffix(got, "### Note\n\nAt <stamp>\n\nFrom \"Loose end\"\n\nSelf.") {
 		t.Errorf("body = %q, want the provenance without a milestone", got)
@@ -146,7 +146,7 @@ func TestSliceNoteRefusals(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fp := newNotePlan(t, nil)
 			fp.env.In = nil
-			err := fp.run(append([]string{"slice-note"}, tt.args...)...)
+			err := fp.run(append([]string{"slice", "note"}, tt.args...)...)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want %q", err, tt.want)
 			}
@@ -162,18 +162,18 @@ func TestSliceNoteRefusals(t *testing.T) {
 
 func TestSliceNoteMisuse(t *testing.T) {
 	fp := newNotePlan(t, nil)
-	if err := fp.run("slice-note", "--note", "x"); err == nil || !strings.Contains(err.Error(), "want exactly one slice") {
+	if err := fp.run("slice", "note", "--note", "x"); err == nil || !strings.Contains(err.Error(), "want exactly one slice") {
 		t.Errorf("no slice: err = %v", err)
 	}
-	if err := fp.run("slice-note", drawM1ID, "--nope"); err == nil {
+	if err := fp.run("slice", "note", drawM1ID, "--nope"); err == nil {
 		t.Error("bad flag: want an error")
 	}
-	if err := Run(context.Background(), []string{"slice-note", drawM1ID, "--note", "x"}, fp.env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "note", drawM1ID, "--note", "x"}, fp.env); err == nil {
 		t.Error("no project: want an error")
 	}
 
 	fp.env.In = failingReader{}
-	if err := fp.run("slice-note", drawM1ID, "--note", "-"); err == nil {
+	if err := fp.run("slice", "note", drawM1ID, "--note", "-"); err == nil {
 		t.Error("an unreadable stdin: want an error")
 	}
 }
@@ -185,7 +185,7 @@ func TestSliceNoteWithNoAssigneeNeedsFrom(t *testing.T) {
 		"slices-ds": {slicePage(testSliceID, "Write the UI", notion.SliceTodo, "m1", "", "")},
 	}}
 	env, _ := testEnv(testConfig(t), api)
-	err := Run(context.Background(), []string{"slice-note", testSliceID, "--note", "x", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "note", testSliceID, "--note", "x", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no assignee in the config to say the note is from") {
 		t.Errorf("err = %v", err)
 	}
@@ -198,7 +198,7 @@ func TestSliceNoteWithNoAssigneeNeedsFrom(t *testing.T) {
 func TestSliceNoteOverAnUnreadableWorkspace(t *testing.T) {
 	api := &fakeAPI{dataSourceErr: errors.New("boom")}
 	env, _ := testEnv(testClaimConfig(t), api)
-	if err := Run(context.Background(), []string{"slice-note", testSliceID, "--note", "x", "--project", "project-1"}, env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "note", testSliceID, "--note", "x", "--project", "project-1"}, env); err == nil {
 		t.Error("an unreadable workspace: want an error")
 	}
 }
@@ -224,7 +224,7 @@ func TestSliceNoteReadAndWriteFailures(t *testing.T) {
 					t.Fatalf("break the plan: %v", err)
 				}
 			})
-			err := fp.run("slice-note", tt.ref, "--note", "x")
+			err := fp.run("slice", "note", tt.ref, "--note", "x")
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want %q", err, tt.want)
 			}
@@ -238,7 +238,7 @@ func TestSliceNoteReadAndWriteFailures(t *testing.T) {
 func TestSliceNoteReportsAFailedOutput(t *testing.T) {
 	fp := newNotePlan(t, nil)
 	fp.env.Out = failingWriter{}
-	if err := Run(context.Background(), []string{"slice-note", drawM1ID, "--note", "x", "--project", "project-1"}, fp.env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "note", drawM1ID, "--note", "x", "--project", "project-1"}, fp.env); err == nil {
 		t.Error("an unwritable output: want an error")
 	}
 }
@@ -265,9 +265,9 @@ func TestSliceNoteTellsALiveAgent(t *testing.T) {
 	fp.runner.liveSessions[drawM2ID] = "nat-draw"
 	r := &bodyAtSendRunner{agentTestRunner: fp.runner, read: func() string { return fp.bodyOf(t, drawM2ID) }}
 	fp.env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(r) }
-	if err := fp.run("slice-note", "Draw it", "--milestone", "M2", "--from", sliceID,
+	if err := fp.run("slice", "note", "Draw it", "--milestone", "M2", "--from", sliceID,
 		"--note", "The menu moved to the toolbar."); err != nil {
-		t.Fatalf("slice-note: %v", err)
+		t.Fatalf("slice note: %v", err)
 	}
 	want := agent.NoteArrivedPrompt(`From "Render the board" (M1)`, "The menu moved to the toolbar.")
 	if len(fp.runner.sends) != 1 || fp.runner.sends[0].session != "nat-draw" || fp.runner.sends[0].prompt != want {
@@ -285,14 +285,14 @@ func TestSliceNoteTellsALiveAgent(t *testing.T) {
 // print the plain line.
 func TestSliceNoteTellsNobody(t *testing.T) {
 	for name, args := range map[string][]string{
-		"no live agent": {"slice-note", drawM1ID, "--note", "x"},
-		"self note":     {"slice-note", sliceID, "--from", sliceID, "--note", "x"},
+		"no live agent": {"slice", "note", drawM1ID, "--note", "x"},
+		"self note":     {"slice", "note", sliceID, "--from", sliceID, "--note", "x"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			fp := newNotePlan(t, nil)
 			fp.runner.liveSessions[sliceID] = "nat-render"
 			if err := fp.run(args...); err != nil {
-				t.Fatalf("slice-note: %v", err)
+				t.Fatalf("slice note: %v", err)
 			}
 			if len(fp.runner.sends) != 0 {
 				t.Errorf("sends = %+v, want none", fp.runner.sends)
@@ -309,8 +309,8 @@ func TestSliceNoteTellsNobody(t *testing.T) {
 func TestSliceNoteOverAnUnreadableTmux(t *testing.T) {
 	fp := newNotePlan(t, nil)
 	fp.runner.liveFatalErr = "tmux broke"
-	if err := fp.run("slice-note", drawM1ID, "--note", "x"); err != nil {
-		t.Fatalf("slice-note: %v, want it to go ahead", err)
+	if err := fp.run("slice", "note", drawM1ID, "--note", "x"); err != nil {
+		t.Fatalf("slice note: %v, want it to go ahead", err)
 	}
 	if got := fp.bodyOf(t, drawM1ID); !strings.HasSuffix(got, "\n\nx") {
 		t.Errorf("body = %q, want the note filed", got)
@@ -326,7 +326,7 @@ func TestSliceNoteFailedSendLeavesTheNote(t *testing.T) {
 	fp := newNotePlan(t, nil)
 	fp.runner.liveSessions[drawM1ID] = "nat-draw"
 	fp.runner.sendErr = "pane gone"
-	err := fp.run("slice-note", drawM1ID, "--note", "x")
+	err := fp.run("slice", "note", drawM1ID, "--note", "x")
 	if err == nil || !strings.Contains(err.Error(), "the note is filed, but telling the agent failed") {
 		t.Fatalf("err = %v, want the failed send named", err)
 	}

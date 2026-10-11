@@ -11,7 +11,7 @@ import Foundation
 public let agentVisitHold: TimeInterval = 5 * 60
 
 /// Which live agent sessions might be worth ending, before the last word —
-/// `nat slice-status`, read fresh per candidate — decides each one. Pure so
+/// `nat slice status`, read fresh per candidate — decides each one. Pure so
 /// the rule can be read and tested without a tmux or a `nat` anywhere near
 /// it.
 ///
@@ -21,7 +21,7 @@ public let agentVisitHold: TimeInterval = 5 * 60
 /// them. A session's slice must be in that merge to be a candidate at all:
 /// the slice's own project is the one its verification and kill are asked
 /// on, and a session no open plan lists has no project gnat can name. Asked
-/// on any other project, `nat slice-status` cannot find the slice, answers
+/// on any other project, `nat slice status` cannot find the slice, answers
 /// `gone`, and the read that exists to keep a live agent would kill it — so
 /// such a session (another project's, a closed tab's, one whose slice was
 /// deleted) is never touched.
@@ -33,12 +33,12 @@ public let agentVisitHold: TimeInterval = 5 * 60
 /// work.
 ///
 /// Two guards apply here rather than in the verification that follows,
-/// since neither is a question `nat slice-status` could answer any better:
+/// since neither is a question `nat slice status` could answer any better:
 /// the slice on screen is never a dangling one, whatever its status says; and
 /// a session whose visit hold is still running was looked at recently enough
 /// that killing it now would surprise whoever just clicked away. The agent's
 /// own activity is no guard: a pane reads as working until its agent says it
-/// is waiting (`nat agent-waiting`), which one that has handed back never
+/// is waiting (`nat agent waiting`), which one that has handed back never
 /// does, so it would keep every finished session alive — the slice's status
 /// is what says its work is over.
 ///
@@ -48,7 +48,7 @@ public let agentVisitHold: TimeInterval = 5 * 60
 ///
 /// This is the cheap half of the decision, read off state the app already
 /// holds — no tmux and no `nat` reached from here. The last word is `nat
-/// slice-status`, asked once per candidate right before the kill (see
+/// slice status`, asked once per candidate right before the kill (see
 /// `AppModel.reapFinishedAgents()`), because a session's own claim is always
 /// written before the session exists: a fresh page read taken after observing
 /// the session can never show a phantom state, where this plan reading —
@@ -75,7 +75,7 @@ public func agentSessionsToReap(
         .sorted()
 }
 
-/// The last word on one candidate, from a fresh `nat slice-status`: whether
+/// The last word on one candidate, from a fresh `nat slice status`: whether
 /// its session should actually end.
 ///
 /// In progress is the one answer that keeps it — the fresh read disagrees

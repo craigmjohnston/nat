@@ -33,11 +33,11 @@ func TestCompleteSlicePushesTheWorktreesBranch(t *testing.T) {
 	api, env, out := pushEnv(t, runner)
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--summary", "Wrote the renderer.",
+		"slice", "complete", sliceID, "--summary", "Wrote the renderer.",
 		"--pr-description", "Render the board", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("complete-slice: %v", err)
+		t.Fatalf("slice complete: %v", err)
 	}
 	want := []pushCall{{dir: "/tmp/nat.worktrees/x",
 		args: []string{"push", "--force-with-lease", "-u", "origin", "slice/render-the-board"}}}
@@ -63,10 +63,10 @@ func TestCompleteSliceRefusesADirtyWorktree(t *testing.T) {
 	api, env, out := pushEnv(t, runner)
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--summary", "Wrote the renderer.", "--project", "project-1",
+		"slice", "complete", sliceID, "--summary", "Wrote the renderer.", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Fatal("complete-slice: want a refusal")
+		t.Fatal("slice complete: want a refusal")
 	}
 	for _, path := range []string{"internal/a.go", "notes.txt"} {
 		if !strings.Contains(err.Error(), path) {
@@ -84,7 +84,7 @@ func TestCompleteSliceReportsARefusedPush(t *testing.T) {
 	api, env, out := pushEnv(t, runner)
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--summary", "Wrote the renderer.", "--project", "project-1",
+		"slice", "complete", sliceID, "--summary", "Wrote the renderer.", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "(stale info)") || !strings.Contains(err.Error(), "failed to push some refs") {
 		t.Fatalf("err = %v, want git's whole output", err)
@@ -106,7 +106,7 @@ func TestCompleteSliceWithNoWorktreeNeedsABranchOrNoBranch(t *testing.T) {
 	env.NewGit = func() GitCLI { return git.NewWithRunner(runner) }
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--summary", "Wrote the docs.", "--project", "project-1",
+		"slice", "complete", sliceID, "--summary", "Wrote the docs.", "--project", "project-1",
 	}, env)
 	var usage *UsageError
 	if !errors.As(err, &usage) || !strings.Contains(err.Error(), "--branch") || !strings.Contains(err.Error(), "--no-branch") {
@@ -121,10 +121,10 @@ func TestCompleteSliceBlockedNeitherChecksNorPushes(t *testing.T) {
 	api, env, _ := pushEnv(t, runner)
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--blocked", "--summary", "Stuck.", "--project", "project-1",
+		"slice", "complete", sliceID, "--blocked", "--summary", "Stuck.", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("complete-slice: %v", err)
+		t.Fatalf("slice complete: %v", err)
 	}
 	if len(runner.pushes) != 0 {
 		t.Errorf("pushes = %+v, want none", runner.pushes)
@@ -144,7 +144,7 @@ func TestCompleteSliceRefusesAHandBackWithNoColumnBeforePushing(t *testing.T) {
 	api.dataSources = map[string]notion.DataSource{"slices-ds": ds}
 
 	err := Run(context.Background(), []string{
-		"complete-slice", sliceID, "--summary", "Done.", "--project", "project-1",
+		"slice", "complete", sliceID, "--summary", "Done.", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "--no-branch") {
 		t.Fatalf("err = %v, want --no-branch offered", err)

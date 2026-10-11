@@ -17,7 +17,7 @@ func TestSliceDependsRefusesADirectCycle(t *testing.T) {
 	api := dependsAPI(t)
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depBlocker, "--on", depWaiting, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", depBlocker, "--on", depWaiting, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(),
 		`"Style the board" would then wait on itself: "Style the board" → "Render the board" → "Style the board"`) {
@@ -35,7 +35,7 @@ func TestSliceDependsRefusesATransitiveCycle(t *testing.T) {
 	dependsOn(api, depBlocker, depSpare)
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depSpare, "--on", depWaiting, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", depSpare, "--on", depWaiting, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(),
 		`"Queued work" → "Render the board" → "Style the board" → "Queued work"`) {
@@ -55,8 +55,8 @@ func TestSliceDependsAllowsAClearThatBreaksTheCycle(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(),
-		[]string{"slice-depends", depWaiting, "--clear", "--on", depSpare, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-depends: %v", err)
+		[]string{"slice", "depends", depWaiting, "--clear", "--on", depSpare, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice depends: %v", err)
 	}
 
 	if len(api.updates) != 1 {
@@ -67,7 +67,7 @@ func TestSliceDependsAllowsAClearThatBreaksTheCycle(t *testing.T) {
 	}
 }
 
-// Dropping dependencies cannot close a cycle, so slice-depends's own code
+// Dropping dependencies cannot close a cycle, so slice depends's own code
 // never reads the plan again to prove it — every command opens a store that
 // hydrates the local file from the workspace once, on the first command ever
 // run against a fresh plan, and every read after that is local. So it is
@@ -87,8 +87,8 @@ func TestSliceDependsClearAloneReadsNoPlan(t *testing.T) {
 	env2, _ := testEnv(cfg, api)
 
 	if err := Run(context.Background(),
-		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env2); err != nil {
-		t.Fatalf("slice-depends: %v", err)
+		[]string{"slice", "depends", depWaiting, "--clear", "--project", "project-1"}, env2); err != nil {
+		t.Fatalf("slice depends: %v", err)
 	}
 }
 
@@ -99,7 +99,7 @@ func TestSliceDependsRefusesWhenThePlanCannotBeRead(t *testing.T) {
 	api.queryErr = map[string]error{"slices-ds": errors.New("notion is down")}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load slices") {
 		t.Fatalf("err = %v, want the failed read named", err)
@@ -132,10 +132,10 @@ func TestSliceDependsWritesADependencyOnASliceOutsideThePlan(t *testing.T) {
 	dependsOn(api, depWaiting, outside)
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", outside, "--on", depWaiting, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", outside, "--on", depWaiting, "--project", "project-1"}, env)
 
 	if err != nil {
-		t.Fatalf("slice-depends: %v", err)
+		t.Fatalf("slice depends: %v", err)
 	}
 	if len(api.updates) != 1 || api.updates[0].id != outside {
 		t.Fatalf("updates = %+v, want the one relation written on %s", api.updates, outside)
@@ -164,15 +164,15 @@ func TestPlanApplyFilesUnrelatedWorkBesideACycleTheBoardAlreadyHas(t *testing.T)
 	env.Err = &stderr
 	env.In = strings.NewReader(`{"slices": [{"title": "Frame the board", "milestone": "M2: Board"}]}`)
 
-	if err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+	if err := Run(context.Background(), []string{"plan", "apply", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("plan apply: %v", err)
 	}
 	if len(api.creates) != 1 {
 		t.Errorf("creates = %+v, want the one slice filed", api.creates)
 	}
 	want := "warning: the plan leaves 1 cycle of dependencies already on the board as it found them, " +
 		"and no slice in a cycle can ever be unblocked: " +
-		`"Style the board" → "Queued work" → "Style the board" — nat slice-depends --clear breaks one` + "\n"
+		`"Style the board" → "Queued work" → "Style the board" — nat slice depends --clear breaks one` + "\n"
 	if stderr.String() != want {
 		t.Errorf("stderr = %q, want %q", stderr.String(), want)
 	}
@@ -188,7 +188,7 @@ func TestPlanApplyFilesADependencyOnACycleTheBoardAlreadyHas(t *testing.T) {
 	}`
 
 	if _, err := runPlan(t, api, doc); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 	if len(api.creates) != 1 {
 		t.Errorf("creates = %+v, want the slice filed", api.creates)
@@ -203,7 +203,7 @@ func TestPlanApplyFilesARestatedEdgeOfAStandingCycle(t *testing.T) {
 	doc := `{"dependencies": [{"slice": "Queued work", "on": ["Style the board"]}]}`
 
 	if _, err := runPlan(t, api, doc); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 }
 
@@ -221,7 +221,7 @@ func TestPlanApplyRefusesACycleClosedThroughAStandingOne(t *testing.T) {
 	  "dependencies": [{"slice": "Style the board", "on": ["Frame the board"]}]
 	}`)
 
-	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"plan", "apply", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "would leave 1 cycle of dependencies") ||
 		!strings.Contains(err.Error(), `"Frame the board" → "Queued work" → "Style the board" → "Frame the board"`) {
@@ -351,7 +351,7 @@ func TestPlanApplyAllowsADependencyOnTheBoard(t *testing.T) {
 	}`
 
 	if _, err := runPlan(t, api, doc); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 	if len(api.updates) != 1 {
 		t.Fatalf("updates = %+v, want the one relation written", api.updates)
@@ -362,7 +362,7 @@ func TestPlanApplyAllowsADependencyOnTheBoard(t *testing.T) {
 }
 
 // A slice whose dependencies are all Done is workable, whatever the graph does
-// further round — so next-slice hands it out rather than reporting the cycle it
+// further round — so slice next hands it out rather than reporting the cycle it
 // happens to be part of.
 func TestNextSliceHandsOutASliceWhoseCycleIsFinished(t *testing.T) {
 	api := dependsAPI(t)
@@ -372,8 +372,8 @@ func TestNextSliceHandsOutASliceWhoseCycleIsFinished(t *testing.T) {
 	dependsOn(api, depDone, depWaiting)
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("next-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "next", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice next: %v", err)
 	}
 	if len(api.updates) != 1 || api.updates[0].id != depWaiting {
 		t.Errorf("updates = %+v, want the slice claimed anyway", api.updates)
@@ -388,10 +388,10 @@ func TestNextSliceReportsACycleAsOne(t *testing.T) {
 	dependsOn(api, depSpare, depWaiting)
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "next", "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Fatal("next-slice succeeded, want every candidate refused")
+		t.Fatal("slice next succeeded, want every candidate refused")
 	}
 	if !strings.Contains(err.Error(),
 		`"Render the board" is in a dependency cycle: "Render the board" → "Style the board" → "Render the board"`) {
@@ -418,32 +418,32 @@ func TestPlanApplyPassesOverAnUnreadableDependency(t *testing.T) {
 	}`
 
 	if _, err := runPlan(t, api, doc); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 	if len(api.creates) != 1 {
 		t.Errorf("creates = %+v, want the slice created", api.creates)
 	}
 }
 
-// A milestone-only plan names no dependency, so plan-apply's own dependency
+// A milestone-only plan names no dependency, so plan apply's own dependency
 // resolution never asks the store to read the project's slices a second
 // time — the one read that happens regardless is the store's own hydrate,
 // paid for once by the first command ever run against a fresh plan, which
 // the run below is not about. Once that has happened, a Notion outage does
-// not stop a milestone-only plan from applying: nothing plan-apply itself
+// not stop a milestone-only plan from applying: nothing plan apply itself
 // does for such a plan reads a slice at all.
 func TestPlanApplyWithNoDependenciesChecksNothing(t *testing.T) {
 	api := planAPI(1)
 	cfg := testConfig(t)
 	if _, err := runPlanWith(t, cfg, api, `{"slices": [{"title": "Seed", "milestone": "M2: Board"}]}`,
 		"--project", "project-1"); err != nil {
-		t.Fatalf("seed plan-apply: %v", err)
+		t.Fatalf("seed plan apply: %v", err)
 	}
 
 	api.queryErr = map[string]error{"slices-ds": errors.New("notion is down")}
 	if _, err := runPlanWith(t, cfg, api, `{"milestones": [{"name": "M9: Later"}]}`,
 		"--project", "project-1"); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 	if len(api.schemaUpdates) != 1 {
 		t.Errorf("schemaUpdates = %+v, want the milestone appended", api.schemaUpdates)

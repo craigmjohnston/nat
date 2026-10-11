@@ -80,7 +80,7 @@ func SchemaSelect(options ...string) PropertySchema {
 // self-relation Notion keeps on one side only has nowhere to put the far end of
 // a link: what a single-property write can do is land back in the very column
 // it was written to, so recording that A waits on B reads afterwards as the two
-// waiting on each other — a mutual block neither next-slice nor the launch key
+// waiting on each other — a mutual block neither slice next nor the launch key
 // will step past. Given a side of its own, Notion's far end lands in Blocks and
 // Depends on stays directional, which is the one thing this app reads.
 //

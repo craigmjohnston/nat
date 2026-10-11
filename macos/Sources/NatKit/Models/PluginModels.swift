@@ -1,12 +1,12 @@
 import Foundation
 
-// The plugin installer's answers — `nat plugin-list`, `plugin-install`,
-// `plugin-uninstall`, the two source edits and `source-setup` — field for
+// The plugin installer's answers — `nat plugin list`, `plugin install`,
+// `plugin uninstall`, the two source edits and `source setup` — field for
 // field as `internal/plugins` and `internal/cli` write them. nat writes every
 // field and every list, so these decode strictly: a shape that has drifted
 // fails here rather than drawing as an empty tab.
 
-/// `nat plugin-list --json`: every plugin source, every installed plugin and
+/// `nat plugin list --json`: every plugin source, every installed plugin and
 /// every plugin a source offers.
 public struct PluginListing: Codable, Equatable, Sendable {
     public let sources: [PluginSourceStatus]
@@ -110,7 +110,7 @@ public struct InstalledPlugin: Codable, Equatable, Sendable, Identifiable {
 }
 
 /// One thing a plugin needs set before it works — its describe's `setup`
-/// entry. gnat draws it and hands the value to `nat source-setup` on stdin;
+/// entry. gnat draws it and hands the value to `nat source setup` on stdin;
 /// what the value means is the plugin's business alone.
 public struct PluginSetupField: Codable, Equatable, Sendable, Identifiable {
     public let id: String
@@ -155,7 +155,7 @@ public struct PluginSetupField: Codable, Equatable, Sendable, Identifiable {
     public var isSecret: Bool { input == "secret" }
 }
 
-/// `nat source-setup --json`: what the plugin said of the value.
+/// `nat source setup --json`: what the plugin said of the value.
 public struct PluginSetupResult: Codable, Equatable, Sendable {
     public let message: String
 
@@ -189,7 +189,7 @@ public struct AvailablePlugin: Codable, Equatable, Sendable, Identifiable {
     public var displayTitle: String { title.isEmpty ? name : title }
 }
 
-/// `nat plugin-install --json`: what was installed, from where.
+/// `nat plugin install --json`: what was installed, from where.
 public struct PluginInstalled: Codable, Equatable, Sendable {
     public let name: String
     public let path: String
@@ -213,7 +213,7 @@ public struct PluginInstalled: Codable, Equatable, Sendable {
     }
 }
 
-/// `nat plugin-uninstall --json`: the directory taken away, and the source
+/// `nat plugin uninstall --json`: the directory taken away, and the source
 /// projects of the plugin deleted with it (`--delete-projects`; empty
 /// without, and read as empty from a nat too old to send it).
 public struct PluginUninstalled: Codable, Equatable, Sendable {
@@ -251,7 +251,7 @@ public struct PluginUninstalled: Codable, Equatable, Sendable {
     }
 }
 
-/// `nat plugin-source-add|remove --json`: every source after the change.
+/// `nat plugin source add|remove --json`: every source after the change.
 public struct PluginSourceList: Codable, Equatable, Sendable {
     public let sources: [String]
 

@@ -345,7 +345,7 @@ public final class DiffStore {
     // MARK: - Expanding
 
     /// Reveal what one of a gap's controls offers: the lines are read from
-    /// the file as the view on screen has it (`nat slice-file`, at the branch
+    /// the file as the view on screen has it (`nat slice file`, at the branch
     /// or the selected commit) and put back in place of the gap, which keeps
     /// whatever is still hidden. A read that fails reveals nothing — the gap
     /// stays as it was, to be pressed again — and one that lands after the
@@ -442,8 +442,8 @@ public final class DiffStore {
     /// not a thing to ask of anybody.
     ///
     /// Where the slice is handed back, the prompt tells the agent to finish
-    /// with its `complete-slice` hand-back, and once it has been delivered the
-    /// slice is taken out of review (`nat slice-rework`) so that hand-back is
+    /// with its `slice complete` hand-back, and once it has been delivered the
+    /// slice is taken out of review (`nat slice rework`) so that hand-back is
     /// visible as the slice coming back. With `approving`, that hand-back also
     /// opens the pull request. The comments are gone by then either way: a
     /// rework that failed still leaves the agent with its instructions, and the

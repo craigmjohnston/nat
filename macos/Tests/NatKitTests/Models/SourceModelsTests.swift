@@ -236,7 +236,7 @@ final class SourceModelsTests: XCTestCase {
         XCTAssertEqual(again, info)
     }
 
-    // MARK: - container-show
+    // MARK: - container show
 
     private let containerJSON = """
     {
@@ -308,7 +308,7 @@ final class SourceModelsTests: XCTestCase {
         XCTAssertEqual(try decode(ContainerShow.self, #"{"container": {"id": "1", "title": "T"}}"#).tasks, [])
     }
 
-    // MARK: - source-list
+    // MARK: - source list
 
     func testSourceListRows() throws {
         let plugins = try decode([SourcePlugin].self, """
@@ -349,7 +349,7 @@ final class SourceModelsTests: XCTestCase {
         XCTAssertEqual(SourcePlugin(name: "x", path: "", describe: describe).displayTitle, "x")
     }
 
-    // MARK: - slice-show's container
+    // MARK: - slice show's container
 
     func testSliceShowWithAndWithoutContainer() throws {
         let base = """
@@ -372,7 +372,7 @@ final class SourceModelsTests: XCTestCase {
         XCTAssertEqual(failed.container, SliceContainer(id: "4821", title: "Cached"))
     }
 
-    // MARK: - source-action
+    // MARK: - source action
 
     func testSourceActionResult() throws {
         XCTAssertEqual(try decode(SourceActionResult.self, #"{"message": "Done"}"#).message, "Done")

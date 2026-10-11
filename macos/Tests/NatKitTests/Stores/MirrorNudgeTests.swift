@@ -369,13 +369,13 @@ final class MirrorClientTests: XCTestCase {
 
         let places = try await client.notionSearch(query: "pro")
 
-        XCTAssertEqual(runner.lastArguments, ["notion-search", "--json", "--query", "pro"])
+        XCTAssertEqual(runner.lastArguments, ["notion", "search", "--json", "--query", "pro"])
         XCTAssertEqual(places, [
             NotionPlace(id: "ds-1", kind: .database, title: "Projects"),
             NotionPlace(id: "pg", kind: .page, title: "Plans"),
         ])
         _ = try await client.notionSearch(query: "")
-        XCTAssertEqual(runner.lastArguments, ["notion-search", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["notion", "search", "--json"])
     }
 
     func testMirrorNamesTheProjectAndTheParent() async throws {
@@ -386,7 +386,7 @@ final class MirrorClientTests: XCTestCase {
             .projectMirror(projectID: "local-1", parent: plans)
 
         XCTAssertEqual(runner.lastArguments, [
-            "project-mirror", "--project", "local-1", "--json", "--parent", "pg-1", "--parent-kind", "page",
+            "project", "mirror", "--project", "local-1", "--json", "--parent", "pg-1", "--parent-kind", "page",
         ])
         XCTAssertEqual(mirrored.project.id, "page-1")
         XCTAssertEqual(mirrored.replaced, "local-1")
@@ -396,7 +396,7 @@ final class MirrorClientTests: XCTestCase {
     func testARefusalCarriesNatsWords() async {
         let runner = StubRunner()
         runner.exitCode = 1
-        runner.stderr = "project-mirror: \"A\" has been started"
+        runner.stderr = "project mirror: \"A\" has been started"
         do {
             _ = try await NatClient(commandRunner: runner).projectMirror(projectID: "x", parent: engineering)
             XCTFail("expected a refusal")

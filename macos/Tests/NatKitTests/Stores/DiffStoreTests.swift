@@ -43,15 +43,15 @@ private final class MockDiffClient: NatClientProtocol, @unchecked Sendable {
     )
     private(set) var commitsCallCount = 0
 
-    /// Every `agent-send` call this client received, in order.
+    /// Every `agent send` call this client received, in order.
     private(set) var sentPrompts: [(projectID: String, sliceRef: String, text: String)] = []
     var sendError: Error?
 
-    /// Every `slice-approve` call this client received, in order.
+    /// Every `slice approve` call this client received, in order.
     private(set) var approveCalls: [(projectID: String, sliceRef: String)] = []
     var approveResult: Result<String, Error> = .success("https://github.test/craig/nat/pull/1")
 
-    /// Every `slice-rework` call this client received, in order.
+    /// Every `slice rework` call this client received, in order.
     private(set) var reworkCalls: [String] = []
     /// What each of those calls filed as the comments sent back.
     private(set) var reworkComments: [String] = []
@@ -911,10 +911,10 @@ final class DiffStoreTests: XCTestCase {
         XCTAssertEqual(client.reworkComments.count, 1)
         XCTAssertTrue(client.reworkComments[0].hasPrefix("a.go, "))
         XCTAssertTrue(client.reworkComments[0].hasSuffix(": clamp this"))
-        XCTAssertFalse(client.reworkComments[0].contains("complete-slice"))
+        XCTAssertFalse(client.reworkComments[0].contains("slice complete"))
         let prompt = client.sentPrompts[0].text
         XCTAssertTrue(prompt.hasSuffix(
-            "nat complete-slice slice-1 --project proj-1 --branch nat/example --summary '<what you changed for these comments>'\n"
+            "nat slice complete slice-1 --project proj-1 --branch nat/example --summary '<what you changed for these comments>'\n"
                 + "\nThat hand-back pushes the branch: do not push it yourself.\n"))
         XCTAssertFalse(prompt.contains("opens the pull request"))
         XCTAssertEqual(store.pendingCommentCount, 0)
@@ -936,7 +936,7 @@ final class DiffStoreTests: XCTestCase {
         XCTAssertEqual(count, 1)
         XCTAssertEqual(client.reworkCalls, [])
         XCTAssertEqual(client.sentPrompts.count, 1)
-        XCTAssertFalse(client.sentPrompts[0].text.contains("complete-slice"))
+        XCTAssertFalse(client.sentPrompts[0].text.contains("slice complete"))
         XCTAssertTrue(client.sentPrompts[0].text.contains("clamp this"))
         XCTAssertEqual(store.pendingCommentCount, 0)
     }
@@ -1031,7 +1031,7 @@ final class DiffStoreTests: XCTestCase {
         XCTAssertEqual(client.approveCalls.count, 0, "no pull request is opened over comments")
         XCTAssertEqual(store.pendingCommentCount, 0)
         let prompt = client.sentPrompts[0].text
-        XCTAssertTrue(prompt.contains("nat complete-slice slice-1 --project proj-1 --branch nat/example"))
+        XCTAssertTrue(prompt.contains("nat slice complete slice-1 --project proj-1 --branch nat/example"))
         XCTAssertTrue(prompt.contains("opens the pull request"))
     }
 

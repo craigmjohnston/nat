@@ -11,7 +11,7 @@ import (
 )
 
 // The two kinds of place a project page can be put, as the app's picker names
-// them and project-mirror's --parent-kind takes them.
+// them and project mirror's --parent-kind takes them.
 const (
 	parentKindPage     = "page"
 	parentKindDatabase = "database"
@@ -30,11 +30,11 @@ const searchLimit = 30
 // Two kinds of hit are left out, both for the same reason. A row of a database
 // is a page, but a project page under one would be a page nobody browsing the
 // workspace finds; and a database is answered by its data source, since that is
-// what a page is created in — its ID is the one to hand project-mirror.
+// what a page is created in — its ID is the one to hand project mirror.
 //
 // It reads no project and writes nothing, and so takes no --project.
 func notionSearch(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("notion-search", flag.ContinueOnError)
+	flags := flag.NewFlagSet("notion search", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	query := flags.String("query", "", "narrow the list to titles matching this text")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
@@ -43,7 +43,7 @@ func notionSearch(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("notion-search: takes no arguments, given %d", len(rest))
+		return usageErrorf("notion search: takes no arguments, given %d", len(rest))
 	}
 
 	hits, _, err := env.NewClient(env.Tokens.Token).SearchPaged(ctx, strings.TrimSpace(*query), "", "")
@@ -66,7 +66,7 @@ func notionSearch(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// notionSearchJSON is notion-search's structured output.
+// notionSearchJSON is notion search's structured output.
 type notionSearchJSON struct {
 	Places []notionPlace `json:"places"`
 }

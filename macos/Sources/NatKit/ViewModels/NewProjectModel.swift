@@ -29,7 +29,7 @@ public enum NewProjectModel {
 
     /// Whether the create path has enough to act on: a name, and a directory
     /// for the project's agents to work in. The directory is required here
-    /// though `project-create`'s own `--repo` is optional, because what the
+    /// though `project create`'s own `--repo` is optional, because what the
     /// CLI falls back to is the directory it was typed in — which for a
     /// windowed app is wherever the Finder happened to launch it, and never
     /// anybody's checkout.

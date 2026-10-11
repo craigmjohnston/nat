@@ -126,7 +126,7 @@ func TestAddSliceRefusedOnASourceProject(t *testing.T) {
 	if a.form != nil {
 		t.Errorf("form = %T, want none opened", a.form)
 	}
-	want := "Add tasks to a shortcut project from gnat or `nat slice-add --container`."
+	want := "Add tasks to a shortcut project from gnat or `nat slice add --container`."
 	if a.toast != want || a.toastSev != sevWarning {
 		t.Errorf("toast = %q (%v), want %q as a warning", a.toast, a.toastSev, want)
 	}

@@ -170,7 +170,7 @@ type sliceJSON struct {
 	Resumed bool `json:"resumed"`
 	// TakenBack says the slice was handed back and taken back to work —
 	// resumed or sent back, with or without a pull request: see [takenBack].
-	// Only info sets it; container-show leaves it false.
+	// Only info sets it; container show leaves it false.
 	TakenBack bool `json:"taken_back"`
 	// FixingChecks are the checks a taken-back slice's agent was last given
 	// failing and has not yet handed back a fix for — see [fixingChecks].
@@ -215,7 +215,7 @@ func writeInfoJSON(out io.Writer, p domain.Project, conventions, base string, sc
 
 // sliceJSONOf is one slice as info prints it, its blocked and state read
 // against slicesByID — the plan it sits in — and hasBranch, whether the
-// project has a Branch column. container-show prints a container's tasks
+// project has a Branch column. container show prints a container's tasks
 // through it too, so a task reads the same from either.
 func sliceJSONOf(s domain.Slice, slicesByID map[string]domain.Slice, hasBranch bool) sliceJSON {
 	sj := sliceJSON{

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The structured form of `nat project-list --json`: the two halves of
+/// The structured form of `nat project list --json`: the two halves of
 /// "which project" the TUI's own switch picker offers — the projects this
 /// machine's config already tracks, and the rows of the workspace's projects
 /// database it does not — as one list, each row saying which half it is.
@@ -78,7 +78,7 @@ public struct ProjectListingEntry: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// The config entry `nat project-open --json` reports having written: the
+/// The config entry `nat project open --json` reports having written: the
 /// page ID `--project` takes, the name the tab is labelled with, and the
 /// working directory — empty, since opening a project records where its plan
 /// lives and nothing about where its code does.
@@ -116,7 +116,7 @@ public struct ProjectEntry: Codable, Equatable, Sendable {
     }
 }
 
-/// The project `nat project-create --json` reports having made: the page it
+/// The project `nat project create --json` reports having made: the page it
 /// is, the database its plan lives in, and the directory local config now
 /// points at — `createdProjectJSON` in `internal/cli/projectcreate.go`.
 public struct CreatedProject: Codable, Equatable, Sendable {
@@ -131,7 +131,7 @@ public struct CreatedProject: Codable, Equatable, Sendable {
     /// this machine's configured user rather than anything the sheet asked.
     public let assignee: Bool
 
-    /// The task-source plugin the project was made over (`project-create
+    /// The task-source plugin the project was made over (`project create
     /// --source`); nil for any other project.
     public let source: String?
 

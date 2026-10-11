@@ -110,7 +110,7 @@ final class ProcessRunnerTests: XCTestCase {
     private var pathDir: String { "/bin" }
 
     /// A cancelled call ends its process rather than waiting it out — what
-    /// abandoning a stuck `pr-status` relies on to leave no nat behind.
+    /// abandoning a stuck `pr status` relies on to leave no nat behind.
     func testACancelEndsTheProcess() async throws {
         let runner = ProcessRunner()
         let call = Task {

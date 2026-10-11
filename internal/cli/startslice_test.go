@@ -73,8 +73,8 @@ func TestStartSliceClaimsTheNamedSliceAndPrintsTheBrief(t *testing.T) {
 	api := startableAPI(t)
 	env, out := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("start-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice start: %v", err)
 	}
 
 	if out.String() != startSliceBrief {
@@ -100,11 +100,11 @@ func TestStartSliceTakesAURL(t *testing.T) {
 	api := startableAPI(t)
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"start-slice",
+	err := Run(context.Background(), []string{"slice", "start",
 		"https://www.notion.so/Render-the-board-" + startSliceID + "?pvs=4", "--project", "project-1"}, env)
 
 	if err != nil {
-		t.Fatalf("start-slice: %v", err)
+		t.Fatalf("slice start: %v", err)
 	}
 	if len(api.updates) != 1 || api.updates[0].id != startSliceID {
 		t.Errorf("updates = %+v, want the slice the URL named claimed", api.updates)
@@ -114,7 +114,7 @@ func TestStartSliceTakesAURL(t *testing.T) {
 // Flags may come either side of the slice, which is the order anyone writes
 // them in.
 func TestStartSlicePrintsJSON(t *testing.T) {
-	for _, args := range [][]string{{"start-slice", startSliceID, "--json", "--project", "project-1"}, {"start-slice", "--json", startSliceID, "--project", "project-1"}} {
+	for _, args := range [][]string{{"slice", "start", startSliceID, "--json", "--project", "project-1"}, {"slice", "start", "--json", startSliceID, "--project", "project-1"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			env, out := testEnv(testClaimConfig(t), startableAPI(t))
 
@@ -142,7 +142,7 @@ func TestStartSlicePrintsJSON(t *testing.T) {
 }
 
 // A slice's own Repo override wins over the project default, the same way it
-// does for next-slice.
+// does for slice next.
 func TestStartSliceHonoursARepoOverride(t *testing.T) {
 	api := startableAPI(t)
 	api.pages["slices-ds"][0].Properties[notion.PropRepo] = notion.PropertyValue{
@@ -150,8 +150,8 @@ func TestStartSliceHonoursARepoOverride(t *testing.T) {
 	}
 	env, out := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("start-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice start: %v", err)
 	}
 
 	if !strings.Contains(out.String(), "- Working directory: /tmp/other\n") {
@@ -166,8 +166,8 @@ func TestStartSliceTakesASliceWithNoMilestone(t *testing.T) {
 	delete(api.pages["slices-ds"][0].Properties, notion.PropMilestone)
 	env, out := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("start-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice start: %v", err)
 	}
 
 	if strings.Contains(out.String(), "Milestone") {
@@ -184,8 +184,8 @@ func TestStartSliceReadsTheMilestoneOffTheSchema(t *testing.T) {
 	api := startableAPI(t)
 	env, out := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("start-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice start: %v", err)
 	}
 
 	if !strings.Contains(out.String(), "- Milestone: M2: Board\n") {
@@ -206,8 +206,8 @@ func TestStartSliceTakesASliceNamingAMilestoneOutsideThePlan(t *testing.T) {
 	api.dataSources["slices-ds"] = assigneeSlicesDS("M1: Client")
 	env, out := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("start-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice start: %v", err)
 	}
 
 	if strings.Contains(out.String(), "Milestone") {
@@ -259,7 +259,7 @@ func TestStartSliceRefusesASliceAlreadyUnderway(t *testing.T) {
 			api.pages["slices-ds"][0] = tt.slice
 			env, out := testEnv(testClaimConfig(t), api)
 
-			err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env)
+			err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env)
 
 			if err == nil {
 				t.Fatal("err = nil, want a refusal")
@@ -301,7 +301,7 @@ func TestStartSliceReOpensASliceThisUserHolds(t *testing.T) {
 		{
 			// With no Assignee column there is nobody a slice could belong to
 			// but whoever is running this, so being in progress is the whole
-			// answer — the same rule complete-slice and release-slice apply.
+			// answer — the same rule slice complete and slice release apply.
 			name:  "no assignee column",
 			ds:    selectMilestoneSlicesDS("M1: Client", "M2: Board"),
 			slice: slicePage(startSliceID, "Render the board", notion.SliceInProgress, "M2: Board", "", ""),
@@ -315,8 +315,8 @@ func TestStartSliceReOpensASliceThisUserHolds(t *testing.T) {
 			env, out := testEnv(testClaimConfig(t), api)
 			nudges := nudgeCounter(&env)
 
-			if err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env); err != nil {
-				t.Fatalf("start-slice: %v", err)
+			if err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env); err != nil {
+				t.Fatalf("slice start: %v", err)
 			}
 
 			if out.String() != startSliceBrief {
@@ -341,7 +341,7 @@ func TestStartSliceRefusesABlockedSliceThisUserHolds(t *testing.T) {
 	api.pages["slices-ds"][1] = held
 	env, out := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"start-slice", depWaiting, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "start", depWaiting, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), `"Style the board" (Todo)`) {
 		t.Fatalf("err = %v, want the slice it waits on named", err)
@@ -374,7 +374,7 @@ func TestStartSliceReportsAClaimThatDidNotStick(t *testing.T) {
 		"claims write the local plan unconditionally before any push — see the doc comment above")
 }
 
-// Only one of the reads start-slice makes can still fail the command outright
+// Only one of the reads slice start makes can still fail the command outright
 // under the write-through store: the slice itself, when it is not among what
 // the plan's own hydrate pulled and the workspace fallback [Mirrored.Slice]
 // takes cannot answer either. The other three cases this table used to cover
@@ -421,7 +421,7 @@ func TestStartSliceReportsAFailedCall(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			env, out := testEnv(testClaimConfig(t), tt.api(t))
 
-			err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env)
+			err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env)
 
 			if !errors.Is(err, tt.err) {
 				t.Fatalf("err = %v, want %v", err, tt.err)
@@ -443,10 +443,10 @@ func TestStartSliceRejectsAMisusedCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "no slice", args: []string{"start-slice", "--project", "project-1"}, want: "given 0"},
-		{name: "two slices", args: []string{"start-slice", startSliceID, "s4", "--project", "project-1"}, want: "given 2"},
-		{name: "not a page", args: []string{"start-slice", "the board one", "--project", "project-1"}, want: "is not a slice"},
-		{name: "unknown flag", args: []string{"start-slice", startSliceID, "--nope", "--project", "project-1"}, want: "not defined"},
+		{name: "no slice", args: []string{"slice", "start", "--project", "project-1"}, want: "given 0"},
+		{name: "two slices", args: []string{"slice", "start", startSliceID, "s4", "--project", "project-1"}, want: "given 2"},
+		{name: "not a page", args: []string{"slice", "start", "the board one", "--project", "project-1"}, want: "is not a slice"},
+		{name: "unknown flag", args: []string{"slice", "start", startSliceID, "--nope", "--project", "project-1"}, want: "not defined"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -462,7 +462,7 @@ func TestStartSliceRejectsAMisusedCommandLine(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %q, want it to mention %q", err, tt.want)
 			}
-			if !strings.Contains(err.Error(), "start-slice:") {
+			if !strings.Contains(err.Error(), "slice start:") {
 				t.Errorf("err = %q, want it to name the command", err)
 			}
 			if len(api.gets) != 0 || len(api.updates) != 0 {
@@ -495,7 +495,7 @@ func TestStartSliceNeedsAConfiguredProject(t *testing.T) {
 			env, out := testEnv(testClaimConfig(t), api)
 			tt.env(&env)
 
-			err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env)
+			err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env)
 
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("err = %v, want it to mention %q", err, tt.want)
@@ -511,7 +511,7 @@ func TestStartSliceNeedsAConfiguredProject(t *testing.T) {
 }
 
 func TestStartSliceReportsAFailedWrite(t *testing.T) {
-	for _, args := range [][]string{{"start-slice", startSliceID, "--project", "project-1"}, {"start-slice", startSliceID, "--json", "--project", "project-1"}} {
+	for _, args := range [][]string{{"slice", "start", startSliceID, "--project", "project-1"}, {"slice", "start", startSliceID, "--json", "--project", "project-1"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			env, _ := testEnv(testClaimConfig(t), startableAPI(t))
 			env.Out = failingWriter{}
@@ -531,8 +531,8 @@ func TestStartSliceClaimsAProjectWithNoAssigneeColumn(t *testing.T) {
 	api.dataSources = map[string]notion.DataSource{"slices-ds": selectMilestoneSlicesDS("M1: Client", "M2: Board")}
 	env, out := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("start-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice start: %v", err)
 	}
 
 	if len(api.updates) != 1 {
@@ -567,10 +567,10 @@ func TestStartSliceReportsAFailedLocalPlanRead(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 
-	err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Error("start-slice over a plan that cannot be read: want an error")
+		t.Error("slice start over a plan that cannot be read: want an error")
 	}
 }
 
@@ -583,7 +583,7 @@ func TestStartSliceReportsAFailedLocalClaim(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 
-	err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "claim the slice") {
 		t.Errorf("err = %v, want the failed claim named", err)
@@ -622,7 +622,7 @@ func TestStartSliceReportsAFailedBodyRead(t *testing.T) {
 			seedHydratedSlice(t, "project-1", startSliceID, "Render the board", "Todo", tt.breakIt)
 			env, _ := testEnv(cfg, &fakeAPI{})
 
-			err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env)
+			err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env)
 
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want it to mention %q", err, tt.want)
@@ -636,7 +636,7 @@ func TestStartSliceReportsAFailedSchemaRead(t *testing.T) {
 	api.dataSourceErr = errors.New("boom")
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"start-slice", startSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "start", startSliceID, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "load the slices schema") {
 		t.Fatalf("err = %v, want the schema read named", err)
 	}

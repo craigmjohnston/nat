@@ -125,7 +125,7 @@ func SliceNames(slices []Slice) []string {
 
 // Cycles is the dependency cycles a plan holds: each one the slices around it,
 // in the order they wait on one another. Every slice in such a cycle waits,
-// through however many others, on itself, so no run of next-slice and no launch
+// through however many others, on itself, so no run of slice next and no launch
 // can ever unblock any of them — which reads as a row that is simply never
 // workable unless somebody says it is a cycle.
 //

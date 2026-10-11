@@ -55,7 +55,7 @@ final class ConfigDocTests: XCTestCase {
         XCTAssertTrue(doc.projects.isEmpty)
     }
 
-    // config-show says each project's backend out loud; an older nat that says
+    // config show says each project's backend out loud; an older nat that says
     // nothing of it, or a word this build does not know, reads as Notion.
     func testDecodingReadsEachProjectsBackend() throws {
         let json = """

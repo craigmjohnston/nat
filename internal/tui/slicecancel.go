@@ -83,7 +83,7 @@ func (f *CancelSliceForm) save(a *App) tea.Cmd {
 	return cancelSlice(st, sp, cfg, a.launcher, newWorktrees(), f.slice, name)
 }
 
-// cancelSlice is [actions.Cancel], the flow `nat slice-cancel` runs: the
+// cancelSlice is [actions.Cancel], the flow `nat slice cancel` runs: the
 // slice re-read, its agent stopped — refused where it cannot be — then Todo
 // with its Branch and pull request cleared and a line saying who cancelled it,
 // then its worktree and branch discarded.

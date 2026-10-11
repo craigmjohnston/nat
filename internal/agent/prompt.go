@@ -25,7 +25,7 @@ import (
 //
 // Brief and Conventions are the slice's own page body and the project's
 // conventions, read by the launch after the claim succeeds and written
-// straight into the prompt — the same document `nat start-slice` prints, so
+// straight into the prompt — the same document `nat slice start` prints, so
 // the agent needs no command of its own to see it.
 //
 // Milestone and MilestoneSlices are the raw material a launch renders
@@ -61,7 +61,7 @@ import (
 // slice with a pull request recorded, taken the same way: `gh pr view <url>
 // --comments` and `gh pr checks <url>` — the first the one `gh` read the
 // prompt lets the agent run again itself ([pullRequestPassage]), the second
-// re-read with `nat slice-checks`, the way every agent reads CI. Each is
+// re-read with `nat slice checks`, the way every agent reads CI. Each is
 // independently left empty on a failed read, the project's usual
 // reads-conclude-nothing posture — a launch never fails over missing context.
 //
@@ -86,7 +86,7 @@ import (
 // project, which has no working directory of its own, on a task none has been
 // recorded for. The session starts in the home directory (WorkingDir), with no
 // worktree, and the prompt sends it to work the repository out from the
-// container and record it with `nat slice-repo`, which cuts its worktree —
+// container and record it with `nat slice repo`, which cuts its worktree —
 // see [repoPassage].
 type PromptContext struct {
 	Slice           domain.Slice
@@ -155,7 +155,7 @@ func containerSection(c PromptContext) string {
 
 // repoPassage sends an agent whose slice has no repository yet (RepoUnknown)
 // to find it before anything else: work it out from the container, ask the
-// user where it cannot tell, and record it with `nat slice-repo` — which also
+// user where it cannot tell, and record it with `nat slice repo` — which also
 // cuts the slice's worktree there by nat's own naming and prints its path, so
 // every later session, the review and the merge find the same one. The naming
 // itself is the Go's alone (actions.EnsureWorktree): nothing here spells it
@@ -176,7 +176,7 @@ func repoPassage(c PromptContext) string {
 	b.WriteString("here in the terminal, and do nothing else until they answer.\n\n")
 	b.WriteString("Once you know, record it, so every later session on this slice, the\n")
 	b.WriteString("review and the merge all find it:\n\n")
-	fmt.Fprintf(&b, "    nat slice-repo %s --project %s --repo <absolute path to the checkout>\n\n", c.Slice.ID, c.ProjectID)
+	fmt.Fprintf(&b, "    nat slice repo %s --project %s --repo <absolute path to the checkout>\n\n", c.Slice.ID, c.ProjectID)
 	b.WriteString("That also cuts this slice's own worktree in that repository, exactly as\n")
 	b.WriteString("nat cuts one for a launch, and prints its path on the `Worktree:` line:\n")
 	b.WriteString("work there and nowhere else. Cut no worktree or branch of your own. If it\n")
@@ -232,7 +232,7 @@ func gitSnapshotSection(c PromptContext) string {
 // underlying pages would be describing a second way to do the same thing.
 //
 // The ending it is told to reach is a hand-back: the branch pushed and recorded
-// with `complete-slice --branch`, the slice left in progress for the user to
+// with `slice complete --branch`, the slice left in progress for the user to
 // review on the board, which is where the pull request is opened from. So the
 // prompt tells the agent not to run `gh` at all — an agent that opened its own
 // pull request would put the work past the review the approve key answers,
@@ -313,7 +313,7 @@ func Prompt(c PromptContext) string {
 
 	b.WriteString("\n## Do the work\n\n")
 	if c.RepoUnknown {
-		b.WriteString("Work in the worktree slice-repo printed; this session did not start there,\n")
+		b.WriteString("Work in the worktree slice repo printed; this session did not start there,\n")
 		b.WriteString("so use absolute paths or `git -C`. Read its `CLAUDE.md`, if it has one,\n")
 		b.WriteString("before anything else — architecture and the verification gate. Honour\n")
 		b.WriteString("the brief's acceptance criteria and that gate before calling it done.\n\n")
@@ -382,9 +382,9 @@ func Prompt(c PromptContext) string {
 
 	b.WriteString("\n## Finish\n\n")
 	b.WriteString(followUpsPassage(c))
-	b.WriteString(visualsPassage(c, "before `complete-slice`"))
+	b.WriteString(visualsPassage(c, "before `slice complete`"))
 	b.WriteString("On completion, record the outcome:\n\n")
-	fmt.Fprintf(&b, "    nat complete-slice %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	fmt.Fprintf(&b, "    nat slice complete %s --project %s \\\n", c.Slice.ID, c.ProjectID)
 	if c.Branch == "" && !c.RepoUnknown {
 		// No worktree for nat to read the branch off: the agent names it.
 		b.WriteString("        --branch <branch> \\\n")
@@ -426,7 +426,7 @@ func Prompt(c PromptContext) string {
 	b.WriteString("on stdin instead of passing `--summary`.\n\n")
 	b.WriteString("If you cannot complete it, say what stopped you and leave the slice\n")
 	b.WriteString("in progress, so nobody else picks it up on top of your work:\n\n")
-	fmt.Fprintf(&b, "    nat complete-slice %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	fmt.Fprintf(&b, "    nat slice complete %s --project %s \\\n", c.Slice.ID, c.ProjectID)
 	b.WriteString("        --blocked --summary '<what is blocking>'\n")
 
 	b.WriteString("\n## Guardrails\n\n")
@@ -542,9 +542,9 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 		b.WriteString("Present the draft in conversation too, but the workshop's Plan section\n")
 		b.WriteString("in the app is what the user reads it from and accepts it in. As soon\n")
 		b.WriteString("as you have a draft, and again on every revision, without being asked,\n")
-		b.WriteString("pipe the plan JSON (the same document plan-apply reads) to this:\n\n")
-		fmt.Fprintf(b, "    nat plan-propose --project %s\n\n", projectID)
-		b.WriteString("Never run plan-apply, milestone-add or slice-add yourself — the\n")
+		b.WriteString("pipe the plan JSON (the same document plan apply reads) to this:\n\n")
+		fmt.Fprintf(b, "    nat plan propose --project %s\n\n", projectID)
+		b.WriteString("Never run plan apply, milestone add or slice add yourself — the\n")
 		b.WriteString("user's Accept in the app is the one approval there is, and it is what\n")
 		b.WriteString("applies the plan, not you.\n\n")
 		b.WriteString(acceptedProposalPassage(projectID))
@@ -552,12 +552,12 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 		b.WriteString("Draft in conversation first, and write only after the user explicitly\n")
 		b.WriteString("approves. The `nat` planning commands are the only way to change the\n")
 		b.WriteString("plan:\n\n")
-		fmt.Fprintf(b, "- `nat plan-apply [FILE] --project %s` — a whole drafted\n", projectID)
+		fmt.Fprintf(b, "- `nat plan apply [FILE] --project %s` — a whole drafted\n", projectID)
 		b.WriteString("  plan of milestones and slices at once, from a JSON document (stdin\n")
 		b.WriteString("  without FILE)\n")
-		fmt.Fprintf(b, "- `nat milestone-add <name> --project %s` — one new\n", projectID)
+		fmt.Fprintf(b, "- `nat milestone add <name> --project %s` — one new\n", projectID)
 		b.WriteString("  milestone, Queued, at the end of the plan\n")
-		fmt.Fprintf(b, "- `nat slice-add <title> --milestone <name> [--description -] --project %s`\n", projectID)
+		fmt.Fprintf(b, "- `nat slice add <title> --milestone <name> [--description -] --project %s`\n", projectID)
 		b.WriteString("  — one new Todo slice, its brief read from stdin\n")
 	}
 	b.WriteString("\n" + SliceTitleRule + "\n")
@@ -573,15 +573,15 @@ func planBody(projectID, projectName, workingDir, plan string, frontend Frontend
 	b.WriteString("- Never touch work in flight: slices in progress and Done slices, and the\n")
 	b.WriteString("  milestones holding them, are records of what happened.\n")
 	if frontend == FrontendGnat {
-		b.WriteString("- plan-propose is the only way to change the plan; never run\n")
-		b.WriteString("  plan-apply, milestone-add or slice-add yourself — applying a\n")
+		b.WriteString("- plan propose is the only way to change the plan; never run\n")
+		b.WriteString("  plan apply, milestone add or slice add yourself — applying a\n")
 		b.WriteString("  proposal is the user's Accept, not something you do.\n")
 	} else {
 		b.WriteString("- The commands above are the only way to change the plan; write nothing\n")
 		b.WriteString("  until the user has approved the draft.\n")
 	}
 	if frontend == FrontendGnat {
-		fmt.Fprintf(b, "- Every `nat` command you run, plan-propose included, carries `--project %s`.\n", projectID)
+		fmt.Fprintf(b, "- Every `nat` command you run, plan propose included, carries `--project %s`.\n", projectID)
 	} else {
 		fmt.Fprintf(b, "- Every one of them carries `--project %s`.\n", projectID)
 	}
@@ -618,7 +618,7 @@ func Resuming(c PromptContext) bool {
 // recorded that its work is out: the pull request is open, the hand-back's
 // push updates it, and the review as it stood at launch is carried inline. It
 // relaxes the standing ban on `gh` for the one read the review needs and no
-// other — the checks are read with `nat slice-checks`, as every agent reads
+// other — the checks are read with `nat slice checks`, as every agent reads
 // CI — and keeps every pull request write the user's. Empty for a slice with
 // none recorded.
 func pullRequestPassage(c PromptContext) string {
@@ -644,7 +644,7 @@ func pullRequestPassage(c PromptContext) string {
 	}
 	b.WriteString("Re-read the review before you hand back, since it can have moved since launch:\n\n")
 	fmt.Fprintf(&b, "    gh pr view %s --comments\n\n", pr)
-	b.WriteString("That is the only `gh` you may run — read CI with the `slice-checks` command\nbelow.\n")
+	b.WriteString("That is the only `gh` you may run — read CI with the `slice checks` command\nbelow.\n")
 	b.WriteString("Never open, merge, close or reopen a pull request: merging this one is\n")
 	if c.Frontend == FrontendGnat {
 		b.WriteString("a button in the app's PR tab, pressed once the user is satisfied.\n")
@@ -702,7 +702,7 @@ func conflictPassage(c PromptContext) string {
 		fmt.Fprintf(&b, "The launch fetched origin and rebased %s onto %s, and the\n", c.Branch, base)
 		b.WriteString("rebase went through with no conflict. What is left:\n\n")
 		b.WriteString("1. Run the project's verification gate on the rebased branch.\n")
-		b.WriteString("2. Hand the slice back with `complete-slice`, as below.\n")
+		b.WriteString("2. Hand the slice back with `slice complete`, as below.\n")
 		return b.String()
 	case RebaseStoppedAtLaunch:
 		fmt.Fprintf(&b, "The launch fetched origin and rebased %s onto %s. The rebase\n", c.Branch, base)
@@ -715,7 +715,7 @@ func conflictPassage(c PromptContext) string {
 		fmt.Fprintf(&b, "2. Resolve every conflict, keeping what both sides meant: %s's side\n", base)
 		b.WriteString("   is merged work, never to be undone to make the branch fit.\n")
 		b.WriteString("3. Run the project's verification gate on the result.\n")
-		b.WriteString("4. Hand the slice back with `complete-slice`, as below. Do not push\n")
+		b.WriteString("4. Hand the slice back with `slice complete`, as below. Do not push\n")
 		b.WriteString("   yourself: the hand-back pushes the rebased branch with a lease.\n")
 		return b.String()
 	}
@@ -734,7 +734,7 @@ func conflictPassage(c PromptContext) string {
 	b.WriteString("2. `git rebase --continue`, resolving the same way through any later\n")
 	b.WriteString("   commit that conflicts, until the rebase is finished.\n")
 	b.WriteString("3. Run the project's verification gate on the result.\n")
-	b.WriteString("4. Hand the slice back with `complete-slice`, as below.\n")
+	b.WriteString("4. Hand the slice back with `slice complete`, as below.\n")
 	return b.String()
 }
 
@@ -750,7 +750,7 @@ func visualsPassage(c PromptContext, when string) string {
 	b.WriteString("and the project already has a cheap or usual way to render it (a gallery\n")
 	b.WriteString("story, a screenshot script, a storybook), render the result and hand the\n")
 	fmt.Fprintf(&b, "images in %s:\n\n", when)
-	fmt.Fprintf(&b, "    nat slice-visuals %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	fmt.Fprintf(&b, "    nat slice visuals %s --project %s \\\n", c.Slice.ID, c.ProjectID)
 	b.WriteString("        --visual '<what it shows, one line>\n<absolute path to the image>'\n\n")
 	b.WriteString("`--visual` repeats, one per image. Hand in only what is new or\n")
 	b.WriteString("re-rendered: an image handed in under a name already filed replaces that\n")
@@ -790,7 +790,7 @@ func notesPassage(c PromptContext) string {
 	b.WriteString("If this session finds out something a *later* slice needs to know — a\n")
 	b.WriteString("constraint, a seam that moved, an assumption in another slice's brief\n")
 	b.WriteString("that is no longer true — leave a note on that slice, named by its name:\n\n")
-	fmt.Fprintf(&b, "    nat slice-note '<slice name>' --from %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	fmt.Fprintf(&b, "    nat slice note '<slice name>' --from %s --project %s \\\n", c.Slice.ID, c.ProjectID)
 	b.WriteString("        --note '<what it needs to know, and why>'\n\n")
 	b.WriteString("Add `--milestone '<milestone name>'` where that name is filed under more\n")
 	b.WriteString("than one milestone, and `--note -` to pipe a long note in. The note ends\n")
@@ -802,7 +802,7 @@ func notesPassage(c PromptContext) string {
 }
 
 // followUpsPassage tells a slice agent to hand in
-// the work it noticed but did not do, and stop, before `complete-slice`. Only
+// the work it noticed but did not do, and stop, before `slice complete`. Only
 // the app has anywhere to triage follow-ups, so only an agent it launched is
 // told to hand them in and wait; one launched from the board would wait on a
 // decision nothing there can make, and is told nothing.
@@ -814,8 +814,8 @@ func followUpsPassage(c PromptContext) string {
 	b.WriteString("Work you noticed but did not do — a bug beside your change, a test gap\n")
 	b.WriteString("in code you didn't touch, a refactor the brief didn't ask for — is not\n")
 	b.WriteString("yours to do and not yours to lose. When the gate is green, before\n")
-	b.WriteString("`complete-slice`, hand each one in and **stop**:\n\n")
-	fmt.Fprintf(&b, "    nat slice-followups %s --project %s \\\n", c.Slice.ID, c.ProjectID)
+	b.WriteString("`slice complete`, hand each one in and **stop**:\n\n")
+	fmt.Fprintf(&b, "    nat slice followups %s --project %s \\\n", c.Slice.ID, c.ProjectID)
 	b.WriteString("        --follow-up '<title line>\n\n<the problem, as the user sees it, and what leaving it costs>\n<what you recommend, and why>\n<the change: what, where, instead of what>\nDone when: <how anyone checks it is finished>'\n\n")
 	b.WriteString(followUpBriefPassage)
 	b.WriteString(SliceTitleRule + "\n\n")
@@ -823,7 +823,7 @@ func followUpsPassage(c PromptContext) string {
 	b.WriteString("what is new — never a repeat of a follow-up already handed in. The user\n")
 	b.WriteString("decides in the app — queue it as a slice, fold it into this one, or drop\n")
 	b.WriteString("it — and the decision arrives here as a message naming what to fold in.\n")
-	b.WriteString("Do that, then hand back as below. `complete-slice` refuses while the\n")
+	b.WriteString("Do that, then hand back as below. `slice complete` refuses while the\n")
 	b.WriteString("decision is outstanding.\n")
 	b.WriteString("Never widen your branch to include a follow-up on your own, and never\n")
 	b.WriteString("write them into the summary or the brief instead. No follow-ups: hand\n")
@@ -832,7 +832,7 @@ func followUpsPassage(c PromptContext) string {
 }
 
 // checksPassage tells a slice agent how to read CI: the project's checks run
-// on the pull request once the slice is approved, and `nat slice-checks` is
+// on the pull request once the slice is approved, and `nat slice checks` is
 // the one way an agent reads them — never `gh`. skills/next-slice/SKILL.md
 // says the same in its own words.
 func checksPassage(c PromptContext) string {
@@ -841,7 +841,7 @@ func checksPassage(c PromptContext) string {
 	b.WriteString("The project's checks run on the pull request, once the slice is approved.\n")
 	b.WriteString("If you are told they failed, read how they stand — each check, and each\n")
 	b.WriteString("failed step's log — with:\n\n")
-	fmt.Fprintf(&b, "    nat slice-checks %s --log --project %s\n\n", c.Slice.ID, c.ProjectID)
+	fmt.Fprintf(&b, "    nat slice checks %s --log --project %s\n\n", c.Slice.ID, c.ProjectID)
 	b.WriteString(runningChecksSentence)
 	b.WriteString("That is the one way to read CI: never `gh`.\n\n")
 	b.WriteString(rerunPassage(c.Slice.ID, c.ProjectID))
@@ -849,20 +849,20 @@ func checksPassage(c PromptContext) string {
 }
 
 // runningChecksSentence is what the slice prompt and the checks nudge each
-// say after the slice-checks command: it also reads a check
+// say after the slice checks command: it also reads a check
 // still running, which is where a stalled one is looked into.
 const runningChecksSentence = "The same command shows what a check still running is doing — the step\n" +
 	"it is on and for how long — so a check that has sat pending far longer\n" +
 	"than its siblings or its usual run is read there, never with `gh`.\n\n"
 
-// rerunPassage is how the slice prompt and the checks nudge tell an agent to re-run CI: `nat slice-checks-rerun`, for a failure that is
+// rerunPassage is how the slice prompt and the checks nudge tell an agent to re-run CI: `nat slice checks rerun`, for a failure that is
 // not the change's, never as a retry of a real one — and never `gh`.
 // skills/next-slice/SKILL.md says the same in its own words.
 func rerunPassage(sliceID, projectID string) string {
 	var b strings.Builder
 	b.WriteString("Where a check failed or stalled for a reason that is not the change's —\n")
 	b.WriteString("a flake, a runner that died, a job that has stalled — re-run it with:\n\n")
-	fmt.Fprintf(&b, "    nat slice-checks-rerun %s --check '<check name>' --project %s\n\n", sliceID, projectID)
+	fmt.Fprintf(&b, "    nat slice checks rerun %s --check '<check name>' --project %s\n\n", sliceID, projectID)
 	b.WriteString("(`--failed` instead of `--check` re-runs every failed job.) A check still\n")
 	b.WriteString("running is cancelled first by the re-run itself, and a cancel stops every\n")
 	b.WriteString("job of that run — the output says which. It is never a way to retry a\n")
@@ -883,12 +883,12 @@ var SliceTitleRule = fmt.Sprintf("A slice title names one change in eight words 
 
 // ProposalWithdrawnRule is what both gnat planning prompts — a project's
 // workshop and a new project's — say of a proposal the user writes after: the
-// app withdraws it (`nat plan-withdraw`) the moment they send, so the agent
+// app withdraws it (`nat plan withdraw`) the moment they send, so the agent
 // proposes again, whole, on every turn that answers them. Tests walk both
 // templates for it.
 const ProposalWithdrawnRule = "Once you have proposed, a message from the user withdraws the proposal —\n" +
 	"the app takes it off screen the moment they send it. So every turn that\n" +
-	"answers the user ends with plan-propose run again, the whole plan, even\n" +
+	"answers the user ends with plan propose run again, the whole plan, even\n" +
 	"unchanged: never assume your last proposal is still on screen.\n"
 
 // acceptedProposalPassage tells a gnat-launched planning agent what an
@@ -945,7 +945,7 @@ const tmuxPassage = "\n## tmux\n\n" +
 	"does not isolate you: `$TMUX` wins while it is set.\n"
 
 // followUpBriefPassage says how a follow-up is written: as the brief of the
-// slice it becomes if queued, since slice-triage files it as one verbatim.
+// slice it becomes if queued, since slice triage files it as one verbatim.
 // skills/next-slice/SKILL.md carries the same words in its own copy.
 const followUpBriefPassage = "A follow-up is work the user has not asked for that you noticed and did\n" +
 	"not do; anything this slice's own `Done when:` covers is this slice's\n" +
@@ -1021,8 +1021,8 @@ const writingPassage = "\n" +
 	"For example. A title: not \"Catch the modified enters with a key monitor\n" +
 	"— performKeyEquivalent never sees them\" but \"Make shift+enter insert a\n" +
 	"newline in the agent terminal\". A summary line: not\n" +
-	"\"DiffStore.sendComments now always sends the complete-slice --branch\n" +
-	"instruction and runs slice-rework after agent-send succeeds\" but \"Review\n" +
+	"\"DiffStore.sendComments now always sends the slice complete --branch\n" +
+	"instruction and runs slice rework after agent send succeeds\" but \"Review\n" +
 	"comments sent to an agent now always ask it to hand the work back again,\n" +
 	"so a slice cannot get stuck in review\". A question: not \"Where the\n" +
 	"'already there' baseline comes from: a comment counts as new when no\n" +
@@ -1050,7 +1050,7 @@ const questionPassage = "\n" +
 	"Raise an architecture question — a decision neither the brief nor a Done\n" +
 	"slice in the milestone settles — before you write code, not at\n" +
 	"hand-back, where an hour of the wrong shape is already sunk. Never run\n" +
-	"`complete-slice` on work whose shape is still unsettled that way: a\n" +
+	"`slice complete` on work whose shape is still unsettled that way: a\n" +
 	"hand-back is a claim the shape is right.\n" +
 	"\n" +
 	"Shape every question so it can be answered without opening the code:\n" +

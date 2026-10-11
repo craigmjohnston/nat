@@ -37,8 +37,8 @@ func TestSliceCancelStopsTheAgentAndDiscardsTheWork(t *testing.T) {
 	var nudges int
 	env.Nudge = func() { nudges++ }
 
-	if err := Run(context.Background(), []string{"slice-cancel", sliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-cancel: %v", err)
+	if err := Run(context.Background(), []string{"slice", "cancel", sliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice cancel: %v", err)
 	}
 
 	if !reflect.DeepEqual(runner.kills, []string{"nat-c020efb4"}) {
@@ -80,8 +80,8 @@ func TestSliceCancelJSONWithNoAgent(t *testing.T) {
 	env, out, w := cancelEnv(t, api, runner)
 	w.discardErr = refusedRemoval
 
-	if err := Run(context.Background(), []string{"slice-cancel", sliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-cancel --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "cancel", sliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice cancel --json: %v", err)
 	}
 	if len(runner.kills) != 0 {
 		t.Errorf("kills = %v, want none", runner.kills)
@@ -111,11 +111,11 @@ func TestSliceCancelRefusals(t *testing.T) {
 		{"failed kill", notion.SliceInProgress,
 			&agentTestRunner{liveSessions: map[string]string{sliceID: "nat-c020efb4"}, killErr: "permission denied"}, nil,
 			"stop its agent"},
-		{"no slice", notion.SliceInProgress, &agentTestRunner{}, []string{"slice-cancel", "--project", "project-1"},
+		{"no slice", notion.SliceInProgress, &agentTestRunner{}, []string{"slice", "cancel", "--project", "project-1"},
 			"want exactly one"},
-		{"not a slice", notion.SliceInProgress, &agentTestRunner{}, []string{"slice-cancel", "nope", "--project", "project-1"},
+		{"not a slice", notion.SliceInProgress, &agentTestRunner{}, []string{"slice", "cancel", "nope", "--project", "project-1"},
 			"not a slice"},
-		{"unknown project", notion.SliceInProgress, &agentTestRunner{}, []string{"slice-cancel", sliceID, "--project", "nope"},
+		{"unknown project", notion.SliceInProgress, &agentTestRunner{}, []string{"slice", "cancel", sliceID, "--project", "nope"},
 			"no project nope"},
 	}
 	for _, tt := range tests {
@@ -125,7 +125,7 @@ func TestSliceCancelRefusals(t *testing.T) {
 			env, _, w := cancelEnv(t, api, tt.runner)
 			args := tt.args
 			if args == nil {
-				args = []string{"slice-cancel", sliceID, "--project", "project-1"}
+				args = []string{"slice", "cancel", sliceID, "--project", "project-1"}
 			}
 			err := Run(context.Background(), args, env)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
@@ -141,7 +141,7 @@ func TestSliceCancelRefusals(t *testing.T) {
 
 func TestSliceCancelRefusesAnUnknownFlag(t *testing.T) {
 	env, _, _ := cancelEnv(t, releasableAPI(), &agentTestRunner{})
-	err := Run(context.Background(), []string{"slice-cancel", sliceID, "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "cancel", sliceID, "--bogus", "--project", "project-1"}, env)
 	var usage *UsageError
 	if !errors.As(err, &usage) {
 		t.Fatalf("err = %v (%T), want a *UsageError", err, err)
@@ -152,7 +152,7 @@ func TestSliceCancelRefusesAnUnknownFlag(t *testing.T) {
 // before the plan is opened.
 func TestSliceCancelRefusesWithNoAssignee(t *testing.T) {
 	env, _ := testEnv(testConfig(t), releasableAPI())
-	err := Run(context.Background(), []string{"slice-cancel", sliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "cancel", sliceID, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no assignee") {
 		t.Errorf("err = %v, want the missing assignee named", err)
 	}
@@ -163,8 +163,8 @@ func TestSliceCancelReportsAStoreThatWillNotOpen(t *testing.T) {
 	api := releasableAPI()
 	api.queryErr = map[string]error{"slices-ds": errors.New("notion is down")}
 	env, _, _ := cancelEnv(t, api, &agentTestRunner{})
-	if err := Run(context.Background(), []string{"slice-cancel", sliceID, "--project", "project-1"}, env); err == nil {
-		t.Error("slice-cancel over a plan that cannot be read: want an error")
+	if err := Run(context.Background(), []string{"slice", "cancel", sliceID, "--project", "project-1"}, env); err == nil {
+		t.Error("slice cancel over a plan that cannot be read: want an error")
 	}
 }
 
@@ -180,8 +180,8 @@ func TestSliceCancelReportsAFailedWrite(t *testing.T) {
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	w := &fakeSessionWorktrees{}
 	env.NewWorktrees = func() actions.Worktrees { return w }
-	if err := Run(context.Background(), []string{"slice-cancel", sliceID, "--project", "project-1"}, env); err == nil {
-		t.Fatal("slice-cancel over a plan that cannot write: want an error")
+	if err := Run(context.Background(), []string{"slice", "cancel", sliceID, "--project", "project-1"}, env); err == nil {
+		t.Fatal("slice cancel over a plan that cannot write: want an error")
 	}
 	if len(w.discarded) != 0 {
 		t.Errorf("discarded = %+v, want nothing after a failed write", w.discarded)

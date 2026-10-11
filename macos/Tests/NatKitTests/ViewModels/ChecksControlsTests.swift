@@ -90,14 +90,14 @@ final class ChecksControlsTests: XCTestCase {
 
     func testArguments() {
         XCTAssertEqual(NatClient.checksRerunArguments(projectID: "p", sliceRef: "s", mode: .all),
-                       ["slice-checks-rerun", "s", "--project", "p", "--json", "--all"])
+                       ["slice", "checks", "rerun", "s", "--project", "p", "--json", "--all"])
         XCTAssertEqual(NatClient.checksRerunArguments(projectID: "p", sliceRef: "s", mode: .failed),
-                       ["slice-checks-rerun", "s", "--project", "p", "--json", "--failed"])
+                       ["slice", "checks", "rerun", "s", "--project", "p", "--json", "--failed"])
         XCTAssertEqual(NatClient.checksRerunArguments(projectID: "p", sliceRef: "s", mode: .checks(["a", "b"])),
-                       ["slice-checks-rerun", "s", "--project", "p", "--json", "--check", "a", "--check", "b"])
+                       ["slice", "checks", "rerun", "s", "--project", "p", "--json", "--check", "a", "--check", "b"])
         XCTAssertEqual(NatClient.checksCancelArguments(projectID: "p", sliceRef: "s", checks: []),
-                       ["slice-checks-cancel", "s", "--project", "p", "--json"])
+                       ["slice", "checks", "cancel", "s", "--project", "p", "--json"])
         XCTAssertEqual(NatClient.checksCancelArguments(projectID: "p", sliceRef: "s", checks: ["a"]),
-                       ["slice-checks-cancel", "s", "--project", "p", "--json", "--check", "a"])
+                       ["slice", "checks", "cancel", "s", "--project", "p", "--json", "--check", "a"])
     }
 }

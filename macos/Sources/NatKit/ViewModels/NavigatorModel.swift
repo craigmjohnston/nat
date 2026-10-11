@@ -118,7 +118,7 @@ public enum MainPaneTab: CaseIterable, Equatable, Sendable {
 /// The design's `phaseOf`/`launched`/`handed`/`hasPR`, over the slice's real
 /// facts — and, where the design assumed a fact nat does not have, over the
 /// fact nat does: Changes reads a branch, and only a recorded one can be read
-/// (`nat slice-diff` refuses a slice with none), so it is live once a branch
+/// (`nat slice diff` refuses a slice with none), so it is live once a branch
 /// is recorded rather than the moment an agent is launched — or while the
 /// slice is taken back (resumed, or a review sent back with no PR), whose
 /// cleared Branch nat still reads by its agent branch, so the work handed
@@ -252,7 +252,7 @@ public struct NavigatorModel: Equatable, Sendable {
     /// Whether Send back to agent is offered — the slice row's menu, opening
     /// its editor over the action bar: a slice handed back — in review, or at
     /// its pull request — that the user wants more of. It resumes the slice
-    /// (`nat slice-resume`) and tells the agent, or launches one where none
+    /// (`nat slice resume`) and tells the agent, or launches one where none
     /// is live. Not on a resumed slice: it is already back with the agent,
     /// whose terminal is the place to say more. The bar itself never carries
     /// it; its Fix (`BarFix`) is the same send-back for a PR's own trouble.
@@ -469,7 +469,7 @@ public enum ThreadEventKind: Equatable, Sendable {
     /// The live agent, working or waiting — or a session's, ended.
     case agent
     case handedBack
-    /// Sent back to its agent with review comments (`slice-rework`).
+    /// Sent back to its agent with review comments (`slice rework`).
     case sentBack
     /// Released back to Todo, its session ended unfinished.
     case released
@@ -477,7 +477,7 @@ public enum ThreadEventKind: Equatable, Sendable {
     case cancelled
     /// Launched again on the work so far.
     case relaunched
-    /// Work resumed after a hand-back (`nat slice-resume`), the reason as
+    /// Work resumed after a hand-back (`nat slice resume`), the reason as
     /// its body.
     case resumed
     /// The pull request's checks failed with no agent live to be told.
@@ -692,7 +692,7 @@ public func agentFacts(_ agent: AgentStatus?) -> (model: [ThreadFact], context: 
 
 /// The Task log, built only from what nat reports: the live agent's own
 /// statusline reading (model, effort, context), the slice's recorded branch,
-/// and `events` — `slice-show`'s ordered record of every hand-back, send-back,
+/// and `events` — `slice show`'s ordered record of every hand-back, send-back,
 /// release, relaunch, note and proposal of follow-ups on the slice's page, then
 /// its approve and merge — and a recorded launch's time, on the Launched item.
 /// The design's token count, files touched, current tool and merged-by have
@@ -707,7 +707,7 @@ public func agentFacts(_ agent: AgentStatus?) -> (model: [ThreadFact], context: 
 /// on the plan (see `noteSourceSlice`). Without them every note's source is
 /// plain text.
 ///
-/// `pending` is `slice-show`'s `followUps`, where read: a proposal with an
+/// `pending` is `slice show`'s `followUps`, where read: a proposal with an
 /// undecided item awaits triage only where it lists an item of that
 /// proposal's batch. nat lists none on a Done slice, so a batch an older nat
 /// let a later one supersede, never triaged, draws there as a plain record.

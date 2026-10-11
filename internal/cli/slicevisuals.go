@@ -30,7 +30,7 @@ import (
 // Only a slice this user holds takes them: the agent working it is the one
 // with something to hand in.
 func sliceVisuals(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-visuals", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice visuals", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var given, befores, removes stringList
 	flags.Var(&given, "visual", "an image: its first line what it shows, the next its path or URI; repeat for more")
@@ -42,9 +42,9 @@ func sliceVisuals(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-visuals: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice visuals: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-visuals", rest[0])
+	id, err := pageID("slice visuals", rest[0])
 	if err != nil {
 		return err
 	}
@@ -110,7 +110,7 @@ func visualsRefusal(s domain.Slice, assignee string) error {
 // a path on this machine.
 var uriScheme = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
 
-// handIn is one slice-visuals command, read and checked: the images given,
+// handIn is one slice visuals command, read and checked: the images given,
 // the befores given, and the names removed.
 type handIn struct {
 	visuals []store.VisualChange
@@ -128,7 +128,7 @@ type handIn struct {
 // is filed as given, with no hash.
 func handInOf(given, befores, removes []string) (handIn, error) {
 	if len(given)+len(befores)+len(removes) == 0 {
-		return handIn{}, usageErrorf("slice-visuals: no visual given: pass --visual '<what it shows>\\n<absolute path to the image>', " +
+		return handIn{}, usageErrorf("slice visuals: no visual given: pass --visual '<what it shows>\\n<absolute path to the image>', " +
 			"--before '<its name>\\n<absolute path to the before>' or --remove '<its name>'")
 	}
 	var h handIn
@@ -148,11 +148,11 @@ func handInOf(given, befores, removes []string) (handIn, error) {
 		name := strings.TrimSpace(r)
 		switch {
 		case name == "":
-			return handIn{}, usageErrorf("slice-visuals: a --remove names nothing: give the name of the visual to drop")
+			return handIn{}, usageErrorf("slice visuals: a --remove names nothing: give the name of the visual to drop")
 		case seen[name]:
-			return handIn{}, usageErrorf("slice-visuals: %q is removed twice: name each visual once", name)
+			return handIn{}, usageErrorf("slice visuals: %q is removed twice: name each visual once", name)
 		case givenNames[name]:
-			return handIn{}, usageErrorf("slice-visuals: %q is both removed and given: an image handed in under a name already filed replaces it, so do not remove one you are updating", name)
+			return handIn{}, usageErrorf("slice visuals: %q is both removed and given: an image handed in under a name already filed replaces it, so do not remove one you are updating", name)
 		}
 		seen[name] = true
 		h.removes = append(h.removes, name)
@@ -170,13 +170,13 @@ func imagesOf(given []string, what, whats string) ([]store.VisualChange, error) 
 		name, uri = strings.TrimSpace(name), strings.TrimSpace(uri)
 		switch {
 		case name == "":
-			return nil, usageErrorf("slice-visuals: a --%s has no name: its first line names the visual", what)
+			return nil, usageErrorf("slice visuals: a --%s has no name: its first line names the visual", what)
 		case uri == "":
-			return nil, usageErrorf("slice-visuals: %q has no image: give its path on the line after the name", name)
+			return nil, usageErrorf("slice visuals: %q has no image: give its path on the line after the name", name)
 		case strings.Contains(uri, "\n"):
-			return nil, usageErrorf("slice-visuals: %q names more than one image: give each its own --%s", name, what)
+			return nil, usageErrorf("slice visuals: %q names more than one image: give each its own --%s", name, what)
 		case seen[name]:
-			return nil, usageErrorf("slice-visuals: two %s are named %q: give each its own name", whats, name)
+			return nil, usageErrorf("slice visuals: two %s are named %q: give each its own name", whats, name)
 		}
 		seen[name] = true
 		uri, hash, err := visualPath(name, uri)
@@ -208,7 +208,7 @@ func (h handIn) apply(current []store.VisualChange) ([]store.VisualChange, visua
 	for _, name := range h.removes {
 		i := visualIndex(items, name)
 		if i < 0 {
-			return nil, report, usageErrorf("slice-visuals: --remove %q names no visual filed: %s", name, filedNames(items))
+			return nil, report, usageErrorf("slice visuals: --remove %q names no visual filed: %s", name, filedNames(items))
 		}
 		items = slices.Delete(items, i, i+1)
 		report.removed = append(report.removed, name)
@@ -225,7 +225,7 @@ func (h handIn) apply(current []store.VisualChange) ([]store.VisualChange, visua
 	for _, b := range h.befores {
 		i := visualIndex(items, b.Name)
 		if i < 0 {
-			return nil, report, usageErrorf("slice-visuals: --before %q names no visual: %s, or give it with --visual in the same command", b.Name, filedNames(items))
+			return nil, report, usageErrorf("slice visuals: --before %q names no visual: %s, or give it with --visual in the same command", b.Name, filedNames(items))
 		}
 		items[i].BeforeURI, items[i].BeforeHash = b.URI, b.Hash
 		if !slices.Contains(report.added, b.Name) && !slices.Contains(report.updated, b.Name) {
@@ -264,13 +264,13 @@ func visualPath(name, uri string) (string, string, error) {
 	if !filepath.IsAbs(path) {
 		wd, err := getwd()
 		if err != nil {
-			return "", "", fmt.Errorf("slice-visuals: resolve %q against the working directory: %w", path, err)
+			return "", "", fmt.Errorf("slice visuals: resolve %q against the working directory: %w", path, err)
 		}
 		path = filepath.Join(wd, path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", "", usageErrorf("slice-visuals: %q: no image at %s: render it first, or hand in its absolute path", name, path)
+		return "", "", usageErrorf("slice visuals: %q: no image at %s: render it first, or hand in its absolute path", name, path)
 	}
 	sum := sha256.Sum256(data)
 	return path, hex.EncodeToString(sum[:]), nil

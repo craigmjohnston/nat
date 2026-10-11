@@ -18,7 +18,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
-// getwd is where a project-create given no --repo puts the project's agents:
+// getwd is where a project create given no --repo puts the project's agents:
 // the directory the command was typed in. Held as a variable so a test can
 // stand in for the one edge of it that cannot otherwise be reached.
 var getwd = os.Getwd
@@ -26,7 +26,7 @@ var getwd = os.Getwd
 // projectCreate creates a whole tracked project without the board: the project
 // row, the Slices database under it, its conventions on the page, and the entry
 // in local config that makes it a project this machine knows about. It is what
-// a session that has just workshopped a plan runs before `nat plan-apply` files
+// a session that has just workshopped a plan runs before `nat plan apply` files
 // that plan — the one step of the workflow that otherwise needed the TUI.
 //
 // It deliberately does not make the new project the active one. The active
@@ -36,7 +36,7 @@ var getwd = os.Getwd
 // opened, and it reads the config this wrote. Until then `--project` with the
 // ID this printed is how a session reaches the project it just made.
 func projectCreate(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("project-create", flag.ContinueOnError)
+	flags := flag.NewFlagSet("project create", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	repo := flags.String("repo", "", "where this project's agents work; defaults to the current directory")
 	description := flags.String("description", "", "the conventions to write on the project page; `-` reads them from stdin")
@@ -55,22 +55,22 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 		rest = []string{src}
 	}
 	if len(rest) != 1 {
-		return usageErrorf("project-create: want exactly one project name, given %d", len(rest))
+		return usageErrorf("project create: want exactly one project name, given %d", len(rest))
 	}
 	name := strings.TrimSpace(rest[0])
 	if name == "" {
-		return usageErrorf("project-create: the project name is empty")
+		return usageErrorf("project create: the project name is empty")
 	}
 	if *local && src != "" {
-		return usageErrorf("project-create: --local and --source are mutually exclusive")
+		return usageErrorf("project create: --local and --source are mutually exclusive")
 	}
 	if *planDir != "" && !*local && src == "" {
-		return usageErrorf("project-create: --plan-dir only means something with --local or --source: a plan in Notion is kept there")
+		return usageErrorf("project create: --plan-dir only means something with --local or --source: a plan in Notion is kept there")
 	}
-	// Both are settled before Notion is touched, so a project-create whose stdin
+	// Both are settled before Notion is touched, so a project create whose stdin
 	// cannot be read, or which has no directory to name, fails having created
 	// nothing.
-	info, err := briefText("project-create", "--description", *description, env.In)
+	info, err := briefText("project create", "--description", *description, env.In)
 	if err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	// so the repository is each task's own (Repo), worked out by its agent.
 	if src != "" {
 		if *repo != "" {
-			return usageErrorf("project-create: --repo means nothing with --source: each of a source project's tasks names its own repository")
+			return usageErrorf("project create: --repo means nothing with --source: each of a source project's tasks names its own repository")
 		}
 		return projectCreateSource(ctx, env, src, info, *planDir, *asJSON)
 	}
@@ -131,7 +131,7 @@ func projectCreate(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// projectCreateLocal is project-create for a project with no workspace behind
+// projectCreateLocal is project create for a project with no workspace behind
 // it, which touches Notion nowhere: no page, no projects database, no token. Its
 // ID is nat's own, shaped like a page ID so that everything which carries one
 // around cannot tell the two apart.
@@ -155,7 +155,7 @@ func projectCreateLocal(ctx context.Context, env Env, name, conventions, workdir
 }
 
 // createLocalProject is the one way a local project comes to exist: shared by
-// project-create --local and scratch-open, so there is no second way to be
+// project create --local and scratch open, so there is no second way to be
 // local. It returns the new ID and the entry as config now keeps it.
 func createLocalProject(ctx context.Context, env Env, name, conventions, workdir, planDir string) (string, config.ProjectConfig, error) {
 	return createPlanProject(ctx, env, config.ProjectConfig{Name: name, WorkingDir: workdir, Backend: config.BackendLocal}, conventions, planDir)
@@ -195,7 +195,7 @@ func createPlanProject(ctx context.Context, env Env, entry config.ProjectConfig,
 	return id, cfg.Projects[id], nil
 }
 
-// projectCreateSource is project-create for a source project: a plan file of
+// projectCreateSource is project create for a source project: a plan file of
 // nat's own whose tasks hang off the containers of the plugin named. The
 // plugin must be installed and describe itself in this build's protocol before
 // anything is written — a project over a plugin that cannot answer is one
@@ -208,7 +208,7 @@ func createPlanProject(ctx context.Context, env Env, entry config.ProjectConfig,
 func projectCreateSource(ctx context.Context, env Env, srcName, conventions, planDir string, asJSON bool) error {
 	d, err := describePlugin(ctx, env, srcName)
 	if err != nil {
-		return fmt.Errorf("project-create: %w", err)
+		return fmt.Errorf("project create: %w", err)
 	}
 	name := cmp.Or(strings.TrimSpace(d.Title), srcName)
 	entry := config.ProjectConfig{Backend: config.BackendSource, Source: srcName}

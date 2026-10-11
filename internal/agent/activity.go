@@ -23,7 +23,7 @@ const (
 	// ActivityWorking is an agent getting on with the slice.
 	ActivityWorking
 	// ActivityWaiting is one marked as stopped and needing the user (`nat
-	// agent-waiting`, run by the embedded mod), and not yet marked back at work.
+	// agent waiting`, run by the embedded mod), and not yet marked back at work.
 	ActivityWaiting
 	// ActivityGone is a pane whose command has exited. It is a state a pane can
 	// only be listed in where tmux's remain-on-exit is on; an agent whose pane

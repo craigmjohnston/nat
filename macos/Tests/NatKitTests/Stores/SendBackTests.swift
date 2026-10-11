@@ -3,7 +3,7 @@ import XCTest
 import NatFixtures
 
 /// Send back to agent: what it offers to say, what the agent is told, and the
-/// order it writes in — the record (`slice-resume`) before the agent hears.
+/// order it writes in — the record (`slice resume`) before the agent hears.
 @MainActor
 final class SendBackTests: XCTestCase {
     private var approved: Slice { Fixtures.slice(Fixtures.approveSliceID) }
@@ -38,7 +38,7 @@ final class SendBackTests: XCTestCase {
         XCTAssertTrue(prompt.hasPrefix("I am sending this task back to you for more work:\n\nRename the helper.\n\n"))
         XCTAssertTrue(prompt.contains("When it is done and committed, hand the slice back"))
         XCTAssertTrue(prompt.hasSuffix(
-            "nat complete-slice s --project p --branch slice/x --summary '<what you changed>'\n"
+            "nat slice complete s --project p --branch slice/x --summary '<what you changed>'\n"
                 + "\nThat hand-back pushes the branch: do not push it yourself.\n"))
         XCTAssertTrue(
             sendBackPrompt(note: "x", branch: nil, handBack: handBack).contains("--branch <your branch>"),
@@ -74,7 +74,7 @@ final class SendBackTests: XCTestCase {
         XCTAssertTrue(sent)
         XCTAssertEqual(
             client.writes,
-            ["slice-resume \(Fixtures.approveSliceID) Fix the test.", "slice-launch \(Fixtures.approveSliceID)"],
+            ["slice resume \(Fixtures.approveSliceID) Fix the test.", "slice launch \(Fixtures.approveSliceID)"],
             "the record first, the note trimmed")
         XCTAssertNil(appModel.sliceActions.error(.sendBack, sliceID: Fixtures.approveSliceID))
     }
@@ -89,7 +89,7 @@ final class SendBackTests: XCTestCase {
         XCTAssertTrue(sent)
         XCTAssertEqual(
             client.writes,
-            ["slice-resume \(Fixtures.approveSliceID) Fix the test.", "agent-send \(Fixtures.approveSliceID)"])
+            ["slice resume \(Fixtures.approveSliceID) Fix the test.", "agent send \(Fixtures.approveSliceID)"])
     }
 
     func testAnEmptyNoteSendsNothingAndSaysWhy() async {

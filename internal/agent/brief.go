@@ -4,7 +4,7 @@ import "strings"
 
 // BriefSections renders a slice's own body, its milestone's digest and the
 // project's conventions as the three sections every brief shows them in — the
-// CLI's `start-slice` and `next-slice` output, and a board launch's opening
+// CLI's `slice start` and `slice next` output, and a board launch's opening
 // prompt — so an agent reads the same document however it was told about the
 // slice.
 //

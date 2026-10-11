@@ -40,15 +40,15 @@ func acceptEnv(t *testing.T) (Env, *strings.Builder, *config.Config) {
 func propose(t *testing.T, env Env, workspace, name, doc string) {
 	t.Helper()
 	env.In = strings.NewReader(doc)
-	if err := Run(context.Background(), []string{"plan-propose", "--workspace", workspace, "--name", name}, env); err != nil {
-		t.Fatalf("plan-propose: %v", err)
+	if err := Run(context.Background(), []string{"plan", "propose", "--workspace", workspace, "--name", name}, env); err != nil {
+		t.Fatalf("plan propose: %v", err)
 	}
 }
 
 func TestPlanProposalIsNullUntilOneIsProposed(t *testing.T) {
 	env, out, _ := acceptEnv(t)
-	if err := Run(context.Background(), []string{"plan-proposal", "--workspace", "ws-1", "--json"}, env); err != nil {
-		t.Fatalf("plan-proposal: %v", err)
+	if err := Run(context.Background(), []string{"plan", "proposal", "--workspace", "ws-1", "--json"}, env); err != nil {
+		t.Fatalf("plan proposal: %v", err)
 	}
 	var got proposalAnswer
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil || got.Proposal != nil {
@@ -60,8 +60,8 @@ func TestPlanProposalReadsWhatWasProposed(t *testing.T) {
 	env, out, _ := acceptEnv(t)
 	propose(t, env, "ws-1", "importer", validProposalDoc)
 	out.Reset()
-	if err := Run(context.Background(), []string{"plan-proposal", "--workspace", "ws-1"}, env); err != nil {
-		t.Fatalf("plan-proposal: %v", err)
+	if err := Run(context.Background(), []string{"plan", "proposal", "--workspace", "ws-1"}, env); err != nil {
+		t.Fatalf("plan proposal: %v", err)
 	}
 	var got proposalAnswer
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -82,10 +82,10 @@ func TestPlanProposalRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := map[string][]string{
-		"no workspace": {"plan-proposal"},
-		"extra args":   {"plan-proposal", "--workspace", "ws-1", "stray"},
-		"corrupt file": {"plan-proposal", "--workspace", "bad"},
-		"unknown flag": {"plan-proposal", "--workspace", "ws-1", "--nope"},
+		"no workspace": {"plan", "proposal"},
+		"extra args":   {"plan", "proposal", "--workspace", "ws-1", "stray"},
+		"corrupt file": {"plan", "proposal", "--workspace", "bad"},
+		"unknown flag": {"plan", "proposal", "--workspace", "ws-1", "--nope"},
 	}
 	for name, args := range cases {
 		if err := Run(context.Background(), args, env); err == nil {
@@ -95,24 +95,24 @@ func TestPlanProposalRefusals(t *testing.T) {
 	prev := stateDir
 	stateDir = func() (string, error) { return "", errors.New("no state dir") }
 	defer func() { stateDir = prev }()
-	if err := Run(context.Background(), []string{"plan-proposal", "--workspace", "ws-1"}, env); err == nil {
+	if err := Run(context.Background(), []string{"plan", "proposal", "--workspace", "ws-1"}, env); err == nil {
 		t.Error("an unresolvable state directory should refuse")
 	}
-	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil ||
 		!strings.Contains(err.Error(), "resolve the proposal file") {
-		t.Errorf("err = %v, want plan-accept refused at the proposal file", err)
+		t.Errorf("err = %v, want plan accept refused at the proposal file", err)
 	}
 }
 
-// plan-proposal reads the same proposal back by --project as by --workspace.
+// plan proposal reads the same proposal back by --project as by --workspace.
 func TestPlanProposalWithProjectReadsWhatWasProposed(t *testing.T) {
 	env, out, _ := acceptEnv(t)
 	id := makeLocalProject(t, env)
 	proposeToProject(t, env, id, validProposalDoc)
 	out.Reset()
 
-	if err := Run(context.Background(), []string{"plan-proposal", "--project", id}, env); err != nil {
-		t.Fatalf("plan-proposal --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "proposal", "--project", id}, env); err != nil {
+		t.Fatalf("plan proposal --project: %v", err)
 	}
 	var got proposalAnswer
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -124,14 +124,14 @@ func TestPlanProposalWithProjectReadsWhatWasProposed(t *testing.T) {
 }
 
 // Both or neither of --workspace/--project is a usage error for
-// plan-proposal too.
+// plan proposal too.
 func TestPlanProposalRequiresExactlyOneOfWorkspaceOrProject(t *testing.T) {
 	env, _, _ := acceptEnv(t)
-	if err := Run(context.Background(), []string{"plan-proposal"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "proposal"}, env); err == nil ||
 		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
 		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
 	}
-	if err := Run(context.Background(), []string{"plan-proposal", "--workspace", "ws-1", "--project", "p1"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "proposal", "--workspace", "ws-1", "--project", "p1"}, env); err == nil ||
 		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
 		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
 	}
@@ -144,8 +144,8 @@ func TestPlanAcceptMakesALocalProjectOfTheProposal(t *testing.T) {
 	*nudges = 0
 	out.Reset()
 
-	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "  My Importer ", "--json"}, env); err != nil {
-		t.Fatalf("plan-accept: %v", err)
+	if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "  My Importer ", "--json"}, env); err != nil {
+		t.Fatalf("plan accept: %v", err)
 	}
 	var got planAcceptedJSON
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -182,8 +182,8 @@ func TestPlanAcceptMarkdown(t *testing.T) {
 	env, out, _ := acceptEnv(t)
 	propose(t, env, "ws-1", "importer", validProposalDoc)
 	out.Reset()
-	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "Mine"}, env); err != nil {
-		t.Fatalf("plan-accept: %v", err)
+	if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "Mine"}, env); err != nil {
+		t.Fatalf("plan accept: %v", err)
 	}
 	if !strings.Contains(out.String(), `Accepted 1 milestone and 2 slices as "Mine"`) {
 		t.Errorf("output = %q", out.String())
@@ -200,12 +200,12 @@ func TestPlanAcceptRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := map[string][]string{
-		"no workspace": {"plan-accept", "--name", "N"},
-		"no name":      {"plan-accept", "--workspace", "ws-1", "--name", "  "},
-		"extra args":   {"plan-accept", "--workspace", "ws-1", "--name", "N", "stray"},
-		"no proposal":  {"plan-accept", "--workspace", "ghost", "--name", "N"},
-		"invalid plan": {"plan-accept", "--workspace", "empty", "--name", "N"},
-		"unknown flag": {"plan-accept", "--workspace", "ws-1", "--name", "N", "--nope"},
+		"no workspace": {"plan", "accept", "--name", "N"},
+		"no name":      {"plan", "accept", "--workspace", "ws-1", "--name", "  "},
+		"extra args":   {"plan", "accept", "--workspace", "ws-1", "--name", "N", "stray"},
+		"no proposal":  {"plan", "accept", "--workspace", "ghost", "--name", "N"},
+		"invalid plan": {"plan", "accept", "--workspace", "empty", "--name", "N"},
+		"unknown flag": {"plan", "accept", "--workspace", "ws-1", "--name", "N", "--nope"},
 	}
 	for name, args := range cases {
 		if err := Run(context.Background(), args, env); err == nil {
@@ -221,7 +221,7 @@ func TestPlanAcceptRefusals(t *testing.T) {
 }
 
 // makeLocalProject creates a local project through the same path
-// project-create --local uses, inside an acceptEnv-style env, and returns
+// project create --local uses, inside an acceptEnv-style env, and returns
 // its ID.
 func makeLocalProject(t *testing.T, env Env) string {
 	t.Helper()
@@ -229,13 +229,13 @@ func makeLocalProject(t *testing.T, env Env) string {
 	prevOut := env.Out
 	env.Out = &out
 	defer func() { env.Out = prevOut }()
-	if err := Run(context.Background(), []string{"project-create", "Tracked project", "--local",
+	if err := Run(context.Background(), []string{"project", "create", "Tracked project", "--local",
 		"--repo", "/src/tracked", "--json"}, env); err != nil {
-		t.Fatalf("project-create --local: %v", err)
+		t.Fatalf("project create --local: %v", err)
 	}
 	var got projectCreatedJSON
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
-		t.Fatalf("project-create output not JSON: %v\n%s", err, out.String())
+		t.Fatalf("project create output not JSON: %v\n%s", err, out.String())
 	}
 	return got.Project.ID
 }
@@ -245,8 +245,8 @@ func makeLocalProject(t *testing.T, env Env) string {
 func proposeToProject(t *testing.T, env Env, projectID, doc string) {
 	t.Helper()
 	env.In = strings.NewReader(doc)
-	if err := Run(context.Background(), []string{"plan-propose", "--project", projectID}, env); err != nil {
-		t.Fatalf("plan-propose --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "propose", "--project", projectID}, env); err != nil {
+		t.Fatalf("plan propose --project: %v", err)
 	}
 }
 
@@ -261,8 +261,8 @@ func TestPlanAcceptWithProjectFilesIntoTheExistingProject(t *testing.T) {
 	*nudges = 0
 	out.Reset()
 
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id, "--json"}, env); err != nil {
-		t.Fatalf("plan-accept --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id, "--json"}, env); err != nil {
+		t.Fatalf("plan accept --project: %v", err)
 	}
 	var got planAcceptedJSON
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -301,7 +301,7 @@ func TestPlanAcceptWithProjectRefusesAName(t *testing.T) {
 	id := makeLocalProject(t, env)
 	proposeToProject(t, env, id, validProposalDoc)
 
-	err := Run(context.Background(), []string{"plan-accept", "--project", id, "--name", "Nope"}, env)
+	err := Run(context.Background(), []string{"plan", "accept", "--project", id, "--name", "Nope"}, env)
 	if err == nil || !strings.Contains(err.Error(), "--name") {
 		t.Errorf("err = %v, want it to name --name as refused with --project", err)
 	}
@@ -310,11 +310,11 @@ func TestPlanAcceptWithProjectRefusesAName(t *testing.T) {
 // Both or neither of --workspace/--project is a usage error.
 func TestPlanAcceptRequiresExactlyOneOfWorkspaceOrProject(t *testing.T) {
 	env, _, _ := acceptEnv(t)
-	if err := Run(context.Background(), []string{"plan-accept"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "accept"}, env); err == nil ||
 		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
 		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
 	}
-	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--project", "p1", "--name", "N"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--project", "p1", "--name", "N"}, env); err == nil ||
 		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
 		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
 	}
@@ -332,7 +332,7 @@ func TestPlanAcceptWithProjectRefusesAPlanTheProjectHasOutgrown(t *testing.T) {
 	// Rewrite the proposal file underneath, as if a plan that validated
 	// against the project when it was proposed no longer does — here, a
 	// milestone it names was never created. --project's validation at
-	// accept-time has to catch this, exactly as plan-apply would.
+	// accept-time has to catch this, exactly as plan apply would.
 	dir, err := stateDir()
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +342,7 @@ func TestPlanAcceptWithProjectRefusesAPlanTheProjectHasOutgrown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil {
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id}, env); err == nil {
 		t.Error("expected a refusal for a milestone the project does not have")
 	}
 }
@@ -352,7 +352,7 @@ func TestPlanAcceptWithProjectRefusesAPlanTheProjectHasOutgrown(t *testing.T) {
 // never reached.
 func TestPlanAcceptRefusesAnUnknownProject(t *testing.T) {
 	env, _, _ := acceptEnv(t)
-	err := Run(context.Background(), []string{"plan-accept", "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"plan", "accept", "--project", "nope"}, env)
 	if err == nil {
 		t.Fatal("expected a refusal for an unknown project")
 	}
@@ -363,7 +363,7 @@ func TestPlanAcceptRefusesAnUnknownProject(t *testing.T) {
 func TestPlanAcceptWithProjectRefusesWithNoProposal(t *testing.T) {
 	env, _, _ := acceptEnv(t)
 	id := makeLocalProject(t, env)
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil {
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id}, env); err == nil {
 		t.Error("expected a refusal for a project with no proposal")
 	}
 }
@@ -382,7 +382,7 @@ func TestPlanAcceptWithProjectFailsWhereTheStoreCannotBeOpened(t *testing.T) {
 	}
 	stampNewerSchema(t, path)
 
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil {
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id}, env); err == nil {
 		t.Error("expected a refusal for a plan written by a newer nat")
 	}
 }
@@ -428,7 +428,7 @@ func TestPlanAcceptWithProjectReportsAFailedApply(t *testing.T) {
 	}
 	_ = db.Close()
 
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id}, env); err == nil ||
 		!strings.Contains(err.Error(), "create the slice") {
 		t.Fatalf("err = %v, want the failed apply surfaced", err)
 	}
@@ -446,8 +446,8 @@ func TestPlanAcceptWithProjectMarkdown(t *testing.T) {
 	proposeToProject(t, env, id, validProposalDoc)
 	out.Reset()
 
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err != nil {
-		t.Fatalf("plan-accept --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id}, env); err != nil {
+		t.Fatalf("plan accept --project: %v", err)
 	}
 	if !strings.Contains(out.String(), `Accepted 1 milestone and 2 slices into "Tracked project"`) {
 		t.Errorf("output = %q", out.String())
@@ -458,7 +458,7 @@ func TestPlanAcceptFailsWhereTheProjectCannotBeMade(t *testing.T) {
 	env, _, _ := acceptEnv(t)
 	propose(t, env, "ws-1", "importer", validProposalDoc)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, errors.New("config unreadable") }
-	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
+	if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
 		t.Error("want the config failure surfaced")
 	}
 }
@@ -513,7 +513,7 @@ func TestPlanAcceptReportsAPlanThatBreaksAfterItWasMade(t *testing.T) {
 			env, _, _ := acceptEnv(t)
 			propose(t, env, "ws-1", "importer", validProposalDoc)
 			damagePlanOnSave(t, &env, damage(t))
-			if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
+			if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
 				t.Fatal("want the failure surfaced")
 			}
 			dir, _ := stateDir()
@@ -536,15 +536,15 @@ func TestPlanAcceptFailsWhereTheProjectCannotBeReadBack(t *testing.T) {
 		}
 		return load()
 	}
-	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
+	if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
 		t.Error("want the config failure surfaced")
 	}
 }
 
-// plan-accept's last nudge fires only once the proposal file is gone, on both
+// plan accept's last nudge fires only once the proposal file is gone, on both
 // halves: whatever it wakes reads the plan in and the proposal dropped
 // together, never the filed plan with the accepted proposal still beside it.
-// (The workspace half's project-create nudges earlier, before the plan is in,
+// (The workspace half's project create nudges earlier, before the plan is in,
 // which is a true state of its own that the last nudge then supersedes.)
 func TestPlanAcceptNudgesOnlyOnceTheProposalIsGone(t *testing.T) {
 	for _, tc := range []struct {
@@ -553,12 +553,12 @@ func TestPlanAcceptNudgesOnlyOnceTheProposalIsGone(t *testing.T) {
 	}{
 		{"workspace", func(t *testing.T, env Env) (string, []string) {
 			propose(t, env, "ws-1", "importer", validProposalDoc)
-			return "ws-1", []string{"plan-accept", "--workspace", "ws-1", "--name", "Importer"}
+			return "ws-1", []string{"plan", "accept", "--workspace", "ws-1", "--name", "Importer"}
 		}},
 		{"project", func(t *testing.T, env Env) (string, []string) {
 			id := makeLocalProject(t, env)
 			proposeToProject(t, env, id, validProposalDoc)
-			return id, []string{"plan-accept", "--project", id}
+			return id, []string{"plan", "accept", "--project", id}
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -575,7 +575,7 @@ func TestPlanAcceptNudgesOnlyOnceTheProposalIsGone(t *testing.T) {
 			}
 
 			if err := Run(context.Background(), args, env); err != nil {
-				t.Fatalf("plan-accept: %v", err)
+				t.Fatalf("plan accept: %v", err)
 			}
 			if nudges == 0 {
 				t.Fatal("accepting should nudge the board")
@@ -595,10 +595,10 @@ func TestPlanAcceptRefusesWhereTheProposalCannotBeClaimed(t *testing.T) {
 	for _, half := range []string{"workspace", "project"} {
 		t.Run(half, func(t *testing.T) {
 			env, _, saved := acceptEnv(t)
-			key, args := "ws-1", []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}
+			key, args := "ws-1", []string{"plan", "accept", "--workspace", "ws-1", "--name", "N"}
 			if half == "project" {
 				key = makeLocalProject(t, env)
-				args = []string{"plan-accept", "--project", key}
+				args = []string{"plan", "accept", "--project", key}
 				proposeToProject(t, env, key, validProposalDoc)
 			} else {
 				propose(t, env, key, "importer", validProposalDoc)
@@ -631,10 +631,10 @@ func TestPlanAcceptAcceptsAProposalOnce(t *testing.T) {
 	env, out, _ := acceptEnv(t)
 	id := makeLocalProject(t, env)
 	proposeToProject(t, env, id, validProposalDoc)
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err != nil {
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id}, env); err != nil {
 		t.Fatalf("first accept: %v", err)
 	}
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id}, env); err == nil ||
 		!strings.Contains(err.Error(), "no proposal to accept for "+id) {
 		t.Fatalf("err = %v, want the second accept to find no proposal", err)
 	}
@@ -662,12 +662,12 @@ func TestPlanAcceptSucceedsThoughTheClaimedProposalWillNotBeRemoved(t *testing.T
 	}
 	defer func() { _ = os.Chmod(proposals, 0o755) }()
 
-	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err != nil {
-		t.Fatalf("plan-accept: %v", err)
+	if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "N"}, env); err != nil {
+		t.Fatalf("plan accept: %v", err)
 	}
 	out.Reset()
-	if err := Run(context.Background(), []string{"plan-proposal", "--workspace", "ws-1"}, env); err != nil {
-		t.Fatalf("plan-proposal: %v", err)
+	if err := Run(context.Background(), []string{"plan", "proposal", "--workspace", "ws-1"}, env); err != nil {
+		t.Fatalf("plan proposal: %v", err)
 	}
 	if !strings.Contains(out.String(), `"proposal": null`) {
 		t.Errorf("the accepted proposal is still readable: %s", out.String())
@@ -698,7 +698,7 @@ func TestPlanAcceptFailingPutsTheProposalBackUnlessARevisionLanded(t *testing.T)
 				lastSawProposal = err == nil
 			}
 
-			if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
+			if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
 				t.Fatal("want the failed apply surfaced")
 			}
 			got, err := os.ReadFile(path)
@@ -731,7 +731,7 @@ func TestPlanAcceptKeepsAProposalItCannotPutBack(t *testing.T) {
 	})
 	defer func() { _ = os.Chmod(proposals, 0o755) }()
 
-	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
+	if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "N"}, env); err == nil {
 		t.Fatal("want the failed apply surfaced")
 	}
 	if kept, _ := filepath.Glob(filepath.Join(proposals, "ws-1.json.accepting-*")); len(kept) != 1 {
@@ -748,7 +748,7 @@ func TestPlanAcceptRefusesAProposalThatWillNotParseAndLeavesIt(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "N"}, env)
+	err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "N"}, env)
 	if err == nil || !strings.Contains(err.Error(), "not valid JSON") {
 		t.Fatalf("err = %v, want the parse refusal", err)
 	}

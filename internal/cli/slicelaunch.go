@@ -32,7 +32,7 @@ import (
 // waits on its review and nothing else. A Done slice is never launched: its
 // work is merged, and new work on it is a new slice.
 func sliceLaunch(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-launch", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice launch", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	model := flags.String("model", "", "Claude model for the agent, overriding the config's slice_agent")
@@ -44,15 +44,15 @@ func sliceLaunch(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-launch: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice launch: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-launch", rest[0])
+	id, err := pageID("slice launch", rest[0])
 	if err != nil {
 		return err
 	}
 	frontend, err := agent.ParseFrontend(*frontendFlag)
 	if err != nil {
-		return usageErrorf("slice-launch: %v", err)
+		return usageErrorf("slice launch: %v", err)
 	}
 
 	cfg, projectID, project, err := env.projectFor(*projectRef)

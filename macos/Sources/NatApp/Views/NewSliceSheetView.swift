@@ -3,7 +3,7 @@ import NatKit
 
 /// The sheet the plus toolbar button opens: a small native form for filing
 /// one new slice under a milestone of the active plan, Todo and unassigned —
-/// the macOS app's answer to `nat slice-add`. It stays thin: the one thing
+/// the macOS app's answer to `nat slice add`. It stays thin: the one thing
 /// worth deciding here is when "Add slice" is enabled, which is a title and a
 /// milestone both present.
 struct NewSliceSheetView: View {
@@ -18,7 +18,7 @@ struct NewSliceSheetView: View {
     /// which nat files under the project's unfiled one.
     var milestoneOptional = false
     /// A source project's container the task goes under — fixed, in place of
-    /// the milestone picker, and filed with `slice-add --container`.
+    /// the milestone picker, and filed with `slice add --container`.
     var container: Container?
     let onClose: () -> Void
     let onCreated: () -> Void

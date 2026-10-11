@@ -38,7 +38,7 @@ human has read the diff.
   comment quoting diff lines has no length bound and a shell's argument list
   does.
 - `EditPRBody(dir, ref, body)` — `gh pr edit <ref> --body-file -`, the
-  body on stdin as `CommentPR`'s is, for `pr-edit`.
+  body on stdin as `CommentPR`'s is, for `pr edit`.
 - `ReadPRs(BatchQuery)` — **the** polling read: one `gh api graphql -f
   query=<document>` for every pull request (by number), every branch (by
   name — an ad hoc session's) and at most one pull request in full detail
@@ -136,7 +136,7 @@ tick is 120.
   commits(last: 1)` → `statusCheckRollup { state contexts(first: 30) }`
   (CheckRun: name, status, conclusion, detailsUrl,
   checkSuite.workflowRun.workflow.name; StatusContext: context, state,
-  targetUrl); `detail` is the rest of what `pr-view` prints — title, body,
+  targetUrl); `detail` is the rest of what `pr view` prints — title, body,
   author, head ref and oid, additions, deletions, changed files,
   `allCommits: commits { totalCount }` (a count, never the commits),
   `reviews(last: 100)`, `comments(last: 100)` (the newest are the ones a

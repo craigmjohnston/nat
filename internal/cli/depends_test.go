@@ -79,15 +79,15 @@ func dependsOn(api *fakeAPI, id string, on ...string) {
 	}
 }
 
-// next-slice steps over a blocked slice rather than stopping at it: the work
+// slice next steps over a blocked slice rather than stopping at it: the work
 // below it may well be ready, and a plan that halted at the first blocked slice
 // would hand out nothing until somebody noticed.
 func TestNextSliceSkipsABlockedSlice(t *testing.T) {
 	api := dependsAPI(t)
 	env, out := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("next-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "next", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice next: %v", err)
 	}
 
 	if len(api.updates) != 1 || api.updates[0].id != depBlocker {
@@ -105,8 +105,8 @@ func TestNextSliceHandsOutASliceWhoseDependenciesAreDone(t *testing.T) {
 	dependsOn(api, depWaiting, depDone)
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("next-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "next", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice next: %v", err)
 	}
 
 	if len(api.updates) != 1 || api.updates[0].id != depWaiting {
@@ -128,7 +128,7 @@ func TestNextSliceRefusesWhenEveryCandidateIsBlocked(t *testing.T) {
 	dependsOn(api, depSpare, depStuck)
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "next", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "is blocked") {
 		t.Fatalf("err = %v, want the blocking said plainly", err)
@@ -155,8 +155,8 @@ func TestNextSliceIgnoresADependencyThePlanDoesNotHold(t *testing.T) {
 	dependsOn(api, depWaiting, depGone)
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"next-slice", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("next-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "next", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice next: %v", err)
 	}
 
 	if len(api.updates) != 1 || api.updates[0].id != depWaiting {
@@ -164,13 +164,13 @@ func TestNextSliceIgnoresADependencyThePlanDoesNotHold(t *testing.T) {
 	}
 }
 
-// start-slice was pointed at the slice, so there is nothing to skip: it refuses,
+// slice start was pointed at the slice, so there is nothing to skip: it refuses,
 // names what the slice waits on, and writes nothing.
 func TestStartSliceRefusesABlockedSlice(t *testing.T) {
 	api := dependsAPI(t)
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"start-slice", depWaiting, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "start", depWaiting, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), `"Render the board" waits on 1 unfinished slice`) {
 		t.Fatalf("err = %v, want the wait named", err)
@@ -188,8 +188,8 @@ func TestStartSliceClaimsASliceWhoseDependenciesAreDone(t *testing.T) {
 	dependsOn(api, depWaiting, depDone)
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"start-slice", depWaiting, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("start-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "start", depWaiting, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice start: %v", err)
 	}
 
 	if len(api.updates) != 1 || api.updates[0].id != depWaiting {
@@ -204,8 +204,8 @@ func TestStartSliceIgnoresAnUnreadableDependency(t *testing.T) {
 	dependsOn(api, depWaiting, depGone)
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	if err := Run(context.Background(), []string{"start-slice", depWaiting, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("start-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "start", depWaiting, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice start: %v", err)
 	}
 
 	if len(api.updates) != 1 || api.updates[0].id != depWaiting {
@@ -217,8 +217,8 @@ func TestSliceDependsRecordsWhatASliceWaitsOn(t *testing.T) {
 	api := dependsAPI(t)
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-depends: %v", err)
+	if err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice depends: %v", err)
 	}
 
 	if len(api.updates) != 1 {
@@ -242,9 +242,9 @@ func TestSliceDependsRecordsEachSliceOnce(t *testing.T) {
 	api := dependsAPI(t)
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depBlocker, "--on", depSpare, "--on", depSpare, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--on", depBlocker, "--on", depSpare, "--on", depSpare, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-depends: %v", err)
+		t.Fatalf("slice depends: %v", err)
 	}
 
 	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, []string{depBlocker, depSpare}) {
@@ -256,8 +256,8 @@ func TestSliceDependsClears(t *testing.T) {
 	api := dependsAPI(t)
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-depends: %v", err)
+	if err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice depends: %v", err)
 	}
 
 	if got := dependencyIDsOf(t, api.updates[0]); len(got) != 0 {
@@ -274,9 +274,9 @@ func TestSliceDependsClearsBeforeAdding(t *testing.T) {
 	api := dependsAPI(t)
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--clear", "--on", depSpare, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--clear", "--on", depSpare, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-depends: %v", err)
+		t.Fatalf("slice depends: %v", err)
 	}
 
 	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, []string{depSpare}) {
@@ -290,9 +290,9 @@ func TestSliceDependsSaysWhenNothingIsOutstanding(t *testing.T) {
 	api := dependsAPI(t)
 	env, out := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--clear", "--on", depDone, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--clear", "--on", depDone, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-depends: %v", err)
+		t.Fatalf("slice depends: %v", err)
 	}
 
 	if !strings.Contains(out.String(), "Waits on 1 slice, all Done — it is not blocked.") {
@@ -315,8 +315,8 @@ func TestSliceDependsDropsADependencyItCannotRead(t *testing.T) {
 	dependsOn(api, depWaiting, depGone)
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-depends: %v", err)
+	if err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice depends: %v", err)
 	}
 
 	if strings.Contains(out.String(), depGone) {
@@ -372,8 +372,8 @@ func TestDependsMarkdownReportsAnUnresolvedDependency(t *testing.T) {
 func TestSliceDependsJSON(t *testing.T) {
 	env, out := testEnv(testConfig(t), dependsAPI(t))
 
-	if err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depSpare, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-depends: %v", err)
+	if err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--on", depSpare, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice depends: %v", err)
 	}
 
 	var doc dependsJSON
@@ -398,7 +398,7 @@ func TestSliceDependsRefusesSelfDependency(t *testing.T) {
 	api := dependsAPI(t)
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depWaiting, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--on", depWaiting, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "cannot depend on itself") {
 		t.Fatalf("err = %v, want the self-dependency refused", err)
@@ -414,7 +414,7 @@ func TestSliceDependsRefusesAnUnreadableSlice(t *testing.T) {
 	api := dependsAPI(t)
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depGone, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--on", depGone, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Fatalf("err = %v, want the unreadable dependency named", err)
@@ -432,7 +432,7 @@ func TestSliceDependsReportsAFailedSliceRead(t *testing.T) {
 	api := dependsAPI(t)
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depGone, "--clear", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", depGone, "--clear", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Fatalf("err = %v, want the unreadable slice named", err)
@@ -448,8 +448,8 @@ func TestSliceDependsReportsAFailedCycleCheck(t *testing.T) {
 	cfg := testConfig(t)
 	env, _ := testEnv(cfg, api)
 	if err := Run(context.Background(),
-		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-depends (hydrate): %v", err)
+		[]string{"slice", "depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice depends (hydrate): %v", err)
 	}
 
 	path, err := store.LocalPath("project-1")
@@ -467,7 +467,7 @@ func TestSliceDependsReportsAFailedCycleCheck(t *testing.T) {
 
 	env2, _ := testEnv(cfg, api)
 	err = Run(context.Background(),
-		[]string{"slice-depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env2)
+		[]string{"slice", "depends", depWaiting, "--on", depSpare, "--project", "project-1"}, env2)
 
 	if err == nil || !strings.Contains(err.Error(), "load slices") {
 		t.Fatalf("err = %v, want the broken read reported", err)
@@ -482,8 +482,8 @@ func TestSliceDependsReportsAFailedLocalWrite(t *testing.T) {
 	cfg := testConfig(t)
 	env, _ := testEnv(cfg, api)
 	if err := Run(context.Background(),
-		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-depends (hydrate): %v", err)
+		[]string{"slice", "depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice depends (hydrate): %v", err)
 	}
 
 	path, err := store.LocalPath("project-1")
@@ -501,7 +501,7 @@ func TestSliceDependsReportsAFailedLocalWrite(t *testing.T) {
 
 	env2, _ := testEnv(cfg, api)
 	err = Run(context.Background(),
-		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env2)
+		[]string{"slice", "depends", depWaiting, "--clear", "--project", "project-1"}, env2)
 
 	if err == nil || !strings.Contains(err.Error(), "record the dependencies") {
 		t.Fatalf("err = %v, want the failed write reported", err)
@@ -514,12 +514,12 @@ func TestSliceDependsMisuse(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"no slice", []string{"slice-depends", "--on", depBlocker, "--project", "project-1"}, "want exactly one slice"},
-		{"two slices", []string{"slice-depends", depWaiting, depBlocker, "--on", depSpare, "--project", "project-1"}, "want exactly one slice"},
-		{"nothing to record", []string{"slice-depends", depWaiting, "--project", "project-1"}, "nothing to record"},
-		{"a slice that is not one", []string{"slice-depends", "nope", "--clear", "--project", "project-1"}, "is not a slice"},
-		{"a dependency that is not one", []string{"slice-depends", depWaiting, "--on", "nope", "--project", "project-1"}, "is not a slice"},
-		{"an unknown flag", []string{"slice-depends", depWaiting, "--nope", "--project", "project-1"}, "slice-depends:"},
+		{"no slice", []string{"slice", "depends", "--on", depBlocker, "--project", "project-1"}, "want exactly one slice"},
+		{"two slices", []string{"slice", "depends", depWaiting, depBlocker, "--on", depSpare, "--project", "project-1"}, "want exactly one slice"},
+		{"nothing to record", []string{"slice", "depends", depWaiting, "--project", "project-1"}, "nothing to record"},
+		{"a slice that is not one", []string{"slice", "depends", "nope", "--clear", "--project", "project-1"}, "is not a slice"},
+		{"a dependency that is not one", []string{"slice", "depends", depWaiting, "--on", "nope", "--project", "project-1"}, "is not a slice"},
+		{"an unknown flag", []string{"slice", "depends", depWaiting, "--nope", "--project", "project-1"}, "slice depends:"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -552,8 +552,8 @@ func TestSliceDependsSucceedsLocallyDespiteAFailedPush(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(),
-		[]string{"slice-depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-depends: %v", err)
+		[]string{"slice", "depends", depWaiting, "--clear", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice depends: %v", err)
 	}
 
 	path, err := store.LocalPath("project-1")
@@ -583,20 +583,20 @@ func TestSliceDependsReportsAFailedRead(t *testing.T) {
 	api.getErr = errors.New("notion is down")
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-depends", depWaiting, "--on", depGone, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "depends", depWaiting, "--on", depGone, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failing step named", err)
 	}
 }
 
-// slice-add files the dependency with the slice, so a slice queued behind
+// slice add files the dependency with the slice, so a slice queued behind
 // another never exists unblocked even for a moment.
 func TestSliceAddRecordsDependencies(t *testing.T) {
 	api := dependsAPI(t)
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-add", "Polish the board",
+	err := Run(context.Background(), []string{"slice", "add", "Polish the board",
 		"--milestone", "M2: Board", "--depends-on", depWaiting, "--depends-on", "https://notion.so/Style-the-board", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "is not a slice") {
 		t.Fatalf("err = %v, want the slug-only URL refused", err)
@@ -611,10 +611,10 @@ func TestSliceAddRecordsDependencies(t *testing.T) {
 	api = dependsAPI(t)
 	api.pages[outsideDepID] = []notion.Page{slicePage(outsideDepID, "Elsewhere", notion.SliceTodo, "", "", "")}
 	env, _ = testEnv(testConfig(t), api)
-	err = Run(context.Background(), []string{"slice-add", "Polish the board",
+	err = Run(context.Background(), []string{"slice", "add", "Polish the board",
 		"--milestone", "M2: Board", "--depends-on", outsideDepID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-add: %v", err)
+		t.Fatalf("slice add: %v", err)
 	}
 
 	if len(api.creates) != 1 {
@@ -626,15 +626,15 @@ func TestSliceAddRecordsDependencies(t *testing.T) {
 	}
 }
 
-// A slice-add naming no dependency writes no relation at all, so a project
+// A slice add naming no dependency writes no relation at all, so a project
 // whose table has no such column takes slices exactly as it always did.
 func TestSliceAddWithoutDependenciesWritesNoRelation(t *testing.T) {
 	api := dependsAPI(t)
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-add", "Polish the board", "--milestone", "M2: Board", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "add", "Polish the board", "--milestone", "M2: Board", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-add: %v", err)
+		t.Fatalf("slice add: %v", err)
 	}
 
 	if _, ok := api.creates[0].props[notion.PropDependsOn]; ok {
@@ -655,7 +655,7 @@ func TestPlanApplyRecordsDependenciesBetweenNewSlices(t *testing.T) {
 	}`
 
 	if _, err := runPlan(t, api, doc); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	// The creations carry no relation at all: there was no page to point at yet.
@@ -685,7 +685,7 @@ func TestPlanApplyRecordsADependencyOnAnExistingSlice(t *testing.T) {
 		"depends_on": ["style the board"]}]}`
 
 	if _, err := runPlan(t, api, doc); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if got := dependencyIDsOf(t, api.updates[0]); !reflect.DeepEqual(got, []string{depBlocker}) {
@@ -696,19 +696,19 @@ func TestPlanApplyRecordsADependencyOnAnExistingSlice(t *testing.T) {
 // A plan declaring no dependency reads no slices beyond the one read every
 // command pays for opening its store: [store.ForProject] hydrates a fresh
 // plan from the workspace once, regardless of what the command does with it,
-// and that read — not plan-apply's own dependency resolution — is the one
-// query below. plan-apply's own code adds no second one: nothing has to be
+// and that read — not plan apply's own dependency resolution — is the one
+// query below. plan apply's own code adds no second one: nothing has to be
 // resolved, and a project whose table has no depends-on column applies it as
 // ever.
 func TestPlanApplyReadsNoSlicesWithoutDependencies(t *testing.T) {
 	api := planAPI(3)
 
 	if _, err := runPlan(t, api, samplePlan); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if len(api.queries) != 1 {
-		t.Errorf("queries = %+v, want exactly the store's own hydrate and nothing plan-apply added", api.queries)
+		t.Errorf("queries = %+v, want exactly the store's own hydrate and nothing plan apply added", api.queries)
 	}
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want no relation written", api.updates)
@@ -808,7 +808,7 @@ func TestPlanApplyRecordsADependencyLocallyDespiteAFailedPush(t *testing.T) {
 	out, err := runPlan(t, api, doc)
 
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 	if !strings.Contains(out, "Frame the board") {
 		t.Errorf("output =\n%s\nwant the slice reported as created", out)
@@ -858,7 +858,7 @@ func TestPlanApplyAddsDependenciesToAnExistingSlice(t *testing.T) {
 
 	out, err := runPlan(t, api, doc)
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if len(api.updates) != 1 || api.updates[0].id != depBlocker {
@@ -886,7 +886,7 @@ func TestPlanApplyWritesNothingWhereTheDependencyIsAlreadyRecorded(t *testing.T)
 
 	out, err := runPlan(t, api, doc)
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if len(api.updates) != 0 {
@@ -912,7 +912,7 @@ func TestPlanApplyFoldsADependenciesEntryIntoASliceItCreates(t *testing.T) {
 	}`
 
 	if _, err := runPlan(t, api, doc); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if len(api.updates) != 1 || api.updates[0].id != "new-1" {
@@ -942,7 +942,7 @@ func TestPlanApplyMergesTwoDependenciesEntriesForOneSlice(t *testing.T) {
 	}`
 
 	if _, err := runPlan(t, api, doc); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if len(api.updates) != 1 {
@@ -963,7 +963,7 @@ func TestPlanApplyAppliesADependenciesOnlyDocument(t *testing.T) {
 
 	out, err := runPlan(t, api, doc, "--json")
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if len(api.creates) != 0 {
@@ -1072,7 +1072,7 @@ func TestPlanApplyRecordsAnAdditionLocallyDespiteAFailedPush(t *testing.T) {
 	out, err := runPlan(t, api, doc)
 
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 	if !strings.Contains(out, "## Dependencies added\n\n- Style the board — now waits on 1 more slice\n") {
 		t.Errorf("output =\n%s\nwant the addition reported", out)
@@ -1099,7 +1099,7 @@ func TestPlanApplyRecordsEveryAdditionDespiteAFailedPush(t *testing.T) {
 	out, err := runPlan(t, api, doc)
 
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 	if !strings.Contains(out, "- Style the board — now waits on 1 more slice\n") ||
 		!strings.Contains(out, "- Queued work — now waits on 1 more slice\n") {

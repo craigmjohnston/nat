@@ -119,7 +119,7 @@ plan on it. `nat help` is the reference for every command and flag.
 
 ```sh
 go install github.com/craigmjohnston/nat@latest   # Go 1.25 or later
-nat project-create "My project" --local --repo .  # a project with a local plan
+nat project create "My project" --local --repo .  # a project with a local plan
 nat info --project <ID>                           # its milestones and tasks
 nat                                               # the terminal board
 ```
@@ -129,7 +129,7 @@ project": the app's selection can change while an agent is working, so
 nothing is allowed to depend on it.
 
 A naming note: the commands were written when tasks were called slices, and
-still say so — `slice-add`, `next-slice`, `complete-slice`. Read `slice` as
+still say so — `slice add`, `slice next`, `slice complete`. Read `slice` as
 task.
 
 ### Skills
@@ -151,7 +151,7 @@ updated or unchanged.
 
 Config lives at `~/.config/notion-agent-tracker/config.json` (`nat paths`
 prints the location). The app's Settings window covers what most people
-change; `nat config-show` and `nat config-set` do the same from a terminal.
+change; `nat config show` and `nat config set` do the same from a terminal.
 The setting worth knowing about up front is which Claude Code an agent runs
 as. Planning and coding are different-sized jobs, so there are two defaults,
 each overridable per launch:

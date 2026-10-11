@@ -12,9 +12,9 @@ import (
 	"github.com/craigmjohnston/nat/internal/gh"
 )
 
-// PRMerger is what pr-merge needs of the GitHub CLI: the pull request merged,
+// PRMerger is what pr merge needs of the GitHub CLI: the pull request merged,
 // in the repository the slice belongs to. It names exactly the one gh call
-// this command makes, the way [PRViewer] does for pr-view.
+// this command makes, the way [PRViewer] does for pr view.
 type PRMerger interface {
 	MergePR(dir, ref string, opts gh.MergeOptions) error
 }
@@ -38,7 +38,7 @@ func mergeOptions(project config.ProjectConfig) gh.MergeOptions {
 // left to merge, whatever the verdicts say. gh pr merge refuses an
 // unmergeable pull request itself besides.
 func prMerge(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("pr-merge", flag.ContinueOnError)
+	flags := flag.NewFlagSet("pr merge", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -47,9 +47,9 @@ func prMerge(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("pr-merge: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("pr merge: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("pr-merge", rest[0])
+	id, err := pageID("pr merge", rest[0])
 	if err != nil {
 		return err
 	}

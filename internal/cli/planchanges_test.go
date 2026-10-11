@@ -60,7 +60,7 @@ func TestPlanApplyRemovesMovesAndEditsInOneRun(t *testing.T) {
 
 	out, err := runPlan(t, api, supersedingPlan)
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if !equalLines(api.trashes, []string{depBlocker}) {
@@ -126,7 +126,7 @@ func TestPlanApplyPrintsTheChangesAsJSON(t *testing.T) {
 
 	out, err := runPlan(t, api, supersedingPlan, "--json")
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	var got planAppliedJSON
@@ -219,7 +219,7 @@ func TestPlanApplyAllowsACycleARemovalBreaks(t *testing.T) {
 	dependsOn(api, depSpare, depBlocker)
 
 	if _, err := runPlan(t, api, `{"remove": ["Queued work"]}`); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 	if !equalLines(api.trashes, []string{depSpare}) {
 		t.Errorf("trashes = %v, want the removed slice", api.trashes)
@@ -253,7 +253,7 @@ func TestPlanApplyAppliesAPlanOfChangesAlone(t *testing.T) {
 
 	out, err := runPlan(t, api, `{"edit": [{"slice": "Queued work", "description": "Queue it."}]}`)
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 	if len(api.schemaUpdates) != 0 || len(api.creates) != 0 {
 		t.Errorf("schema = %+v, creates = %+v, want nothing created", api.schemaUpdates, api.creates)
@@ -291,7 +291,9 @@ func (s *changesStub) call(name string) error {
 	return nil
 }
 
-func (s *changesStub) SetSliceBrief(_ context.Context, id, _ string) error { return s.call("edit " + id) }
+func (s *changesStub) SetSliceBrief(_ context.Context, id, _ string) error {
+	return s.call("edit " + id)
+}
 
 func (s *changesStub) MoveSlice(_ context.Context, id string, _ domain.Milestone) error {
 	return s.call("move " + id)
@@ -406,8 +408,8 @@ func TestPlanProposeRefusesChangesForAWorkspace(t *testing.T) {
 	}
 }
 
-// A project's proposal carries the three lists through plan-proposal, and
-// plan-accept applies them against the plan as it then stands.
+// A project's proposal carries the three lists through plan proposal, and
+// plan accept applies them against the plan as it then stands.
 func TestPlanProposeRoundTripsChangesThroughAccept(t *testing.T) {
 	env, out, _ := acceptEnv(t)
 	id := makeLocalProject(t, env)
@@ -419,7 +421,7 @@ func TestPlanProposeRoundTripsChangesThroughAccept(t *testing.T) {
 	    {"title": "Wander", "milestone": "M1"}
 	  ]
 	}`)
-	if err := Run(context.Background(), []string{"plan-apply", "--project", id}, env); err != nil {
+	if err := Run(context.Background(), []string{"plan", "apply", "--project", id}, env); err != nil {
 		t.Fatalf("seed the plan: %v", err)
 	}
 	doc := `{
@@ -430,16 +432,16 @@ func TestPlanProposeRoundTripsChangesThroughAccept(t *testing.T) {
 	}`
 	out.Reset()
 	env.In = strings.NewReader(doc)
-	if err := Run(context.Background(), []string{"plan-propose", "--project", id}, env); err != nil {
-		t.Fatalf("plan-propose --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "propose", "--project", id}, env); err != nil {
+		t.Fatalf("plan propose --project: %v", err)
 	}
 	if !strings.Contains(out.String(), "; of the slices already there, 1 edited, 1 moved and 1 removed.") {
 		t.Errorf("propose output = %q, want the changes counted", out.String())
 	}
 
 	out.Reset()
-	if err := Run(context.Background(), []string{"plan-proposal", "--project", id, "--json"}, env); err != nil {
-		t.Fatalf("plan-proposal: %v", err)
+	if err := Run(context.Background(), []string{"plan", "proposal", "--project", id, "--json"}, env); err != nil {
+		t.Fatalf("plan proposal: %v", err)
 	}
 	var answer proposalAnswer
 	if err := json.Unmarshal([]byte(out.String()), &answer); err != nil || answer.Proposal == nil {
@@ -453,8 +455,8 @@ func TestPlanProposeRoundTripsChangesThroughAccept(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id, "--json"}, env); err != nil {
-		t.Fatalf("plan-accept --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id, "--json"}, env); err != nil {
+		t.Fatalf("plan accept --project: %v", err)
 	}
 	var accepted planAcceptedJSON
 	if err := json.Unmarshal([]byte(out.String()), &accepted); err != nil {
@@ -495,14 +497,14 @@ func TestPlanAcceptReportsChangesInText(t *testing.T) {
 	env, out, _ := acceptEnv(t)
 	id := makeLocalProject(t, env)
 	env.In = strings.NewReader(`{"milestones": [{"name": "M1"}], "slices": [{"title": "Old", "milestone": "M1"}]}`)
-	if err := Run(context.Background(), []string{"plan-apply", "--project", id}, env); err != nil {
+	if err := Run(context.Background(), []string{"plan", "apply", "--project", id}, env); err != nil {
 		t.Fatalf("seed the plan: %v", err)
 	}
 	proposeToProject(t, env, id, `{"remove": ["Old"]}`)
 	out.Reset()
 
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err != nil {
-		t.Fatalf("plan-accept --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id}, env); err != nil {
+		t.Fatalf("plan accept --project: %v", err)
 	}
 	if !strings.Contains(out.String(), "; of the slices already there, 0 edited, 0 moved and 1 removed.") {
 		t.Errorf("output = %q, want the removal counted", out.String())

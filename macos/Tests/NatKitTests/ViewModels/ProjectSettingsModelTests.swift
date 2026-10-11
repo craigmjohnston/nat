@@ -4,7 +4,7 @@ import NatFixtures
 
 @MainActor
 final class ProjectSettingsModelTests: XCTestCase {
-    /// Every `config-set` the model made, and whether config was re-read —
+    /// Every `config set` the model made, and whether config was re-read —
     /// nothing reaches nat or the machine's config.
     private final class Calls: @unchecked Sendable {
         var writes: [ConfigChange] = []
@@ -103,7 +103,7 @@ final class ProjectSettingsModelTests: XCTestCase {
     }
 
     /// Over the fixture client, as the app builds it: the write is a
-    /// `config-set` of the project's key, and a refusing client's message
+    /// `config set` of the project's key, and a refusing client's message
     /// lands beside it.
     func testOverAClientWritesConfigSet() async {
         let client = FixtureNatClient()
@@ -112,7 +112,7 @@ final class ProjectSettingsModelTests: XCTestCase {
 
         _ = await model.save()
 
-        XCTAssertEqual(client.writes, ["config-set project.\(Fixtures.projectID).working_dir"])
+        XCTAssertEqual(client.writes, ["config set project.\(Fixtures.projectID).working_dir"])
 
         let refusing = ProjectSettingsModel(
             projectID: Fixtures.projectID, config: Fixtures.config,
@@ -175,13 +175,13 @@ final class ProjectSettingsModelTests: XCTestCase {
 
     func testARefusedColourKeepsTheBaseline() async {
         let calls = Calls()
-        calls.refusal = "config-set: project.p1.color wants one of …"
+        calls.refusal = "config set: project.p1.color wants one of …"
         let model = model(calls: calls)
         model.edited.color = .red
 
         let closed = await model.save()
         XCTAssertFalse(closed)
-        XCTAssertEqual(model.errors, [model.colorKey: "config-set: project.p1.color wants one of …"])
+        XCTAssertEqual(model.errors, [model.colorKey: "config set: project.p1.color wants one of …"])
         XCTAssertEqual(model.original.color, .teal)
         XCTAssertEqual(model.edited.color, .red)
         XCTAssertEqual(calls.reloads, 0)
@@ -255,14 +255,14 @@ final class ProjectSettingsModelTests: XCTestCase {
     /// nat refuses an empty name; the sheet sends it and keeps the refusal.
     func testARefusedNameKeepsItsEditAndMessage() async {
         let calls = Calls()
-        calls.refusal = "config-set: project.p1.name wants a name, given none"
+        calls.refusal = "config set: project.p1.name wants a name, given none"
         let model = model(fields: ProjectSettingsFields(name: "nat", workingDir: "/repo"), calls: calls)
         model.edited.name = ""
 
         let closed = await model.save()
 
         XCTAssertFalse(closed)
-        XCTAssertEqual(model.errors, [model.nameKey: "config-set: project.p1.name wants a name, given none"])
+        XCTAssertEqual(model.errors, [model.nameKey: "config set: project.p1.name wants a name, given none"])
         XCTAssertEqual(model.original.name, "nat")
         XCTAssertEqual(model.edited.name, "")
         XCTAssertEqual(calls.reloads, 0)
@@ -282,7 +282,7 @@ final class ProjectSettingsModelTests: XCTestCase {
         XCTAssertEqual(ProjectSettingsFields(projectID: "p1", config: nil).runs, [])
     }
 
-    /// The whole list in one `config-set`, as nat writes it — scope left off
+    /// The whole list in one `config set`, as nat writes it — scope left off
     /// for both — and the value read back is the list it was made from.
     func testRunsRoundTripScopedAndScopelessRunsUnchanged() {
         let value = ProjectSettingsModel.runsValue(scopedRuns)
@@ -358,7 +358,7 @@ final class ProjectSettingsModelTests: XCTestCase {
     /// nat's `ValidRuns` refusal stays under the section, the rows as typed.
     func testARefusedRunsListKeepsTheRowsAsTyped() async {
         let calls = Calls()
-        calls.refusal = "config-set: run 2: a label offered twice"
+        calls.refusal = "config set: run 2: a label offered twice"
         let model = model(fields: ProjectSettingsFields(workingDir: "/", runs: scopedRuns), calls: calls)
         model.edited.runs[1].label = "Run"
         let typed = model.edited.runs
@@ -366,7 +366,7 @@ final class ProjectSettingsModelTests: XCTestCase {
         let closed = await model.save()
 
         XCTAssertFalse(closed)
-        XCTAssertEqual(model.errors, [model.runsKey: "config-set: run 2: a label offered twice"])
+        XCTAssertEqual(model.errors, [model.runsKey: "config set: run 2: a label offered twice"])
         XCTAssertEqual(model.edited.runs, typed)
         XCTAssertEqual(model.original.runs, scopedRuns)
     }
@@ -560,7 +560,7 @@ final class ProjectSettingsModelTests: XCTestCase {
             projectID: "p1", fields: ProjectSettingsFields(workingDir: "/repo"),
             write: { change in
                 if change.key == "project.p1.tag" {
-                    throw NatError.commandFailed("config-set: project.p1.tag: a tag is 1 to 3 letters or digits")
+                    throw NatError.commandFailed("config set: project.p1.tag: a tag is 1 to 3 letters or digits")
                 }
                 calls.writes.append(change)
             },
@@ -571,7 +571,7 @@ final class ProjectSettingsModelTests: XCTestCase {
         let closed = await model.save()
 
         XCTAssertFalse(closed)
-        XCTAssertEqual(model.errors, [model.tagKey: "config-set: project.p1.tag: a tag is 1 to 3 letters or digits"])
+        XCTAssertEqual(model.errors, [model.tagKey: "config set: project.p1.tag: a tag is 1 to 3 letters or digits"])
         XCTAssertEqual(model.original.tag, "")
         XCTAssertEqual(model.edited.tag, "ABCD")
         XCTAssertEqual(model.original.baseBranch, "develop")

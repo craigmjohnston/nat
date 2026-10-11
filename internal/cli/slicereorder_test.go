@@ -34,7 +34,7 @@ func reorder(t *testing.T, api *fakeAPI, args ...string) (string, int, error) {
 	env, out := testEnv(testConfig(t), api)
 	var nudges int
 	env.Nudge = func() { nudges++ }
-	err := Run(context.Background(), append([]string{"slice-reorder"}, append(args, "--project", "project-1")...), env)
+	err := Run(context.Background(), append([]string{"slice", "reorder"}, append(args, "--project", "project-1")...), env)
 	return out.String(), nudges, err
 }
 
@@ -42,7 +42,7 @@ func TestSliceReorderWithinAMilestoneWritesNothingToNotion(t *testing.T) {
 	api := reorderableAPI(notion.SliceTodo, "M1: Client")
 	out, nudges, err := reorder(t, api, testSliceID, "--before", otherSliceID)
 	if err != nil {
-		t.Fatalf("slice-reorder: %v", err)
+		t.Fatalf("slice reorder: %v", err)
 	}
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want a reorder within a milestone to send nothing", api.updates)
@@ -59,7 +59,7 @@ func TestSliceReorderAcrossMilestonesRefilesAndSaysSo(t *testing.T) {
 	api := reorderableAPI(notion.SliceTodo, "M2: Board")
 	out, _, err := reorder(t, api, testSliceID, "--after", otherSliceID)
 	if err != nil {
-		t.Fatalf("slice-reorder: %v", err)
+		t.Fatalf("slice reorder: %v", err)
 	}
 	if len(api.updates) != 1 || api.updates[0].props[notion.PropMilestone].Select.Name != "M2: Board" {
 		t.Errorf("updates = %+v, want the refile to M2 pushed", api.updates)
@@ -73,7 +73,7 @@ func TestSliceReorderJSONSaysWhatMovedAndWhereItSits(t *testing.T) {
 	api := reorderableAPI(notion.SliceTodo, "M2: Board")
 	out, _, err := reorder(t, api, testSliceID, "--before", otherSliceID, "--json")
 	if err != nil {
-		t.Fatalf("slice-reorder --json: %v", err)
+		t.Fatalf("slice reorder --json: %v", err)
 	}
 	var got sliceReorderedJSON
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
@@ -91,7 +91,7 @@ func TestSliceReorderUnderNoMilestoneSaysSo(t *testing.T) {
 	api := reorderableAPI(notion.SliceTodo, "")
 	out, _, err := reorder(t, api, testSliceID, "--after", otherSliceID)
 	if err != nil {
-		t.Fatalf("slice-reorder: %v", err)
+		t.Fatalf("slice reorder: %v", err)
 	}
 	if !strings.Contains(out, "Refiled under no milestone.") {
 		t.Errorf("output = %q", out)
@@ -158,7 +158,7 @@ func TestSliceReorderSucceedsThoughTheWorkspaceWriteFails(t *testing.T) {
 func TestSliceReorderRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	err := Run(context.Background(), []string{
-		"slice-reorder", testSliceID, "--before", otherSliceID, "--project", "nope",
+		"slice", "reorder", testSliceID, "--before", otherSliceID, "--project", "nope",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -188,7 +188,7 @@ func TestSliceReorderReportsAFailedLocalWrite(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 	err := Run(context.Background(), []string{
-		"slice-reorder", testSliceID, "--after", otherSliceID, "--project", "project-1",
+		"slice", "reorder", testSliceID, "--after", otherSliceID, "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "reorder the slice") {
 		t.Errorf("err = %v, want the failed write named", err)
@@ -206,7 +206,7 @@ func TestSliceReorderReportsAFailedLocalShapeRead(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 	err := Run(context.Background(), []string{
-		"slice-reorder", testSliceID, "--before", otherSliceID, "--project", "project-1",
+		"slice", "reorder", testSliceID, "--before", otherSliceID, "--project", "project-1",
 	}, env)
 	if err == nil {
 		t.Error("err = nil, want the plan's own shape failure reported")

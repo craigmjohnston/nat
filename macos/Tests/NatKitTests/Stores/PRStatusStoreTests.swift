@@ -2,7 +2,7 @@ import XCTest
 @testable import NatKit
 @testable import NatFixtures
 
-/// `PRStatusStore`: one `pr-status` reading per project, as the batched
+/// `PRStatusStore`: one `pr status` reading per project, as the batched
 /// GitHub reading hands it over, replaced only by a newer reading of that
 /// project, and cached.
 @MainActor

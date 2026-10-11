@@ -2,9 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"errors"
 	"io"
 	"strings"
 	"time"
@@ -14,13 +14,13 @@ import (
 	"github.com/craigmjohnston/nat/internal/logging"
 )
 
-// RunLogReader is what slice-checks --log needs of gh: the failed steps' log
+// RunLogReader is what slice checks --log needs of gh: the failed steps' log
 // of a GitHub Actions run, or of one job of it.
 type RunLogReader interface {
 	FailedLog(dir string, ref gh.ActionsRef) (string, error)
 }
 
-// JobReader is what slice-checks --log needs of gh for a check still
+// JobReader is what slice checks --log needs of gh for a check still
 // running: the job behind it, read while it runs, and its log where GitHub
 // will give one ([gh.ErrLogNotReady] where it will not yet).
 type JobReader interface {
@@ -32,7 +32,7 @@ type JobReader interface {
 // time.Now in production, a fixed instant in tests so durations are exact.
 var checksNow = time.Now
 
-// checksLogLines is how much of one job's failed log slice-checks --log
+// checksLogLines is how much of one job's failed log slice checks --log
 // prints: the last lines, where a failure says what went wrong, and a line
 // saying how many before them were cut.
 const checksLogLines = 200
@@ -57,7 +57,7 @@ const checksLogLines = 200
 // GitHub gives one. A pending check with no job named, or from another
 // service, gets nothing more.
 func sliceChecks(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-checks", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice checks", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	withLog := flags.Bool("log", false, "append the failed steps' log of each failed GitHub Actions check")
@@ -67,9 +67,9 @@ func sliceChecks(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-checks: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice checks: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-checks", rest[0])
+	id, err := pageID("slice checks", rest[0])
 	if err != nil {
 		return err
 	}
@@ -183,7 +183,7 @@ func lastLines(text string, n int) string {
 	return fmt.Sprintf("… %d earlier lines cut\n", cut) + strings.Join(lines[cut:], "\n")
 }
 
-// checksDoc is slice-checks' structured form.
+// checksDoc is slice checks' structured form.
 type checksDoc struct {
 	PR      string           `json:"pr"`
 	Verdict string           `json:"verdict"`
@@ -206,7 +206,7 @@ type sliceCheckJSON struct {
 	LogPending bool `json:"log_pending,omitempty"`
 }
 
-// jobJSON is one Actions job as slice-checks --json carries it. A time
+// jobJSON is one Actions job as slice checks --json carries it. A time
 // GitHub has not set is left out.
 type jobJSON struct {
 	Status    string     `json:"status"`

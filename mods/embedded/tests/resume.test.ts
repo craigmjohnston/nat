@@ -22,7 +22,7 @@ function engine(
   mock.env(on, env)
   if (!own.includes('process.run'))
     on('process.run', ($, e) => {
-      if (e.argv[1] !== 'agent-working' && e.argv[1] !== 'agent-waiting') ran.push({ argv: [...e.argv], stdin: e.init?.stdin })
+      if (e.argv[1] !== 'agent') ran.push({ argv: [...e.argv], stdin: e.init?.stdin })
       return { value: { exitCode, stdout: '', stderr: exitCode ? 'refused' : '', isStdoutTruncated: false, isStderrTruncated: false } }
     })
   on('prompt.submit', ($, e) => {
@@ -35,15 +35,15 @@ function engine(
 
 const typed = (text: string) => ({ text, wait: false, origin: { kind: 'composer' } }) as never
 const resumed = (text: string): Ran => ({
-  argv: ['nat', 'slice-resume', slice, '--project', project, '--note', '-'],
+  argv: ['nat', 'slice', 'resume', slice, '--project', project, '--note', '-'],
   stdin: text,
 })
 
-test('a prompt typed at a slice agent runs slice-resume with its text on stdin, before it submits', async ($, on) => {
+test('a prompt typed at a slice agent runs slice resume with its text on stdin, before it submits', async ($, on) => {
   const ran: (Ran & { submittedBefore: number })[] = []
   const { submitted } = engine(on, { own: ['process.run'] })
   on('process.run', ($, e) => {
-    if (e.argv[1] === 'slice-resume') ran.push({ argv: [...e.argv], stdin: e.init?.stdin, submittedBefore: submitted.length })
+    if (e.argv[1] === 'slice' && e.argv[2] === 'resume') ran.push({ argv: [...e.argv], stdin: e.init?.stdin, submittedBefore: submitted.length })
     return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   await $.prompt.submit(typed('Add a footer too.'))
@@ -91,7 +91,7 @@ test('a run that exits non-zero is logged to debug and the prompt still submits'
     return { value: undefined }
   })
   await $.prompt.submit(typed('Add a footer.'))
-  expect(lines).toEqual(['debug: nat slice-resume exited 1: refused'])
+  expect(lines).toEqual(['debug: nat slice resume exited 1: refused'])
   expect(submitted).toEqual(['Add a footer.'])
 })
 
@@ -99,7 +99,7 @@ test('a run that throws is logged to debug and the prompt still submits', async 
   const lines: string[] = []
   const { submitted } = engine(on, { own: ['ui.log', 'process.run'] })
   on('process.run', ($, e) => {
-    if (e.argv[1] === 'slice-resume') return { deny: 'nat: not found' }
+    if (e.argv[1] === 'slice' && e.argv[2] === 'resume') return { deny: 'nat: not found' }
     return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('ui.log', ($, e) => {

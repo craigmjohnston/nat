@@ -4,7 +4,7 @@ package cli
 // match on a file's path, its token-kind mapping and its line-into-runs split
 // — into internal/cli, which cannot import internal/tui (that package is the
 // TUI's own). See diffsyntax.go for the full rationale; this file keeps only
-// what slice-diff --json needs to hand the same runs out on the wire, as a
+// what slice diff --json needs to hand the same runs out on the wire, as a
 // kind and a length rather than a kind and the text, since the text is
 // already on the wire as the line itself.
 

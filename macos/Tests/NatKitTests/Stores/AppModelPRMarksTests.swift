@@ -113,7 +113,7 @@ final class AppModelPRMarksTests: XCTestCase {
 
         client.setPRStatus(nil, forProject: Fixtures.secondProjectID)
         await model.githubReadingStore?.read()
-        XCTAssertEqual(activeMarks(model, red), redMarks, "a failed pr-status clears no mark")
+        XCTAssertEqual(activeMarks(model, red), redMarks, "a failed pr status clears no mark")
         XCTAssertEqual(treeMarks(model, conflicting), conflictMarks)
 
         client.setPRStatus(PRStatusDoc(slices: [
@@ -201,7 +201,7 @@ final class AppModelPRMarksTests: XCTestCase {
     }
 }
 
-/// A cache holding `pr-status` readings and no plan, immutable — so the
+/// A cache holding `pr status` readings and no plan, immutable — so the
 /// app's concurrent reads of it at launch (every project's plan and reading
 /// at once) share nothing mutable, as `FakePlanCache` would.
 private struct PRStatusOnlyCache: PlanCaching {

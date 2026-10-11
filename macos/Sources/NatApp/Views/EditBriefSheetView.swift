@@ -2,7 +2,7 @@ import SwiftUI
 import NatKit
 
 /// The sheet the rail's "Edit description…" opens: one Todo slice's brief,
-/// read back off its page and written whole — the same `nat slice-edit` the
+/// read back off its page and written whole — the same `nat slice edit` the
 /// Brief tab's own "Edit…" runs, reached from the tree rather than from the
 /// pane.
 ///

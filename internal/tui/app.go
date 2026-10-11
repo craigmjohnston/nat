@@ -961,7 +961,7 @@ func (a *App) addSlice() tea.Cmd {
 	// A source project's milestones are a plugin's containers, which this board
 	// has no way to pick from or offer the plugin's own wording for.
 	if cfg, _ := a.activeProject(); cfg.Source != "" {
-		return a.showToast(fmt.Sprintf("Add tasks to a %s project from gnat or `nat slice-add --container`.", cfg.Source), sevWarning)
+		return a.showToast(fmt.Sprintf("Add tasks to a %s project from gnat or `nat slice add --container`.", cfg.Source), sevWarning)
 	}
 	m, ok := a.board.SelectedMilestone()
 	if !ok {

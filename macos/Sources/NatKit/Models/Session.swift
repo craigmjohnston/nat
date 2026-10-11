@@ -1,6 +1,6 @@
 import Foundation
 
-/// One of a branch's pull requests, as `nat session-list`/`session-status
+/// One of a branch's pull requests, as `nat session list`/`session status
 /// --json` report it — the same shape `internal/cli/sessionlist.go`'s
 /// `headPRJSON` writes for both commands.
 public struct SessionPR: Codable, Equatable, Sendable {
@@ -38,7 +38,7 @@ public struct SessionPR: Codable, Equatable, Sendable {
     public var isOpen: Bool { state == "OPEN" }
 }
 
-/// One ad hoc session, as `nat session-list --project <id> --json` reports
+/// One ad hoc session, as `nat session list --project <id> --json` reports
 /// it (mirrors `internal/cli/sessionlist.go`'s `sessionListJSON`). Its own
 /// `tag` is the key its live activity sits under in `ActivityStore.agents`
 /// — `agent.SessionTag(projectID, id)` on the Go side — carried here rather
@@ -101,7 +101,7 @@ public struct Session: Codable, Equatable, Sendable, Identifiable {
 
     /// The label the rail and pane draw for this session: its branch where
     /// it has cut one, else the directory it runs in — the two things
-    /// `session-launch` can have named it by.
+    /// `session launch` can have named it by.
     public var label: String {
         if !branch.isEmpty { return branch }
         return (dir as NSString).lastPathComponent
@@ -112,7 +112,7 @@ public struct Session: Codable, Equatable, Sendable, Identifiable {
 }
 
 /// One branch a session has been on and the pull requests it has opened —
-/// `nat session-status --json`'s own per-branch entry (mirrors
+/// `nat session status --json`'s own per-branch entry (mirrors
 /// `internal/cli/sessionstatus.go`'s `branchStatusJSON`).
 public struct SessionBranchStatus: Codable, Equatable, Sendable {
     public let branch: String
@@ -137,7 +137,7 @@ public struct SessionBranchStatus: Codable, Equatable, Sendable {
     }
 }
 
-/// `nat session-status --project <id> --json <session>`'s whole reading
+/// `nat session status --project <id> --json <session>`'s whole reading
 /// (mirrors `internal/cli/sessionstatus.go`'s `sessionStatusJSON`).
 public struct SessionStatusDoc: Codable, Equatable, Sendable {
     public let id: String
@@ -172,14 +172,14 @@ public struct SessionStatusDoc: Codable, Equatable, Sendable {
 
     /// The first pull request any of this session's branches has opened —
     /// the PR tab's own reading, since a session may have more than one and
-    /// this slice draws only the first (`session-diff`/`session-status`'s
+    /// this slice draws only the first (`session diff`/`session status`'s
     /// own next slice picks among the rest).
     public var firstPR: SessionPR? {
         branches.first { !$0.prs.isEmpty }?.prs.first
     }
 }
 
-/// `nat session-launch --project <id> --json`'s own reading (mirrors
+/// `nat session launch --project <id> --json`'s own reading (mirrors
 /// `internal/cli/sessionlaunch.go`'s `sessionLaunchJSON`).
 public struct SessionLaunchResult: Codable, Equatable, Sendable {
     public let session: String

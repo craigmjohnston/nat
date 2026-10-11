@@ -22,12 +22,12 @@ public protocol PlanCaching: Sendable {
     /// else, so it is never reported to the caller.
     func write(_ info: ProjectInfo, projectID: String) async
 
-    /// The `pr-status` reading last written for this project, or nil where
+    /// The `pr status` reading last written for this project, or nil where
     /// there is none — read at launch so a pull request's marks are drawn
     /// before the first fresh reading lands. Degrades as `read` does.
     func readPRStatus(projectID: String) async -> PRStatusDoc?
 
-    /// Records a `pr-status` reading that has just landed, fire-and-forget
+    /// Records a `pr status` reading that has just landed, fire-and-forget
     /// as `write` is.
     func writePRStatus(_ doc: PRStatusDoc, projectID: String) async
 }
@@ -122,7 +122,7 @@ public struct DiskPlanCache: PlanCaching {
         try? data.write(to: fileURL(projectID: projectID), options: .atomic)
     }
 
-    /// Where one project's `pr-status` reading is filed, beside its plan.
+    /// Where one project's `pr status` reading is filed, beside its plan.
     public func prStatusFileURL(projectID: String) -> URL {
         directory.appendingPathComponent(Self.fileSlug(projectID) + ".pr-status.json", isDirectory: false)
     }

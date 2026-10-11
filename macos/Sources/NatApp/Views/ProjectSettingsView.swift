@@ -71,7 +71,7 @@ struct ProjectSettingsView: View {
                     }
                 } footer: {
                     if case .local = model.plan {
-                        footnote("nat project-mirror puts a local plan into Notion.")
+                        footnote("nat project mirror puts a local plan into Notion.")
                     }
                 }
                 if !model.isSource {
@@ -169,7 +169,7 @@ struct ProjectSettingsView: View {
     /// The run commands, one row each — label, command in the mono face,
     /// scope — with remove beside each and add under them. A row dragged by
     /// its grip onto another takes that one's place: the first run of each
-    /// scope is its default. Saved whole, as one `config-set`, and nat's
+    /// scope is its default. Saved whole, as one `config set`, and nat's
     /// refusal of the list under it with the rows as typed.
     private var runsSection: some View {
         Section {

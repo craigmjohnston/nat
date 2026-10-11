@@ -43,8 +43,8 @@ func TestMilestoneRenameRenamesInPlace(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(),
-		[]string{"milestone-rename", "M2: Board", "M2: The board", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("milestone-rename: %v", err)
+		[]string{"milestone", "rename", "M2: Board", "M2: The board", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("milestone rename: %v", err)
 	}
 
 	want := `# M2: The board
@@ -86,8 +86,8 @@ func TestMilestoneRenamePrintsJSON(t *testing.T) {
 	env, out := testEnv(testConfig(t), renamableAPI())
 
 	if err := Run(context.Background(),
-		[]string{"milestone-rename", "m2: board", "M2: The board", "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("milestone-rename: %v", err)
+		[]string{"milestone", "rename", "m2: board", "M2: The board", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("milestone rename: %v", err)
 	}
 
 	var got milestoneRenamedJSON
@@ -117,17 +117,17 @@ func TestMilestoneRenameRefusals(t *testing.T) {
 	}{
 		{
 			name: "a new name the plan already holds",
-			args: []string{"milestone-rename", "M2: Board", "  m3: agents  "},
+			args: []string{"milestone", "rename", "M2: Board", "  m3: agents  "},
 			want: `already has a milestone named "M3: Agents"`,
 		},
 		{
 			name: "the name it already has",
-			args: []string{"milestone-rename", "M2: Board", "M2: Board"},
+			args: []string{"milestone", "rename", "M2: Board", "M2: Board"},
 			want: "already has a milestone",
 		},
 		{
 			name: "an old name the plan does not hold",
-			args: []string{"milestone-rename", "M9: Nothing", "M4: Polish"},
+			args: []string{"milestone", "rename", "M9: Nothing", "M4: Polish"},
 			want: `no milestone named "M9: Nothing"`,
 		},
 	}
@@ -163,7 +163,7 @@ func TestMilestoneRenameNamesTheMilestonesThePlanHas(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(),
-		[]string{"milestone-rename", "M1: Client", "M1: The client", "--project", "project-1"}, env)
+		[]string{"milestone", "rename", "M1: Client", "M1: The client", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "its milestones are none") {
 		t.Fatalf("err = %v, want the empty plan said out loud", err)
@@ -176,26 +176,26 @@ func TestMilestoneRenameRejectsAMisusedCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "no names", args: []string{"milestone-rename", "--project", "project-1"}, want: "given 0"},
-		{name: "one name", args: []string{"milestone-rename", "M2: Board", "--project", "project-1"}, want: "given 1"},
+		{name: "no names", args: []string{"milestone", "rename", "--project", "project-1"}, want: "given 0"},
+		{name: "one name", args: []string{"milestone", "rename", "M2: Board", "--project", "project-1"}, want: "given 1"},
 		{
 			name: "three names",
-			args: []string{"milestone-rename", "M2", "M3", "M4", "--project", "project-1"},
+			args: []string{"milestone", "rename", "M2", "M3", "M4", "--project", "project-1"},
 			want: "given 3",
 		},
 		{
 			name: "a blank old name",
-			args: []string{"milestone-rename", "   ", "M4", "--project", "project-1"},
+			args: []string{"milestone", "rename", "   ", "M4", "--project", "project-1"},
 			want: "name is empty",
 		},
 		{
 			name: "a blank new name",
-			args: []string{"milestone-rename", "M2: Board", "  ", "--project", "project-1"},
+			args: []string{"milestone", "rename", "M2: Board", "  ", "--project", "project-1"},
 			want: "name is empty",
 		},
 		{
 			name: "unknown flag",
-			args: []string{"milestone-rename", "M2", "M3", "--nope", "--project", "project-1"},
+			args: []string{"milestone", "rename", "M2", "M3", "--nope", "--project", "project-1"},
 			want: "not defined",
 		},
 	}
@@ -213,7 +213,7 @@ func TestMilestoneRenameRejectsAMisusedCommandLine(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %q, want it to mention %q", err, tt.want)
 			}
-			if !strings.Contains(err.Error(), "milestone-rename:") {
+			if !strings.Contains(err.Error(), "milestone rename:") {
 				t.Errorf("err = %q, want it to name the command", err)
 			}
 			noWritesBut(t, api, 0)
@@ -260,7 +260,7 @@ func TestMilestoneRenameReportsAFailedCall(t *testing.T) {
 			nudges := nudgeCounter(&env)
 
 			err := Run(context.Background(),
-				[]string{"milestone-rename", "M2: Board", "M2: The board", "--project", "project-1"}, env)
+				[]string{"milestone", "rename", "M2: Board", "M2: The board", "--project", "project-1"}, env)
 
 			if !errors.Is(err, boom) {
 				t.Fatalf("err = %v, want %v", err, boom)
@@ -284,7 +284,7 @@ func TestMilestoneRenameNeedsAConfiguredProject(t *testing.T) {
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
 	err := Run(context.Background(),
-		[]string{"milestone-rename", "M2: Board", "M2: The board", "--project", "project-1"}, env)
+		[]string{"milestone", "rename", "M2: Board", "M2: The board", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
 		t.Fatalf("err = %v, want the setup reported", err)
@@ -305,20 +305,20 @@ func TestMilestoneRenameReportsAFailedLocalShapeRead(t *testing.T) {
 	env, _ := testEnv(cfg, &fakeAPI{})
 
 	err := Run(context.Background(),
-		[]string{"milestone-rename", "M2: Board", "M2: The board", "--project", "project-1"}, env)
+		[]string{"milestone", "rename", "M2: Board", "M2: The board", "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Error("milestone-rename over a plan that cannot read its own shape: want an error")
+		t.Error("milestone rename over a plan that cannot read its own shape: want an error")
 	}
 }
 
 func TestMilestoneRenameReportsAFailedWrite(t *testing.T) {
 	for _, extra := range [][]string{nil, {"--json"}} {
-		t.Run(strings.Join(append([]string{"milestone-rename"}, extra...), " "), func(t *testing.T) {
+		t.Run(strings.Join(append([]string{"milestone", "rename"}, extra...), " "), func(t *testing.T) {
 			env, _ := testEnv(testConfig(t), renamableAPI())
 			env.Out = failingWriter{}
 
-			args := append([]string{"milestone-rename", "M2: Board", "M2: The board"}, extra...)
+			args := append([]string{"milestone", "rename", "M2: Board", "M2: The board"}, extra...)
 			err := Run(context.Background(), append(args, "--project", "project-1"), env)
 
 			if !errors.Is(err, errWrite) {

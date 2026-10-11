@@ -14,12 +14,12 @@ public enum FollowUpChoice: String, CaseIterable, Equatable, Sendable {
 /// keyed by slice ID **and batch**, so two pending batches' cards share
 /// nothing, and switching tabs or slices loses nothing. A choice is keyed by
 /// the follow-up's place within its batch's pending items, 1-based — not by
-/// the index `slice-triage` takes, which counts every batch's pending items and
+/// the index `slice triage` takes, which counts every batch's pending items and
 /// so moves when an earlier batch is decided. None of it is persisted: the
 /// proposals themselves are, on the slice page, and a choice not yet applied
 /// is the user's to make again.
 ///
-/// The decision itself is nat's (`slice-triage`); this only gathers it.
+/// The decision itself is nat's (`slice triage`); this only gathers it.
 @MainActor
 @Observable
 public final class FollowUpStore {
@@ -59,7 +59,7 @@ public final class FollowUpStore {
     }
 
     /// Whether an apply or a discard of any batch of the slice is in flight.
-    /// Every other batch's card waits it out: `slice-triage` names follow-ups
+    /// Every other batch's card waits it out: `slice triage` names follow-ups
     /// by an index counting every batch, so until the slice is read again
     /// after one batch is decided, another card's indexes are stale.
     public func isApplying(sliceID: String) -> Bool {
@@ -125,7 +125,7 @@ public final class FollowUpStore {
         return parts.joined(separator: " · ")
     }
 
-    /// Applies one batch's choices through `slice-triage`, by the indexes
+    /// Applies one batch's choices through `slice triage`, by the indexes
     /// `followUps` (that batch's pending items, as last read) carry, clearing
     /// them on success; a refusal is kept for the foot and the choices with
     /// it, so the user can change one and try again. `then` runs before the
@@ -147,7 +147,7 @@ public final class FollowUpStore {
         }
     }
 
-    /// Drops every follow-up of one batch through `slice-triage --drop` —
+    /// Drops every follow-up of one batch through `slice triage --drop` —
     /// no confirmation, since the proposals stay on the page with the drop
     /// recorded beneath them — leaving every other batch pending.
     @discardableResult

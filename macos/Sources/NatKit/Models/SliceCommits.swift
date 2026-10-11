@@ -1,6 +1,6 @@
 import Foundation
 
-/// The wire shape of `nat slice-diff --commits --project <id> --json <slice>`:
+/// The wire shape of `nat slice diff --commits --project <id> --json <slice>`:
 /// the branch's own history since the merge base, without diffing any of it —
 /// what the sidebar's "All commits" dropdown lists (mirrors
 /// `internal/cli/slicecommits.go`'s `commitsDoc`).

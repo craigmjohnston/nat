@@ -32,7 +32,7 @@ func TestResumePrompt(t *testing.T) {
 		"recorded this since 2026-10-10T11:00:00Z",
 		"### Sent back, at 2026-10-10T12:00:00Z\n\nRename the column.\n",
 		"    --project " + testProjectID,
-		"    nat complete-slice " + c.SliceID + " --project " + testProjectID,
+		"    nat slice complete " + c.SliceID + " --project " + testProjectID,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("ResumePrompt does not say %q:\n%s", want, text)

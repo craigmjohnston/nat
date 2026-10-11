@@ -45,12 +45,12 @@ running agent's state.
   resolve, gate, hand back — the hand-back's own push carries the lease.
   No template tells an agent to push (`TestNoPromptTellsTheAgentToPush`
   walks them with `pushInstruction`; `skills_test.go` the skills): every
-  passage says commit, and that `complete-slice` pushes. The hand-back
+  passage says commit, and that `slice complete` pushes. The hand-back
   example names `--branch <branch>` only where there is no worktree for nat
   to read it off (the default, unplaced case). No slice prompt names `nat
-  slice-resume`: the embedded mod runs it for a prompt typed in the pane
+  slice resume`: the embedded mod runs it for a prompt typed in the pane
   (`TestNoSlicePromptNamesSliceResume`). See root CLAUDE.md's Resuming rule.
-- `nat slice-checks` is how every agent reads CI: `checksPassage` in the
+- `nat slice checks` is how every agent reads CI: `checksPassage` in the
   slice prompt and `ChecksPrompt` (the nudge `actions.NoticeFailingChecks`
   sends). No template names `gh pr checks`.
 - **Every** `nat` command in every template — slice, planning
@@ -62,7 +62,7 @@ running agent's state.
   template for an unpinned `nat` invocation** — do not add a new templated
   command without pinning `--project`.
 - `namingPassage` (refer to another slice only by name) is in every slice,
-  plan and new-project prompt, and `notesPassage` (`nat slice-note
+  plan and new-project prompt, and `notesPassage` (`nat slice note
   --from <own slice ID>`) in every slice prompt; tests walk each
   template for them. The skills carry the same words in their own copies.
 - `writingPassage` (write for someone who set the goals but has not
@@ -70,17 +70,17 @@ running agent's state.
   beside `namingPassage` in every slice, plan and new-project prompt;
   `questionPassage` ("Asking the user" — decide what you can, how to shape
   a question, the architecture-question rule) in every slice prompt;
-  `briefShapePassage` (a summary paragraph first, which `plan-apply` caps at
+  `briefShapePassage` (a summary paragraph first, which `plan apply` caps at
   `domain.MaxBriefOpeningWords`) in every planning prompt after
   `SliceTitleRule`; `summaryPassage`/`prDescriptionPassage` in the slice
   prompt's hand-back. Tests walk each template; the skills carry the same
   words.
-  The writing rule's bad examples quote `complete-slice --branch`, so the
+  The writing rule's bad examples quote `slice complete --branch`, so the
   tests refusing those words in a plan or worktree prompt strip it first.
 - `PromptContext.RepoUnknown` (a source project's task with no repository)
   swaps "Already in your context" for `repoPassage`: work the repository out
   from the card's facts and links, ask the user where it cannot tell, record
-  it with `nat slice-repo <id> --project <id> --repo <path>`, which cuts the
+  it with `nat slice repo <id> --project <id> --repo <path>`, which cuts the
   worktree and prints its path — the agent works there. The session starts in the home directory, so the git-status and
   CLAUDE.md lines are left out too. The template walks (`--project` pinning,
   the naming rule, the note command) cover it as `repoUnknownContext`.
@@ -90,13 +90,13 @@ running agent's state.
   `kill-server` under a `TMUX_TMPDIR` the agent thought isolated it took down
   every running agent twice — `$TMUX` wins while set. A test walks each
   template for it; `/next-slice` carries the rule in its own words.
-- No prompt or skill tells an agent to run `nat agent-waiting` or `nat
-  agent-working`: the embedded mod marks the wait itself
+- No prompt or skill tells an agent to run `nat agent waiting` or `nat
+  agent working`: the embedded mod marks the wait itself
   (`TestNoPromptTellsTheAgentToMarkItsWait`, `TestNoSkillTellsTheAgentToMarkItsWait`).
 - The `SliceBranch`/`pathSlug`/`Base` naming triad (how a branch name and its
   worktree path are derived — `actions.SliceBranch`, `worktree.pathSlug`,
   `git.CLI.Base`) is never spelled out in prose: `repoPassage` names `nat
-  slice-repo`, `/next-slice` names `nat slice-worktree`, and each says to
+  slice repo`, `/next-slice` names `nat slice worktree`, and each says to
   work in the path printed. `TestPromptSourceSpellsOutNoWorktreeNaming`
   (and the skill's test) refuse `.worktrees` and `symbolic-ref`.
 
@@ -163,8 +163,8 @@ running agent's state.
   (`RemoveSessionRecord`, `ForgetSliceSession`) only where the work ends: every
   `actions.RemoveSliceWorktree`/`DiscardSliceWorktree` (merge, Done with no
   PR, trash, cancel), `SweepLanded` and the board's landed removal for what
-  they sweep, `release-slice` and the board's `R` (the next launch is a fresh
-  claim), and `agent-kill` of a planning or ad hoc session — **never** of a
+  they sweep, `slice release` and the board's `R` (the next launch is a fresh
+  claim), and `agent kill` of a planning or ad hoc session — **never** of a
   slice's, which is exactly the session a relaunch resumes.
 - `actions.Launch` resumes where `Resuming(c)` or a task log with history
   applies and the record's `cwd` is still a directory: it writes the full
@@ -207,7 +207,7 @@ running agent's state.
   `LaunchBare`, `LaunchUsageProbe` (the probe carries no PATH) — PATH or no
   PATH. It hides the pane's "Update available! Run: brew upgrade …" line
   (verified live on 2.1.290 under a Homebrew cask), since gnat shows the one
-  notice (`nat claude-version`) and updates from nat's own process.
+  notice (`nat claude version`) and updates from nat's own process.
   `DISABLE_AUTOUPDATER` leaves the line up;
   `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` hides it but turns off feature
   flags and with them Remote Control — don't swap to either.
@@ -264,11 +264,11 @@ running agent's state.
   gone, a pane carrying `@nat_waiting` (`WaitingPaneOption`, a field of
   `listPanesFormat`) is waiting, every other live tagged pane is working —
   slices, planning agents and ad hoc sessions alike, keyed by their tag. The
-  embedded mod (`mods/embedded`) sets the flag (`nat agent-waiting` →
-  `SetWaiting`, cleared by `nat agent-working`) from Claude Code's events: an
+  embedded mod (`mods/embedded`) sets the flag (`nat agent waiting` →
+  `SetWaiting`, cleared by `nat agent working`) from Claude Code's events: an
   AskUserQuestion dialog, a permission prompt, an MCP elicitation, a turn
   ended on an error or refusal, and a main-loop turn that ended normally with
-  no hand-in (`complete-slice`, `slice-followups`, `plan-propose`) among its
+  no hand-in (`slice complete`, `slice followups`, `plan propose`) among its
   Bash calls — a question in prose, or an agent that stopped short. No
   prompt tells the agent to run either. nat never infers it from the screen
   (the old `capture-pane` match on Claude Code's status line broke whenever
@@ -280,7 +280,7 @@ running agent's state.
   once delivered (inbox or paste), reads the session's panes (`list-panes -s`) and
   runs `SetWaiting(pane, false)` on a tagged pane that is waiting — an agent
   just told something is no longer waiting on the user, and every sender
-  (`agent-send`, triage, notes, the checks nudge) goes through
+  (`agent send`, triage, notes, the checks nudge) goes through
   it. A pane not waiting is left alone; a failed clear is logged, never the
   send's error. `SendKeys`/`Interrupt` leave it: an interrupt answers nothing. It's a poll with no timer of its own;
   the caller decides cadence.

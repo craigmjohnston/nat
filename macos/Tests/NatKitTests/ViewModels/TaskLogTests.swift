@@ -2,7 +2,7 @@ import XCTest
 @testable import NatKit
 @testable import NatFixtures
 
-/// The Task log: `slice-show`'s `events` decoded, and the cards built from
+/// The Task log: `slice show`'s `events` decoded, and the cards built from
 /// them in the order they happened.
 final class TaskLogTests: XCTestCase {
     private func slice(status: String, branch: String? = nil, pr: String = "") -> Slice {

@@ -34,7 +34,7 @@ Everything below writes `<project>` where that ID goes.
 
 ## 1. Claim the next slice
 
-Run `nat next-slice --project <project>`. It claims the next unclaimed Todo
+Run `nat slice next --project <project>`. It claims the next unclaimed Todo
 slice under the lowest-ordered milestone that is not Done — a milestone has no
 status of its own, so what is unfinished is what work is taken from — and
 prints its brief: the slice's name, page ID and URL, the project's own page ID,
@@ -42,7 +42,7 @@ the working directory to use, the slice's own body, a digest of the other
 slices in its milestone, and the project's conventions.
 
 - If the user asked for a particular slice, run
-  `nat start-slice <URL|ID> --project <project>` instead — same claim, same
+  `nat slice start <URL|ID> --project <project>` instead — same claim, same
   brief, for the slice you name.
 - If the command refuses — every milestone finished, or nothing unclaimed under
   the ones that are not — report what it said and stop. The plan is the user's:
@@ -60,7 +60,7 @@ skill asks nat for the same worktree, so the branch it hands back is the one
 the board would have made:
 
 ```
-nat slice-worktree <slice> --project <project>
+nat slice worktree <slice> --project <project>
 ```
 
 It prints the worktree's path on one line. Where the slice already has a
@@ -100,7 +100,7 @@ before you ask.
 Raise an architecture question — a decision neither the brief nor a Done
 slice in the milestone settles — before you write code, not at
 hand-back, where an hour of the wrong shape is already sunk. Never run
-`complete-slice` on work whose shape is still unsettled that way: a
+`slice complete` on work whose shape is still unsettled that way: a
 hand-back is a claim the shape is right.
 
 Shape every question so it can be answered without opening the code:
@@ -156,7 +156,7 @@ you are told they failed, read how they stand — each check, and each failed
 step's log — with:
 
 ```
-nat slice-checks <slice> --log --project <project>
+nat slice checks <slice> --log --project <project>
 ```
 
 That is the one way to read CI: never `gh`. It reads a check still running
@@ -168,7 +168,7 @@ When a check fails or stalls for a reason that is not your change's — a flaky
 test, a runner that died, a job stuck on a step — re-run it:
 
 ```
-nat slice-checks-rerun <slice> --check '<check name>' --project <project>
+nat slice checks rerun <slice> --check '<check name>' --project <project>
 ```
 
 `--failed` in place of `--check` re-runs every failed job. If the check is
@@ -182,7 +182,7 @@ constraint, a seam that moved, an assumption in another slice's brief that is
 no longer true — leave a note on that slice, named by its name, from your own:
 
 ```
-nat slice-note '<slice name>' --from <slice> --project <project> \
+nat slice note '<slice name>' --from <slice> --project <project> \
     --note '<what it needs to know, and why>'
 ```
 
@@ -236,8 +236,8 @@ the first sentence.
 For example. A title: not "Catch the modified enters with a key monitor
 — performKeyEquivalent never sees them" but "Make shift+enter insert a
 newline in the agent terminal". A summary line: not
-"DiffStore.sendComments now always sends the complete-slice --branch
-instruction and runs slice-rework after agent-send succeeds" but "Review
+"DiffStore.sendComments now always sends the slice complete --branch
+instruction and runs slice rework after agent send succeeds" but "Review
 comments sent to an agent now always ask it to hand the work back again,
 so a slice cannot get stuck in review". A question: not "Where the
 'already there' baseline comes from: a comment counts as new when no
@@ -250,11 +250,11 @@ because you have already seen the five."
 
 Work you noticed but did not do — a bug beside your change, a test gap in code
 you didn't touch, a refactor the brief didn't ask for — is not yours to do and
-not yours to lose. When the gate is green, before `complete-slice`, hand each
+not yours to lose. When the gate is green, before `slice complete`, hand each
 one in and **stop**:
 
 ```
-nat slice-followups <slice> --project <project> \
+nat slice followups <slice> --project <project> \
     --follow-up '<title line>
 
 <the problem, as the user sees it, and what leaving it costs>
@@ -294,17 +294,17 @@ new — never a repeat of a follow-up already handed in. The user decides on the
 board — queue it as a slice, fold it into this one, or drop it — and the
 decision arrives here as a message naming what to fold in. Do that, then hand
 back as below.
-`complete-slice` refuses while the decision is outstanding. Never widen your
+`slice complete` refuses while the decision is outstanding. Never widen your
 branch to include a follow-up on your own, and never write them into the
 summary or the brief instead. No follow-ups: hand back straight away.
 
 If what you changed is visible — a pane, a page, a rendered component — and the
 project already has a cheap or usual way to render it (a gallery story, a
 screenshot script, a storybook), render the result and hand the images in
-before `complete-slice`:
+before `slice complete`:
 
 ```
-nat slice-visuals <slice> --project <project> \
+nat slice visuals <slice> --project <project> \
     --visual '<what it shows, one line>
 <absolute path to the image>'
 ```
@@ -325,7 +325,7 @@ as a message.
 Record the outcome with the slice's page ID or URL, as printed in the brief:
 
 ```
-nat complete-slice <slice> --project <project> \
+nat slice complete <slice> --project <project> \
     --summary '- <what now works, in the user's words>
 - <a decision you made>' \
     --pr-description '<title line>
@@ -374,12 +374,12 @@ If the user asks for more or different work after you have handed back, put it
 on the record before changing anything:
 
 ```
-nat slice-resume <slice> --project <project> --note '<what they asked for>'
+nat slice resume <slice> --project <project> --note '<what they asked for>'
 ```
 
 That takes the slice back out of review, so the user's board reads it as work
 in progress again. Then do the work, commit, and hand back again with the same
-`complete-slice` command. If it refuses because the slice is Done, the
+`slice complete` command. If it refuses because the slice is Done, the
 work is merged: say so to the user and stop.
 
 Pass `--no-branch` when there was no branch — a docs or research slice — and
@@ -389,7 +389,7 @@ the summary in on stdin when it is too long for an argument.
 If you cannot complete the slice, leave it claimed and say what stopped you:
 
 ```
-nat complete-slice <slice> --project <project> --blocked \
+nat slice complete <slice> --project <project> --blocked \
     --summary '<what is blocking>'
 ```
 

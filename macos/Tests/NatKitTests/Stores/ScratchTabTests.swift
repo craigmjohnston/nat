@@ -26,7 +26,7 @@ final class ScratchTabTests: XCTestCase {
         await appModel.start()
         await appModel.start()
 
-        XCTAssertEqual(client.writes, ["scratch-open", "done-clear \(scratchID)"],
+        XCTAssertEqual(client.writes, ["scratch open", "project done clear \(scratchID)"],
                        "once per launch: onboarding finishing must not clear a second time")
     }
 
@@ -48,7 +48,7 @@ final class ScratchTabTests: XCTestCase {
         await appModel.start()
         await appModel.start()
 
-        XCTAssertEqual(refusing.writes, [], "a refused scratch-open records nothing and clears nothing")
+        XCTAssertEqual(refusing.writes, [], "a refused scratch open records nothing and clears nothing")
     }
 
     // MARK: - Tabs
@@ -145,7 +145,7 @@ final class ScratchTabTests: XCTestCase {
 
         await appModel.launchSession(dir: "/Users/craig/Projects/somewhere")
 
-        XCTAssertTrue(client.writes.contains("session-launch /Users/craig/Projects/somewhere"))
+        XCTAssertTrue(client.writes.contains("session launch /Users/craig/Projects/somewhere"))
         XCTAssertEqual(appModel.lastSessionFolder, "/Users/craig/Projects/somewhere")
     }
 
@@ -156,7 +156,7 @@ final class ScratchTabTests: XCTestCase {
 
         await appModel.launchSession()
 
-        XCTAssertTrue(client.writes.contains("session-launch "), "no --dir: the project's own directory")
+        XCTAssertTrue(client.writes.contains("session launch "), "no --dir: the project's own directory")
         XCTAssertNil(appModel.lastSessionFolder)
     }
 
@@ -182,7 +182,7 @@ final class ScratchTabTests: XCTestCase {
         await appModel.launchSession(inProject: scratchID, dir: "/elsewhere")
 
         XCTAssertEqual(appModel.activeProjectID, scratchID)
-        XCTAssertTrue(client.writes.contains("session-launch /elsewhere"))
+        XCTAssertTrue(client.writes.contains("session launch /elsewhere"))
         XCTAssertEqual(appModel.lastSessionFolder, "/elsewhere")
     }
 
@@ -195,6 +195,6 @@ final class ScratchTabTests: XCTestCase {
         await appModel.launchSession(inProject: projectID)
 
         XCTAssertEqual(appModel.activeProjectID, active)
-        XCTAssertTrue(client.writes.contains("session-launch "))
+        XCTAssertTrue(client.writes.contains("session launch "))
     }
 }

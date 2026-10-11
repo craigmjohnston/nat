@@ -36,12 +36,12 @@ fuller structure and theme system.
   migration, write ordering all live in the Go binary.
 - Every call on a tracked project passes `--project <id>`, no fallback,
   mirroring the Go CLI (exceptions mirror the Go CLI's own: `status`,
-  `paths`, `config-show`/`-set`, `project-create`/`-open`, `source-list`,
-  `source-setup`, `plugin-*`).
-- Plugin install: `PluginModels.swift` mirrors `nat plugin-list` and the
-  other `plugin-*` answers; Settings ▸ Sources draws them through
+  `paths`, `config show`/`set`, `project create`/`open`, `source list`,
+  `source setup`, `plugin …`).
+- Plugin install: `PluginModels.swift` mirrors `nat plugin list` and the
+  other `plugin …` answers; Settings ▸ Sources draws them through
   `PluginsModel` (Installed, Available, Plugin sources), each button one
-  `nat plugin-*` call and then a fresh `plugin-list`, and an install,
+  `nat plugin …` call and then a fresh `plugin list`, and an install,
   update, uninstall or setup Save is `AppModel.pluginChanged` (a
   `PluginChange` naming the plugin): it re-reads `AppModel.sourcePlugins` —
   which is how a plugin just connected gets its section (see **Task
@@ -59,7 +59,7 @@ fuller structure and theme system.
   `PluginsModel.saveSetup` → `NatClient.sourceSetup`, the value on
   **stdin only** (never an argument; `NatClient` logs no request), the
   field cleared and the plugin's message (or refusal) kept under it, then
-  `plugin-list` re-read. Stories: `settings-sources`, `-loading`, `-error`,
+  `plugin list` re-read. Stories: `settings-sources`, `-loading`, `-error`,
   `-empty`, `-setup`, `-setup-saved`.
 - Task sources: `SourceModels.swift` (and `ProjectInfo.source`,
   `SliceDetail.container`, `PlanBackend.source`) mirror
@@ -74,14 +74,14 @@ fuller structure and theme system.
   sessions nat spawns**, not for finding `nat` itself (`NatBinary`'s job).
 
 **Claude Code update notice.** `ClaudeVersionStore` (`AppModel.claudeVersionStore`,
-started and stopped beside `usageStore`) reads `nat claude-version` at launch
+started and stopped beside `usageStore`) reads `nat claude version` at launch
 and hourly; where `update_available`, the status bar draws
 `ClaudeUpdateNotice` after the usage windows (and any GitHub budget) — a small
 `Chip` in the orange tint (`Tone.attention`), "Claude Code 2.1.295 available".
 A click runs nothing: it opens `ClaudeUpdateSheet` (`confirmUpdate`,
 `.confirming`) — installed (unknown where unread), the version it would update
 to and how (`ClaudeVersion.updateMethod`, nat's `update_method`/`homebrew_cask`,
-never worked out in Swift), Cancel and Update. Update runs `nat claude-update`
+never worked out in Swift), Cancel and Update. Update runs `nat claude update`
 (`runUpdate`, one at a time; the window can't close while it runs), re-reads
 the version, and shows the one now installed and that running agents keep
 their version — no updater output — or a plain failure sentence with nat's
@@ -99,10 +99,10 @@ the traffic lights over the sidebar; tile + name, each tile a fixed
 `DesignTokens.tile*` gradient whatever the palette, the selection filled in
 the accent; About apart under a rule) beside the section's groups (bold heading,
 `settingRow`s left-aligned under it), one fixed 760×560 window whose
-sections scroll — reads `nat config-show`, writes one `nat config-set <key>
+sections scroll — reads `nat config show`, writes one `nat config set <key>
 <value>` per changed key. Sections: General, Agents, Sources, GitHub, About.
 GitHub is `StorageUsageSection` over `StorageUsageModel` (NatKit, tested):
-`nat storage-usage` read when the section is first shown and on Refresh,
+`nat storage usage` read when the section is first shown and on Refresh,
 never polled; the bar (`segments`: a project holding storage in its colour,
 one taking none in a quiet grey, other repositories in the system grey, the
 width the allowance or the total where more), the total against the
@@ -149,7 +149,7 @@ up). gnat launches pass the project-resolved pair
 `SliceAgentFor`/`WorkshopAgentFor` mirrored, since the pair it shows goes as
 flags); `sidebarTags` prefers a configured `tag`, deriving and de-clashing
 the rest among themselves. Its logic is `ProjectSettingsModel` (NatKit, tested):
-the same one `config-set` per changed key (`SettingsModel.nameKey`,
+the same one `config set` per changed key (`SettingsModel.nameKey`,
 `workingDirKey`, `colorKey`, `runsKey`), a refusal kept under its row (the
 runs' under the section, the rows as typed) with the baseline as read,
 `AppModel.reloadConfig` after any write so Reveal and launches use the new
@@ -168,7 +168,7 @@ trailing edge (stories `sidebar-project-hovered`,
 phase (`NavigatorModel`), the sidebar's dots (`displayState(for:)`) and
 `RailModel.isReviewSlice`/`isActiveSlice` all read it, and it mirrors
 Go's `domain.StateOf` (Notion's status is the one source of lifecycle truth,
-so a Done slice is never in-flight even with `nat pr-status` still reporting
+so a Done slice is never in-flight even with `nat pr status` still reporting
 its PR open) — change `internal/domain/state.go` and the stage together. A
 live session never moves the stage. In progress reads resumed → `working`
 (nat's `resumed` on `info --json`, `Slice.resumed`, **never re-derived**: a
@@ -198,18 +198,18 @@ mergeability still being worked out (`UNKNOWN`, `BLOCKED` on that alone)
 does not; the click then attempts the merge and shows nat's refusal, if any
 (story `action-bar-merge-mergeability-unknown`). Sending is
 `AppModel.sendBack`, the one-shot `.sendBack` (no stage advance; the view puts
-the terminal up once it has gone): **the record first** — `nat slice-resume
+the terminal up once it has gone): **the record first** — `nat slice resume
 --note -` (stamped `Resumed`, then the Branch cleared) — then a live agent is
-told by `agent-send` (`sendBackPrompt`, ending in the `complete-slice
+told by `agent send` (`sendBackPrompt`, ending in the `slice complete
 --branch` hand-back on the branch the slice had), else the ordinary `nat
-slice-launch` (a relaunch). There is no fix launch and no `fixing` stage:
+slice launch` (a relaunch). There is no fix launch and no `fixing` stage:
 `LaunchPlan` treats an In progress slice with a PR as an ordinary relaunch
 (dependencies and all, as nat's own does) and refuses Done. A resumed slice is
 `working` (Active's working half, its dot the accent, pulsing while live),
 its phase `.thread` — selecting it opens the Task log and the terminal — and
 neither Approve nor Merge is offered until the next hand-back (the bar's
 greyed stand-in is Launch). Its Changes, Visual changes and PR stay
-(`NavigatorModel.hasBranch` counts `resumed` and `takenBack`: `slice-diff`/`slice-file` read
+(`NavigatorModel.hasBranch` counts `resumed` and `takenBack`: `slice diff`/`slice file` read
 its agent branch), each header wearing **Reworking** (`NavigatorModel.showsReworking`,
 `worksAgain`): a warning-toned small `Chip` with `arrow.triangle.2.circlepath`,
 before any New/Updated, its tooltip `NavigatorModel.resumedNotice` — no
@@ -221,7 +221,7 @@ slice too) — it keeps Changes and Visual changes with the same badge, and
 moves no stage or PR gate: `resumed` alone drives those. Story:
 `window-taken-back`. Changes' Send goes to a taken-back slice's live agent too
 (`showsChangesSend`), and `DiffStore.sendComments` — like `VisualStore`'s —
-asks for the hand-back and runs `slice-rework` only where the slice is
+asks for the hand-back and runs `slice rework` only where the slice is
 handed back. Stories: `window-resumed`, `window-resumed-notices`,
 `window-task-log-resumed`, `window-resumed-pr-open` (sent back from its
 open PR mid-story: Task and the terminal up, the PR section folded and kept),
@@ -231,10 +231,10 @@ open PR mid-story: Task and the terminal up, the PR section folded and kept),
 **Delete and cancel.** The slice row menu's Delete… is offered whatever the
 status, and its alert says what goes (`SliceRemovalRules.deleteMessage`: a
 Done task's record; an In progress task's agent, worktree and branch, which
-`nat slice-delete` stops and discards). Beside it, **Cancel and discard
+`nat slice delete` stops and discards). Beside it, **Cancel and discard
 work…** (`SliceRemovalRules.canCancel`: In progress only) asks with an alert
 whose destructive button is "Discard work", never "Cancel", then runs `nat
-slice-cancel` (`NatClient.sliceCancel`) through the menu's `run` — the
+slice cancel` (`NatClient.sliceCancel`) through the menu's `run` — the
 selection kept, since the task is still on the plan, back at Todo.
 
 **New and Updated.** One rule, one store: `SeenMemory` (UserDefaults
@@ -251,7 +251,7 @@ numbers aside), seen once its rows are on screen in the diff
 badged on its navigator row and its diff header (`DiffCanvasState.badges`).
 Visual changes (`VisualStore.badge`): an image by name at its `identity`,
 seen on screen or marked viewed — nat's `changed` no longer badges. PR
-(`PRStore.badge`): the head (`pr-view`'s `head_ref_oid`) as last seen,
+(`PRStore.badge`): the head (`pr view`'s `head_ref_oid`) as last seen,
 Updated while it has moved, seen when the PR section is open or its view up.
 Each section header takes `NavSectionStatus.of` its items (New over
 Updated; `SeenBadgeChip`, New in Merged's green, Updated in the accent).
@@ -260,14 +260,14 @@ Stories: `window-resumed-badges`, `window-pr-updated`, `window-visuals-new`.
 **One read of GitHub.** GitHub's GraphQL budget (5,000 points an hour,
 shared with every agent's `gh`) is spent on call volume, so the app reads
 GitHub in exactly one place: `GitHubReadingStore` (`AppModel.githubReadingStore`)
-runs `nat pr-status --project …` **once for every open tab** with pull
+runs `nat pr status --project …` **once for every open tab** with pull
 request work (`hasPullRequestWork`: a PR, or a slice `inReview`; the active
 tab always, for its sessions' branches), with `--detail <url>` for the pull
 request on a visible PR tab (`PRStore.detailURL`: `setVisible` while the
 slice's or session's navigator shows it, and open), and hands each part on
 (`AppModel.deliver`): every project's doc to `PRStatusStore.apply`, the
 detail to `PRStore.applyDetail`, and the active project's session rows a
-fresh `session-list` (which asks GitHub nothing — it reads the pull requests
+fresh `session list` (which asks GitHub nothing — it reads the pull requests
 the reading kept on disk). It reads on the **tick** — sleeping for the last reading's
 `poll_after_seconds` (nat's throttle and refusal pause), else `poll_seconds`,
 default 30; `readsGitHubOnATick`, which only `NatApp` sets — tests and stories
@@ -277,7 +277,7 @@ that changed GitHub — approve (`DiffReview.approve`,
 `settlePendingApprovals`), merge, comment, reviewers, re-run and cancel
 checks (`PRStore`'s `settle`; each through `AppModel.githubActionRan`, which
 counts it), the manual refresh (`refreshByHand`, the shell's ⌘R) — each
-`pr-status --settle`, past the throttle and the pause (a plan loading at
+`pr status --settle`, past the throttle and the pause (a plan loading at
 launch asks with `afterAction: false`, which does not) — since GitHub reads mergeability UNKNOWN for a few seconds
 after `gh pr create` and starts checks later still; actions inside the
 window fold into the one pending read, and the tick restarts from it. A
@@ -288,7 +288,7 @@ waits for it, then reads. A reading still running after two minutes
 cancelled call's process), an `NSLog` line, nothing shown — and counts as
 failed, so the next tick or settle read runs as normal. **The nudge path refreshes the plan only**
 (`refresh(.replica)`, `refreshBackgroundProjects`, `updateReviewStats` — no
-`pr-status`, no `session-list`). `rateLimit` is the last reading's budget:
+`pr status`, no `session list`). `rateLimit` is the last reading's budget:
 the status bar draws `GitHubBudgetReadout` from it — nothing while healthy,
 `GitHub · 412 left` throttled (projection and reset its tooltip), `GitHub
 limit · resets 13:46` paused, in the warning tint (stories
@@ -301,8 +301,8 @@ rows formatted by `DiagnosticsFormat`) reads all of it (story
 `settings-about-diagnostics`). `idle()` is how a fixture or
 test waits for the readings to settle. Tests: `GitHubReadingStoreTests`,
 `AppModelGitHubReadingTests` (a nudge reads nothing; a tick is one
-`pr-status` whatever the tab count; actions inside the window are one read;
-an open PR tab makes no `pr-view` after its first load).
+`pr status` whatever the tab count; actions inside the window are one read;
+an open PR tab makes no `pr view` after its first load).
 
 **Failing checks.** `PRStatusStore` holds that reading **per project, for every open
 project** (`PRReading`: readiness, failing checks, conflicts), with no read
@@ -327,7 +327,7 @@ success mark (`checkmark.circle.fill`, "Checks passing") where
 `prMarks(_:for:)` keeps `checksPassing`: the `.pr` stage (not resumed),
 verdict `passing`, not conflicting or failing — whatever the agent's
 activity reads, since an agent left idle after its hand-back never runs
-`agent-waiting` and reads working until reaped — and, under the same gate, the running mark (`checksRunning`,
+`agent waiting` and reads working until reaped — and, under the same gate, the running mark (`checksRunning`,
 verdict `pending`: a static, neutral `PRMarks.runningSymbol` —
 `ellipsis.circle.fill` — "Checks running"). The PR section header draws the
 same gate as its outline `checkmark.circle` (or `ellipsis.circle` for
@@ -346,7 +346,7 @@ Sent back). A conflict is never a callout in a section body: it is a
 mark's glyph), its tooltip the notice's text, pointing at Send back to agent
 or naming the live agent (the bar's Resolve conflicts sends it either way). The PR header's is
 `conflictNotice` (the reading's conflict, unless a loaded `PRDetail` of that
-PR decides — `conflict(reading:detail:prURL:)`; drawn before `pr-view`
+PR decides — `conflict(reading:detail:prURL:)`; drawn before `pr view`
 lands), "merge <base> in". `projectAttention` counts a red pr slice once, and only
 with no live agent on it (see **The dock**).
 **A hand-back with no PR**: `PRStatusDoc.branches` (nat's own merge test of
@@ -375,12 +375,12 @@ because SF Symbols on macOS 15 has no such pair: `checklist` with the row
 glyph in its lower right, the list cut a point round it as `DoneFolderGlyph`
 cuts its check (Lucide's `list-restart`/`list-x` shape). All four sit in fixed
 `CheckControlSlot` columns at the trailing edge. Heading re-run is a menu: Re-run
-all, Re-run failed. Row re-run is `slice-checks-rerun --check`, row cancel
-`slice-checks-cancel --check`, heading cancel `slice-checks-cancel`; nat cancels
+all, Re-run failed. Row re-run is `slice checks rerun --check`, row cancel
+`slice checks cancel --check`, heading cancel `slice checks cancel`; nat cancels
 a running run before re-running, so nothing is disabled for running. What is
 enabled, and each tooltip's list of the siblings a call would stop (same `run`,
 still queued or running), is `ChecksControls` (NatKit, unit-tested) from the
-checks' states, `rerunnable` and `run` (`pr-view`'s new fields). The heading's
+checks' states, `rerunnable` and `run` (`pr view`'s new fields). The heading's
 buttons are absent where no check is `rerunnable`, and so are all of them on a
 session's PR (`checksStore` nil). A row is washed full bleed under the pointer
 (`gnatRow`, padded out by NavProse's 12 and back). `PRStore.rerunChecks`/
@@ -400,20 +400,20 @@ sent or cancelled — posting `replyBody` (NatKit, tested: GitHub's Quote
 reply — `@<author>`, the parent quoted, the reply) through
 `PRStore.comment`. The Description heading's hover-only Edit swaps the
 markdown for the composer (Save, Cancel) and saves through
-`PRStore.editDescription` → `nat pr-edit`, then a `pr-view` of its own.
+`PRStore.editDescription` → `nat pr edit`, then a `pr view` of its own.
 On an ad hoc session's pull request the store passes its session
 (`--session`), so all three work there too.
 Comments, replies and edits are offered whatever the pull request's state;
 on a merged or closed one, which the batched reading no longer reads,
-`comment` re-reads with a `pr-view` instead of a settle read. Stories:
+`comment` re-reads with a `pr view` instead of a settle read. Stories:
 `pr-conversation-reply`, `pr-conversation-closed`, `pr-description-editing`.
 
 ## The workshop and its proposal
 
-Every workshop proposes with `nat plan-propose` — an Untitled tab's by its
+Every workshop proposes with `nat plan propose` — an Untitled tab's by its
 workspace, a project's (gnat-launched) by `--project` — and the app never
 reads the proposal file itself. `AppModel.refreshProposals` reads `nat
-plan-proposal` per tab — every Untitled tab's, and a project's only while its
+plan proposal` per tab — every Untitled tab's, and a project's only while its
 planner is live, its row pinned or a proposal is up — on its own
 `NudgeWatcher`, running for the app's life, plus the poll and opening a
 workshop. **No timing is relied on:** each tab's proposal is a
@@ -427,7 +427,7 @@ wrote through it, so there is nothing to pull) and only then drops the
 proposal: the tree has the plan before the Plan section goes. `ProjectStore`
 never drops a load asked for mid-read — it owes one more read, answering
 every request made meanwhile — and a nudge reads the replica (`refresh(.replica)`;
-the poll and the user's refresh pull). `plan-accept` claims the proposal file
+the poll and the user's refresh pull). `plan accept` claims the proposal file
 before filing (so it is accepted at most once) and nudges only once it is
 gone. **Writing to the agent withdraws a proposal:** an Enter in the
 workshop's terminal (`FirstLayoutTerminalView.onSubmit`, a bare return only —
@@ -435,7 +435,7 @@ workshop's terminal (`FirstLayoutTerminalView.onSubmit`, a bare return only —
 report; slice and session panes withdraw nothing) runs
 `AppModel.withdrawProposal(tabID:)`: `ProposalState.withdraw` clears it at once
 (stale readings dropped; nothing while accepting), the tab goes back to
-Terminal and the Plan ready badge with it, then `nat plan-withdraw` removes the
+Terminal and the Plan ready badge with it, then `nat plan withdraw` removes the
 file (a failure logged, the clear kept) — and both planning prompts tell the
 agent to propose again, whole, every turn. Any return withdraws, a yes/no
 answer's included: the agent re-proposes, so nothing is lost. Tests:
@@ -447,7 +447,7 @@ created work, a project's proposal draws the Todo tasks it changes
 `remove`/`move`/`edit`) — a struck-through row per removal, a move with its
 destination, an edit that unfolds its new brief (`expandedProposalEdits`) —
 and a removal is warned of above the tree (story
-`workshop-proposal-superseding`). Accept is `nat plan-accept`: on an
+`workshop-proposal-superseding`). Accept is `nat plan accept`: on an
 Untitled tab it makes the project, then the session is killed and
 `addProject(replacing:)` hands the tab over; on a project it files the plan
 (`--project`) and leaves the session running. The layout is one for both:
@@ -489,7 +489,7 @@ readings (`ActivityStore.onReading`, `AppModel.planningAgentsRead`) — is
 degraded so nothing unsaved is lost (`workshopAgentEnded`, its proposal read
 first; `EndedWorkshop.decide`): a plan up and unaccepted is kept, the row
 pinned, Plan in front and Terminal empty (`workshopEnded`), Keep workshopping
-starting a new agent told to read it with `nat plan-proposal`
+starting a new agent told to read it with `nat plan proposal`
 (`continueEndedWorkshop`, the Brief still the first request); nothing
 proposed hands the composer back with the brief (a launch keeps the draft and
 attached file — only a close, a dismiss or a trash discards them); an
@@ -512,8 +512,8 @@ After an accepted plan, `AppModel.acceptProposal` arms `MirrorNudgeMemory`
 (UserDefaults, per project; `.inMemory()` for tests and stories) and the
 sidebar's foot draws `MirrorNudgeCardView` while `mirrorNudgeShown` (armed **and** local).
 ✕ disarms for good. "Choose page…" opens `NotionPickerSheetView` over
-`NotionPickerModel` (`nat notion-search`); "Create page" is
-`mirrorActiveProject` → `nat project-mirror`, which changes the project's ID, so
+`NotionPickerModel` (`nat notion search`); "Create page" is
+`mirrorActiveProject` → `nat project mirror`, which changes the project's ID, so
 `projectMirrored` hands the tab over in place. A refusal shows in the sheet and
 changes nothing. Stories: `window-plan-accepted`, `notion-page-picker`.
 
@@ -569,7 +569,7 @@ they would leave no closable tab) and drops any config no longer names. Every
 path that puts a config project's tab back (`addProject`,
 `ensureSourceProjects`, `projectMirrored`) forgets its close. The "+" tab's
 sheet offers the closed ones first (`AppModel.closedProjects`, read off
-config, not `project-list`) and opens one straight into `addProject`, writing
+config, not `project list`) and opens one straight into `addProject`, writing
 nothing. Tests: `ClosedTabTests`.
 
 ## Reaping finished agents
@@ -578,8 +578,8 @@ nothing. Tests: `ClosedTabTests`.
 (`agentSessionsToReap`) are sessions whose slice reads other than In
 progress in an **open plan** (every tab's, merged slice id → project and
 slice), the selected slice and one still under its visit hold excepted. Each
-is verified with a fresh `slice-status` and killed with `agent-kill` on
-**the slice's own project** — never the active one, where `slice-status`
+is verified with a fresh `slice status` and killed with `agent kill` on
+**the slice's own project** — never the active one, where `slice status`
 cannot find another project's slice and answers gone. A session no open plan
 lists is never touched: there is no project to ask on. `closeProject` sweeps
 before its tab goes, so the closing plan still counts. Tests:
@@ -620,7 +620,7 @@ outcome hues, which sit too close to tell projects apart; `projectTint`
 falls back to an outcome hue only for a colour a palette leaves out).
 gnat never picks one: once config is read, and whenever a project joins the
 strip (`addProject`, `ensureSourceProjects`, `projectMirrored`),
-`AppModel.assignProjectColors` runs one `config-set project.<id>.color auto`
+`AppModel.assignProjectColors` runs one `config set project.<id>.color auto`
 per such project with none, each once a run, then `reloadConfig` — only
 where `assignsProjectColors`, which only `NatApp` sets (tests run the real
 `nat`). It is drawn as the project's **badge**, `ProjectBadgeView`: the
@@ -749,12 +749,12 @@ and container crumbs and the selection's own each open `CrumbTreePicker`
 (projects → milestones → slices, `CrumbTree`) on themselves; with nothing
 selected there is no breadcrumb. Stories: `titlebar-band-*`,
 `status-bar-agent-readout*`, `changes-section-commits`, `action-bar-*`. The Thread is labelled "Task" whatever the
-slice's state, and draws `slice-show`'s `events`
-in order — hand-backs, send-backs (`slice-rework --comments`), releases,
-cancels (`slice-cancel`: "<who> cancelled to Todo, work discarded", story
-`window-task-log-cancelled`), relaunches, work resumed (`slice-resume`: "Work resumed", why as its body,
+slice's state, and draws `slice show`'s `events`
+in order — hand-backs, send-backs (`slice rework --comments`), releases,
+cancels (`slice cancel`: "<who> cancelled to Todo, work discarded", story
+`window-task-log-cancelled`), relaunches, work resumed (`slice resume`: "Work resumed", why as its body,
 its stamp as its time; the hand-back that ends it the ordinary card after
-it), notes (`nat slice-note`, headed "Another agent left a note";
+it), notes (`nat slice note`, headed "Another agent left a note";
 `fromSlice` matched once against the loaded plan by name and milestone
 name — `noteSourceSlice` — is a `task` fact drawn as the brief's
 `DependencyRow`, through `ThreadEventCard.taskRow`, else `source` with the
@@ -765,7 +765,7 @@ follow-up — headed "<Queued | Folded in | Dismissed> proposed follow-up"
 (`followUpDecisionHeading`), its title then its brief as the body, a queued
 one's slice as a `task` row; a proposal still pending is its batch's own
 triage item in its place — `FollowUpCards`, drawing only the items
-`pendingFollowUps(batch:in:)` pairs with it (`slice-show`'s `followUps` and
+`pendingFollowUps(batch:in:)` pairs with it (`slice show`'s `followUps` and
 the event share a `batch`), with its own Discard all and Apply; a proposal
 awaits triage only where nat lists items of its batch, so a Done slice's
 never-triaged batch draws as a record. `FollowUpStore` keys choices (by
@@ -811,8 +811,8 @@ values (`MenuCommands.swift`): the sidebar, shell and slice navigator each
 publish the actions they already own, nil where their control is disabled.
 
 **Visual changes** is a fourth navigator section, between Changes and PR,
-**absent** unless `slice-show`'s `visuals` is non-empty (the images an agent
-handed in with `nat slice-visuals`), and so is its titlebar tab
+**absent** unless `slice show`'s `visuals` is non-empty (the images an agent
+handed in with `nat slice visuals`), and so is its titlebar tab
 (`MainPaneTab.visuals`; no pane-wide actions, zoom being per image).
 `VisualStore` (one per project,
 `AppModel.visualStore`) and `VisualReview` (the shell's) mirror `DiffStore`/
@@ -839,7 +839,7 @@ main actor, cached by the two keys; refused with a tooltip where sizes differ
 or an image is unavailable); `VisualStore` holds divider, highlight and mask
 beside zoom. Comment pins stay in the after's pixels; an unavailable before
 draws the after alone, pair controls disabled. `VisualDivider` wears
-`.columnResize`. Send is `agent-send`, then `slice-rework` only where the
+`.columnResize`. Send is `agent send`, then `slice rework` only where the
 slice is handed back; a failed send keeps the comments. The comment box is
 drawn in the pane, not a `.popover`, so the gallery can render it — at a
 point, it is the pane's one floating overlay: the image section draws only
@@ -880,13 +880,13 @@ or default. No tab or pane opens on a run: its session is held in
 
 **Task sources.** There is no new-project entry for one: **connecting a
 plugin makes its section.** `AppModel.ensureSourceProjects` makes exactly one
-source project — `project-create --source`, no working directory, and named
+source project — `project create --source`, no working directory, and named
 by the plugin wherever gnat names it (`AppModel.tabName`: the plugin's
 `displayTitle` from `sourcePlugins`, else the plugin's name; never config's
 `name`) — for each plugin whose `describe` is connected
 (`SourceDescribe.isConnected`: no setup field `set == false`), takes it into
 the sidebar without opening it, and makes it once per run whatever a config
-re-read says. It runs after each reading of `source-list` and once config is
+re-read says. It runs after each reading of `source list` and once config is
 read — **only in an `AppModel` made with `makesSourceProjects: true`**, as
 `NatApp` makes the app's: tests drive models over the machine's real `nat`
 (the default `NatClient`), and must never write a project into the real
@@ -932,7 +932,7 @@ its in-flight tasks nested under it with no badge; every other row is as it
 was. The titlebar reads the same (`TitlebarIdentity.cardBadge`/`cardIcon`,
 `titlebarIdentity(…, plan:)`). A
 container is a third selection kind (`selectedContainerID`, exclusive with
-slice, session and workshop); `ContainerStore` caches `container-show` per
+slice, session and workshop); `ContainerStore` caches `container show` per
 project and, like the PR screen, keeps a stale reading on a failed re-read.
 `ContainerNavigatorModel` decides the sections (the first prose section's
 facts and tasks, then comments/links; unknown kinds skipped) and
@@ -976,7 +976,7 @@ blank) and there is no +/- column — a row's fill, and its gutter stripe,
 say what changed. A task's diff is read `expandable`: every gap around its
 hunks is a `hunkBreak` row carrying a `DiffGap`, whose controls (GitHub's ↓
 ↑ ↕) sit in the gutter; `DiffStore.expand` reads the lines through `nat
-slice-file` and `DiffFileModel.revealing` puts them back as context rows
+slice file` and `DiffFileModel.revealing` puts them back as context rows
 numbered as git would have. Story: `window-review-expanded`.
 
 ## Design tokens

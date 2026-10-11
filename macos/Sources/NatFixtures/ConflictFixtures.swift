@@ -4,7 +4,7 @@ import NatKit
 // MARK: - Merge conflicts, and pull request marks across projects
 
 extension Fixtures {
-    /// `nat pr-status --json` with the approved slice's pull request
+    /// `nat pr status --json` with the approved slice's pull request
     /// conflicting with main, its checks green.
     public static let prStatusConflicting = PRStatusDoc(slices: [
         PRStatusSlice(
@@ -13,7 +13,7 @@ extension Fixtures {
             conflicting: true, base: "main"),
     ])
 
-    /// `nat pr-status --json` with the handed-back slice — in review, no pull
+    /// `nat pr status --json` with the handed-back slice — in review, no pull
     /// request yet — tested conflicting with origin/main.
     public static let prStatusBranchConflicting = PRStatusDoc(slices: [], branches: [
         PRStatusBranch(
@@ -105,7 +105,7 @@ extension Fixtures {
             ])
     }
 
-    /// `nat pr-status --json` for the second project: one pull request red,
+    /// `nat pr status --json` for the second project: one pull request red,
     /// one conflicting with main, and its Done slice's long since merged.
     public static let secondProjectPRStatus = PRStatusDoc(slices: [
         PRStatusSlice(

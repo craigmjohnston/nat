@@ -36,8 +36,8 @@ function runs(on: On, own: readonly string[] = []): string[][] {
   return ran
 }
 
-const waiting = ['nat', 'agent-waiting']
-const working = ['nat', 'agent-working']
+const waiting = ['nat', 'agent', 'waiting']
+const working = ['nat', 'agent', 'working']
 
 const ask = {
   tool: 'AskUserQuestion',
@@ -148,7 +148,7 @@ test('a finished turn with nothing handed in waits, cleared by the next prompt',
   const ran = runs(on)
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
   await $.turn.start({ text: 'go', turnId: 't1' } as never)
-  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_1', command: 'nat slice-show x --project p' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_1', command: 'nat slice show x --project p' } as never)
   await $.turn.complete(finished('answer'))
   expect(ran).toEqual([waiting])
   await $.prompt.submit({ text: 'yes, do that' } as never)
@@ -156,10 +156,10 @@ test('a finished turn with nothing handed in waits, cleared by the next prompt',
 })
 
 for (const command of [
-  "nat complete-slice s --project p --summary '- done'",
-  'nat complete-slice s --project p --blocked --summary stuck',
-  "cd /w && nat slice-followups s --project p --follow-up 'x'",
-  '/usr/local/bin/nat plan-propose --project p < plan.md',
+  "nat slice complete s --project p --summary '- done'",
+  'nat slice complete s --project p --blocked --summary stuck',
+  "cd /w && nat slice followups s --project p --follow-up 'x'",
+  '/usr/local/bin/nat plan propose --project p < plan.md',
 ]) {
   test(`a finished turn that ran \`${command}\` marks nothing`, async ($, on) => {
     const ran = runs(on)
@@ -176,7 +176,7 @@ test('a hand-in counts for its own turn only', async ($, on) => {
   const ran = runs(on)
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
   await $.turn.start({ text: 'go', turnId: 't1' } as never)
-  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_1', command: 'nat complete-slice s --project p' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_1', command: 'nat slice complete s --project p' } as never)
   await $.turn.complete(finished('answer'))
   await $.turn.start({ text: 'one more thing', turnId: 't2' } as never)
   await $.turn.complete(finished('answer'))
@@ -187,9 +187,9 @@ test('a hand-in a subagent ran, or one only named, is no hand-in', async ($, on)
   const ran = runs(on)
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
   await $.turn.start({ text: 'go', turnId: 't1' } as never)
-  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_1', command: 'nat complete-slice s --project p', agentId: 'agent_1' } as never)
-  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_2', command: 'grep -rn complete-slice internal' } as never)
-  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_3', command: 'nat complete-slices' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_1', command: 'nat slice complete s --project p', agentId: 'agent_1' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_2', command: 'grep -rn slice complete internal' } as never)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_3', command: 'nat slice completes' } as never)
   await $.turn.complete(finished('answer'))
   expect(ran).toEqual([waiting])
 })
@@ -227,6 +227,6 @@ test('a run that throws or exits non-zero is swallowed into the debug log', asyn
   expect(calls).toBe(2)
   expect(lines).toEqual([
     expect.stringMatching(/^debug: waiting flag \(stuck\) not written: .*nat: not found/),
-    'debug: nat agent-working exited 1: not an agent pane',
+    'debug: nat agent working exited 1: not an agent pane',
   ])
 })

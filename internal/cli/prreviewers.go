@@ -11,10 +11,10 @@ import (
 	"github.com/craigmjohnston/nat/internal/actions"
 )
 
-// PRReviewerEditor is what pr-reviewers needs of the GitHub CLI beyond
+// PRReviewerEditor is what pr reviewers needs of the GitHub CLI beyond
 // reading the pull request: who could review in the repository, and asking
 // or un-asking them. It names exactly those two gh calls, the way
-// [PRCommenter] does for pr-comment.
+// [PRCommenter] does for pr comment.
 type PRReviewerEditor interface {
 	EditReviewers(dir, ref string, add, remove []string) error
 	Collaborators(dir string) ([]string, error)
@@ -26,14 +26,14 @@ type PRReviewerEditor interface {
 // the repository's collaborators bar the author and those already requested.
 // An edit answers with the edit's own result — who it asked and who it
 // stopped asking, which gh accepted — and reads nothing back: the next
-// reading of the pull request (gnat's settle read, pr-view) says who is
+// reading of the pull request (gnat's settle read, pr view) says who is
 // requested now, and a read here would spend a GitHub call to say it sooner.
 //
 // A collaborator listing that fails concludes nothing — it is reported as
 // candidates_error beside an empty list, never as "nobody could review",
 // and never fails a read that otherwise worked.
 func prReviewers(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("pr-reviewers", flag.ContinueOnError)
+	flags := flag.NewFlagSet("pr reviewers", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var add, remove repeatedFlag
 	flags.Var(&add, "add", "ask this login (or org/team) to review; repeatable")
@@ -45,9 +45,9 @@ func prReviewers(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("pr-reviewers: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("pr reviewers: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("pr-reviewers", rest[0])
+	id, err := pageID("pr reviewers", rest[0])
 	if err != nil {
 		return err
 	}

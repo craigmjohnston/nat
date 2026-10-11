@@ -65,7 +65,7 @@ no working dir.
   `ContainerReader`, `ActionRunner` — answered only by `*Sourced`, each
   delegating to the client with the project's `plugin`. Callers type-assert,
   as with `Puller`. `RepoSetter` (`SetSliceRepo`, the repo and nothing else)
-  is answered by `*Local` and `*Sourced` — `nat slice-repo`'s.
+  is answered by `*Local` and `*Sourced` — `nat slice repo`'s.
 
 ## Task log (`taskevents.go`, `stamp.go`, `tasklog.go`)
 
@@ -81,7 +81,7 @@ no working dir.
   (`fixedClock`, `clocked`) so bodies and Notion request JSON stay exact.
 - `TaskEvents` reads each stamp into `TaskEvent.At` (zero where absent —
   old plans read exactly as before), and a Follow-ups triaged section's into
-  each item it decides' `TaskFollowUp.DecidedAt` (`slice-show`'s `decidedAt`), and
+  each item it decides' `TaskFollowUp.DecidedAt` (`slice show`'s `decidedAt`), and
   `HandbackSummaryOf` strips it.
 - Every `Follow-ups` section is a batch (`TaskEvent.Batch`, its ordinal); a
   triage record's line decides the earliest still-undecided item of its title

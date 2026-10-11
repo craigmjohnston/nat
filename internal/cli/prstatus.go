@@ -17,7 +17,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
-// PRBatchReader is what pr-status — and every command that reads a pull
+// PRBatchReader is what pr status — and every command that reads a pull
 // request's state rather than its whole conversation — needs of the GitHub
 // CLI: one batched reading ([gh.CLI.ReadPRs]), the way
 // [internal/tui.PRReader] does for the board's own background reading.
@@ -28,7 +28,7 @@ type PRBatchReader interface {
 // PRPoller is the polling half of the batched reading, which keeps GitHub's
 // budget ([gh.Budget]): PollPRs reads nothing while a refusal's stop holds,
 // and Outlook is the budget's policy for the next polling read — what
-// pr-status reports under rate_limit.
+// pr status reports under rate_limit.
 type PRPoller interface {
 	PollPRs(q gh.BatchQuery) (gh.Batch, error)
 	Outlook(poll time.Duration) gh.Outlook
@@ -68,25 +68,25 @@ type PRPoller interface {
 // always runs. Either way rate_limit carries the budget's policy for the next
 // polling read ([gh.Outlook]).
 func prStatus(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("pr-status", flag.ContinueOnError)
+	flags := flag.NewFlagSet("pr status", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	var projectRefs stringList
 	flags.Var(&projectRefs, "project", "a project to read, by page `ID` (required; repeatable, one reading for all)")
-	detailURL := flags.String("detail", "", "also read this pull request in full, by `URL`, as pr-view prints it")
+	detailURL := flags.String("detail", "", "also read this pull request in full, by `URL`, as pr view prints it")
 	settle := flags.Bool("settle", false, "read after an action: run gh even while polling is paused or throttled")
 	rest, err := parseFlags(flags, args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("pr-status: unexpected argument %q", rest[0])
+		return usageErrorf("pr status: unexpected argument %q", rest[0])
 	}
 	var detail *gh.PRRef
 	if *detailURL != "" {
 		ref, ok := gh.ParsePRURL(*detailURL)
 		if !ok {
-			return usageErrorf("pr-status: --detail wants a pull request URL, given %q", *detailURL)
+			return usageErrorf("pr status: --detail wants a pull request URL, given %q", *detailURL)
 		}
 		detail = &ref
 	}
@@ -138,7 +138,7 @@ func prStatus(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// projectReading is one project of a pr-status run: what it is, its plan,
+// projectReading is one project of a pr status run: what it is, its plan,
 // and — once the batch is read — what the reading found for it.
 type projectReading struct {
 	id        string
@@ -372,7 +372,7 @@ func branchesMarkdown(readings []branchReading) string {
 	return "\n# Branches awaiting review\n\n" + out
 }
 
-// prReading is one slice's pull request as pr-status reports it. Checks is
+// prReading is one slice's pull request as pr status reports it. Checks is
 // how its checks stand and whether it conflicts, set only for an open pull
 // request the listing read.
 type prReading struct {
@@ -383,7 +383,7 @@ type prReading struct {
 	Checks    *gh.PRStatus
 }
 
-// liveReader is what pr-status needs of tmux: which slices have a session.
+// liveReader is what pr status needs of tmux: which slices have a session.
 type liveReader interface {
 	actions.PromptSender
 	LiveSlices() (map[string]string, error)
@@ -429,7 +429,7 @@ func worthReadingPR(s domain.Slice) bool {
 }
 
 // readinessOf turns what gh said about an open pull request into the reading
-// pr-status reports, the same mapping prstate.go's readinessOf makes: a
+// pr status reports, the same mapping prstate.go's readinessOf makes: a
 // failed check first, whatever the review says, then approved and mergeable
 // is the review over, and anything else is a review still to come.
 func readinessOf(status gh.PRStatus) domain.PRReadiness {
@@ -762,7 +762,7 @@ func prEnded(status gh.PRStatus) bool {
 // readOnePR is one pull request's state off a batched reading of it alone —
 // a point of GitHub's budget, where `gh pr view` was one too but read the
 // whole conversation to get it. The one-off actions that only need to know
-// where a pull request stands (pr-merge, slice-checks-rerun and -cancel)
+// where a pull request stands (pr merge, slice checks rerun and -cancel)
 // read it so. A URL that names no pull request, a reading that failed, and
 // one GitHub could not resolve are each refused, since each of those
 // actions spends or ends something on the strength of the answer.

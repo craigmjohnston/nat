@@ -29,7 +29,7 @@ type PRCreator interface {
 // the approve rather than falling back, since a pull request opened with the
 // wrong title is not one this can open again. Claude Code's attribution footer
 // is stripped first ([StripAgentAttribution]), so a hand-back filed before
-// complete-slice stripped it still opens a clean pull request. The base is
+// slice complete stripped it still opens a clean pull request. The base is
 // the project's configured base branch, empty leaving it to gh.
 func OpenPR(ctx context.Context, st Store, prs PRCreator, s domain.Slice, dir, base string) (string, error) {
 	description, err := st.PRDescription(ctx, s.ID)

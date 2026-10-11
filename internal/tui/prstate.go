@@ -16,7 +16,7 @@ import (
 // PRReader is what the board needs of the GitHub CLI to tell a pull request
 // still waiting on a reviewer from one the review is over on, and either from
 // one that has already landed: one batched reading ([gh.CLI.ReadPRs]) — the
-// same `nat pr-status` takes — which the pull request screen's poll reads its
+// same `nat pr status` takes — which the pull request screen's poll reads its
 // one pull request in full through too. It is an interface for the reason
 // [PRCreator] is: the flow can then be driven without gh, without a network
 // and without a GitHub account.
@@ -207,7 +207,7 @@ func (a *App) refreshPRStates() tea.Cmd {
 		}
 		// What the reading found red is told to the agent on it, or put on the
 		// record where there is none — once per failure, see
-		// [actions.NoticeFailingChecks], the same function `nat pr-status` runs.
+		// [actions.NoticeFailingChecks], the same function `nat pr status` runs.
 		actions.NoticeFailingChecks(context.Background(), st, sender, live, projectID, red)
 		return msg
 	}

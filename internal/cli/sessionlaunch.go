@@ -27,7 +27,7 @@ import (
 // is minted its ID before either the worktree or the tmux launch happens,
 // since both are named from it ([agent.SessionTag], [agent.AdHocSessionName]).
 func sessionLaunch(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("session-launch", flag.ContinueOnError)
+	flags := flag.NewFlagSet("session launch", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	dirFlag := flags.String("dir", "", "where the session runs; the project's own working directory if unset")
@@ -39,7 +39,7 @@ func sessionLaunch(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("session-launch: takes no positional arguments, given %d", len(rest))
+		return usageErrorf("session launch: takes no positional arguments, given %d", len(rest))
 	}
 
 	cfg, projectID, project, err := env.projectFor(*projectRef)
@@ -57,7 +57,7 @@ func sessionLaunch(ctx context.Context, args []string, env Env) error {
 	}
 	dir = actions.ExpandHome(dir)
 	if err := actions.ExistingDir(dir); err != nil {
-		return fmt.Errorf("session-launch: %w", err)
+		return fmt.Errorf("session launch: %w", err)
 	}
 
 	agentModel := config.AgentModel{Model: *model, Effort: *effort}.Over(cfg.SliceAgentFor(project))
@@ -66,13 +66,13 @@ func sessionLaunch(ctx context.Context, args []string, env Env) error {
 	id := store.NewSessionID()
 	placed := actions.PlaceSession(env.NewWorktrees(), env.gitFor(project), dir, actions.SessionBranch(id))
 	if !placed.OK {
-		return fmt.Errorf("session-launch: %s", placed.Toast)
+		return fmt.Errorf("session launch: %s", placed.Toast)
 	}
 
 	tmuxName := agent.AdHocSessionName(id)
 	tag := agent.SessionTag(projectID, id)
 	if err := env.NewTmux().LaunchBare(tmuxName, placed.Dir, tag, agentModel); err != nil {
-		return fmt.Errorf("session-launch: %w", err)
+		return fmt.Errorf("session launch: %w", err)
 	}
 
 	added, err := st.AddSession(ctx, storeProject(projectID, project),

@@ -1,6 +1,6 @@
 ---
 name: queue-work
-description: Plan project work into the Notion agent tracker — draft milestones/slices from a work description, get explicit user approval, then write them with `nat plan-apply`.
+description: Plan project work into the Notion agent tracker — draft milestones/slices from a work description, get explicit user approval, then write them with `nat plan apply`.
 ---
 
 # /queue-work — plan work into the Notion agent tracker
@@ -15,7 +15,7 @@ Settle which project you are planning into before you read anything, because
 every `nat` command requires `--project <id>` — the project's page ID — and
 every one you run must carry it. A command given none refuses outright: there
 is no project the tracker falls back to, since the one the user's board is on
-is theirs to switch while you work and an unpinned `plan-apply` would have
+is theirs to switch while you work and an unpinned `plan apply` would have
 filed the whole plan wherever it had got to.
 
 - If you were launched from the board, your prompt already names the ID.
@@ -47,8 +47,8 @@ already in front of you and this read is only for when it later goes stale.
 - Slot new slices into existing milestones when they fit; create new
   milestones only for genuinely new phases of work.
 - **List the slices in the order they should be worked**, and the milestones
-  likewise. `nat plan-apply` lands them on the board in the order the document
-  lists them, and `nat next-slice` hands out the topmost unblocked slice of the
+  likewise. `nat plan apply` lands them on the board in the order the document
+  lists them, and `nat slice next` hands out the topmost unblocked slice of the
   lowest-ordered milestone that is not Done — so the order you write is the
   order the work comes out in, and an order you did not think about is one the
   user has to reorder by hand.
@@ -61,7 +61,7 @@ already in front of you and this read is only for when it later goes stale.
   made rather than skipped.
 - **Do not chain the plan.** A dependency is work that genuinely cannot start
   yet, not work that merely reads better second: a blocked slice is one `nat
-  next-slice` steps over and `nat start-slice` refuses. Slices that only share
+  slice next` steps over and `nat slice start` refuses. Slices that only share
   a subject are independent, and leaving them unblocked is what lets the user
   run agents on them in parallel. Order carries the reading; `depends_on`
   carries the blocking.
@@ -77,7 +77,7 @@ already in front of you and this read is only for when it later goes stale.
   that replaces it, never left as a list for the user to delete or move by
   hand. Say which in the proposal. Only `Todo` slices can be changed this way;
   work in progress or `Done` is never the plan's to touch.
-- Status and assignee are not yours to choose: `nat plan-apply` files new
+- Status and assignee are not yours to choose: `nat plan apply` files new
   milestones at the end of the plan and new slices as `Todo` and unassigned. A
   milestone's status follows its slices — there is none to set, on the board or
   anywhere else; agents claim their own slices at work time.
@@ -159,8 +159,8 @@ the first sentence.
 For example. A title: not "Catch the modified enters with a key monitor
 — performKeyEquivalent never sees them" but "Make shift+enter insert a
 newline in the agent terminal". A summary line: not
-"DiffStore.sendComments now always sends the complete-slice --branch
-instruction and runs slice-rework after agent-send succeeds" but "Review
+"DiffStore.sendComments now always sends the slice complete --branch
+instruction and runs slice rework after agent send succeeds" but "Review
 comments sent to an agent now always ask it to hand the work back again,
 so a slice cannot get stuck in review". A question: not "Where the
 'already there' baseline comes from: a comment counts as new when no
@@ -182,7 +182,7 @@ because you have already seen the five."
    feedback by revising the proposal, not by writing part of it.
 
    If your launch prompt says the app takes proposals instead
-   (`nat plan-propose --project <project>`), follow the prompt: propose the
+   (`nat plan propose --project <project>`), follow the prompt: propose the
    plan there instead of applying it yourself, as soon as you have a draft
    and again on every revision — the user's Accept in the app is the one
    approval and what applies it. While a proposal is unaccepted, a revised
@@ -195,7 +195,7 @@ because you have already seen the five."
    below, and the plain-terminal approve-then-apply flow, are for a launch
    whose prompt says nothing of the kind.
 3. On approval, write the whole plan in one go by piping this document to
-   `nat plan-apply --project <project>`:
+   `nat plan apply --project <project>`:
 
    ```json
    {
@@ -232,7 +232,7 @@ because you have already seen the five."
 
    `depends_on` names slices by title — one the same document creates, wherever
    in it, or one the project already has. A slice is blocked while anything it
-   names is not Done: `nat next-slice` steps over it and `nat start-slice`
+   names is not Done: `nat slice next` steps over it and `nat slice start`
    refuses it, so use it for work that genuinely cannot start yet, not for work
    that merely reads better in order.
 
@@ -240,7 +240,7 @@ because you have already seen the five."
    `dependencies` list is how the plan makes a slice **already on the board**
    wait on something — a `slice` by title and the titles it waits `on`, both
    sides naming a slice the document creates or one the project already has. It
-   is additive, exactly as `nat slice-depends --on` is: what it names is added
+   is additive, exactly as `nat slice depends --on` is: what it names is added
    to whatever that slice already waits on, and nothing is ever dropped. A
    document may hold it and nothing else.
 
@@ -252,10 +252,10 @@ because you have already seen the five."
 
    `remove`, `move` and `edit` change slices **already on the board**, each
    named by title as `depends_on` names one: `remove` sends a slice to the
-   trash as `nat slice-delete` does, `move` refiles it under a milestone the
+   trash as `nat slice delete` does, `move` refiles it under a milestone the
    project has or one the same document creates, and `edit` gives it a new
    `title`, replaces its brief (`description`) whole, or both — at least one —
-   as `nat slice-edit --title --description` does. A superseded `Todo` slice is removed in the
+   as `nat slice edit --title --description` does. A superseded `Todo` slice is removed in the
    document that replaces it — never left for the user to clean up. Each must
    name a `Todo` slice: one in progress or `Done` refuses the whole document,
    as does a title that matches no slice or more than one. A removed slice may
@@ -275,7 +275,7 @@ because you have already seen the five."
    document — `edit` that slice to change it, or `remove` it to replace it —
    as do two created slices sharing a title, and an `edit` renaming a slice to
    a title another already has.
-4. Report the created page URLs, grouped by milestone — `plan-apply` prints
+4. Report the created page URLs, grouped by milestone — `plan apply` prints
    them.
 
 ## Guardrails
@@ -283,7 +283,7 @@ because you have already seen the five."
 - Everything you write goes through `nat`. Never edit Notion directly.
 - Every `nat` command carries `--project <project>`, the ID you settled in
   setup — the one read that finds it is the only exception.
-- `plan-apply` creates, and changes only the `Todo` slices its `remove`,
+- `plan apply` creates, and changes only the `Todo` slices its `remove`,
   `move` and `edit` lists name. Existing milestones, every other slice — and
   above all anything in progress or `Done` — are left exactly as they are.
 - If a run fails partway, it says what it had already changed and created.

@@ -744,7 +744,7 @@ func TestAppFetchesTheProjectPageOnlyOnce(t *testing.T) {
 // ([App.storeFor]), which is [store.Mirrored.Body]'s to answer, and that
 // answer is never an error over a read that failed — the same "reads that
 // fail conclude nothing" rule every store read follows (see root CLAUDE.md),
-// and the one a headless next-slice already relies on to hand an agent a
+// and the one a headless slice next already relies on to hand an agent a
 // claim though its brief could not be freshly read. A page never cached at
 // all reads back empty rather than as a page the workspace refused, and
 // nothing here is worth retrying on its own — the refresh key is.
@@ -923,7 +923,6 @@ func TestAppDrawsAOnePagePlanWhenTheOrderCannotBeRead(t *testing.T) {
 		t.Errorf("slices = %+v, want the queried order", app.project)
 	}
 }
-
 
 // While the cursor is on a slice waiting on unfinished work, the status line
 // names each slice it waits on and where on the board that slice is filed: the

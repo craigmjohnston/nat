@@ -26,8 +26,8 @@ func TestScratchOpenCreatesOnceThenReusesIt(t *testing.T) {
 	stubHomeDir(t, "/home/craig", nil)
 	env, out, saved := noNotionEnv(t, config.Config{}, false)
 
-	if err := Run(context.Background(), []string{"scratch-open", "--json"}, env); err != nil {
-		t.Fatalf("first scratch-open: %v", err)
+	if err := Run(context.Background(), []string{"scratch", "open", "--json"}, env); err != nil {
+		t.Fatalf("first scratch open: %v", err)
 	}
 	var first scratchOpenJSON
 	if err := json.Unmarshal(out.Bytes(), &first); err != nil {
@@ -46,8 +46,8 @@ func TestScratchOpenCreatesOnceThenReusesIt(t *testing.T) {
 
 	out.Reset()
 	// --dir is for creation only: a later call ignores it and creates nothing.
-	if err := Run(context.Background(), []string{"scratch-open", "--json", "--dir", "/elsewhere"}, env); err != nil {
-		t.Fatalf("second scratch-open: %v", err)
+	if err := Run(context.Background(), []string{"scratch", "open", "--json", "--dir", "/elsewhere"}, env); err != nil {
+		t.Fatalf("second scratch open: %v", err)
 	}
 	var second scratchOpenJSON
 	if err := json.Unmarshal(out.Bytes(), &second); err != nil {
@@ -66,8 +66,8 @@ func TestScratchOpenCreatesOnceThenReusesIt(t *testing.T) {
 
 func TestScratchOpenPrintsBareIDAndHonoursDir(t *testing.T) {
 	env, out, saved := noNotionEnv(t, config.Config{}, false)
-	if err := Run(context.Background(), []string{"scratch-open", "--dir", "/work"}, env); err != nil {
-		t.Fatalf("scratch-open: %v", err)
+	if err := Run(context.Background(), []string{"scratch", "open", "--dir", "/work"}, env); err != nil {
+		t.Fatalf("scratch open: %v", err)
 	}
 	if got := strings.TrimSpace(out.String()); got != saved.ScratchProject || got == "" {
 		t.Errorf("printed %q, want the bare ID %q", got, saved.ScratchProject)
@@ -79,8 +79,8 @@ func TestScratchOpenPrintsBareIDAndHonoursDir(t *testing.T) {
 
 func TestScratchOpenRecreatesWhenConfigLostTheEntry(t *testing.T) {
 	env, _, saved := noNotionEnv(t, config.Config{ScratchProject: "dangling"}, true)
-	if err := Run(context.Background(), []string{"scratch-open"}, env); err != nil {
-		t.Fatalf("scratch-open: %v", err)
+	if err := Run(context.Background(), []string{"scratch", "open"}, env); err != nil {
+		t.Fatalf("scratch open: %v", err)
 	}
 	if saved.ScratchProject == "dangling" || !saved.Projects[saved.ScratchProject].IsLocal() {
 		t.Errorf("scratch_project = %q, want a fresh local project", saved.ScratchProject)
@@ -91,22 +91,22 @@ func TestScratchOpenFailures(t *testing.T) {
 	ctx := context.Background()
 
 	env, _, _ := noNotionEnv(t, config.Config{}, false)
-	if err := Run(ctx, []string{"scratch-open", "extra"}, env); err == nil {
+	if err := Run(ctx, []string{"scratch", "open", "extra"}, env); err == nil {
 		t.Error("a positional argument was accepted")
 	}
-	if err := Run(ctx, []string{"scratch-open", "--bogus"}, env); err == nil {
+	if err := Run(ctx, []string{"scratch", "open", "--bogus"}, env); err == nil {
 		t.Error("an unknown flag was accepted")
 	}
 
 	stubHomeDir(t, "", errors.New("no home"))
-	if err := Run(ctx, []string{"scratch-open"}, env); err == nil || !strings.Contains(err.Error(), "home directory") {
+	if err := Run(ctx, []string{"scratch", "open"}, env); err == nil || !strings.Contains(err.Error(), "home directory") {
 		t.Errorf("no home: err = %v", err)
 	}
 	stubHomeDir(t, "/h", nil)
 
 	loadErr := errors.New("unreadable")
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, loadErr }
-	if err := Run(ctx, []string{"scratch-open"}, env); !errors.Is(err, loadErr) {
+	if err := Run(ctx, []string{"scratch", "open"}, env); !errors.Is(err, loadErr) {
 		t.Errorf("load failure: err = %v", err)
 	}
 
@@ -118,7 +118,7 @@ func TestScratchOpenFailures(t *testing.T) {
 	}
 	t.Setenv("XDG_DATA_HOME", blocker)
 	t.Setenv("HOME", blocker)
-	if err := Run(ctx, []string{"scratch-open"}, env1); err == nil || !strings.Contains(err.Error(), "create the plan") {
+	if err := Run(ctx, []string{"scratch", "open"}, env1); err == nil || !strings.Contains(err.Error(), "create the plan") {
 		t.Errorf("unwritable plan dir: err = %v", err)
 	}
 	if saved1.ScratchProject != "" {
@@ -137,7 +137,7 @@ func TestScratchOpenFailures(t *testing.T) {
 	}
 	loaded := config.Config{}
 	env2.Load = func() (config.Config, bool, error) { return loaded, true, nil }
-	if err := Run(ctx, []string{"scratch-open"}, env2); err == nil || !strings.Contains(err.Error(), "save config") {
+	if err := Run(ctx, []string{"scratch", "open"}, env2); err == nil || !strings.Contains(err.Error(), "save config") {
 		t.Errorf("second save failure: err = %v", err)
 	}
 
@@ -151,7 +151,7 @@ func TestScratchOpenFailures(t *testing.T) {
 		}
 		return config.Config{}, true, nil
 	}
-	if err := Run(ctx, []string{"scratch-open"}, env3); !errors.Is(err, loadErr) {
+	if err := Run(ctx, []string{"scratch", "open"}, env3); !errors.Is(err, loadErr) {
 		t.Errorf("reload failure: err = %v", err)
 	}
 }
@@ -163,7 +163,7 @@ func scratchWithWork(t *testing.T) (Env, string, store.Store, store.Project, fun
 	t.Helper()
 	ctx := context.Background()
 	env, out, saved := noNotionEnv(t, config.Config{}, false)
-	if err := Run(ctx, []string{"scratch-open"}, env); err != nil {
+	if err := Run(ctx, []string{"scratch", "open"}, env); err != nil {
 		t.Fatal(err)
 	}
 	id := saved.ScratchProject
@@ -215,8 +215,8 @@ func TestDoneClearRemovesDoneEndedAndEmpty(t *testing.T) {
 		Reset()
 	})
 
-	if err := Run(ctx, []string{"done-clear", "--project", id, "--json"}, env); err != nil {
-		t.Fatalf("done-clear: %v", err)
+	if err := Run(ctx, []string{"project", "done", "clear", "--project", id, "--json"}, env); err != nil {
+		t.Fatalf("project done clear: %v", err)
 	}
 	var got doneClearJSON
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -248,8 +248,8 @@ func TestDoneClearRemovesDoneEndedAndEmpty(t *testing.T) {
 
 	// Nothing left to clear is not an error, and says so.
 	out.Reset()
-	if err := Run(ctx, []string{"done-clear", "--project", id}, env); err != nil {
-		t.Fatalf("second done-clear: %v", err)
+	if err := Run(ctx, []string{"project", "done", "clear", "--project", id}, env); err != nil {
+		t.Fatalf("second project done clear: %v", err)
 	}
 	if !strings.Contains(out.String(), "Removed 0 Done slices, 0 ended sessions and 0 empty milestones") {
 		t.Errorf("second report = %q", out.String())
@@ -260,7 +260,7 @@ func TestDoneClearMarkdownListsWhatWasRemoved(t *testing.T) {
 	ctx := context.Background()
 	env, id, _, _, _ := scratchWithWork(t)
 	out := env.Out.(interface{ String() string })
-	if err := Run(ctx, []string{"done-clear", "--project", id}, env); err != nil {
+	if err := Run(ctx, []string{"project", "done", "clear", "--project", id}, env); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"Removed 2 Done slices, 1 ended sessions and 2 empty milestones", "- done one", "## Sessions", "- ended", "## Milestones", "- Empty"} {
@@ -275,7 +275,7 @@ func TestDoneClearRefusesAProjectWithAWorkspace(t *testing.T) {
 		"3b738308-f654-811c-948d-e1fb36f71df3": {Name: "Real", SlicesDSID: "ds", WorkingDir: "/r"},
 	}}
 	env, _, _ := noNotionEnv(t, cfg, true)
-	err := Run(context.Background(), []string{"done-clear", "--project", "3b738308-f654-811c-948d-e1fb36f71df3"}, env)
+	err := Run(context.Background(), []string{"project", "done", "clear", "--project", "3b738308-f654-811c-948d-e1fb36f71df3"}, env)
 	if err == nil || !strings.Contains(err.Error(), `"Real"`) || !strings.Contains(err.Error(), "workspace") {
 		t.Errorf("err = %v, want a refusal naming the project", err)
 	}
@@ -285,10 +285,10 @@ func TestDoneClearUsageErrors(t *testing.T) {
 	ctx := context.Background()
 	env, id, _, _, _ := scratchWithWork(t)
 	for name, args := range map[string][]string{
-		"no project":  {"done-clear"},
-		"positional":  {"done-clear", "--project", id, "x"},
-		"bad flag":    {"done-clear", "--bogus"},
-		"bad project": {"done-clear", "--project", "nope"},
+		"no project":  {"project", "done", "clear"},
+		"positional":  {"project", "done", "clear", "--project", id, "x"},
+		"bad flag":    {"project", "done", "clear", "--bogus"},
+		"bad project": {"project", "done", "clear", "--project", "nope"},
 	} {
 		if err := Run(ctx, args, env); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -297,7 +297,7 @@ func TestDoneClearUsageErrors(t *testing.T) {
 }
 
 // TestDoneClearReportsEachStoreFailure breaks the plan file underneath the
-// store, one way per case, so every read and write done-clear makes is shown to
+// store, one way per case, so every read and write project done clear makes is shown to
 // stop the command and say which step it was.
 func TestDoneClearReportsEachStoreFailure(t *testing.T) {
 	for name, tc := range map[string]struct {
@@ -328,7 +328,7 @@ func TestDoneClearReportsEachStoreFailure(t *testing.T) {
 			if err := db.Close(); err != nil {
 				t.Fatal(err)
 			}
-			err = Run(context.Background(), []string{"done-clear", "--project", id}, env)
+			err = Run(context.Background(), []string{"project", "done", "clear", "--project", id}, env)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("err = %v, want one containing %q", err, tc.want)
 			}
@@ -345,7 +345,7 @@ func TestDoneClearReportsAnUnopenablePlan(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not a database"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Run(context.Background(), []string{"done-clear", "--project", id}, env); err == nil {
+	if err := Run(context.Background(), []string{"project", "done", "clear", "--project", id}, env); err == nil {
 		t.Error("an unopenable plan was cleared")
 	}
 }
@@ -353,7 +353,7 @@ func TestDoneClearReportsAnUnopenablePlan(t *testing.T) {
 func TestConfigShowNamesTheScratchProject(t *testing.T) {
 	cfg := config.Config{ScratchProject: "abc", Projects: map[string]config.ProjectConfig{"abc": {Name: "Scratch", Backend: config.BackendLocal}}}
 	env, out, _ := noNotionEnv(t, cfg, true)
-	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var doc configDoc
@@ -361,7 +361,7 @@ func TestConfigShowNamesTheScratchProject(t *testing.T) {
 		t.Errorf("json scratch_project = %q (%v)", doc.ScratchProject, err)
 	}
 	out.Reset()
-	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "Scratch project: abc") {
@@ -372,16 +372,16 @@ func TestConfigShowNamesTheScratchProject(t *testing.T) {
 func TestSliceAddFilesAScratchSliceWithNoMilestoneUnderUnfiled(t *testing.T) {
 	stubHomeDir(t, "/home/craig", nil)
 	env, out, saved := noNotionEnv(t, config.Config{}, false)
-	if err := Run(context.Background(), []string{"scratch-open"}, env); err != nil {
-		t.Fatalf("scratch-open: %v", err)
+	if err := Run(context.Background(), []string{"scratch", "open"}, env); err != nil {
+		t.Fatalf("scratch open: %v", err)
 	}
 	id := saved.ScratchProject
 
 	// Twice: the first adds the milestone, the second finds it.
 	for _, title := range []string{"Try a thing", "Try another"} {
 		out.Reset()
-		if err := Run(context.Background(), []string{"slice-add", title, "--project", id, "--json"}, env); err != nil {
-			t.Fatalf("slice-add %q: %v", title, err)
+		if err := Run(context.Background(), []string{"slice", "add", title, "--project", id, "--json"}, env); err != nil {
+			t.Fatalf("slice add %q: %v", title, err)
 		}
 		var added sliceAddedJSON
 		if err := json.Unmarshal(out.Bytes(), &added); err != nil {
@@ -411,11 +411,11 @@ func TestSliceAddFilesAScratchSliceWithNoMilestoneUnderUnfiled(t *testing.T) {
 func TestSliceAddStillRefusesNoMilestoneOutsideScratch(t *testing.T) {
 	stubHomeDir(t, "/home/craig", nil)
 	env, out, saved := noNotionEnv(t, config.Config{}, false)
-	if err := Run(context.Background(), []string{"scratch-open"}, env); err != nil {
-		t.Fatalf("scratch-open: %v", err)
+	if err := Run(context.Background(), []string{"scratch", "open"}, env); err != nil {
+		t.Fatalf("scratch open: %v", err)
 	}
-	if err := Run(context.Background(), []string{"project-create", "Mine", "--local", "--plan-dir", t.TempDir(), "--json"}, env); err != nil {
-		t.Fatalf("project-create: %v", err)
+	if err := Run(context.Background(), []string{"project", "create", "Mine", "--local", "--plan-dir", t.TempDir(), "--json"}, env); err != nil {
+		t.Fatalf("project create: %v", err)
 	}
 	var mine string
 	for id := range saved.Projects {
@@ -424,14 +424,14 @@ func TestSliceAddStillRefusesNoMilestoneOutsideScratch(t *testing.T) {
 		}
 	}
 	out.Reset()
-	err := Run(context.Background(), []string{"slice-add", "Render", "--project", mine}, env)
+	err := Run(context.Background(), []string{"slice", "add", "Render", "--project", mine}, env)
 	if err == nil || !strings.Contains(err.Error(), "pass --milestone") {
 		t.Errorf("err = %v, want the no-milestone refusal", err)
 	}
 
 	// A milestone of the same name in an ordinary project is just a milestone.
-	if err := Run(context.Background(), []string{"milestone-add", unfiledMilestone, "--project", mine}, env); err != nil {
-		t.Fatalf("milestone-add: %v", err)
+	if err := Run(context.Background(), []string{"milestone", "add", unfiledMilestone, "--project", mine}, env); err != nil {
+		t.Fatalf("milestone add: %v", err)
 	}
 	out.Reset()
 	if err := Run(context.Background(), []string{"info", "--project", mine, "--json"}, env); err != nil {

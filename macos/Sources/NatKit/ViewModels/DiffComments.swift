@@ -42,8 +42,8 @@ public struct PendingComment: Identifiable, Equatable, Sendable {
 /// the Go side does for a comment its own read has failed to place).
 ///
 /// `handBack` adds the instruction that ends the agent's fixes with the
-/// `complete-slice --branch` hand-back. Every send carries it, since every send
-/// takes the slice out of review (`slice-rework`) and only that command's
+/// `slice complete --branch` hand-back. Every send carries it, since every send
+/// takes the slice out of review (`slice rework`) and only that command's
 /// write puts it back — without it the slice would stay in progress with no
 /// branch forever. Where the review is being approved over these comments
 /// (`opensPullRequest`), the hand-back is also what opens the pull request.
@@ -68,7 +68,7 @@ public func commentsPrompt(_ comments: [PendingComment], diff: DiffModel, handBa
         out += "\n\(comment.text)\n"
     }
     if let handBack {
-        let command = "nat complete-slice \(handBack.sliceRef) --project \(handBack.projectID) " +
+        let command = "nat slice complete \(handBack.sliceRef) --project \(handBack.projectID) " +
             "--branch \(diff.branch) --summary '<what you changed for these comments>'\n"
         if handBack.opensPullRequest {
             out += "\nI am approving this work once these are fixed, so when every comment is addressed " +
@@ -102,7 +102,7 @@ public func commentsRecord(_ comments: [PendingComment], diff: DiffModel) -> Str
 }
 
 /// What a send asks the agent to finish with: the slice and project its
-/// `nat complete-slice` hand-back names, and whether that hand-back opens the
+/// `nat slice complete` hand-back names, and whether that hand-back opens the
 /// pull request (an approve over comments) or only returns the slice to review.
 public struct HandBackInstruction: Equatable, Sendable {
     public let projectID: String

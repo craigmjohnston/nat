@@ -12,7 +12,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/gh"
 )
 
-// PRViewer is what pr-view needs of the GitHub CLI: one pull request in full,
+// PRViewer is what pr view needs of the GitHub CLI: one pull request in full,
 // read in the slice's repository. It is an interface for the reason
 // [actions.PRCreator] is — a test can drive the command without a real gh on
 // PATH — and it names exactly the one gh call this command makes, the way
@@ -23,10 +23,10 @@ type PRViewer interface {
 
 // prView prints one pull request in full: the board's v key without the
 // board. Only a slice with a pull request recorded has anything to read —
-// the same refusal slice-approve and slice-diff give a slice with no branch
+// the same refusal slice approve and slice diff give a slice with no branch
 // or PR — and the read itself is gh's, in the slice's repository.
 func prView(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("pr-view", flag.ContinueOnError)
+	flags := flag.NewFlagSet("pr view", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	sessionID := flags.String("session", "",
@@ -40,9 +40,9 @@ func prView(ctx context.Context, args []string, env Env) error {
 		return prViewSession(ctx, *sessionID, *projectRef, rest, *asJSON, env)
 	}
 	if len(rest) != 1 {
-		return usageErrorf("pr-view: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("pr view: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("pr-view", rest[0])
+	id, err := pageID("pr view", rest[0])
 	if err != nil {
 		return err
 	}
@@ -73,15 +73,15 @@ func prView(ctx context.Context, args []string, env Env) error {
 	return writePRView(env, pr, *asJSON)
 }
 
-// prViewSession is pr-view for an ad hoc session's pull request: a session
+// prViewSession is pr view for an ad hoc session's pull request: a session
 // has no slice to record one on, so the pull request is named directly and
 // gh reads it from the session's own directory — the repository every branch
 // of the session's was cut in.
 func prViewSession(ctx context.Context, sessionID, projectRef string, rest []string, asJSON bool, env Env) error {
 	if len(rest) != 1 {
-		return usageErrorf("pr-view: want exactly one pull request, by URL or number, given %d", len(rest))
+		return usageErrorf("pr view: want exactly one pull request, by URL or number, given %d", len(rest))
 	}
-	id, err := pageID("pr-view", sessionID)
+	id, err := pageID("pr view", sessionID)
 	if err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func prViewSession(ctx context.Context, sessionID, projectRef string, rest []str
 	return writePRView(env, pr, asJSON)
 }
 
-// writePRView prints one pull request as pr-view's JSON or its markdown.
+// writePRView prints one pull request as pr view's JSON or its markdown.
 func writePRView(env Env, pr gh.PR, asJSON bool) error {
 	if asJSON {
 		return writeJSON(env.Out, prJSON(pr))
@@ -106,8 +106,8 @@ func writePRView(env Env, pr gh.PR, asJSON bool) error {
 }
 
 // checkJSON is one entry of the status check rollup. Rerunnable is whether a
-// GitHub Actions run is behind it — what slice-checks-rerun and
-// slice-checks-cancel can act on — and Run that run's id, so a reader tells
+// GitHub Actions run is behind it — what slice checks rerun and
+// slice checks cancel can act on — and Run that run's id, so a reader tells
 // which checks share a run (and so stop together) without reading a URL.
 type checkJSON struct {
 	Name       string `json:"name"`

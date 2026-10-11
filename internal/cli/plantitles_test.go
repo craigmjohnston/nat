@@ -66,7 +66,7 @@ func TestPlanApplyAllowsATitleThePlanFrees(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := runPlan(t, changesAPI(t, 1), doc); err != nil {
-				t.Fatalf("plan-apply: %v", err)
+				t.Fatalf("plan apply: %v", err)
 			}
 		})
 	}
@@ -80,7 +80,7 @@ func TestPlanApplyLeavesADuplicateAlreadyOnTheBoard(t *testing.T) {
 		slicePage("3b838308f654816da085f46dd135ade7", "Queued work", notion.SliceTodo, "M1: Client", "", ""))
 
 	if _, err := runPlan(t, api, `{"slices": [{"title": "Fresh", "milestone": "M2: Board"}]}`); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestPlanApplyRetitlesAnEditedSlice(t *testing.T) {
 		api := changesAPI(t, 0)
 		out, err := runPlan(t, api, `{"edit": [{"slice": "Queued work", "title": " Older work "}]}`, "--json")
 		if err != nil {
-			t.Fatalf("plan-apply: %v", err)
+			t.Fatalf("plan apply: %v", err)
 		}
 		if len(api.updates) != 1 || api.updates[0].id != depSpare || titleText(api.updates[0].props) != "Older work" {
 			t.Errorf("updates = %+v, want the one rename", api.updates)
@@ -111,7 +111,7 @@ func TestPlanApplyRetitlesAnEditedSlice(t *testing.T) {
 		api := changesAPI(t, 0)
 		out, err := runPlan(t, api, `{"edit": [{"slice": "Queued work", "title": "Older work", "description": "Queue it."}]}`)
 		if err != nil {
-			t.Fatalf("plan-apply: %v", err)
+			t.Fatalf("plan apply: %v", err)
 		}
 		if len(api.updates) != 1 || titleText(api.updates[0].props) != "Older work" || len(api.appends) != 1 {
 			t.Errorf("updates = %+v, appends = %+v, want the rename and the brief", api.updates, api.appends)
@@ -123,7 +123,7 @@ func TestPlanApplyRetitlesAnEditedSlice(t *testing.T) {
 	t.Run("title alone, read", func(t *testing.T) {
 		out, err := runPlan(t, changesAPI(t, 0), `{"edit": [{"slice": "Queued work", "title": "Older work"}]}`)
 		if err != nil {
-			t.Fatalf("plan-apply: %v", err)
+			t.Fatalf("plan apply: %v", err)
 		}
 		if !strings.Contains(out, `- Queued work — renamed "Older work"`+"\n") {
 			t.Errorf("output =\n%s\nwant the rename reported", out)
@@ -148,7 +148,7 @@ func TestPlanApplyCapsTitles(t *testing.T) {
 			_, err := runPlan(t, api, tc.doc)
 			if tc.want == "" {
 				if err != nil {
-					t.Fatalf("plan-apply: %v", err)
+					t.Fatalf("plan apply: %v", err)
 				}
 				return
 			}
@@ -185,7 +185,7 @@ func TestPlanApplyCapsBriefOpenings(t *testing.T) {
 			_, err := runPlan(t, api, tc.doc)
 			if tc.want == "" {
 				if err != nil {
-					t.Fatalf("plan-apply: %v", err)
+					t.Fatalf("plan apply: %v", err)
 				}
 				return
 			}
@@ -197,7 +197,7 @@ func TestPlanApplyCapsBriefOpenings(t *testing.T) {
 	}
 }
 
-// plan-propose --project refuses a long opening before the proposal file is
+// plan propose --project refuses a long opening before the proposal file is
 // written, and takes the same brief with a summary sentence before it.
 func TestPlanProposeWithProjectCapsBriefOpenings(t *testing.T) {
 	doc := func(brief string) string {
@@ -205,22 +205,22 @@ func TestPlanProposeWithProjectCapsBriefOpenings(t *testing.T) {
 	}
 	env, _ := proposeProjectEnv(t, testConfig(t), changesAPI(t, 0))
 	env.In = strings.NewReader(doc(longOpening(61)))
-	err := Run(context.Background(), []string{"plan-propose", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"plan", "propose", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), `slice 1 ("Fresh"): the brief's first paragraph is 61 words`) {
 		t.Fatalf("err = %v, want the opening refused", err)
 	}
 	assertNothingWritten(t, "project-1")
 
 	env.In = strings.NewReader(doc("Show every project.\n\n" + longOpening(61)))
-	if err := Run(context.Background(), []string{"plan-propose", "--project", "project-1"}, env); err != nil {
+	if err := Run(context.Background(), []string{"plan", "propose", "--project", "project-1"}, env); err != nil {
 		t.Fatalf("a brief opening on a summary sentence: %v", err)
 	}
 }
 
-// slice-followups holds each follow-up's brief to the same opening cap.
+// slice followups holds each follow-up's brief to the same opening cap.
 func TestSliceFollowupsCapsBriefOpenings(t *testing.T) {
 	_, err := followUpsOf([]string{"Fix it\n\n" + longOpening(61)})
-	if err == nil || !strings.Contains(err.Error(), `slice-followups: "Fix it": the brief's first paragraph is 61 words`) {
+	if err == nil || !strings.Contains(err.Error(), `slice followups: "Fix it": the brief's first paragraph is 61 words`) {
 		t.Errorf("err = %v, want the opening refused", err)
 	}
 	if _, err := followUpsOf([]string{"Fix it\n\nThe board loses a row.\n\n" + longOpening(61)}); err != nil {
@@ -228,7 +228,9 @@ func TestSliceFollowupsCapsBriefOpenings(t *testing.T) {
 	}
 }
 
-func (s *changesStub) SetSliceTitle(_ context.Context, id, _ string) error { return s.call("title " + id) }
+func (s *changesStub) SetSliceTitle(_ context.Context, id, _ string) error {
+	return s.call("title " + id)
+}
 
 // A rename that fails stops the run as a failed brief write does.
 func TestApplyPlanReportsAFailedRename(t *testing.T) {
@@ -246,13 +248,13 @@ func TestApplyPlanReportsAFailedRename(t *testing.T) {
 	}
 }
 
-// plan-propose --project reads the board and refuses a duplicate before the
+// plan propose --project reads the board and refuses a duplicate before the
 // proposal file is written, so the agent hears of it rather than the user.
 func TestPlanProposeWithProjectRefusesADuplicate(t *testing.T) {
 	env, _ := proposeProjectEnv(t, testConfig(t), changesAPI(t, 0))
 	env.In = strings.NewReader(`{"slices": [{"title": "Queued work", "milestone": "M2: Board"}]}`)
 
-	err := Run(context.Background(), []string{"plan-propose", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"plan", "propose", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), `slice 1 ("Queued work") is already on the board as a Todo slice`) {
 		t.Fatalf("err = %v, want the duplicate refused", err)
@@ -280,20 +282,20 @@ func TestPlanProposeWithWorkspaceChecksOnlyItsOwnTitles(t *testing.T) {
 	}
 }
 
-// plan-accept re-validates against the board as it stands, so a slice filed
+// plan accept re-validates against the board as it stands, so a slice filed
 // by hand under a proposed title since the proposal was written refuses it.
 func TestPlanAcceptWithProjectRefusesADuplicateFiledSince(t *testing.T) {
 	env, _, _ := acceptEnv(t)
 	id := makeLocalProject(t, env)
 	proposeToProject(t, env, id, validProposalDoc)
-	if err := Run(context.Background(), []string{"milestone-add", "M0", "--project", id}, env); err != nil {
-		t.Fatalf("milestone-add: %v", err)
+	if err := Run(context.Background(), []string{"milestone", "add", "M0", "--project", id}, env); err != nil {
+		t.Fatalf("milestone add: %v", err)
 	}
-	if err := Run(context.Background(), []string{"slice-add", "Build on it", "--milestone", "M0", "--project", id}, env); err != nil {
-		t.Fatalf("slice-add: %v", err)
+	if err := Run(context.Background(), []string{"slice", "add", "Build on it", "--milestone", "M0", "--project", id}, env); err != nil {
+		t.Fatalf("slice add: %v", err)
 	}
 
-	err := Run(context.Background(), []string{"plan-accept", "--project", id}, env)
+	err := Run(context.Background(), []string{"plan", "accept", "--project", id}, env)
 
 	if err == nil || !strings.Contains(err.Error(), `slice 2 ("Build on it") is already on the board as a Todo slice`) {
 		t.Fatalf("err = %v, want the duplicate refused", err)
@@ -308,12 +310,12 @@ func TestPlanAcceptReadsNoTmux(t *testing.T) {
 	env.NewTmux = func() *agent.Tmux { t.Fatal("tmux was read"); return nil }
 	id := makeLocalProject(t, env)
 	proposeToProject(t, env, id, validProposalDoc)
-	if err := Run(context.Background(), []string{"plan-accept", "--project", id}, env); err != nil {
-		t.Fatalf("plan-accept --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "accept", "--project", id}, env); err != nil {
+		t.Fatalf("plan accept --project: %v", err)
 	}
 	propose(t, env, "ws-1", "importer", validProposalDoc)
-	if err := Run(context.Background(), []string{"plan-accept", "--workspace", "ws-1", "--name", "importer"}, env); err != nil {
-		t.Fatalf("plan-accept --workspace: %v", err)
+	if err := Run(context.Background(), []string{"plan", "accept", "--workspace", "ws-1", "--name", "importer"}, env); err != nil {
+		t.Fatalf("plan accept --workspace: %v", err)
 	}
 }
 
@@ -321,9 +323,9 @@ func TestSliceEditRetitles(t *testing.T) {
 	t.Run("title alone", func(t *testing.T) {
 		api := editableAPI()
 		env, out := testEnv(testConfig(t), api)
-		if err := Run(context.Background(), []string{"slice-edit", testSliceID, "--title", " Draw the board ",
+		if err := Run(context.Background(), []string{"slice", "edit", testSliceID, "--title", " Draw the board ",
 			"--project", "project-1"}, env); err != nil {
-			t.Fatalf("slice-edit: %v", err)
+			t.Fatalf("slice edit: %v", err)
 		}
 		if len(api.updates) != 1 || titleText(api.updates[0].props) != "Draw the board" {
 			t.Errorf("updates = %+v, want the rename", api.updates)
@@ -339,9 +341,9 @@ func TestSliceEditRetitles(t *testing.T) {
 	t.Run("both, as JSON", func(t *testing.T) {
 		api := editableAPI()
 		env, out := testEnv(testConfig(t), api)
-		if err := Run(context.Background(), []string{"slice-edit", testSliceID, "--title", "Draw the board",
+		if err := Run(context.Background(), []string{"slice", "edit", testSliceID, "--title", "Draw the board",
 			"--description", "New brief.", "--json", "--project", "project-1"}, env); err != nil {
-			t.Fatalf("slice-edit: %v", err)
+			t.Fatalf("slice edit: %v", err)
 		}
 		if len(api.updates) != 1 || len(api.appends) != 1 {
 			t.Errorf("updates = %+v, appends = %+v, want the rename and the brief", api.updates, api.appends)
@@ -370,7 +372,7 @@ func TestSliceEditRetitleFailures(t *testing.T) {
 		env, _ := testEnv(cfg, &fakeAPI{})
 		var nudges int
 		env.Nudge = func() { nudges++ }
-		err := Run(context.Background(), []string{"slice-edit", testSliceID, "--title", "T", "--description", "B",
+		err := Run(context.Background(), []string{"slice", "edit", testSliceID, "--title", "T", "--description", "B",
 			"--project", "project-1"}, env)
 		return nudges, err
 	}
@@ -388,14 +390,14 @@ func TestSliceEditRetitleFailures(t *testing.T) {
 	})
 }
 
-// slice-edit, slice-add and slice-followups each hold a title to the cap,
+// slice edit, slice add and slice followups each hold a title to the cap,
 // counted in runes, before anything is written.
 func TestDirectWritesCapTitles(t *testing.T) {
-	t.Run("slice-edit", func(t *testing.T) {
+	t.Run("slice edit", func(t *testing.T) {
 		for n, ok := range map[int]bool{64: true, 65: false} {
 			api := editableAPI()
 			env, _ := testEnv(testConfig(t), api)
-			err := Run(context.Background(), []string{"slice-edit", testSliceID, "--title", longTitle(n), "--project", "project-1"}, env)
+			err := Run(context.Background(), []string{"slice", "edit", testSliceID, "--title", longTitle(n), "--project", "project-1"}, env)
 			if ok != (err == nil) {
 				t.Errorf("%d runes: err = %v", n, err)
 			}
@@ -404,11 +406,11 @@ func TestDirectWritesCapTitles(t *testing.T) {
 			}
 		}
 	})
-	t.Run("slice-add", func(t *testing.T) {
+	t.Run("slice add", func(t *testing.T) {
 		for n, ok := range map[int]bool{64: true, 65: false} {
 			api := plannedAPI(addedSliceID)
 			env, _ := testEnv(testConfig(t), api)
-			err := Run(context.Background(), []string{"slice-add", longTitle(n), "--milestone", "M2: Board", "--project", "project-1"}, env)
+			err := Run(context.Background(), []string{"slice", "add", longTitle(n), "--milestone", "M2: Board", "--project", "project-1"}, env)
 			if ok != (err == nil) {
 				t.Errorf("%d runes: err = %v", n, err)
 			}
@@ -417,12 +419,12 @@ func TestDirectWritesCapTitles(t *testing.T) {
 			}
 		}
 	})
-	t.Run("slice-followups", func(t *testing.T) {
+	t.Run("slice followups", func(t *testing.T) {
 		if _, err := followUpsOf([]string{longTitle(64) + "\n\nDo it.\nDone when: done."}); err != nil {
 			t.Errorf("64 runes: %v", err)
 		}
 		_, err := followUpsOf([]string{longTitle(65) + "\n\nDo it.\nDone when: done."})
-		if err == nil || !strings.Contains(err.Error(), "slice-followups: the title") || !strings.Contains(err.Error(), "is 65 characters") {
+		if err == nil || !strings.Contains(err.Error(), "slice followups: the title") || !strings.Contains(err.Error(), "is 65 characters") {
 			t.Errorf("65 runes: err = %v, want the cap", err)
 		}
 	})
@@ -431,10 +433,10 @@ func TestDirectWritesCapTitles(t *testing.T) {
 // The help text states the cap, with the number domain holds.
 func TestUsageStatesTheTitleCap(t *testing.T) {
 	if want := fmt.Sprintf("at most %d characters", domain.MaxSliceTitleLen); strings.Count(Usage, want) != 2 {
-		t.Errorf("Usage says %q %d times, want twice (slice-add and plan-apply)", want, strings.Count(Usage, want))
+		t.Errorf("Usage says %q %d times, want twice (slice add and plan apply)", want, strings.Count(Usage, want))
 	}
-	if !strings.Contains(Usage, "nat slice-edit <slice> [--title TITLE] [--description TEXT|-]") {
-		t.Error("Usage does not give slice-edit's --title")
+	if !strings.Contains(Usage, "nat slice edit <slice> [--title TITLE] [--description TEXT|-]") {
+		t.Error("Usage does not give slice edit's --title")
 	}
 }
 

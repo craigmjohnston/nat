@@ -119,7 +119,7 @@ extension Fixtures {
         "Binary files a/macos/Sources/NatApp/Resources/AppIcon.icns and b/macos/Sources/NatApp/Resources/AppIcon.icns differ",
     ]
 
-    /// The wire shape `nat slice-diff --json` hands back for the handed-back
+    /// The wire shape `nat slice diff --json` hands back for the handed-back
     /// branch: four files, two languages, an added file, a deleted-context
     /// hunk break and one file git only described.
     public static let sliceDiff = SliceDiff(
@@ -302,5 +302,5 @@ extension Fixtures {
     }
 
     public static let diffErrorMessage =
-        "nat slice-diff: git: fatal: ambiguous argument 'origin/main': unknown revision"
+        "nat slice diff: git: fatal: ambiguous argument 'origin/main': unknown revision"
 }

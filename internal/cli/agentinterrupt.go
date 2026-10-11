@@ -11,7 +11,7 @@ import (
 // session — [agent.Tmux.Interrupt], reached headlessly rather than from the
 // board.
 func agentInterrupt(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("agent-interrupt", flag.ContinueOnError)
+	flags := flag.NewFlagSet("agent interrupt", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
@@ -19,9 +19,9 @@ func agentInterrupt(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("agent-interrupt: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("agent interrupt: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("agent-interrupt", rest[0])
+	id, err := pageID("agent interrupt", rest[0])
 	if err != nil {
 		return err
 	}

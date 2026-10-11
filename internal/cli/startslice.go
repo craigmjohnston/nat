@@ -11,7 +11,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
-// startSlice claims one named slice and prints the same brief next-slice does.
+// startSlice claims one named slice and prints the same brief slice next does.
 // It is the command an agent launched from the board runs: the board already
 // knows which slice the agent is for, so there is nothing to choose — only the
 // claim to take and the brief to hand over.
@@ -31,7 +31,7 @@ import (
 // refusal: a slice waiting on work that is not finished is named along with
 // what it waits on, rather than handed to an agent that cannot do it yet.
 func startSlice(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("start-slice", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice start", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -40,9 +40,9 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("start-slice: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice start: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("start-slice", rest[0])
+	id, err := pageID("slice start", rest[0])
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func startSlice(ctx context.Context, args []string, env Env) error {
 // refusal below is about a slice that is somebody else's.
 //
 // Being Todo is not enough on its own: a Todo slice already assigned to
-// somebody is one next-slice would pass over too, and taking it would step on
+// somebody is one slice next would pass over too, and taking it would step on
 // their work.
 func takeable(s domain.Slice, shape store.Shape, userID string) (bool, error) {
 	if store.Holds(s, shape, userID) {

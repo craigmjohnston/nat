@@ -125,7 +125,7 @@ func TestReadPRsHeads(t *testing.T) {
 	}
 }
 
-// TestReadPRsDetail decodes the full-detail selection into the PR pr-view
+// TestReadPRsDetail decodes the full-detail selection into the PR pr view
 // prints: what it is, its stats, a commit count, reviews, comments (an
 // account since deleted reading as no login) and who is asked to review.
 func TestReadPRsDetail(t *testing.T) {

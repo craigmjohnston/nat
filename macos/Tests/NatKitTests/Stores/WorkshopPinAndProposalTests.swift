@@ -146,7 +146,7 @@ final class WorkshopPinAndProposalTests: XCTestCase {
 
         await model.acceptProposal()
 
-        XCTAssertTrue(client.writes.contains("plan-accept --project \(Fixtures.projectID)"))
+        XCTAssertTrue(client.writes.contains("plan accept --project \(Fixtures.projectID)"))
         XCTAssertNil(model.activeProposal)
         XCTAssertNil(model.proposalError)
         XCTAssertTrue(model.workshopSelected, "the project's workshop stays where it was")
@@ -165,7 +165,7 @@ final class WorkshopPinAndProposalTests: XCTestCase {
     func testARefusedProjectAcceptKeepsTheProposalAndSaysWhy() async {
         let client = FixtureNatClient(agents: [])
         client.setProposal(Fixtures.proposal, forProject: Fixtures.projectID)
-        client.refuseAccepts("plan-accept: milestone \"M9\" is not in the plan")
+        client.refuseAccepts("plan accept: milestone \"M9\" is not in the plan")
         let model = await Fixtures.startedAppModel(client: client)
         model.openWorkshop()
         await model.refreshProposals()
@@ -173,7 +173,7 @@ final class WorkshopPinAndProposalTests: XCTestCase {
         await model.acceptProposal()
 
         XCTAssertEqual(model.activeProposal, Fixtures.proposal)
-        XCTAssertEqual(model.proposalError, "plan-accept: milestone \"M9\" is not in the plan")
+        XCTAssertEqual(model.proposalError, "plan accept: milestone \"M9\" is not in the plan")
         XCTAssertFalse(model.proposalAccepting)
     }
 
@@ -202,7 +202,7 @@ final class WorkshopPinAndProposalTests: XCTestCase {
         XCTAssertFalse(model.sidebarModel.active.contains { $0.planReady }, "the badge comes down with it")
         XCTAssertEqual(model.workshopTab, .terminal)
         await call?.value
-        XCTAssertEqual(client.writes.filter { $0.hasPrefix("plan-withdraw") }, ["plan-withdraw --project \(Fixtures.projectID)"])
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("plan withdraw") }, ["plan withdraw --project \(Fixtures.projectID)"])
 
         await model.refreshProposals()
         XCTAssertNil(model.activeProposal, "the file is gone too")
@@ -221,7 +221,7 @@ final class WorkshopPinAndProposalTests: XCTestCase {
 
         XCTAssertNil(model.proposal(forTab: tab))
         let workspace = model.workspaceID(forTab: tab) ?? "?"
-        XCTAssertEqual(client.writes.filter { $0.hasPrefix("plan-withdraw") }, ["plan-withdraw --workspace \(workspace)"])
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("plan withdraw") }, ["plan withdraw --workspace \(workspace)"])
     }
 
     /// No proposal up, or one being accepted: nothing withdrawn, nat not
@@ -241,7 +241,7 @@ final class WorkshopPinAndProposalTests: XCTestCase {
 
         XCTAssertNil(model.withdrawProposal(tabID: Fixtures.projectID))
         XCTAssertEqual(model.proposal(forTab: Fixtures.projectID), Fixtures.proposal)
-        XCTAssertFalse(client.writes.contains { $0.hasPrefix("plan-withdraw") })
+        XCTAssertFalse(client.writes.contains { $0.hasPrefix("plan withdraw") })
         accepting.cancel()
     }
 
@@ -252,7 +252,7 @@ final class WorkshopPinAndProposalTests: XCTestCase {
         let model = await Fixtures.startedAppModel(client: client)
         model.openWorkshop()
         await model.refreshProposals()
-        client.refuseWrites("plan-withdraw: the state directory is read-only")
+        client.refuseWrites("plan withdraw: the state directory is read-only")
 
         await model.withdrawProposal(tabID: Fixtures.projectID)?.value
 
@@ -265,22 +265,22 @@ final class WorkshopPinAndProposalTests: XCTestCase {
         let client = NatClient(commandRunner: runner)
 
         try await client.planWithdraw(projectID: "p-1")
-        XCTAssertEqual(runner.lastArguments, ["plan-withdraw", "--project", "p-1", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["plan", "withdraw", "--project", "p-1", "--json"])
         try await client.planWithdraw(workspaceID: "ws-1")
-        XCTAssertEqual(runner.lastArguments, ["plan-withdraw", "--workspace", "ws-1", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["plan", "withdraw", "--workspace", "ws-1", "--json"])
 
         let bare = MockActivityClientForProposals()
         do {
             try await bare.planWithdraw(projectID: "p")
             XCTFail("expected a refusal")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("plan-withdraw --project"))
+            XCTAssertTrue(error.localizedDescription.contains("plan withdraw --project"))
         }
         do {
             try await bare.planWithdraw(workspaceID: "w")
             XCTFail("expected a refusal")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("plan-withdraw"))
+            XCTAssertTrue(error.localizedDescription.contains("plan withdraw"))
         }
     }
 
@@ -306,11 +306,11 @@ final class WorkshopPinAndProposalTests: XCTestCase {
 
         let none = try await client.planProposal(projectID: "p-1")
         XCTAssertNil(none)
-        XCTAssertEqual(runner.lastArguments, ["plan-proposal", "--project", "p-1", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["plan", "proposal", "--project", "p-1", "--json"])
 
         runner.stdout = #"{"project": {"id": "p-1", "name": "gnat"}, "milestones": 2, "slices": 5}"#
         let accepted = try await client.planAccept(projectID: "p-1")
-        XCTAssertEqual(runner.lastArguments, ["plan-accept", "--project", "p-1", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["plan", "accept", "--project", "p-1", "--json"])
         XCTAssertEqual(accepted.slices, 5)
     }
 
@@ -331,13 +331,13 @@ final class WorkshopPinAndProposalTests: XCTestCase {
             _ = try await client.planProposal(projectID: "p")
             XCTFail("expected a refusal")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("plan-proposal --project"))
+            XCTAssertTrue(error.localizedDescription.contains("plan proposal --project"))
         }
         do {
             _ = try await client.planAccept(projectID: "p")
             XCTFail("expected a refusal")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("plan-accept --project"))
+            XCTAssertTrue(error.localizedDescription.contains("plan accept --project"))
         }
     }
 }

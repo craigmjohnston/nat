@@ -79,7 +79,7 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
     private var shouldFailWith: Error?
 
     /// The `standardInput` the most recent call was given, so a test can
-    /// check what a command sent over stdin (`agent-send`'s prompt).
+    /// check what a command sent over stdin (`agent send`'s prompt).
     private(set) var lastArguments: [String]?
     private(set) var lastStandardInput: Data?
     /// Every call's arguments, in order.
@@ -146,17 +146,17 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case .sliceLaunchFailure:
             return (Data(), "slice is blocked by incomplete dependencies".data(using: .utf8)!, 1)
         case .agentSendSuccess:
-            // agent-send says nothing at all on success.
+            // agent send says nothing at all on success.
             return (Data(), Data(), 0)
         case .agentSendNoSession:
             return (Data(), "no live session for slice-id".data(using: .utf8)!, 1)
         case .agentKillSuccess:
-            // agent-kill, like agent-send, says nothing at all on success.
+            // agent kill, like agent send, says nothing at all on success.
             return (Data(), Data(), 0)
         case .agentKillNoSession:
             return (Data(), "no live session for slice-id".data(using: .utf8)!, 1)
         case .agentKillWorkshopSuccess:
-            // agent-kill --workshop, like agent-kill, says nothing on success.
+            // agent kill --workshop, like agent kill, says nothing on success.
             return (Data(), Data(), 0)
         case .agentKillWorkshopNoSession:
             return (Data(), "no live planning session for this project".data(using: .utf8)!, 1)
@@ -175,7 +175,7 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case .prMergeFailure:
             return (Data(), "cannot merge #12 — checks: 1 failing".data(using: .utf8)!, 1)
         case .prCommentSuccess:
-            // pr-comment says nothing at all on success, exactly as agent-send.
+            // pr comment says nothing at all on success, exactly as agent send.
             return (Data(), Data(), 0)
         case .prCommentFailure:
             return (Data(), "\"Write the UI\" has no pull request recorded: nothing to comment on".data(using: .utf8)!, 1)
@@ -206,7 +206,7 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case .milestoneAddSuccess:
             return (fixtureMilestoneAdd.data(using: .utf8)!, Data(), 0)
         case .milestoneAddFailure:
-            return (Data(), "milestone-add: the milestone name is empty".data(using: .utf8)!, 1)
+            return (Data(), "milestone add: the milestone name is empty".data(using: .utf8)!, 1)
         case .milestoneRenameSuccess:
             return (fixtureMilestoneRename.data(using: .utf8)!, Data(), 0)
         case .milestoneRenameFailure:
@@ -214,7 +214,7 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case .milestoneMoveSuccess:
             return (fixtureMilestoneMove.data(using: .utf8)!, Data(), 0)
         case .milestoneMoveFailure:
-            return (Data(), "milestone-move: --before and --after name two places at once: pass one".data(using: .utf8)!, 1)
+            return (Data(), "milestone move: --before and --after name two places at once: pass one".data(using: .utf8)!, 1)
         case .milestoneRemoveSuccess:
             return (fixtureMilestoneRemove.data(using: .utf8)!, Data(), 0)
         case .milestoneRemoveFailure:
@@ -224,7 +224,7 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case .doneClearSuccess:
             return ("{\"slices\": [\"a\", \"b\"], \"sessions\": [\"s1\"], \"milestones\": []}\n".data(using: .utf8)!, Data(), 0)
         case .doneClearRefused:
-            return (Data(), "done-clear: \"Real\" has a workspace behind it".data(using: .utf8)!, 1)
+            return (Data(), "project done clear: \"Real\" has a workspace behind it".data(using: .utf8)!, 1)
         case .natVersion:
             // `nat --version` is plain text, one line.
             return ("0.48.0\n".data(using: .utf8)!, Data(), 0)
@@ -235,7 +235,7 @@ final class FakeRunner: CommandRunning, @unchecked Sendable {
         case .configSetSuccess:
             return ("# Config updated\n\n- agent_split_percent: 70\n".data(using: .utf8)!, Data(), 0)
         case .configSetFailure:
-            return (Data(), "config-set: agent_split_percent must be between 10 and 90, given 5".data(using: .utf8)!, 1)
+            return (Data(), "config set: agent_split_percent must be between 10 and 90, given 5".data(using: .utf8)!, 1)
         case .projectListBothHalves:
             return (fixtureProjectList.data(using: .utf8)!, Data(), 0)
         case .projectListNoWorkspace:
@@ -404,7 +404,7 @@ let fixtureSliceApprove = """
 }
 """
 
-// fixturePRViewFull is a full-shaped nat pr-view --json reading: two checks
+// fixturePRViewFull is a full-shaped nat pr view --json reading: two checks
 // (one done, one still going), a review that approved and a second still
 // PENDING (submitted_at is Go's zero-time marker, which should decode as no
 // time at all and drop it from the conversation), one comment, and the
@@ -442,7 +442,7 @@ let fixturePRViewFull = """
 }
 """
 
-// fixturePRViewMinimal is what an older nat pr-view sends: no checks, reviews
+// fixturePRViewMinimal is what an older nat pr view sends: no checks, reviews
 // or comments, and none of the additions/deletions/changed_files/commits
 // keys at all — every one of those should decode as nil rather than fail
 // the whole read.
@@ -590,7 +590,7 @@ let fixtureSliceDiff = """
 }
 """
 
-// fixtureSliceCommits is a `slice-diff --commits --json` reading: the same
+// fixtureSliceCommits is a `slice diff --commits --json` reading: the same
 // base/branch a whole-diff read carries, and three commits, newest first
 // exactly as `git log` orders them.
 let fixtureSliceCommits = """
@@ -605,7 +605,7 @@ let fixtureSliceCommits = """
 }
 """
 
-// fixtureSliceCommitDiff is `slice-diff --commit <sha> --json`: the same
+// fixtureSliceCommitDiff is `slice diff --commit <sha> --json`: the same
 // per-file shape a whole-branch diff carries, but of one commit against its
 // own parent (base is the commit's own sha with `^`, branch is the sha).
 let fixtureSliceCommitDiff = """
@@ -633,7 +633,7 @@ let fixtureSliceCommitDiff = """
 }
 """
 
-// fixtureSliceEdit is `slice-edit --json`'s success reading, mirroring
+// fixtureSliceEdit is `slice edit --json`'s success reading, mirroring
 // internal/cli/sliceedit.go's sliceEditedJSON.
 let fixtureSliceEdit = """
 {
@@ -644,7 +644,7 @@ let fixtureSliceEdit = """
 }
 """
 
-// fixtureSliceMove is `slice-move --json`'s success reading, mirroring
+// fixtureSliceMove is `slice move --json`'s success reading, mirroring
 // internal/cli/slicemove.go's sliceMovedJSON.
 let fixtureSliceMove = """
 {
@@ -656,7 +656,7 @@ let fixtureSliceMove = """
 }
 """
 
-// fixtureSliceDelete is `slice-delete --json`'s success reading, mirroring
+// fixtureSliceDelete is `slice delete --json`'s success reading, mirroring
 // internal/cli/slicedelete.go's sliceDeletedJSON.
 let fixtureSliceDelete = """
 {
@@ -666,7 +666,7 @@ let fixtureSliceDelete = """
 }
 """
 
-// fixtureSliceCancel is `slice-cancel --json`'s success reading, mirroring
+// fixtureSliceCancel is `slice cancel --json`'s success reading, mirroring
 // internal/cli/slicecancel.go's sliceCancelledJSON.
 let fixtureSliceCancel = """
 {
@@ -676,7 +676,7 @@ let fixtureSliceCancel = """
 }
 """
 
-// fixtureMilestoneAdd is `milestone-add --json`'s success reading,
+// fixtureMilestoneAdd is `milestone add --json`'s success reading,
 // mirroring internal/cli/add.go's milestoneAddedJSON.
 let fixtureMilestoneAdd = """
 {
@@ -689,7 +689,7 @@ let fixtureMilestoneAdd = """
 }
 """
 
-// fixtureMilestoneRename is `milestone-rename --json`'s success reading,
+// fixtureMilestoneRename is `milestone rename --json`'s success reading,
 // mirroring internal/cli/rename.go's milestoneRenamedJSON.
 let fixtureMilestoneRename = """
 {
@@ -703,7 +703,7 @@ let fixtureMilestoneRename = """
 }
 """
 
-// fixtureMilestoneMove is `milestone-move --json`'s success reading,
+// fixtureMilestoneMove is `milestone move --json`'s success reading,
 // mirroring internal/cli/milestonemove.go's milestoneMovedJSON.
 let fixtureMilestoneMove = """
 {
@@ -721,7 +721,7 @@ let fixtureMilestoneMove = """
 }
 """
 
-// fixtureMilestoneRemove is `milestone-remove --json`'s success reading,
+// fixtureMilestoneRemove is `milestone remove --json`'s success reading,
 // mirroring internal/cli/milestoneremove.go's milestoneRemovedJSON.
 let fixtureMilestoneRemove = """
 {
@@ -755,7 +755,7 @@ let fixtureSliceAdd = """
 }
 """
 
-// fixtureConfigShow is a config-show --json reading with one project and both
+// fixtureConfigShow is a config show --json reading with one project and both
 // model pairs set — the settings scene's own load, mirroring configShowJSON
 // in internal/cli/configshow.go.
 let fixtureConfigShow = """
@@ -771,7 +771,7 @@ let fixtureConfigShow = """
 }
 """
 
-// fixtureProjectList is `project-list --json`'s reading of a workspace whose
+// fixtureProjectList is `project list --json`'s reading of a workspace whose
 // projects database answered: the configured half and the workspace half,
 // each row saying which it is.
 let fixtureProjectList = """
@@ -796,7 +796,7 @@ let fixtureProjectListNoWorkspace = """
 }
 """
 
-// fixtureProjectOpen is `project-open --json`'s success reading: the config
+// fixtureProjectOpen is `project open --json`'s success reading: the config
 // entry it wrote, with no working directory — opening records where a plan
 // lives and nothing about where its code does.
 let fixtureProjectOpen = """
@@ -810,7 +810,7 @@ let fixtureProjectOpen = """
 }
 """
 
-// fixtureProjectCreate is `project-create --json`'s success reading,
+// fixtureProjectCreate is `project create --json`'s success reading,
 // mirroring internal/cli/projectcreate.go's createdProjectJSON.
 let fixtureProjectCreate = """
 {

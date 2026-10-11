@@ -21,7 +21,7 @@ private final class PluginStubRunner: CommandRunning, @unchecked Sendable {
     }
 }
 
-/// `nat plugin-list --json` exactly as `internal/cli/plugins.go` writes it.
+/// `nat plugin list --json` exactly as `internal/cli/plugins.go` writes it.
 private let listingJSON = #"""
 {
   "sources": [
@@ -85,7 +85,7 @@ final class PluginModelsTests: XCTestCase {
     func testPluginListTakesNoProject() async throws {
         let runner = PluginStubRunner(stdout: listingJSON)
         let listing = try await NatClient(commandRunner: runner).pluginList()
-        XCTAssertEqual(runner.lastArguments, ["plugin-list", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["plugin", "list", "--json"])
         XCTAssertEqual(listing.installed.count, 3)
     }
 
@@ -93,31 +93,31 @@ final class PluginModelsTests: XCTestCase {
         let runner = PluginStubRunner(stdout: #"{"name": "demo", "path": "/p", "source": "a/b", "version": "2", "sha256": "ab", "installed_at": "2026-10-03T12:00:00Z"}"#)
         let client = NatClient(commandRunner: runner)
         let installed = try await client.pluginInstall(name: "demo", source: "a/b", version: "2")
-        XCTAssertEqual(runner.lastArguments, ["plugin-install", "demo", "--source", "a/b", "--version", "2", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["plugin", "install", "demo", "--source", "a/b", "--version", "2", "--json"])
         XCTAssertEqual(installed, PluginInstalled(name: "demo", path: "/p", source: "a/b", version: "2", sha256: "ab", installedAt: "2026-10-03T12:00:00Z"))
         _ = try await client.pluginInstall(name: "demo", source: nil, version: "")
-        XCTAssertEqual(runner.lastArguments, ["plugin-install", "demo", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["plugin", "install", "demo", "--json"])
     }
 
     func testPluginUninstallAndSourceArguments() async throws {
         // An older nat sends no projects_deleted: none.
         let gone = PluginStubRunner(stdout: #"{"name": "demo", "path": "/c/plugins/demo"}"#)
         let uninstalled = try await NatClient(commandRunner: gone).pluginUninstall(name: "demo", deleteProjects: false)
-        XCTAssertEqual(gone.lastArguments, ["plugin-uninstall", "demo", "--json"])
+        XCTAssertEqual(gone.lastArguments, ["plugin", "uninstall", "demo", "--json"])
         XCTAssertEqual(uninstalled, PluginUninstalled(name: "demo", path: "/c/plugins/demo"))
 
         let deleting = PluginStubRunner(stdout: #"{"name": "demo", "path": "/c/plugins/demo", "projects_deleted": [{"id": "p1", "name": "Work"}]}"#)
         let deleted = try await NatClient(commandRunner: deleting).pluginUninstall(name: "demo", deleteProjects: true)
-        XCTAssertEqual(deleting.lastArguments, ["plugin-uninstall", "demo", "--delete-projects", "--json"])
+        XCTAssertEqual(deleting.lastArguments, ["plugin", "uninstall", "demo", "--delete-projects", "--json"])
         XCTAssertEqual(deleted.projectsDeleted, [PluginUninstalled.DeletedProject(id: "p1", name: "Work")])
 
         let sources = PluginStubRunner(stdout: #"{"sources": ["craigmjohnston/nat", "a/b"]}"#)
         let client = NatClient(commandRunner: sources)
         let added = try await client.pluginSourceAdd(repo: "a/b")
-        XCTAssertEqual(sources.lastArguments, ["plugin-source-add", "a/b", "--json"])
+        XCTAssertEqual(sources.lastArguments, ["plugin", "source", "add", "a/b", "--json"])
         XCTAssertEqual(added, PluginSourceList(sources: ["craigmjohnston/nat", "a/b"]))
         _ = try await client.pluginSourceRemove(repo: "a/b")
-        XCTAssertEqual(sources.lastArguments, ["plugin-source-remove", "a/b", "--json"])
+        XCTAssertEqual(sources.lastArguments, ["plugin", "source", "remove", "a/b", "--json"])
     }
 
     /// The value — a token — goes on stdin alone: the arguments name the
@@ -126,7 +126,7 @@ final class PluginModelsTests: XCTestCase {
         let runner = PluginStubRunner(stdout: #"{"message": "Logged in to scratch as Craig"}"#)
         let result = try await NatClient(commandRunner: runner).sourceSetup(plugin: "shortcut", id: "token", value: "s3cret-tok")
         XCTAssertEqual(result, PluginSetupResult(message: "Logged in to scratch as Craig"))
-        XCTAssertEqual(runner.lastArguments, ["source-setup", "shortcut", "--id", "token", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["source", "setup", "shortcut", "--id", "token", "--json"])
         XCTAssertFalse(runner.lastArguments.contains { $0.contains("s3cret") })
         XCTAssertEqual(runner.lastStandardInput, Data("s3cret-tok".utf8))
     }
@@ -134,12 +134,12 @@ final class PluginModelsTests: XCTestCase {
     func testAClientWithNoPluginsRefusesThePluginCommands() async {
         let client = MockActivityClient(response: .agents([]))
         let calls: [(String, () async throws -> Void)] = [
-            ("plugin-list", { _ = try await client.pluginList() }),
-            ("plugin-install", { _ = try await client.pluginInstall(name: "x", source: nil, version: nil) }),
-            ("plugin-uninstall", { _ = try await client.pluginUninstall(name: "x", deleteProjects: false) }),
-            ("plugin-source-add", { _ = try await client.pluginSourceAdd(repo: "a/b") }),
-            ("plugin-source-remove", { _ = try await client.pluginSourceRemove(repo: "a/b") }),
-            ("source-setup", { _ = try await client.sourceSetup(plugin: "x", id: "token", value: "v") }),
+            ("plugin list", { _ = try await client.pluginList() }),
+            ("plugin install", { _ = try await client.pluginInstall(name: "x", source: nil, version: nil) }),
+            ("plugin uninstall", { _ = try await client.pluginUninstall(name: "x", deleteProjects: false) }),
+            ("plugin source add", { _ = try await client.pluginSourceAdd(repo: "a/b") }),
+            ("plugin source remove", { _ = try await client.pluginSourceRemove(repo: "a/b") }),
+            ("source setup", { _ = try await client.sourceSetup(plugin: "x", id: "token", value: "v") }),
         ]
         for (command, call) in calls {
             do {
@@ -167,11 +167,11 @@ final class PluginModelsTests: XCTestCase {
         let setUp = try await client.sourceSetup(plugin: "shortcut", id: "token", value: "s3cret")
         XCTAssertEqual(setUp.message, "Logged in to scratch as Craig Scratch")
         XCTAssertEqual(client.writes, [
-            "plugin-install demo --source ",
-            "plugin-uninstall demo",
-            "plugin-source-add a/b",
-            "plugin-source-remove craigmjohnston/nat",
-            "source-setup shortcut --id token",
+            "plugin install demo --source ",
+            "plugin uninstall demo",
+            "plugin source add a/b",
+            "plugin source remove craigmjohnston/nat",
+            "source setup shortcut --id token",
         ])
         XCTAssertTrue(Fixtures.pluginListing.installed.contains { $0.hasUpdate })
     }
@@ -210,11 +210,11 @@ final class PluginsModelTests: XCTestCase {
         XCTAssertEqual(changed.count, 3, "a source edit installs nothing")
 
         XCTAssertEqual(client.writes, [
-            "plugin-install shortcut --source craigmjohnston/nat",
-            "plugin-install demo --source craigmjohnston/nat",
-            "plugin-uninstall demo",
-            "plugin-source-add someone/plugins",
-            "plugin-source-remove someone/plugins",
+            "plugin install shortcut --source craigmjohnston/nat",
+            "plugin install demo --source craigmjohnston/nat",
+            "plugin uninstall demo",
+            "plugin source add someone/plugins",
+            "plugin source remove someone/plugins",
         ])
         XCTAssertTrue(model.running.isEmpty)
         XCTAssertNil(model.actionError)
@@ -246,7 +246,7 @@ final class PluginsModelTests: XCTestCase {
         guard let pending = model.pendingUninstall else { return XCTFail("not asked") }
         await model.confirmUninstall(pending)
         XCTAssertNil(model.pendingUninstall)
-        XCTAssertEqual(client.writes, ["plugin-uninstall demo --delete-projects"])
+        XCTAssertEqual(client.writes, ["plugin uninstall demo --delete-projects"])
         XCTAssertEqual(changed, [PluginsModel.PluginChange(plugin: "demo", deletedProjectIDs: ["p1"])])
     }
 
@@ -292,7 +292,7 @@ final class PluginsModelTests: XCTestCase {
             model.listing?.installed.first?.setup.first?.set, true,
             "the listing is read again, and the field now reads set")
         XCTAssertEqual(Fixtures.pluginListingShortcut.installed.first?.setup.first?.set, false)
-        XCTAssertEqual(client.writes, ["source-setup shortcut --id token"])
+        XCTAssertEqual(client.writes, ["source setup shortcut --id token"])
         XCTAssertTrue(model.running.isEmpty)
         XCTAssertNil(model.actionError, "a setup answer is the field's, not the tab's")
     }

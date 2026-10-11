@@ -35,7 +35,7 @@ const (
 // Budget is GitHub's GraphQL budget as nat keeps it between processes: the
 // last two readings a batched reading took ([BudgetReading]), and the stop a
 // rate-limit refusal records. It is a file and a clock, nothing in memory, so
-// the board, every pr-status gnat runs and every action an agent or the user
+// the board, every pr status gnat runs and every action an agent or the user
 // runs share one budget — which is what it is on GitHub, too: the readings'
 // burn rate is everyone's spend on the token, nat's or not.
 //

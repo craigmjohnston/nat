@@ -321,8 +321,8 @@ public func sessionNeedsReview(_ session: Session, liveAgents: [String: AgentAct
 
 /// Whether an ad hoc session belongs in DONE: its agent gone and nothing
 /// left open. Read off the live facts rather than the session's own
-/// `ended` flag — which only `session-status` (not the rail's own
-/// `session-list` read) ever sets — so a session whose last pull request
+/// `ended` flag — which only `session status` (not the rail's own
+/// `session list` read) ever sets — so a session whose last pull request
 /// merged moves to DONE the moment that reads true, not only once something
 /// has gone back and told the session's own record so.
 public func sessionIsDone(_ session: Session, liveAgents: [String: AgentActivity]) -> Bool {

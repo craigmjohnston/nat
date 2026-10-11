@@ -487,7 +487,7 @@ final class PRStoreTests: XCTestCase {
         XCTAssertNil(store.detailURL, "a merged pull request reads nothing more")
     }
 
-    /// An open PR tab takes its fresh readings from the batch: no `pr-view`
+    /// An open PR tab takes its fresh readings from the batch: no `pr view`
     /// after its first load — not for a reading, not for switching back.
     @MainActor
     func testAnOpenTabTakesItsReadingsFromTheBatchWithNoView() async {
@@ -568,7 +568,7 @@ final class PRStoreTests: XCTestCase {
 
         XCTAssertEqual(client.mergeCalls.count, 1)
         XCTAssertEqual(client.mergeCalls[0].sliceRef, "slice-1")
-        XCTAssertEqual(client.viewCallCount, 1, "no pr-view: the settle read brings it")
+        XCTAssertEqual(client.viewCallCount, 1, "no pr view: the settle read brings it")
         XCTAssertEqual(settles.count, 1)
     }
 
@@ -624,7 +624,7 @@ final class PRStoreTests: XCTestCase {
         XCTAssertEqual(client.commentCalls.count, 1)
         XCTAssertEqual(client.commentCalls[0].sliceRef, "slice-1")
         XCTAssertEqual(client.commentCalls[0].body, "Looks good.", "the body should be trimmed")
-        XCTAssertEqual(client.viewCallCount, 1, "no pr-view: the settle read brings it")
+        XCTAssertEqual(client.viewCallCount, 1, "no pr view: the settle read brings it")
         XCTAssertEqual(settles.count, 1)
     }
 
@@ -655,7 +655,7 @@ final class PRStoreTests: XCTestCase {
 
         XCTAssertEqual(answer?.added, ["hubot"])
         XCTAssertEqual(client.reviewerCalls[0].remove, ["octocat"])
-        XCTAssertEqual(client.viewCallCount, 1, "no pr-view: the settle read brings it")
+        XCTAssertEqual(client.viewCallCount, 1, "no pr view: the settle read brings it")
         XCTAssertEqual(settles.count, 1)
     }
 
@@ -736,7 +736,7 @@ final class PRStoreTests: XCTestCase {
     }
 
     /// The batched reading reads a settled pull request no more, so a
-    /// comment on a closed or merged one is read back by a pr-view of its own.
+    /// comment on a closed or merged one is read back by a pr view of its own.
     @MainActor
     func testCommentOnASettledPullRequestRereadsItself() async {
         for state in [PRLifecycleState.merged, PRLifecycleState.closed] {
@@ -748,7 +748,7 @@ final class PRStoreTests: XCTestCase {
             try? await store.comment(text: "Late note.")
 
             XCTAssertEqual(client.commentCalls.count, 1, state)
-            XCTAssertEqual(client.viewCallCount, 2, "\(state): a pr-view of its own")
+            XCTAssertEqual(client.viewCallCount, 2, "\(state): a pr view of its own")
             XCTAssertEqual(settles.count, 0, "\(state): no settle read would read it")
         }
     }
@@ -767,10 +767,10 @@ final class PRStoreTests: XCTestCase {
         try await store.comment(text: "Reply.")
         try await store.editDescription("New body.")
 
-        let writes = runner.calls.filter { ["pr-comment", "pr-edit"].contains($0.first) }
+        let writes = runner.calls.filter { [["pr", "comment"], ["pr", "edit"]].contains(Array($0.prefix(2))) }
         XCTAssertEqual(writes, [
-            ["pr-comment", url, "--session", "s1", "--project", "proj-1", "--body", "-"],
-            ["pr-edit", url, "--session", "s1", "--project", "proj-1", "--body", "-"],
+            ["pr", "comment", url, "--session", "s1", "--project", "proj-1", "--body", "-"],
+            ["pr", "edit", url, "--session", "s1", "--project", "proj-1", "--body", "-"],
         ])
     }
 
@@ -783,9 +783,9 @@ final class PRStoreTests: XCTestCase {
 
         try await store.editDescription("  A new description.  ")
 
-        XCTAssertEqual(runner.calls.map(\.first), ["pr-view", "pr-edit", "pr-view"],
-                       "the edit, then a pr-view of its own so the editor gives way to what was saved")
-        XCTAssertEqual(runner.calls[1], ["pr-edit", "slice-1", "--project", "proj-1", "--body", "-"])
+        XCTAssertEqual(runner.calls.map { Array($0.prefix(2)) }, [["pr", "view"], ["pr", "edit"], ["pr", "view"]],
+                       "the edit, then a pr view of its own so the editor gives way to what was saved")
+        XCTAssertEqual(runner.calls[1], ["pr", "edit", "slice-1", "--project", "proj-1", "--body", "-"])
         XCTAssertEqual(runner.standardInputs[1], Data("A new description.".utf8), "the body trimmed")
         XCTAssertNotNil(store.loadState.pr)
         XCTAssertEqual(settles.count, 0)
@@ -806,7 +806,7 @@ final class PRStoreTests: XCTestCase {
         } catch {
             XCTFail("\(error)")
         }
-        XCTAssertEqual(runner.calls.map(\.first), ["pr-view", "pr-edit"])
+        XCTAssertEqual(runner.calls.map { Array($0.prefix(2)) }, [["pr", "view"], ["pr", "edit"]])
     }
 
     @MainActor
@@ -818,7 +818,7 @@ final class PRStoreTests: XCTestCase {
 
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
         try await store.editDescription("  \n ")
-        XCTAssertEqual(runner.calls.map(\.first), ["pr-view"])
+        XCTAssertEqual(runner.calls.map { Array($0.prefix(2)) }, [["pr", "view"]])
     }
 
     // MARK: - Re-running and cancelling checks
@@ -835,19 +835,19 @@ final class PRStoreTests: XCTestCase {
         XCTAssertEqual(store.checksNotice, ChecksActionNotice(
             text: "Cancelled test and lint, then re-ran test, lint and build.", isError: false))
         XCTAssertNil(store.checksActionSource)
-        XCTAssertEqual(client.viewCallCount, 1, "no pr-view: the settle read brings it")
+        XCTAssertEqual(client.viewCallCount, 1, "no pr view: the settle read brings it")
     }
 
     @MainActor
     func testCancelChecksRefusalIsTheNotice() async {
         let client = MockPRClient(response: .success(openPR()))
-        client.checksError = NatError.commandFailed("slice-checks-cancel: nothing to cancel")
+        client.checksError = NatError.commandFailed("slice checks cancel: nothing to cancel")
         let store = PRStore(client: client)
         await store.fetch(projectID: "proj-1", sliceRef: "slice-1")
 
         await store.cancelChecks([], from: .cancelAll)
 
-        XCTAssertEqual(store.checksNotice, ChecksActionNotice(text: "slice-checks-cancel: nothing to cancel", isError: true))
+        XCTAssertEqual(store.checksNotice, ChecksActionNotice(text: "slice checks cancel: nothing to cancel", isError: true))
         XCTAssertEqual(client.viewCallCount, 1)
     }
 

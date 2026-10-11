@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/actions"
+	"github.com/craigmjohnston/nat/internal/agent"
 	"github.com/craigmjohnston/nat/internal/config"
 	"github.com/craigmjohnston/nat/internal/git"
 	"github.com/craigmjohnston/nat/internal/notion"
@@ -52,10 +52,10 @@ func TestProjectCreateLocalTouchesNotionNowhere(t *testing.T) {
 	env, out, saved := noNotionEnv(t, config.Config{}, false)
 	planDir := filepath.Join(t.TempDir(), "plans")
 
-	err := Run(context.Background(), []string{"project-create", "Mine", "--local",
+	err := Run(context.Background(), []string{"project", "create", "Mine", "--local",
 		"--plan-dir", planDir, "--repo", "/src/mine", "--description", "Be small.", "--json"}, env)
 	if err != nil {
-		t.Fatalf("project-create --local: %v", err)
+		t.Fatalf("project create --local: %v", err)
 	}
 
 	var got projectCreatedJSON
@@ -92,38 +92,38 @@ func TestProjectCreateLocalTouchesNotionNowhere(t *testing.T) {
 		}
 		return out.String()
 	}
-	run("milestone-add", "M1")
-	run("slice-add", "First slice", "--milestone", "M1", "--description", "Do the thing.")
+	run("milestone", "add", "M1")
+	run("slice", "add", "First slice", "--milestone", "M1", "--description", "Do the thing.")
 	var brief briefJSON
-	if err := json.Unmarshal([]byte(run("next-slice", "--json")), &brief); err != nil {
+	if err := json.Unmarshal([]byte(run("slice", "next", "--json")), &brief); err != nil {
 		t.Fatal(err)
 	}
 	if brief.Slice.Name != "First slice" || !strings.Contains(brief.Slice.Brief, "Do the thing.") ||
 		brief.Project.Conventions != "Be small." || brief.Slice.Assignee == "" {
-		t.Errorf("next-slice brief: %+v", brief)
+		t.Errorf("slice next brief: %+v", brief)
 	}
 	if info := run("info"); !strings.Contains(info, "In progress") && !strings.Contains(info, "in progress") {
 		t.Errorf("the slice was not claimed:\n%s", info)
 	}
-	run("complete-slice", brief.Slice.ID, "--branch", "slice/first", "--summary", "done")
+	run("slice", "complete", brief.Slice.ID, "--branch", "slice/first", "--summary", "done")
 	var status sliceStatusJSON
-	if err := json.Unmarshal([]byte(run("slice-status", brief.Slice.ID, "--json")), &status); err != nil {
+	if err := json.Unmarshal([]byte(run("slice", "status", brief.Slice.ID, "--json")), &status); err != nil {
 		t.Fatal(err)
 	}
 	if status.Status != "In progress" || status.Trashed {
-		t.Errorf("slice-status = %+v", status)
+		t.Errorf("slice status = %+v", status)
 	}
-	if gone := run("slice-status", "3d938308-f654-81eb-a3c6-d4bbbf954300", "--json"); !strings.Contains(gone, "gone") {
+	if gone := run("slice", "status", "3d938308-f654-81eb-a3c6-d4bbbf954300", "--json"); !strings.Contains(gone, "gone") {
 		t.Errorf("an unknown slice should read as gone:\n%s", gone)
 	}
-	if md := run("slice-status", brief.Slice.ID); !strings.Contains(md, "In progress") {
-		t.Errorf("slice-status markdown:\n%s", md)
+	if md := run("slice", "status", brief.Slice.ID); !strings.Contains(md, "In progress") {
+		t.Errorf("slice status markdown:\n%s", md)
 	}
 }
 
 func TestProjectCreateLocalDefaultsThePlanDirectory(t *testing.T) {
 	env, out, saved := noNotionEnv(t, config.Config{Projects: map[string]config.ProjectConfig{"n": {Name: "n"}}}, true)
-	if err := Run(context.Background(), []string{"project-create", "Mine", "--local"}, env); err != nil {
+	if err := Run(context.Background(), []string{"project", "create", "Mine", "--local"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "/tmp/typed-here") || strings.Contains(out.String(), "Plan directory") {
@@ -142,7 +142,7 @@ func TestProjectCreateLocalDefaultsThePlanDirectory(t *testing.T) {
 func TestProjectCreateLocalMarkdownNamesThePlanDirectory(t *testing.T) {
 	env, out, _ := noNotionEnv(t, config.Config{}, false)
 	dir := t.TempDir()
-	if err := Run(context.Background(), []string{"project-create", "Mine", "--local", "--plan-dir", dir}, env); err != nil {
+	if err := Run(context.Background(), []string{"project", "create", "Mine", "--local", "--plan-dir", dir}, env); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "Plan directory: "+dir) {
@@ -156,7 +156,7 @@ func TestProjectCreateLocalWritesNoConfigWhenThePlanCannotBeLaid(t *testing.T) {
 	if err := os.WriteFile(file, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := Run(context.Background(), []string{"project-create", "Mine", "--local", "--plan-dir", filepath.Join(file, "sub")}, env)
+	err := Run(context.Background(), []string{"project", "create", "Mine", "--local", "--plan-dir", filepath.Join(file, "sub")}, env)
 	if err == nil || !strings.Contains(err.Error(), "create the plan") {
 		t.Fatalf("err = %v", err)
 	}
@@ -168,20 +168,20 @@ func TestProjectCreateLocalWritesNoConfigWhenThePlanCannotBeLaid(t *testing.T) {
 func TestProjectCreateLocalFailures(t *testing.T) {
 	env, _, _ := noNotionEnv(t, config.Config{}, false)
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, errors.New("unreadable") }
-	if err := Run(context.Background(), []string{"project-create", "Mine", "--local"}, env); err == nil || !strings.Contains(err.Error(), "unreadable") {
+	if err := Run(context.Background(), []string{"project", "create", "Mine", "--local"}, env); err == nil || !strings.Contains(err.Error(), "unreadable") {
 		t.Errorf("load failure: %v", err)
 	}
 
 	env, _, _ = noNotionEnv(t, config.Config{}, false)
 	env.Save = func(config.Config) error { return errors.New("read-only") }
-	if err := Run(context.Background(), []string{"project-create", "Mine", "--local"}, env); err == nil || !strings.Contains(err.Error(), "save config") {
+	if err := Run(context.Background(), []string{"project", "create", "Mine", "--local"}, env); err == nil || !strings.Contains(err.Error(), "save config") {
 		t.Errorf("save failure: %v", err)
 	}
 }
 
 func TestProjectCreatePlanDirNeedsLocal(t *testing.T) {
 	env, _, _ := noNotionEnv(t, config.Config{}, false)
-	err := Run(context.Background(), []string{"project-create", "Mine", "--plan-dir", "/x"}, env)
+	err := Run(context.Background(), []string{"project", "create", "Mine", "--plan-dir", "/x"}, env)
 	if err == nil || !strings.Contains(err.Error(), "--plan-dir only means something with --local") {
 		t.Errorf("err = %v", err)
 	}
@@ -190,7 +190,7 @@ func TestProjectCreatePlanDirNeedsLocal(t *testing.T) {
 func TestProjectCreateLocalReportsAPlanDirThatCannotBeResolved(t *testing.T) {
 	env, _, saved := noNotionEnv(t, config.Config{}, false)
 	stubGetwd(t, "", errors.New("no cwd"))
-	err := Run(context.Background(), []string{"project-create", "Mine", "--local", "--repo", "/r", "--plan-dir", "relative/plans"}, env)
+	err := Run(context.Background(), []string{"project", "create", "Mine", "--local", "--repo", "/r", "--plan-dir", "relative/plans"}, env)
 	if err == nil || !strings.Contains(err.Error(), "resolve --plan-dir") {
 		t.Errorf("err = %v", err)
 	}
@@ -216,7 +216,7 @@ func TestAbsPlanDirExpandsAndResolves(t *testing.T) {
 	}
 }
 
-// workshop-launch on a project of nat's own launches the plain session, and
+// workshop launch on a project of nat's own launches the plain session, and
 // never builds a Notion client to try.
 func TestWorkshopLaunchOnALocalProjectIsAPlainSession(t *testing.T) {
 	cfg := config.Config{Projects: map[string]config.ProjectConfig{
@@ -225,15 +225,15 @@ func TestWorkshopLaunchOnALocalProjectIsAPlainSession(t *testing.T) {
 	env, out, _ := noNotionEnv(t, cfg, true)
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
-	if err := Run(context.Background(), []string{"workshop-launch", "--project", "p-1"}, env); err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+	if err := Run(context.Background(), []string{"workshop", "launch", "--project", "p-1"}, env); err != nil {
+		t.Fatalf("workshop launch: %v", err)
 	}
 	if !strings.Contains(out.String(), agent.PlanSessionName("p-1")) {
 		t.Errorf("output = %q", out.String())
 	}
 }
 
-// slice-status on a plan file whose store cannot be opened says so.
+// slice status on a plan file whose store cannot be opened says so.
 func TestSliceStatusOnALocalProjectReportsAnUnreadablePlan(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "afile")
 	if err := os.WriteFile(file, nil, 0o644); err != nil {
@@ -243,7 +243,7 @@ func TestSliceStatusOnALocalProjectReportsAnUnreadablePlan(t *testing.T) {
 		"p-1": {Name: "Mine", Backend: "local", PlanDir: filepath.Join(file, "sub")},
 	}}
 	env, _, _ := noNotionEnv(t, cfg, true)
-	err := Run(context.Background(), []string{"slice-status", "3d938308-f654-81eb-a3c6-d4bbbf954300", "--project", "p-1"}, env)
+	err := Run(context.Background(), []string{"slice", "status", "3d938308-f654-81eb-a3c6-d4bbbf954300", "--project", "p-1"}, env)
 	if err == nil {
 		t.Fatal("want an error")
 	}
@@ -254,7 +254,7 @@ func TestSliceStatusOnALocalProjectReportsAnUnreadablePlan(t *testing.T) {
 // rather than refusing for want of an assignee.
 func TestALocalProjectNeedsNoConfiguredAssignee(t *testing.T) {
 	env, out, saved := noNotionEnv(t, config.Config{}, false)
-	if err := Run(context.Background(), []string{"project-create", "Mine", "--local"}, env); err != nil {
+	if err := Run(context.Background(), []string{"project", "create", "Mine", "--local"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var id string
@@ -262,14 +262,14 @@ func TestALocalProjectNeedsNoConfiguredAssignee(t *testing.T) {
 		id = k
 	}
 	out.Reset()
-	if err := Run(context.Background(), []string{"milestone-add", "M", "--project", id}, env); err != nil {
+	if err := Run(context.Background(), []string{"milestone", "add", "M", "--project", id}, env); err != nil {
 		t.Fatal(err)
 	}
-	if err := Run(context.Background(), []string{"slice-add", "S", "--milestone", "M", "--project", id}, env); err != nil {
+	if err := Run(context.Background(), []string{"slice", "add", "S", "--milestone", "M", "--project", id}, env); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()
-	err := Run(context.Background(), []string{"next-slice", "--json", "--project", id}, env)
+	err := Run(context.Background(), []string{"slice", "next", "--json", "--project", id}, env)
 	if err != nil && strings.Contains(err.Error(), "no assignee") {
 		t.Skipf("no logged-in user is readable here: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestALocalProjectNeedsNoConfiguredAssignee(t *testing.T) {
 // A plan file that will not answer is an error, not a slice that is gone.
 func TestSliceStatusOnALocalProjectReportsAFailedRead(t *testing.T) {
 	env, out, saved := noNotionEnv(t, config.Config{}, false)
-	if err := Run(context.Background(), []string{"project-create", "Mine", "--local", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"project", "create", "Mine", "--local", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var id string
@@ -302,7 +302,7 @@ func TestSliceStatusOnALocalProjectReportsAFailedRead(t *testing.T) {
 	_ = db.Close()
 	out.Reset()
 
-	err = Run(context.Background(), []string{"slice-status", "3d938308-f654-81eb-a3c6-d4bbbf954300", "--project", id}, env)
+	err = Run(context.Background(), []string{"slice", "status", "3d938308-f654-81eb-a3c6-d4bbbf954300", "--project", id}, env)
 	if err == nil || !strings.Contains(err.Error(), "read the slice") {
 		t.Errorf("err = %v", err)
 	}

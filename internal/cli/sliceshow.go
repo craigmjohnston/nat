@@ -20,7 +20,7 @@ import (
 // read-only: this is the read the app's Brief tab does, with the full status
 // and its blocked computation.
 func sliceShow(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-show", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice show", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -29,9 +29,9 @@ func sliceShow(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-show: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice show: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-show", rest[0])
+	id, err := pageID("slice show", rest[0])
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ type sliceShowJSON struct {
 	Brief        string   `json:"brief"`
 	// FollowUps are the follow-ups the slice's agent handed in that still
 	// await the user's decision, every batch's, each by the index
-	// slice-triage takes and the batch it was handed in under. None on a Done
+	// slice triage takes and the batch it was handed in under. None on a Done
 	// slice ([store.PendingFollowUpsOf]).
 	FollowUps []followUpJSON `json:"followUps,omitempty"`
 	// Visuals are the images the slice's agent last handed in of what it
@@ -139,7 +139,7 @@ type sliceContainerJSON struct {
 func sliceContainer(ctx context.Context, cr store.ContainerReader, s domain.Slice, m domain.Milestone) *sliceContainerJSON {
 	d, err := cr.Container(ctx, s.MilestoneID)
 	if err != nil {
-		logging.Error("task source container unread for slice-show",
+		logging.Error("task source container unread for slice show",
 			"slice", s.ID, "container", s.MilestoneID, "err", err)
 		return &sliceContainerJSON{ID: s.MilestoneID, Title: m.Name}
 	}
@@ -193,7 +193,7 @@ type taskFollowUpJSON struct {
 
 // taskEventsJSON is a slice's whole task log: [store.TaskEvents]' own read of
 // its body, plus the two events only its properties can answer — "approved"
-// and "merged" are not sections of the body at all, since slice-approve
+// and "merged" are not sections of the body at all, since slice approve
 // records only a URL and the merge only a status, so they are folded in
 // here rather than taught to store.TaskEvents, which knows only the body.
 func taskEventsJSON(s domain.Slice, brief string) []taskEventJSON {

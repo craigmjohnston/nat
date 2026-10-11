@@ -14,7 +14,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/source"
 )
 
-// NewPluginsFunc builds the plugin installer the plugin-* commands run
+// NewPluginsFunc builds the plugin installer the plugin commands run
 // through.
 type NewPluginsFunc func() (*plugins.Manager, error)
 
@@ -40,7 +40,7 @@ func pluginConfig(env Env) (config.Config, error) {
 // plugin a source offers. A source that cannot be read is listed with its
 // error, not as one offering nothing.
 func pluginList(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("plugin-list", flag.ContinueOnError)
+	flags := flag.NewFlagSet("plugin list", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
 	rest, err := parseFlags(flags, args)
@@ -48,7 +48,7 @@ func pluginList(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("plugin-list: takes no arguments, given %d", len(rest))
+		return usageErrorf("plugin list: takes no arguments, given %d", len(rest))
 	}
 	cfg, err := pluginConfig(env)
 	if err != nil {
@@ -70,7 +70,7 @@ func pluginList(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// pluginListingJSON is plugin-list's listing with each installed plugin
+// pluginListingJSON is plugin list's listing with each installed plugin
 // described: what it asks to be set up, and why it would not say.
 type pluginListingJSON struct {
 	Sources   []plugins.SourceStatus `json:"sources"`
@@ -117,7 +117,7 @@ func describeErrorLine(err error) string {
 	return err.Error()
 }
 
-// pluginListText is plugin-list's plain form.
+// pluginListText is plugin list's plain form.
 func pluginListText(l pluginListingJSON) string {
 	var b strings.Builder
 	b.WriteString("sources:\n")
@@ -159,7 +159,7 @@ func pluginListText(l pluginListingJSON) string {
 // pluginInstall installs, or updates, one plugin from a source: the named
 // one, else the first that offers it, nat's own repository first.
 func pluginInstall(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("plugin-install", flag.ContinueOnError)
+	flags := flag.NewFlagSet("plugin install", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	from := flags.String("source", "", "install from this plugin source, `owner/repo`")
 	version := flags.String("version", "", "install this release `version` instead of the latest")
@@ -169,7 +169,7 @@ func pluginInstall(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("plugin-install: want exactly one plugin, by name")
+		return usageErrorf("plugin install: want exactly one plugin, by name")
 	}
 	cfg, err := pluginConfig(env)
 	if err != nil {
@@ -190,7 +190,7 @@ func pluginInstall(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// pluginUninstalledJSON is what plugin-uninstall took away: the plugin's
+// pluginUninstalledJSON is what plugin uninstall took away: the plugin's
 // directory and every source project of it deleted with it (always a list).
 type pluginUninstalledJSON struct {
 	Name            string                   `json:"name"`
@@ -202,7 +202,7 @@ type pluginUninstalledJSON struct {
 // while a project is a source project of it — unless --delete-projects says
 // to delete those projects, plan and config entry, first.
 func pluginUninstall(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("plugin-uninstall", flag.ContinueOnError)
+	flags := flag.NewFlagSet("plugin uninstall", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	deleteProjects := flags.Bool("delete-projects", false, "delete the plugin's source projects, plan and all, instead of refusing")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
@@ -211,7 +211,7 @@ func pluginUninstall(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("plugin-uninstall: want exactly one plugin, by name")
+		return usageErrorf("plugin uninstall: want exactly one plugin, by name")
 	}
 	cfg, err := pluginConfig(env)
 	if err != nil {
@@ -249,9 +249,9 @@ type pluginSourcesJSON struct {
 
 // pluginSourceAdd adds one plugin source to the config, after nat's own.
 func pluginSourceAdd(args []string, env Env) error {
-	return pluginSourceEdit("plugin-source-add", args, env, func(cfg *config.Config, repo string) error {
+	return pluginSourceEdit("plugin source add", args, env, func(cfg *config.Config, repo string) error {
 		if slices.Contains(plugins.Sources(*cfg), repo) {
-			return fmt.Errorf("plugin-source-add: %s is already a plugin source", repo)
+			return fmt.Errorf("plugin source add: %s is already a plugin source", repo)
 		}
 		cfg.PluginSources = append(cfg.PluginSources, repo)
 		return nil
@@ -261,13 +261,13 @@ func pluginSourceAdd(args []string, env Env) error {
 // pluginSourceRemove takes one plugin source out of the config. nat's own is
 // not the config's to remove.
 func pluginSourceRemove(args []string, env Env) error {
-	return pluginSourceEdit("plugin-source-remove", args, env, func(cfg *config.Config, repo string) error {
+	return pluginSourceEdit("plugin source remove", args, env, func(cfg *config.Config, repo string) error {
 		if repo == plugins.DefaultSource {
-			return fmt.Errorf("plugin-source-remove: %s is nat's own plugin source and is always read", repo)
+			return fmt.Errorf("plugin source remove: %s is nat's own plugin source and is always read", repo)
 		}
 		i := slices.Index(cfg.PluginSources, repo)
 		if i < 0 {
-			return fmt.Errorf("plugin-source-remove: %s is not a plugin source", repo)
+			return fmt.Errorf("plugin source remove: %s is not a plugin source", repo)
 		}
 		cfg.PluginSources = slices.Delete(cfg.PluginSources, i, i+1)
 		return nil

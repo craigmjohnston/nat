@@ -35,9 +35,9 @@ run — label, command, scope (Both, Global or Slice) — added, removed and
 dragged into order, the first of each scope being its default. Its Save, or
 anything else, writes the whole list at once with
 
-    nat config-set project.<id>.runs '[{"label":"Run","command":"make run"}]'
+    nat config set project.<id>.runs '[{"label":"Run","command":"make run"}]'
 
-(the empty string unsets it). `nat config-show` lists every project's runs
+(the empty string unsets it). `nat config show` lists every project's runs
 with their scope.
 
 ## Where each scope runs

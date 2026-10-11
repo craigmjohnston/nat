@@ -73,9 +73,9 @@ final class SourceFixtureClientTests: XCTestCase {
         _ = try await client.sourceAction(
             projectID: Fixtures.sourceProjectID, action: "comment", group: nil, container: "4821", input: "Hi")
         XCTAssertEqual(client.writes, [
-            "source-action refresh",
-            "source-action segment-owner --group seg-mine",
-            "source-action comment --container 4821",
+            "source action refresh",
+            "source action segment-owner --group seg-mine",
+            "source action comment --container 4821",
         ])
     }
 
@@ -103,19 +103,19 @@ final class SourceFixtureClientTests: XCTestCase {
             _ = try await client.sourceList()
             XCTFail("expected a refusal")
         } catch NatError.commandFailed(let message) {
-            XCTAssertTrue(message.hasPrefix("source-list"))
+            XCTAssertTrue(message.hasPrefix("source list"))
         } catch { XCTFail("\(error)") }
         do {
             _ = try await client.containerShow(projectID: "p", containerID: "c")
             XCTFail("expected a refusal")
         } catch NatError.commandFailed(let message) {
-            XCTAssertTrue(message.hasPrefix("container-show"))
+            XCTAssertTrue(message.hasPrefix("container show"))
         } catch { XCTFail("\(error)") }
         do {
             _ = try await client.sourceAction(projectID: "p", action: "a", group: nil, container: nil, input: nil)
             XCTFail("expected a refusal")
         } catch NatError.commandFailed(let message) {
-            XCTAssertTrue(message.hasPrefix("source-action"))
+            XCTAssertTrue(message.hasPrefix("source action"))
         } catch { XCTFail("\(error)") }
         // A plan read with groups expanded is the plain read, which this
         // client refuses on its own terms.

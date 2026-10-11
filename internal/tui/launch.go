@@ -322,7 +322,7 @@ func trimModel(m config.AgentModel) config.AgentModel { return actions.TrimModel
 // the error banner an outright failure gets, see [actions.Launch] for which
 // is which and why — and the resume a launch on published work opens with. A
 // slice in progress with a pull request recorded is work taken back up after
-// its approval, and the record says so first, as `nat slice-resume` would —
+// its approval, and the record says so first, as `nat slice resume` would —
 // [actions.Resume], which writes nothing where the work is already resumed —
 // before the ordinary relaunch, the same two steps the app takes.
 func launchAgent(l AgentLauncher, w Worktrees, r Repo, st store.Store, reviewer actions.PRReviewReader,
@@ -387,7 +387,7 @@ const (
 // restarted since. That second one is a relaunch: the slice's own worktree is
 // where the last session left it, and where a branch was handed back the agent
 // is put on it and told it is continuing the work — see [placeAgent] and
-// [agent.Prompt]. Nothing is written here either way; `start-slice` re-opens a
+// [agent.Prompt]. Nothing is written here either way; `slice start` re-opens a
 // slice its holder already claimed, so the agent's own claim is what it always
 // was.
 //

@@ -23,7 +23,7 @@ import (
 // well, once it is on the page.
 //
 // The target is named the way an agent knows it: by name, matched as
-// plan-apply matches a depends_on title, with --milestone to say which where
+// plan apply matches a depends_on title, with --milestone to say which where
 // the name is filed under more than one — or by ID or URL, as every other
 // slice command takes one, so an agent can note its own slice with the ID its
 // prompt gave it.
@@ -38,7 +38,7 @@ import (
 // --from slice that cannot be read. There is no ownership check: the point is
 // leaving context on work somebody else will pick up.
 func sliceNote(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-note", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice note", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	note := flags.String("note", "", "the note to append; `-` reads it from stdin")
 	from := flags.String("from", "", "the slice the note is written from, by name, ID or URL")
@@ -49,14 +49,14 @@ func sliceNote(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-note: want exactly one slice, by name, URL or ID, given %d", len(rest))
+		return usageErrorf("slice note: want exactly one slice, by name, URL or ID, given %d", len(rest))
 	}
-	text, err := briefText("slice-note", "--note", *note, env.In)
+	text, err := briefText("slice note", "--note", *note, env.In)
 	if err != nil {
 		return err
 	}
 	if text == "" {
-		return usageErrorf("slice-note: no note given: pass --note '<text>', or --note - to pipe it in")
+		return usageErrorf("slice note: no note given: pass --note '<text>', or --note - to pipe it in")
 	}
 
 	cfg, projectID, project, err := env.projectFor(*projectRef)
@@ -165,14 +165,14 @@ type sliceResolver struct {
 }
 
 // resolve reads the slice ref names. A page ID or URL is read as every other
-// slice command reads one; anything else is a name, matched as plan-apply
+// slice command reads one; anything else is a name, matched as plan apply
 // matches a depends_on title — trimmed, case aside — and narrowed to milestone
 // where one is given. A name matching nothing, and one matching several with
 // no milestone to choose between them, are each refused naming what was given.
 func (r sliceResolver) resolve(ref, milestone string) (domain.Slice, error) {
-	if id, err := pageID("slice-note", ref); err == nil {
+	if id, err := pageID("slice note", ref); err == nil {
 		if strings.TrimSpace(milestone) != "" {
-			return domain.Slice{}, usageErrorf("slice-note: --milestone narrows a slice named by name, and %q is an ID", ref)
+			return domain.Slice{}, usageErrorf("slice note: --milestone narrows a slice named by name, and %q is an ID", ref)
 		}
 		s, _, err := loadSlice(r.ctx, r.st, id)
 		return s, err

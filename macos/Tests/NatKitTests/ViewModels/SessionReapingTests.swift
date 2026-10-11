@@ -62,7 +62,7 @@ final class SessionReapingTests: XCTestCase {
     }
 
     /// An agent reads as working until it says otherwise (`nat
-    /// agent-waiting`), and one that has handed back and been merged never
+    /// agent waiting`), and one that has handed back and been merged never
     /// does — the slice's status is what says its work is over, not the pane.
     func testAnAgentReadingAsWorkingIsACandidateOnceItsSliceIsDone() {
         let reaped = reap(

@@ -23,9 +23,9 @@ import (
 // change; --to left off reads to the end of the file. The JSON form says how
 // many lines the file has in all, since a diff says where its hunks end and
 // nothing about how much file follows them, and lexes each line as
-// slice-diff lexes the diff's own.
+// slice diff lexes the diff's own.
 func sliceFile(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-file", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice file", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of the raw lines")
 	commitFlag := flags.String("commit", "", "read the file as one commit of the branch left it, by its sha")
@@ -38,16 +38,16 @@ func sliceFile(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-file: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice file: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
 	if *pathFlag == "" {
-		return usageErrorf("slice-file: --path names the file to read")
+		return usageErrorf("slice file: --path names the file to read")
 	}
 	if *fromFlag < 1 || (*toFlag != 0 && *toFlag < *fromFlag) {
-		return usageErrorf("slice-file: --from is 1 or more, and --to, when given, is not before it")
+		return usageErrorf("slice file: --from is 1 or more, and --to, when given, is not before it")
 	}
 
-	s, workdir, _, err := handedBackSlice(ctx, "slice-file", rest[0], *projectRef, env)
+	s, workdir, _, err := handedBackSlice(ctx, "slice file", rest[0], *projectRef, env)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func linesBetween(all []string, from, to int) []string {
 	return all[from-1 : to]
 }
 
-// fileLinesJSON is slice-file's structured form.
+// fileLinesJSON is slice file's structured form.
 type fileLinesJSON struct {
 	Path string `json:"path"`
 	Ref  string `json:"ref"`

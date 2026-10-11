@@ -57,13 +57,13 @@ type NewTmuxFunc func() *agent.Tmux
 func DefaultNewTmux() *agent.Tmux { return agent.NewTmux() }
 
 // GH is everything the pull request commands need of the GitHub CLI:
-// [actions.PRCreator] for slice-approve, [PRViewer] for pr-view, [PRMerger]
-// for pr-merge, [PRBatchReader] for pr-status and every command that reads a
-// pull request's state, [PRCommenter] for pr-comment, [PRBodyEditor] for
-// pr-edit and
-// [PRReviewerEditor] for pr-reviewers, [RunLogReader] and [JobReader] for
-// slice-checks --log, [RunController] for slice-checks-rerun and
-// slice-checks-cancel, and [actions.PRReviewReader] for a launch's review snapshot. One gh.CLI
+// [actions.PRCreator] for slice approve, [PRViewer] for pr view, [PRMerger]
+// for pr merge, [PRBatchReader] for pr status and every command that reads a
+// pull request's state, [PRCommenter] for pr comment, [PRBodyEditor] for
+// pr edit and
+// [PRReviewerEditor] for pr reviewers, [RunLogReader] and [JobReader] for
+// slice checks --log, [RunController] for slice checks rerun and
+// slice checks cancel, and [actions.PRReviewReader] for a launch's review snapshot. One gh.CLI
 // answers all of them, and a headless command names whichever of them it
 // actually calls, the way [GitCLI] combines git's two seams for the same
 // reason.
@@ -93,9 +93,9 @@ func DefaultNewGH() GH { return gh.New() }
 // GitCLI is what a headless command needs of git: the remote's news and
 // default branch, for placing a launch's worktree, and the diff of a branch
 // already pushed — the whole of it, its commits alone, or one commit at a
-// time — for slice-diff, and the dirty check and push complete-slice makes
+// time — for slice diff, and the dirty check and push slice complete makes
 // of a branch it hands back. A single git.CLI answers all of it, so one
-// driver serves slice-launch and slice-diff alike.
+// driver serves slice launch and slice diff alike.
 type GitCLI interface {
 	actions.Repo
 	DiffFrom(dir, baseName, branch string) (base, diff string, err error)
@@ -133,7 +133,7 @@ func (e Env) gitFor(project config.ProjectConfig) GitCLI {
 	return g
 }
 
-// NewWorktreesFunc builds the git worktrees driver slice-launch places an
+// NewWorktreesFunc builds the git worktrees driver slice launch places an
 // agent's checkout through.
 type NewWorktreesFunc func() actions.Worktrees
 
@@ -200,9 +200,9 @@ type Env struct {
 	// In is where a command reads input a flag was not given for; it is stdin
 	// in production, and may be nil where nothing is ever piped in.
 	In io.Reader
-	// ReadingPath is where pr-status keeps its last batched GitHub reading for
-	// the commands that read it back (slice-diff, session-list,
-	// session-status) — DefaultReadingPath in production; nil keeps none, and
+	// ReadingPath is where pr status keeps its last batched GitHub reading for
+	// the commands that read it back (slice diff, session list,
+	// session status) — DefaultReadingPath in production; nil keeps none, and
 	// every such command reads nothing kept.
 	ReadingPath func() (string, error)
 	// Nudge marks that a write landed in Notion, so a board running on this
@@ -281,15 +281,18 @@ func (e Env) sourceStoreFor(ctx context.Context, command, projectID string, proj
 // Usage is the help text, listing every way the binary can be run.
 const Usage = `nat — track project work in Notion
 
+A command is typed as words, the thing first and the action last: nat slice
+checks rerun. A group typed alone, such as nat slice, prints its own commands.
+
 Every command below that acts on a project requires --project, naming one of
 the config file's projects by its page ID; run one without it to be told the
 projects this machine tracks. There is no fallback to the project the board is
 on: that is the board's own, and the user moves it while an agent works. setup,
-paths, project-create, source-list, source-setup and the plugin-* commands take
+paths, project create, source list, source setup and the plugin commands take
 no such flag: none acts on a project already tracked. Nor do status,
-agent-waiting and agent-working, which read or mark tmux panes alone, nor
-usage, claude-version and claude-update, which are this machine's, nor
-storage-usage, which is the GitHub account's.
+agent waiting and agent working, which read or mark tmux panes alone, nor
+usage, claude version and claude update, which are this machine's, nor
+storage usage, which is the GitHub account's.
 
 usage:
   nat                 open the board
@@ -304,16 +307,16 @@ usage:
                       current Pro/Max rate-limit usage, via a throwaway
                       detached session; prints nothing read where no window
                       is available
-  nat storage-usage [--json]
+  nat storage usage [--json]
                       this month's GitHub artifact storage for the signed-in
                       gh account, against its plan's allowance, by project
                       (each project's repositories) and other repositories;
                       needs gh's "user" scope
-  nat claude-version [--json]
+  nat claude version [--json]
                       the installed Claude Code and the newest released on
                       its own channel (latest or stable), read at most
                       hourly; a side not read is left out
-  nat claude-update [--json]
+  nat claude update [--json]
                       update Claude Code — brew upgrade <cask> for a
                       Homebrew install, else claude update — and print what
                       it said; sessions already running keep the binary they
@@ -324,189 +327,189 @@ usage:
                       pulls from the workspace first if it is stale. A source
                       project's JSON adds its plugin's sidebar, --expand
                       naming the lazy groups to fill in
-  nat next-slice [--json] --project ID
+  nat slice next [--json] --project ID
                       claim the next Todo slice and print its brief
-  nat start-slice <slice> [--json] --project ID
+  nat slice start <slice> [--json] --project ID
                       claim one named Todo slice, by URL or ID, and print its
                       brief
-  nat slice-show <slice> [--json] --project ID
+  nat slice show <slice> [--json] --project ID
                       print one slice's full status and brief, no claim
-  nat slice-status <slice> [--json] --project ID
+  nat slice status <slice> [--json] --project ID
                       read one slice's status straight off its page, fresh:
                       the slice need not be in the named project's own plan,
                       since --project only pins which credentials to read
                       with. A page Notion no longer has any record of reads
                       as gone rather than as a refusal
-  nat slice-launch <slice> [--model M] [--effort E] [--json] --project ID
+  nat slice launch <slice> [--model M] [--effort E] [--json] --project ID
                       launch a detached agent for a slice with optional model
                       and effort overrides
-  nat slice-approve <slice> [--json] --project ID
+  nat slice approve <slice> [--json] --project ID
                       open a pull request for a handed-back branch and record
                       it on the slice, which stays in progress until the merge
                       marks it Done
-  nat slice-diff <slice> [--json] --project ID
+  nat slice diff <slice> [--json] --project ID
                       print the diff of a handed-back branch
-  nat slice-diff <slice> --commits [--json] --project ID
+  nat slice diff <slice> --commits [--json] --project ID
                       list the branch's commits against its merge base,
                       instead of diffing it
-  nat slice-diff <slice> --commit SHA [--json] --project ID
+  nat slice diff <slice> --commit SHA [--json] --project ID
                       diff one commit of the branch's history against its own
                       parent, instead of the whole branch; --commits and
                       --commit are mutually exclusive with each other and with
                       the whole-branch diff
-  nat slice-file <slice> --path P [--from N] [--to M] [--commit SHA] [--json] --project ID
+  nat slice file <slice> --path P [--from N] [--to M] [--commit SHA] [--json] --project ID
                       print lines N..M (1-based, inclusive; M left off reads
                       to the end) of a file as the branch, or one commit of
                       it, leaves it — what a diff's expand controls reveal
-  nat slice-edit <slice> [--title TITLE] [--description TEXT|-] --project ID
+  nat slice edit <slice> [--title TITLE] [--description TEXT|-] --project ID
                       rename a Todo slice, replace its description (its page
                       body), or both; refused on a slice in progress or Done.
                       --description - reads it from stdin
-  nat slice-move <slice> --milestone <name> [--json] --project ID
+  nat slice move <slice> --milestone <name> [--json] --project ID
                       refile a slice under another milestone, by name; the
                       work itself is untouched. Refused on a slice in progress.
                       The milestone it leaves is removed where no slice is
                       filed under it any more (--json: removed_milestone)
-  nat slice-reorder <slice> (--before <slice> | --after <slice>) [--json] --project ID
+  nat slice reorder <slice> (--before <slice> | --after <slice>) [--json] --project ID
                       place a slice directly before or after another; one
                       under another milestone is refiled to it in the same
                       write (refused for a slice in progress), and the
                       milestone a refile leaves is removed where no slice is
                       filed under it any more (--json: removed_milestone)
-  nat slice-delete <slice> [--json] --project ID
+  nat slice delete <slice> [--json] --project ID
                       move a slice's page to Notion's trash, where it is still
                       recoverable. A slice in progress has its live agent
                       stopped first (refused where it cannot be) and its
                       worktree and branch discarded after. The milestone it
                       leaves is removed where no slice is filed under it any
                       more (--json: removed_milestone)
-  nat session-launch --project ID [--dir DIR] [--model M] [--effort E] [--json]
+  nat session launch --project ID [--dir DIR] [--model M] [--effort E] [--json]
                       start a bare agent on a repo with no slice and no
                       prompt: a worktree on session/<id> off the remote's
                       default branch where --dir (or the project's own
                       working directory) is a git repository, or the
                       directory itself where it is not
-  nat session-list --project ID [--json]
+  nat session list --project ID [--json]
                       list every ad hoc session on the project: whether tmux
                       still has it, its branch, and its pull requests as the
-                      last pr-status reading found them
-  nat session-status <session> --project ID [--discard] [--json]
+                      last pr status reading found them
+  nat session status <session> --project ID [--discard] [--json]
                       read the five most recent branches a session has been
-                      on and the pull requests the last pr-status reading
+                      on and the pull requests the last pr status reading
                       found each has opened; once every one has merged —
                       or, with --discard, the session has ended with none
                       open — its worktree is removed and it is marked ended
-  nat session-diff <session> --project ID [--branch NAME] [--json]
+  nat session diff <session> --project ID [--branch NAME] [--json]
                       diff a session's named branch (default: its worktree's
                       current one) against its merge base with the default
                       branch, working tree included when the branch is the
                       one checked out
-  nat agent-send <slice|session-tag> [--text TEXT|-] --project ID
+  nat agent send <slice|session-tag> [--text TEXT|-] --project ID
                       send a prompt to a live agent session, named by a
                       slice's URL/ID or an ad hoc session's own pane tag
-                      (session:<project>:<id>, as session-list prints it);
+                      (session:<project>:<id>, as session list prints it);
                       - or absent reads from stdin
-  nat agent-interrupt <slice> --project ID
+  nat agent interrupt <slice> --project ID
                       send an interrupt signal to a live agent session
-  nat agent-kill <slice|session-tag> --project ID
+  nat agent kill <slice|session-tag> --project ID
                       end a live agent session, taking its agent with it —
                       for a slice or an ad hoc session that is finished
                       with, whose session would otherwise sit on the tmux
                       server forever
-  nat agent-kill --workshop --project ID
+  nat agent kill --workshop --project ID
                       end the project's live planning agent instead of a
                       slice's; mutually exclusive with the positional slice
-  nat agent-waiting   run by the embedded mod from an agent's own tmux pane,
+  nat agent waiting   run by the embedded mod from an agent's own tmux pane,
                       once the agent is waiting on the user: marks the pane
                       waiting, the slice needing attention. No --project:
                       it acts on $TMUX_PANE alone, refused outside a pane nat
                       launched an agent in
-  nat agent-working   run by the mod once the agent is back at work: clears
-                      the mark agent-waiting set. No --project, as above
-  nat project-create <name> [--repo DIR] [--description TEXT|-] [--json]
+  nat agent working   run by the mod once the agent is back at work: clears
+                      the mark agent waiting set. No --project, as above
+  nat project create <name> [--repo DIR] [--description TEXT|-] [--json]
                       create a project and its Slices database, register it in
                       local config and write the description as its page body;
                       --description - reads it from stdin. The board is left on
                       whatever project it was on
-  nat project-create <name> --local [--plan-dir DIR] [--repo DIR]
+  nat project create <name> --local [--plan-dir DIR] [--repo DIR]
                         [--description TEXT|-] [--json]
                       the same, with no Notion workspace behind it: the plan
                       is a file of nat's own, in DIR or nat's data directory.
                       Touches Notion nowhere and needs no credential
-  nat project-create <name> --source PLUGIN [--plan-dir DIR] [--repo DIR]
+  nat project create <name> --source PLUGIN [--plan-dir DIR] [--repo DIR]
                         [--description TEXT|-] [--json]
                       the same, as a source project: its tasks hang off the
                       containers of the task-source plugin nat-source-PLUGIN,
                       which must be installed and describe itself first.
                       Mutually exclusive with --local
-  nat source-list [--json]
+  nat source list [--json]
                       list every installed task-source plugin and what it
                       says about itself; one that will not say is listed
                       with its error
-  nat container-show <container> [--json] --project ID
+  nat container show <container> [--json] --project ID
                       print one of a source project's containers as its
                       plugin describes it, with the project's tasks under it
-  nat source-action --action ID [--group ID | --container ID]
+  nat source action --action ID [--group ID | --container ID]
                         [--input TEXT|-] [--json] --project ID
                       run one of a source project's plugin actions, against a
                       group, a container or (neither) the source itself;
                       --input - reads the input from stdin
-  nat source-setup <plugin> --id ID [--json] < VALUE
+  nat source setup <plugin> --id ID [--json] < VALUE
                       set one of a task-source plugin's setup fields (an API
                       token, say) to the value read from stdin — never a
                       flag, so it is in no argv; refused for a plugin not
                       installed, an id its describe does not list, and an
                       empty value
-  nat plugin-list [--json]
+  nat plugin list [--json]
                       list the plugin sources (nat's own repository first,
                       then the config's plugin_sources), the installed
                       plugins with any update their source offers, the setup
                       fields each asks for and why one would not describe,
                       and every plugin a source offers; a source that cannot
                       be read is listed with its error
-  nat plugin-install <name> [--source OWNER/REPO] [--version V] [--json]
+  nat plugin install <name> [--source OWNER/REPO] [--version V] [--json]
                       download a task-source plugin from a source's release —
                       the named source, else the first that offers it; the
                       latest release, else version V — check its SHA-256 and
                       install it under nat's plugins directory. Over an
                       install of nat's own this is the update; over one put
                       there by hand it is refused
-  nat plugin-uninstall <name> [--delete-projects] [--json]
+  nat plugin uninstall <name> [--delete-projects] [--json]
                       remove a plugin from nat's plugins directory; refused
                       while a project is a source project of it unless
                       --delete-projects deletes those projects (plan file and
                       config entry) first, and for a plugin found only on PATH
-  nat plugin-source-add <owner/repo> [--json]
-  nat plugin-source-remove <owner/repo> [--json]
+  nat plugin source add <owner/repo> [--json]
+  nat plugin source remove <owner/repo> [--json]
                       add or remove a GitHub repository plugins may be
                       installed from; nat's own is always read and cannot be
                       removed
-  nat project-open-folder <DIR> [--json]
+  nat project open folder <DIR> [--json]
                       open the local plan already kept in DIR as a project:
                       records it in local config, writes nothing to the plan.
                       Refused, saying what was looked for, where DIR holds none
-  nat scratch-open [--dir DIR] [--json]
+  nat scratch open [--dir DIR] [--json]
                       make sure the reserved local "Scratch" project exists and
                       print its ID: created on the first call (DIR, else the
                       home directory, its working directory) and recorded in
                       config as scratch_project, only read back after that
-  nat done-clear [--json] --project ID
+  nat project done clear [--json] --project ID
                       delete a local project's Done slices and ended sessions,
                       then its milestones left with no slices. Refuses a
                       project with a Notion workspace behind it
-  nat milestone-add <name> [--json] --project ID
+  nat milestone add <name> [--json] --project ID
                       add a Queued milestone at the end of the plan
-  nat milestone-rename <old> <new> [--json] --project ID
+  nat milestone rename <old> <new> [--json] --project ID
                       rename a milestone in place, keeping its place in the
                       plan and the slices filed under it
-  nat milestone-remove <name> [--json] --project ID
+  nat milestone remove <name> [--json] --project ID
                       drop a milestone from the plan; refused while any slice is
                       still filed under it, so empty it first
-  nat milestone-move <name> (--before <other> | --after <other>) [--json]
+  nat milestone move <name> (--before <other> | --after <other>) [--json]
                         --project ID
                       move a milestone in the plan, to sit directly before or
                       after another; only the order changes
-  nat slice-add <title> --milestone <name> [--description TEXT|-]
+  nat slice add <title> --milestone <name> [--description TEXT|-]
                         [--repo DIR] [--depends-on <slice>]... [--json]
                         --project ID
                       add a Todo slice under a milestone, its description
@@ -516,20 +519,20 @@ usage:
                       slice under its reserved Unfiled milestone. A source
                       project takes --container <id> instead of --milestone,
                       filing the task under one of its plugin's containers
-  nat slice-depends <slice> [--on <slice>]... [--clear] [--json] --project ID
+  nat slice depends <slice> [--on <slice>]... [--clear] [--json] --project ID
                       record the slices a slice waits on, by URL or ID; --clear
                       drops what is there first, so on its own it frees the
                       slice
-  nat project-mirror --parent ID --parent-kind page|database [--json] --project ID
+  nat project mirror --parent ID --parent-kind page|database [--json] --project ID
                       put a project of nat's own into Notion: create its
                       project page under the chosen page, or in the chosen
                       database, file the plan beneath it, and re-register the
                       project as one tracked in Notion (under a new ID, which
                       this prints). Refused once any slice has been started
-  nat notion-search [--query TEXT] [--json]
+  nat notion search [--query TEXT] [--json]
                       list the pages and databases a project page could go
-                      under, for project-mirror --parent
-  nat plan-apply [FILE] [--json] --project ID
+                      under, for project mirror --parent
+  nat plan apply [FILE] [--json] --project ID
                       create a whole plan of milestones and slices from a JSON
                       document, read from FILE or stdin. Once it has all
                       applied, each milestone its move and remove lists left
@@ -540,28 +543,28 @@ usage:
                       at most 64 characters, and a created slice may not take
                       a title the project already has (remove that one to
                       replace it) or another created slice's
-  nat plan-propose [FILE] (--workspace ID | --project ID) [--name NAME] [--json]
+  nat plan propose [FILE] (--workspace ID | --project ID) [--name NAME] [--json]
                       validate a drafted plan and write it to a proposal file
                       instead of applying it — exactly one of --workspace (the
                       app's new-project workshop; --name required) or
                       --project (a revision to a project already tracked;
                       --name optional) says where it is headed. FILE or
-                      stdin, like plan-apply. --workspace's plan has no
+                      stdin, like plan apply. --workspace's plan has no
                       project to resolve against: a milestone or a depends_on
                       may only name what the document itself creates, and a
                       top-level dependencies list is refused. --project's plan
-                      is validated against that project exactly as plan-apply
+                      is validated against that project exactly as plan apply
                       validates one. Running it again for the same workspace
                       or project replaces the proposal
-  nat plan-proposal (--workspace ID | --project ID) --json
-                      read back the proposal plan-propose wrote for a
+  nat plan proposal (--workspace ID | --project ID) --json
+                      read back the proposal plan propose wrote for a
                       workspace or a project, as {"proposal": ...} — null
                       with none yet
-  nat plan-withdraw (--workspace ID | --project ID) [--json]
+  nat plan withdraw (--workspace ID | --project ID) [--json]
                       take that proposal down (the app runs it once the user
                       writes to the workshop's agent); none is nothing to
                       withdraw, not an error
-  nat plan-accept (--workspace ID --name NAME | --project ID) [--json]
+  nat plan accept (--workspace ID --name NAME | --project ID) [--json]
                       accept that proposal: with --workspace, create a local
                       project named NAME (no Notion), file the proposal's plan
                       into it, and drop the proposal file; with --project, file
@@ -570,7 +573,7 @@ usage:
                       outgrown since is refused rather than half-applied — and
                       drop the proposal file. No --name with --project: the
                       project already has one
-  nat complete-slice <slice> [--branch NAME] [--no-branch] [--pr URL]
+  nat slice complete <slice> [--branch NAME] [--no-branch] [--pr URL]
                       [--summary TEXT] [--pr-description TEXT|-] [--blocked]
                       --project ID
                       close out a slice you claimed: by default, handed back
@@ -588,19 +591,19 @@ usage:
                       and --pr-description records beside it the text the board
                       opens the pull request with: its first line the title,
                       the rest the body
-  nat slice-followups <slice> --follow-up TEXT [--follow-up TEXT]... --project ID
+  nat slice followups <slice> --follow-up TEXT [--follow-up TEXT]... --project ID
                       before handing back, file follow-ups noticed but not done
                       on a slice you claimed, for the user to triage: each
                       value's first line the title, the rest its brief. Then
-                      stop: complete-slice refuses until the decision arrives
-  nat slice-triage <slice> [--queue N]... [--fold N]... [--drop N]...
+                      stop: slice complete refuses until the decision arrives
+  nat slice triage <slice> [--queue N]... [--fold N]... [--drop N]...
                         [--drop-all] [--json] --project ID
-                      decide every pending follow-up, by the index slice-show
+                      decide every pending follow-up, by the index slice show
                       prints: queue it as a Todo slice blocked on this one,
                       fold it into this slice, or drop it. Records the
                       decision on the slice, then tells its agent in one
                       message; --fold needs a live agent
-  nat slice-visuals <slice> [--visual TEXT]... [--before TEXT]...
+  nat slice visuals <slice> [--visual TEXT]... [--before TEXT]...
                         [--remove NAME]... --project ID
                       hand in images rendered of what a slice you claimed
                       changed, for the user to review in the app: --visual's
@@ -608,83 +611,83 @@ usage:
                       URI, replacing the one already under that name; --before
                       the same, naming the visual it is the before of;
                       --remove drops one. Nothing waits on it
-  nat slice-repo <slice> --repo PATH [--json] --project ID
+  nat slice repo <slice> --repo PATH [--json] --project ID
                       record the repository a Todo slice, or one you claimed,
                       is worked in — what a source project's agent does once
                       it has worked out which repository its card is about —
                       then find or cut the slice's worktree there, as
-                      slice-worktree does, and print its path
-  nat slice-worktree <slice> [--repo PATH] [--json] --project ID
+                      slice worktree does, and print its path
+  nat slice worktree <slice> [--repo PATH] [--json] --project ID
                       print the path of a slice's worktree, cutting it first
                       where there is none, exactly as a launch does: in --repo,
                       else the slice's repository, else the project's
-  nat slice-note <slice> --note TEXT|- [--from SLICE] [--milestone NAME] --project ID
+  nat slice note <slice> --note TEXT|- [--from SLICE] [--milestone NAME] --project ID
                       append a note to a Todo or in-progress slice's brief, for
                       whoever works it later: the slice named by name (with
                       --milestone where the name is filed under more than one),
                       URL or ID. nat writes where it came from — the --from
                       slice by name and milestone, else you
-  nat slice-checks <slice> [--log] [--json] --project ID
+  nat slice checks <slice> [--log] [--json] --project ID
                       how the checks on a slice's pull request stand: one
                       verdict, then each check's name, state and run URL;
                       --log adds each failed GitHub Actions check's failed
                       steps' log, its last 200 lines, and for each one still
                       running, where its job stands — waiting for a runner,
                       or the step it is on and for how long — and its steps
-  nat slice-checks-rerun <slice> (--all | --failed | --check NAME...) [--json] --project ID
+  nat slice checks rerun <slice> (--all | --failed | --check NAME...) [--json] --project ID
                       re-run the pull request's GitHub Actions checks: every
                       run whole, each run's failed jobs, or named checks' jobs
                       (--check repeats). A run still going is cancelled first,
                       waited on and re-run whole; what was cancelled is said
                       apart from what was re-run
-  nat slice-checks-cancel <slice> [--check NAME...] [--json] --project ID
+  nat slice checks cancel <slice> [--check NAME...] [--json] --project ID
                       cancel every GitHub Actions run behind the pull
                       request's checks still going, or only named checks'
                       runs; a cancel stops every job of its run, and each
                       check stopped is named
-  nat slice-rework <slice> [--comments TEXT] --project ID
+  nat slice rework <slice> [--comments TEXT] --project ID
                       take a handed-back slice back out of review: its branch is
                       cleared and nothing else, so it reads as in progress until
                       its agent hands back again; --comments files what the
                       review said under a Sent back heading first ('-' reads
                       stdin)
-  nat slice-resume <slice> --note TEXT|- --project ID
+  nat slice resume <slice> --note TEXT|- --project ID
                       take the work on a handed-back slice back up: --note
                       (what was asked for) is filed under a Resumed heading,
                       then its branch is cleared so it reads as in progress
                       until its agent hands back again; a slice already in
                       progress writes nothing, and a Done one is refused
-  nat release-slice <slice> --project ID
+  nat slice release <slice> --project ID
                       hand a slice you claimed back to the plan: Todo and
                       unassigned, its brief and any branch left as they are, for
                       when the session working it ended without finishing it
-  nat slice-cancel <slice> [--json] --project ID
+  nat slice cancel <slice> [--json] --project ID
                       take a slice in progress back to Todo and throw its work
                       away: its live agent stopped (refused where it cannot
                       be), a note on its page, its branch and pull request
                       cleared, then its worktree and branch deleted. Anyone's
                       slice; an open pull request is left on GitHub. Refused
                       on a Todo or Done slice
-  nat pr-view <slice> [--json] --project ID
+  nat pr view <slice> [--json] --project ID
                       print one pull request in full: its description, checks,
                       reviews, comments and change stats, read through gh in
                       the slice's repo
-  nat pr-comment (<slice> | --session ID <PR>) [--body TEXT|-] [--json] --project ID
+  nat pr comment (<slice> | --session ID <PR>) [--body TEXT|-] [--json] --project ID
                       post a comment on the slice's recorded pull request;
                       --body - or absent reads it from stdin
-  nat pr-edit (<slice> | --session ID <PR>) [--body TEXT|-] [--json] --project ID
+  nat pr edit (<slice> | --session ID <PR>) [--body TEXT|-] [--json] --project ID
                       replace the description of the slice's recorded pull
                       request; --body - or absent reads it from stdin
-  nat pr-reviewers <slice> [--add LOGIN]... [--remove LOGIN]... [--json] --project ID
+  nat pr reviewers <slice> [--add LOGIN]... [--remove LOGIN]... [--json] --project ID
                       who is asked to review the slice's pull request, and who
                       else could be; --add/--remove ask or withdraw instead,
                       reporting what the edit did
-  nat pr-merge <slice> [--json] --project ID
+  nat pr merge <slice> [--json] --project ID
                       merge a slice's pull request through gh and mark the
                       slice Done, refused in the merge box's own words when a
                       review, a check or the branch itself says it should not
                       go in yet
-  nat pr-status [--detail PR_URL] [--json] --project ID [--project ID]...
+  nat pr status [--detail PR_URL] [--json] --project ID [--project ID]...
                       read every slice with a pull request still worth
                       watching, and every ad hoc session's branches, in one
                       batched GitHub reading across every project named, and
@@ -692,8 +695,8 @@ usage:
                       where several are named) with GitHub's remaining
                       budget; an in-progress slice whose pull request turns
                       out to have merged is marked Done on the way. --detail
-                      adds that pull request in full, as pr-view prints it
-  nat workshop-launch [--model M] [--effort E] [--request TEXT|-] [--json] --project ID
+                      adds that pull request in full, as pr view prints it
+  nat workshop launch [--model M] [--effort E] [--request TEXT|-] [--json] --project ID
                       launch a planning agent detached in tmux on the
                       project's working dir, on the request when one is
                       given, else a plain planning session
@@ -703,12 +706,12 @@ usage:
                       worktree, else a global run in nat's run/main checkout
                       at the latest origin/main; --label picks the run, the
                       first of its scope otherwise
-  nat config-show [--json]
+  nat config show [--json]
                       print local config: the agent split, the poll interval,
                       the two model pairs and each project's working directory,
                       runs, colour, tag, model pairs, merge method and base
                       branch
-  nat config-set <key> <value>
+  nat config set <key> <value>
                       set one local config key: agent_split_percent,
                       poll_seconds, workshop_agent.model, workshop_agent.effort,
                       slice_agent.model, slice_agent.effort,
@@ -763,179 +766,44 @@ func Run(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// runCommand is Run's dispatch.
+// runCommand is Run's dispatch: it walks the words of the command line down
+// [commands] for as long as they name a command, then hands what is left to
+// the command they reached. A group reached with nothing after it — `nat
+// slice`, `nat slice checks` — is a usage error carrying that group's usage
+// alone, and a hyphenated name nat used to take is one naming its new form.
 func runCommand(ctx context.Context, args []string, env Env) error {
 	if len(args) == 0 {
 		return usageErrorf("no command given")
 	}
 	switch args[0] {
-	case "setup":
-		// The one command that talks to no one: it lays down files, and a
-		// machine that has not been configured yet is exactly where it is run.
-		return setup(args[1:], env)
-	case "paths":
-		// Like setup, paths needs no Notion client or config file.
-		return paths(args[1:], env)
-	case "status":
-		return status(args[1:], env)
-	case "usage":
-		return usage(args[1:], env)
-	case "storage-usage":
-		return storageUsage(ctx, args[1:], env)
-	case "claude-version":
-		return claudeVersion(ctx, args[1:], env)
-	case "claude-update":
-		return claudeUpdate(ctx, args[1:], env)
-	case "info":
-		return info(ctx, args[1:], env)
-	case "next-slice":
-		return nextSlice(ctx, args[1:], env)
-	case "start-slice":
-		return startSlice(ctx, args[1:], env)
-	case "slice-show":
-		return sliceShow(ctx, args[1:], env)
-	case "slice-status":
-		return sliceStatus(ctx, args[1:], env)
-	case "slice-launch":
-		return sliceLaunch(ctx, args[1:], env)
-	case "session-launch":
-		return sessionLaunch(ctx, args[1:], env)
-	case "session-list":
-		return sessionList(ctx, args[1:], env)
-	case "session-status":
-		return sessionStatus(ctx, args[1:], env)
-	case "session-diff":
-		return sessionDiff(ctx, args[1:], env)
-	case "slice-approve":
-		return sliceApprove(ctx, args[1:], env)
-	case "slice-rework":
-		return sliceRework(ctx, args[1:], env)
-	case "slice-resume":
-		return sliceResume(ctx, args[1:], env)
-	case "slice-diff":
-		return sliceDiff(ctx, args[1:], env)
-	case "slice-file":
-		return sliceFile(ctx, args[1:], env)
-	case "slice-edit":
-		return sliceEdit(ctx, args[1:], env)
-	case "slice-move":
-		return sliceMove(ctx, args[1:], env)
-	case "slice-reorder":
-		return sliceReorder(ctx, args[1:], env)
-	case "slice-delete":
-		return sliceDelete(ctx, args[1:], env)
-	case "agent-send":
-		return agentSend(ctx, args[1:], env)
-	case "agent-interrupt":
-		return agentInterrupt(ctx, args[1:], env)
-	case "agent-kill":
-		return agentKill(ctx, args[1:], env)
-	case "agent-waiting":
-		return agentWaiting(args[1:], env)
-	case "agent-working":
-		return agentWorking(args[1:], env)
-	case "project-create":
-		return projectCreate(ctx, args[1:], env)
-	case "project-open-folder":
-		return projectOpenFolder(ctx, args[1:], env)
-	case "project-mirror":
-		return projectMirror(ctx, args[1:], env)
-	case "notion-search":
-		return notionSearch(ctx, args[1:], env)
-	case "scratch-open":
-		return scratchOpen(ctx, args[1:], env)
-	case "done-clear":
-		return doneClear(ctx, args[1:], env)
-	case "milestone-add":
-		return milestoneAdd(ctx, args[1:], env)
-	case "milestone-rename":
-		return milestoneRename(ctx, args[1:], env)
-	case "milestone-remove":
-		return milestoneRemove(ctx, args[1:], env)
-	case "milestone-move":
-		return milestoneMove(ctx, args[1:], env)
-	case "slice-add":
-		return sliceAdd(ctx, args[1:], env)
-	case "slice-depends":
-		return sliceDepends(ctx, args[1:], env)
-	case "plan-apply":
-		return planApply(ctx, args[1:], env)
-	case "plan-propose":
-		return planPropose(ctx, args[1:], env)
-	case "plan-proposal":
-		return planProposal(ctx, args[1:], env)
-	case "plan-withdraw":
-		return planWithdraw(ctx, args[1:], env)
-	case "plan-accept":
-		return planAccept(ctx, args[1:], env)
-	case "complete-slice":
-		return completeSlice(ctx, args[1:], env)
-	case "slice-followups":
-		return sliceFollowUps(ctx, args[1:], env)
-	case "slice-triage":
-		return sliceTriage(ctx, args[1:], env)
-	case "slice-visuals":
-		return sliceVisuals(ctx, args[1:], env)
-	case "slice-repo":
-		return sliceRepoCmd(ctx, args[1:], env)
-	case "slice-worktree":
-		return sliceWorktreeCmd(ctx, args[1:], env)
-	case "slice-note":
-		return sliceNote(ctx, args[1:], env)
-	case "slice-checks":
-		return sliceChecks(ctx, args[1:], env)
-	case "slice-checks-rerun":
-		return sliceChecksRerun(ctx, args[1:], env)
-	case "slice-checks-cancel":
-		return sliceChecksCancel(ctx, args[1:], env)
-	case "release-slice":
-		return releaseSlice(ctx, args[1:], env)
-	case "slice-cancel":
-		return sliceCancel(ctx, args[1:], env)
-	case "pr-view":
-		return prView(ctx, args[1:], env)
-	case "pr-comment":
-		return prComment(ctx, args[1:], env)
-	case "pr-edit":
-		return prEdit(ctx, args[1:], env)
-	case "pr-reviewers":
-		return prReviewers(ctx, args[1:], env)
-	case "pr-merge":
-		return prMerge(ctx, args[1:], env)
-	case "pr-status":
-		return prStatus(ctx, args[1:], env)
-	case "workshop-launch":
-		return workshopLaunch(ctx, args[1:], env)
-	case "run":
-		return runCmd(ctx, args[1:], env)
-	case "config-show":
-		return configShow(args[1:], env)
-	case "config-set":
-		return configSet(args[1:], env)
-	case "source-list":
-		return sourceList(ctx, args[1:], env)
-	case "container-show":
-		return containerShow(ctx, args[1:], env)
-	case "source-action":
-		return sourceAction(ctx, args[1:], env)
-	case "source-setup":
-		return sourceSetup(ctx, args[1:], env)
-	case "plugin-list":
-		return pluginList(ctx, args[1:], env)
-	case "plugin-install":
-		return pluginInstall(ctx, args[1:], env)
-	case "plugin-uninstall":
-		return pluginUninstall(ctx, args[1:], env)
-	case "plugin-source-add":
-		return pluginSourceAdd(args[1:], env)
-	case "plugin-source-remove":
-		return pluginSourceRemove(args[1:], env)
 	case "help", "-h", "--help":
 		_, err := io.WriteString(env.Out, Usage)
 		return err
-	default:
+	}
+	if now, ok := renamed()[args[0]]; ok {
+		return &UsageError{Message: fmt.Sprintf("%q is not a command any more\nuse: nat %s", args[0], now)}
+	}
+	cmds, path := commands, []string{}
+	var cmd *command
+	for _, word := range args {
+		next := find(cmds, word)
+		if next == nil {
+			break
+		}
+		cmd, cmds, path = next, next.subs, append(path, word)
+	}
+	if cmd == nil {
 		return usageErrorf("unknown command %q", args[0])
 	}
+	rest := args[len(path):]
+	if cmd.run == nil || (len(cmd.subs) > 0 && len(rest) == 0) {
+		if len(rest) > 0 {
+			return &UsageError{Message: fmt.Sprintf("unknown command %q\n%s",
+				strings.Join(append(path, rest[0]), " "), groupUsage(path))}
+		}
+		return &UsageError{Message: groupUsage(path)}
+	}
+	return cmd.run(ctx, rest, env)
 }
 
 // projectFlag registers --project on a command's flag set. Every command that

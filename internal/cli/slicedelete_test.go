@@ -14,7 +14,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/notion"
 )
 
-// deletableAPI answers with one slice in the given status, for slice-delete to
+// deletableAPI answers with one slice in the given status, for slice delete to
 // trash — or refuse.
 func deletableAPI(status string) *fakeAPI {
 	return &fakeAPI{
@@ -31,10 +31,10 @@ func TestSliceDeleteTrashesTheSlice(t *testing.T) {
 	env.Nudge = func() { nudges++ }
 
 	err := Run(context.Background(), []string{
-		"slice-delete", testSliceID, "--project", "project-1",
+		"slice", "delete", testSliceID, "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-delete: %v", err)
+		t.Fatalf("slice delete: %v", err)
 	}
 
 	if !equalLines(api.trashes, []string{testSliceID}) {
@@ -55,10 +55,10 @@ func TestSliceDeleteAllowsDone(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-delete", testSliceID, "--project", "project-1",
+		"slice", "delete", testSliceID, "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-delete: %v", err)
+		t.Fatalf("slice delete: %v", err)
 	}
 	if !equalLines(api.trashes, []string{testSliceID}) {
 		t.Errorf("trashes = %v, want the slice trashed", api.trashes)
@@ -70,10 +70,10 @@ func TestSliceDeleteJSON(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-delete", testSliceID, "--json", "--project", "project-1",
+		"slice", "delete", testSliceID, "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-delete --json: %v", err)
+		t.Fatalf("slice delete --json: %v", err)
 	}
 	var got sliceDeletedJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -107,8 +107,8 @@ func TestSliceDeleteStopsAndDiscardsASliceInProgress(t *testing.T) {
 			runner := &agentTestRunner{liveSessions: live}
 			env, w := deleteEnvWithTmux(t, api, runner)
 
-			if err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "project-1"}, env); err != nil {
-				t.Fatalf("slice-delete: %v", err)
+			if err := Run(context.Background(), []string{"slice", "delete", testSliceID, "--project", "project-1"}, env); err != nil {
+				t.Fatalf("slice delete: %v", err)
 			}
 			wantKills := []string(nil)
 			if len(live) > 0 {
@@ -138,9 +138,9 @@ func TestSliceDeleteRefusesWhereTheAgentCannotBeStopped(t *testing.T) {
 			api := deletableAPI(notion.SliceInProgress)
 			env, w := deleteEnvWithTmux(t, api, runner)
 
-			err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "project-1"}, env)
+			err := Run(context.Background(), []string{"slice", "delete", testSliceID, "--project", "project-1"}, env)
 			if err == nil {
-				t.Fatal("slice-delete: want the agent's refusal")
+				t.Fatal("slice delete: want the agent's refusal")
 			}
 			if len(api.trashes)+len(w.discarded) != 0 {
 				t.Errorf("trashed %v, discarded %+v, want nothing", api.trashes, w.discarded)
@@ -152,7 +152,7 @@ func TestSliceDeleteRefusesWhereTheAgentCannotBeStopped(t *testing.T) {
 func TestSliceDeleteRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-delete", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "delete", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "want exactly one") {
 		t.Errorf("err = %v, want 'want exactly one'", err)
@@ -163,7 +163,7 @@ func TestSliceDeleteRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-delete", testSliceID, "--bogus", "--project", "project-1",
+		"slice", "delete", testSliceID, "--bogus", "--project", "project-1",
 	}, env)
 
 	var usage *UsageError
@@ -175,7 +175,7 @@ func TestSliceDeleteRefusesAnUnknownFlag(t *testing.T) {
 func TestSliceDeleteRefusesAnInvalidSliceID(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-delete", "not-a-uuid", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "delete", "not-a-uuid", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
 		t.Errorf("err = %v, want 'not a slice'", err)
@@ -185,7 +185,7 @@ func TestSliceDeleteRefusesAnInvalidSliceID(t *testing.T) {
 func TestSliceDeleteRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"slice", "delete", testSliceID, "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -203,7 +203,7 @@ func TestSliceDeleteReportsAFailedRead(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-delete", testSliceID, "--project", "project-1",
+		"slice", "delete", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "load slices") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -222,10 +222,10 @@ func TestSliceDeleteReportsAFailedLoad(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
 	env, _ := testEnv(cfg, api)
 
-	err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "delete", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Error("slice-delete over a slice neither the file nor the workspace has: want an error")
+		t.Error("slice delete over a slice neither the file nor the workspace has: want an error")
 	}
 }
 
@@ -244,10 +244,10 @@ func TestSliceDeleteReportsAFailedLocalDelete(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-delete", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "delete", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Error("slice-delete over a plan that cannot delete the slice: want an error")
+		t.Error("slice delete over a plan that cannot delete the slice: want an error")
 	}
 }
 
@@ -264,9 +264,9 @@ func TestSliceDeleteSucceedsThoughTheWorkspaceTrashFails(t *testing.T) {
 	env.Nudge = func() { nudges++ }
 
 	if err := Run(context.Background(), []string{
-		"slice-delete", testSliceID, "--project", "project-1",
+		"slice", "delete", testSliceID, "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("slice-delete: %v", err)
+		t.Fatalf("slice delete: %v", err)
 	}
 	if nudges != 1 {
 		t.Errorf("nudges = %d, want 1: the file's own delete landed", nudges)

@@ -11,12 +11,12 @@ import (
 	"github.com/craigmjohnston/nat/internal/logging"
 )
 
-// sliceEdit replaces a slice's description — the page body slice-add writes
+// sliceEdit replaces a slice's description — the page body slice add writes
 // it as — with new text, clearing whatever was there first, and with --title
 // renames it: either or both, never neither. A new title is held to
 // [domain.MaxSliceTitleLen]; whether another slice already has it is not this
 // command's to refuse — a direct edit is the caller's deliberate act, as a
-// direct slice-add is.
+// direct slice add is.
 //
 // Only a Todo slice is editable. One in progress is being worked by an agent
 // that already has its own idea of the brief, written the moment it claimed
@@ -24,7 +24,7 @@ import (
 // agent working from a brief nobody can see any more; one Done is finished
 // work, and there is nothing left to brief.
 func sliceEdit(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-edit", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice edit", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	description := flags.String("description", "", "the new brief to write on the slice page; `-` reads it from stdin")
 	newTitle := flags.String("title", "", "the slice's new title")
@@ -35,24 +35,24 @@ func sliceEdit(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-edit: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice edit: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-edit", rest[0])
+	id, err := pageID("slice edit", rest[0])
 	if err != nil {
 		return err
 	}
 	// The new brief is settled before anything is read from Notion, so an edit
 	// whose stdin cannot be read fails having changed nothing.
-	brief, err := briefText("slice-edit", "--description", *description, env.In)
+	brief, err := briefText("slice edit", "--description", *description, env.In)
 	if err != nil {
 		return err
 	}
 	title := strings.TrimSpace(*newTitle)
 	if brief == "" && title == "" {
-		return usageErrorf("slice-edit: nothing to edit: pass --title, --description (or pipe one in with -), or both")
+		return usageErrorf("slice edit: nothing to edit: pass --title, --description (or pipe one in with -), or both")
 	}
 	if err := domain.CheckSliceTitle(title); err != nil {
-		return usageErrorf("slice-edit: %v", err)
+		return usageErrorf("slice edit: %v", err)
 	}
 
 	_, projectID, project, err := env.projectFor(*projectRef)

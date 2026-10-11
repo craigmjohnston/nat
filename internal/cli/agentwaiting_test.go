@@ -55,9 +55,9 @@ func TestAgentWaitingAndWorkingMarkTheCallersOwnPane(t *testing.T) {
 		wantSet []string
 		wantOut string
 	}{
-		{"agent-waiting", []string{"-u", "set-option", "-p", "-t", "%7", agent.WaitingPaneOption, "1"},
+		{"agent waiting", []string{"-u", "set-option", "-p", "-t", "%7", agent.WaitingPaneOption, "1"},
 			"Marked as waiting on the user.\n"},
-		{"agent-working", []string{"-u", "set-option", "-p", "-u", "-t", "%7", agent.WaitingPaneOption},
+		{"agent working", []string{"-u", "set-option", "-p", "-u", "-t", "%7", agent.WaitingPaneOption},
 			"Marked as working.\n"},
 	} {
 		t.Run(tc.command, func(t *testing.T) {
@@ -66,7 +66,7 @@ func TestAgentWaitingAndWorkingMarkTheCallersOwnPane(t *testing.T) {
 			var out strings.Builder
 			nudges := 0
 
-			if err := Run(context.Background(), []string{tc.command}, markEnv(r, &out, &nudges)); err != nil {
+			if err := Run(context.Background(), strings.Fields(tc.command), markEnv(r, &out, &nudges)); err != nil {
 				t.Fatalf("%s: %v", tc.command, err)
 			}
 			if got := r.sets(); !reflect.DeepEqual(got, [][]string{tc.wantSet}) {
@@ -103,7 +103,7 @@ func TestAgentWaitingRefusals(t *testing.T) {
 			var out strings.Builder
 			nudges := 0
 
-			err := Run(context.Background(), append([]string{"agent-waiting"}, tc.args...), markEnv(r, &out, &nudges))
+			err := Run(context.Background(), append([]string{"agent", "waiting"}, tc.args...), markEnv(r, &out, &nudges))
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("err = %v, want it to say %q", err, tc.wantErr)
 			}
@@ -127,9 +127,9 @@ func TestAgentWorkingTmuxFails(t *testing.T) {
 		t.Setenv(agent.PaneEnv, "%7")
 		var out strings.Builder
 		nudges := 0
-		err := Run(context.Background(), []string{"agent-working"}, markEnv(r, &out, &nudges))
-		if !errors.Is(err, boom) || !strings.HasPrefix(err.Error(), "agent-working: ") {
-			t.Errorf("err = %v, want agent-working's wrap of %v", err, boom)
+		err := Run(context.Background(), []string{"agent", "working"}, markEnv(r, &out, &nudges))
+		if !errors.Is(err, boom) || !strings.HasPrefix(err.Error(), "agent working: ") {
+			t.Errorf("err = %v, want agent working's wrap of %v", err, boom)
 		}
 		if nudges != 0 {
 			t.Errorf("nudges = %d, want none", nudges)

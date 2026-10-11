@@ -5,7 +5,7 @@ import Foundation
 /// `sliceDiff` read (there is no dedicated endpoint for a tally alone) and
 /// cached by slice id — a slice already carrying a stat for the branch it is
 /// still handed back on is left alone rather than re-read on every poll; only
-/// a branch that has changed (a new hand-back, after a `release-slice` and a
+/// a branch that has changed (a new hand-back, after a `slice release` and a
 /// fresh claim, say) is worth reading again.
 ///
 /// A failure is quiet: the slice's row simply has no stat, and the next

@@ -13,7 +13,7 @@ import (
 // names somebody to set it to. It is what the launch flow does before it
 // starts a session, so the row says an agent has the slice from the moment
 // the key is pressed rather than once a fresh Claude Code has got round to
-// running start-slice.
+// running slice start.
 //
 // The slice is read first for the shape it can be written in, which a project
 // converted in the Notion UI may have changed under the app — the same read
@@ -22,7 +22,7 @@ import (
 // has nowhere to record one, and ownership is decided on status alone.
 //
 // Nothing checks the claim stuck, unlike the claim internal/cli makes: the
-// agent's own start-slice reads the page a moment later and re-opens the
+// agent's own slice start reads the page a moment later and re-opens the
 // slice only where this same user still holds it, so a race is settled
 // before any agent is handed a brief.
 func ClaimSlice(ctx context.Context, st Store, s domain.Slice, userID string) error {

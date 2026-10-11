@@ -10,7 +10,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/git"
 )
 
-// commitsDoc is the structured form of slice-diff --commits: the base and
+// commitsDoc is the structured form of slice diff --commits: the base and
 // branch the commits are measured against, the same two fields the whole
 // diff's own JSON carries, alongside the commits themselves.
 type commitsDoc struct {

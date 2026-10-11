@@ -30,7 +30,7 @@ import (
 //
 // It writes nothing, so there is no nudge to fire.
 func sliceStatus(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-status", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice status", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
 	projectRef := projectFlag(flags)
@@ -39,9 +39,9 @@ func sliceStatus(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-status: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice status: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-status", rest[0])
+	id, err := pageID("slice status", rest[0])
 	if err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func sliceStatus(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// localSliceStatus is slice-status for a plan of nat's own, which has no page to
+// localSliceStatus is slice status for a plan of nat's own, which has no page to
 // read: the slice is read out of the plan file, and one the file has never
 // held is gone, exactly as a page Notion has no record of is. A slice in a
 // plan file is never trashed — deleting one removes the row.

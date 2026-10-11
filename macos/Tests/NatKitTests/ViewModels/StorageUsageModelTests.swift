@@ -19,7 +19,7 @@ private final class StorageStubRunner: CommandRunning, @unchecked Sendable {
     }
 }
 
-/// `nat storage-usage --json` as `internal/cli/storageusage.go` writes it.
+/// `nat storage usage --json` as `internal/cli/storageusage.go` writes it.
 private let storageJSON = #"""
 {
   "login": "octo",
@@ -38,7 +38,7 @@ private let storageJSON = #"""
 }
 """#
 
-/// A stub `nat` answering storage-usage from a queue — stdout on success,
+/// A stub `nat` answering storage usage from a queue — stdout on success,
 /// stderr and a non-zero exit on a refusal, or a thrown error — counting the
 /// calls.
 private final class QueuedStorageRunner: CommandRunning, @unchecked Sendable {
@@ -90,7 +90,7 @@ final class StorageUsageModelTests: XCTestCase {
     func testClientRunsStorageUsageAndDecodesNatsJSON() async throws {
         let runner = StorageStubRunner(stdout: storageJSON)
         let read = try await NatClient(commandRunner: runner).storageUsage()
-        XCTAssertEqual(runner.lastArguments, ["storage-usage", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["storage", "usage", "--json"])
         XCTAssertEqual(read, .reading(usage()))
 
         let scope = StorageStubRunner(stdout: #"{"needs_scope": "user", "scope_command": "gh auth refresh -h github.com -s user"}"#)

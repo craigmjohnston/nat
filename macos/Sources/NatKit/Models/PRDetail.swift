@@ -1,6 +1,6 @@
 import Foundation
 
-/// The wire shape of `nat pr-view --project <id> --json <slice>`: one pull
+/// The wire shape of `nat pr view --project <id> --json <slice>`: one pull
 /// request in full, gh's own fields kept as gh writes them (mirrors
 /// `internal/cli/prview.go`'s `prDoc`) — GitHub's vocabulary rather than a
 /// word this app invented, exactly as `internal/gh.PR` itself keeps it.
@@ -27,7 +27,7 @@ public struct PRDetail: Codable, Equatable, Sendable {
 
     /// The change's own tally — additions, deletions, the files touched and
     /// how many commits are on the branch. Optional because they are not
-    /// (yet) part of every `nat pr-view --json` a caller might be reading:
+    /// (yet) part of every `nat pr view --json` a caller might be reading:
     /// a `nat` older than the Go side's own addition of these fields simply
     /// omits the keys, which decodes as `nil` here rather than failing the
     /// whole read — the CHANGES section falls back to naming the two
@@ -148,7 +148,7 @@ public struct PRCheck: Codable, Equatable, Sendable {
     public let state: String
     public let link: String
     /// Whether a GitHub Actions run is behind the check — what `nat
-    /// slice-checks-rerun` and `-cancel` can act on. False where an older
+    /// slice checks rerun` and `-cancel` can act on. False where an older
     /// `nat` sent no such key.
     public let rerunnable: Bool
     /// The Actions run's id, nil for a check no run is behind: checks with

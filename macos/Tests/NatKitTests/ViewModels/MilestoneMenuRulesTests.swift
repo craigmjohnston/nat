@@ -48,7 +48,7 @@ final class MilestoneMenuRulesTests: XCTestCase {
         XCTAssertEqual(actions.moveAfter, "M3: Agents")
     }
 
-    /// Only one there is nothing filed under: `milestone-remove` refuses the
+    /// Only one there is nothing filed under: `milestone remove` refuses the
     /// rest, naming the slices.
     func testActions_deleteOnlyWhenEmpty() {
         XCTAssertTrue(MilestoneMenuRules.actions(for: "M2: Board", in: plan(), sliceCount: 0).canDelete)

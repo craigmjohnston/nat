@@ -3,33 +3,33 @@ package notion
 import "strings"
 
 // PRDescriptionHeading is the heading a slice page's pull request description
-// is filed under, written by `complete-slice --pr-description` when an agent
+// is filed under, written by `slice complete --pr-description` when an agent
 // hands its branch back. It is matched case-insensitively, at any heading
 // level.
 const PRDescriptionHeading = "PR description"
 
-// FollowUpsHeading is the heading `slice-followups` files an agent's proposed
+// FollowUpsHeading is the heading `slice followups` files an agent's proposed
 // follow-ups under, one numbered item per proposal; FollowUpsTriagedHeading is
-// the one `slice-triage` records the user's decision on them under. Both are
+// the one `slice triage` records the user's decision on them under. Both are
 // matched as PRDescriptionHeading is, and both are read by store.PendingFollowUps.
 const (
 	FollowUpsHeading        = "Follow-ups"
 	FollowUpsTriagedHeading = "Follow-ups triaged"
 )
 
-// VisualChangesHeading is the heading `slice-visuals` files the images an agent
+// VisualChangesHeading is the heading `slice visuals` files the images an agent
 // rendered of its change under, one numbered item per image: what it shows,
 // with where it is nested under that. Matched as PRDescriptionHeading is, and
 // read by store.VisualChanges.
 const VisualChangesHeading = "Visual changes"
 
-// SentBackHeading is the heading `slice-rework` files its review comments
+// SentBackHeading is the heading `slice rework` files its review comments
 // under, when it sends a handed-back slice back for another pass.
 // RelaunchedHeading is the heading a relaunch (actions.Launch, picking a slice
 // back up that was not Todo, or whose brief already carries a task event)
 // files its one fixed line under, and LaunchedHeading the one a fresh launch
 // (the same flow, on a Todo slice with nothing logged yet) files its own under.
-// ResumedHeading is the heading `slice-resume` (actions.Resume) files its
+// ResumedHeading is the heading `slice resume` (actions.Resume) files its
 // reason under, when work on a handed-back slice is taken back up.
 // All four are matched as PRDescriptionHeading is, and all four are events
 // store.TaskEvents reads back off a slice's body.
@@ -46,7 +46,7 @@ const (
 // back by store.TaskEvents.
 const ChecksFailedHeading = "Checks failed"
 
-// NoteHeading is the heading `slice-note` files a note under: a paragraph of
+// NoteHeading is the heading `slice note` files a note under: a paragraph of
 // provenance nat composed, then the note as it was given. Matched as
 // PRDescriptionHeading is, and read back by store.TaskEvents.
 const NoteHeading = "Note"

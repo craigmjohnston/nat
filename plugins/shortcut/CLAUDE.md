@@ -43,7 +43,7 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
   `next` link keeps just its query). `login` never sees the token: it runs
   `security add-generic-password … -w` with `-w` last so `security` prompts
   on the terminal itself. `setup` (gnat's Settings ▸ Sources, through `nat
-  source-setup`) does see it, and keeps it out of every argv:
+  source setup`) does see it, and keeps it out of every argv:
   `Keychain.Save` runs `security -i` and writes the `add-generic-password -U
   -s … -a … -w …` line to its **stdin**, each argument double-quoted with
   `\`/`"` escaped, refusing a token or account with a control character
@@ -54,7 +54,7 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
   `setup` fails with exactly `Shortcut token missing — set it in gnat's
   Settings ▸ Sources or run nat-source-shortcut login`
   (`plugin.TokenMissing`). **`describe` reads no credential** — no token, no
-  project, no request (`nat source-list` sends it an empty project) — and
+  project, no request (`nat source list` sends it an empty project) — and
   lists the one setup field, `token` (secret, hinted "Shortcut ▸ Settings ▸
   API Tokens"), so gnat can ask for it. Its `set` is presence alone:
   `SHORTCUT_API_TOKEN`, else `Keychain.Has` (`security

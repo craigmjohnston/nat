@@ -186,7 +186,7 @@ final class NatClientTests: XCTestCase {
 
         _ = try await client.sliceDiff(projectID: "proj-123", sliceRef: "slice-1", commit: nil)
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["slice-diff", "--project", "proj-123", "--json", "slice-1"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice", "diff", "--project", "proj-123", "--json", "slice-1"])
     }
 
     func testSliceDiffWithACommitPassesTheFlag() async throws {
@@ -196,7 +196,7 @@ final class NatClientTests: XCTestCase {
         let diff = try await client.sliceDiff(projectID: "proj-123", sliceRef: "slice-1", commit: "ccccccc")
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "slice-diff", "--project", "proj-123", "--json", "--commit", "ccccccc", "slice-1"
+            "slice", "diff", "--project", "proj-123", "--json", "--commit", "ccccccc", "slice-1"
         ])
         XCTAssertEqual(diff.branch, "cccccccccccccccccccccccccccccccccccccccc")
         XCTAssertEqual(diff.files.count, 1)
@@ -208,7 +208,7 @@ final class NatClientTests: XCTestCase {
 
         let doc = try await client.sliceCommits(projectID: "proj-123", sliceRef: "slice-1")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["slice-diff", "--project", "proj-123", "--json", "--commits", "slice-1"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice", "diff", "--project", "proj-123", "--json", "--commits", "slice-1"])
         XCTAssertEqual(doc.base, "main")
         XCTAssertEqual(doc.branch, "nat/diff-tab-fixture")
         XCTAssertEqual(doc.commits.count, 3)
@@ -239,7 +239,7 @@ final class NatClientTests: XCTestCase {
         let result = try await client.sliceEdit(projectID: "proj-123", sliceRef: "slice-1", description: "New brief text")
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "slice-edit", "--project", "proj-123", "--json", "--description", "-", "slice-1"
+            "slice", "edit", "--project", "proj-123", "--json", "--description", "-", "slice-1"
         ])
         XCTAssertEqual(fakeRunner.lastStandardInput, "New brief text".data(using: .utf8))
         XCTAssertEqual(result.id, "slice-1")
@@ -253,7 +253,7 @@ final class NatClientTests: XCTestCase {
         try await client.sliceMove(projectID: "proj-123", sliceRef: "slice-1", milestone: "Phase 2")
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "slice-move", "--project", "proj-123", "--milestone", "Phase 2", "--json", "slice-1"
+            "slice", "move", "--project", "proj-123", "--milestone", "Phase 2", "--json", "slice-1"
         ])
     }
 
@@ -280,7 +280,7 @@ final class NatClientTests: XCTestCase {
         try await client.sliceDelete(projectID: "proj-123", sliceRef: "slice-1")
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "slice-delete", "--project", "proj-123", "--json", "slice-1"
+            "slice", "delete", "--project", "proj-123", "--json", "slice-1"
         ])
     }
 
@@ -307,7 +307,7 @@ final class NatClientTests: XCTestCase {
         try await client.sliceCancel(projectID: "proj-123", sliceRef: "slice-1")
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "slice-cancel", "--project", "proj-123", "--json", "slice-1"
+            "slice", "cancel", "--project", "proj-123", "--json", "slice-1"
         ])
     }
 
@@ -335,7 +335,7 @@ final class NatClientTests: XCTestCase {
 
         try await client.milestoneAdd(projectID: "proj-123", name: "Phase 3")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["milestone-add", "Phase 3", "--project", "proj-123", "--json"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["milestone", "add", "Phase 3", "--project", "proj-123", "--json"])
     }
 
     func testMilestoneAddFailure() async throws {
@@ -349,7 +349,7 @@ final class NatClientTests: XCTestCase {
             guard case .commandFailed(let message) = error else {
                 return XCTFail("Expected commandFailed error")
             }
-            XCTAssertEqual(message, "milestone-add: the milestone name is empty")
+            XCTAssertEqual(message, "milestone add: the milestone name is empty")
         }
     }
 
@@ -360,7 +360,7 @@ final class NatClientTests: XCTestCase {
         try await client.milestoneRename(projectID: "proj-123", from: "Phase 1", to: "Phase One")
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "milestone-rename", "Phase 1", "Phase One", "--project", "proj-123", "--json"
+            "milestone", "rename", "Phase 1", "Phase One", "--project", "proj-123", "--json"
         ])
     }
 
@@ -389,7 +389,7 @@ final class NatClientTests: XCTestCase {
             projectID: "proj-123", name: "Phase 2", before: "Phase 1", after: nil)
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "milestone-move", "Phase 2", "--project", "proj-123", "--json", "--before", "Phase 1"
+            "milestone", "move", "Phase 2", "--project", "proj-123", "--json", "--before", "Phase 1"
         ])
     }
 
@@ -402,7 +402,7 @@ final class NatClientTests: XCTestCase {
             projectID: "proj-123", name: "Phase 1", before: nil, after: "Phase 2")
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "milestone-move", "Phase 1", "--project", "proj-123", "--json", "--after", "Phase 2"
+            "milestone", "move", "Phase 1", "--project", "proj-123", "--json", "--after", "Phase 2"
         ])
     }
 
@@ -415,7 +415,7 @@ final class NatClientTests: XCTestCase {
         try await client.milestoneMove(projectID: "proj-123", name: "Phase 1", before: "", after: nil)
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "milestone-move", "Phase 1", "--project", "proj-123", "--json"
+            "milestone", "move", "Phase 1", "--project", "proj-123", "--json"
         ])
     }
 
@@ -431,7 +431,7 @@ final class NatClientTests: XCTestCase {
             guard case .commandFailed(let message) = error else {
                 return XCTFail("Expected commandFailed error")
             }
-            XCTAssertEqual(message, "milestone-move: --before and --after name two places at once: pass one")
+            XCTAssertEqual(message, "milestone move: --before and --after name two places at once: pass one")
         }
     }
 
@@ -442,7 +442,7 @@ final class NatClientTests: XCTestCase {
         try await client.milestoneRemove(projectID: "proj-123", name: "Phase 2")
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "milestone-remove", "Phase 2", "--project", "proj-123", "--json"
+            "milestone", "remove", "Phase 2", "--project", "proj-123", "--json"
         ])
     }
 
@@ -486,7 +486,7 @@ final class NatClientTests: XCTestCase {
 
         try await client.agentSend(projectID: "proj-123", sliceRef: "slice-1", text: "clamp this")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["agent-send", "--project", "proj-123", "slice-1", "--text", "-"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["agent", "send", "--project", "proj-123", "slice-1", "--text", "-"])
         XCTAssertEqual(fakeRunner.lastStandardInput, "clamp this".data(using: .utf8))
     }
 
@@ -497,7 +497,7 @@ final class NatClientTests: XCTestCase {
         try await client.sliceRework(projectID: "proj-123", sliceRef: "slice-1", comments: "clamp this")
 
         XCTAssertEqual(
-            fakeRunner.lastArguments, ["slice-rework", "--project", "proj-123", "slice-1", "--comments", "-"])
+            fakeRunner.lastArguments, ["slice", "rework", "--project", "proj-123", "slice-1", "--comments", "-"])
         XCTAssertEqual(fakeRunner.lastStandardInput, "clamp this".data(using: .utf8))
     }
 
@@ -509,7 +509,7 @@ final class NatClientTests: XCTestCase {
             try await client.sliceRework(projectID: "p", sliceRef: "s", comments: "")
             XCTFail("expected a refusal")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("slice-rework"))
+            XCTAssertTrue(error.localizedDescription.contains("slice rework"))
         }
     }
 
@@ -522,7 +522,7 @@ final class NatClientTests: XCTestCase {
         try await client.sliceResume(projectID: "proj-123", sliceRef: "slice-1", note: "Checks are failing.")
 
         XCTAssertEqual(
-            fakeRunner.lastArguments, ["slice-resume", "--project", "proj-123", "slice-1", "--note", "-"])
+            fakeRunner.lastArguments, ["slice", "resume", "--project", "proj-123", "slice-1", "--note", "-"])
         XCTAssertEqual(fakeRunner.lastStandardInput, "Checks are failing.".data(using: .utf8))
     }
 
@@ -532,7 +532,7 @@ final class NatClientTests: XCTestCase {
             try await client.sliceResume(projectID: "p", sliceRef: "s", note: "x")
             XCTFail("expected a refusal")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("slice-resume"))
+            XCTAssertTrue(error.localizedDescription.contains("slice resume"))
         }
     }
 
@@ -558,7 +558,7 @@ final class NatClientTests: XCTestCase {
 
         try await client.agentKill(projectID: "proj-123", sliceRef: "slice-1")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["agent-kill", "--project", "proj-123", "slice-1"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["agent", "kill", "--project", "proj-123", "slice-1"])
     }
 
     func testAgentKillNoSession() async throws {
@@ -583,7 +583,7 @@ final class NatClientTests: XCTestCase {
 
         try await client.agentKillWorkshop(projectID: "proj-123")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["agent-kill", "--workshop", "--project", "proj-123"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["agent", "kill", "--workshop", "--project", "proj-123"])
     }
 
     func testAgentKillWorkspaceNamesTheWorkspaceAndNoProject() async throws {
@@ -592,7 +592,7 @@ final class NatClientTests: XCTestCase {
 
         try await client.agentKillWorkspace(workspaceID: "ws-1")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["agent-kill", "--workshop", "--workspace", "ws-1"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["agent", "kill", "--workshop", "--workspace", "ws-1"])
     }
 
     func testWorkspaceLaunchNamesTheWorkspaceAndSendsTheRequestOverStdin() async throws {
@@ -606,7 +606,7 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(result.session, "nat-plan")
         XCTAssertEqual(
             fakeRunner.lastArguments,
-            ["workshop-launch", "--workspace", "ws-1", "--json", "--frontend", "gnat",
+            ["workshop", "launch", "--workspace", "ws-1", "--json", "--frontend", "gnat",
              "--model", "opus", "--effort", "high", "--request", "-"]
         )
         XCTAssertFalse(fakeRunner.lastArguments?.contains("--project") ?? true)
@@ -621,7 +621,7 @@ final class NatClientTests: XCTestCase {
 
         XCTAssertEqual(
             fakeRunner.lastArguments,
-            ["workshop-launch", "--workspace", "ws-1", "--json", "--frontend", "gnat", "--request", "-"]
+            ["workshop", "launch", "--workspace", "ws-1", "--json", "--frontend", "gnat", "--request", "-"]
         )
     }
 
@@ -661,7 +661,7 @@ final class NatClientTests: XCTestCase {
         let url = try await client.sliceApprove(projectID: "proj-123", sliceRef: "slice-1")
 
         XCTAssertEqual(url, "https://github.test/craig/nat/pull/42")
-        XCTAssertEqual(fakeRunner.lastArguments, ["slice-approve", "--project", "proj-123", "--json", "slice-1"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice", "approve", "--project", "proj-123", "--json", "slice-1"])
     }
 
     func testSliceApproveFailure() async throws {
@@ -686,7 +686,7 @@ final class NatClientTests: XCTestCase {
 
         let pr = try await client.prView(projectID: "proj-123", sliceRef: "slice-1")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["pr-view", "--project", "proj-123", "--json", "slice-1"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["pr", "view", "--project", "proj-123", "--json", "slice-1"])
         XCTAssertEqual(pr.number, 42)
         XCTAssertEqual(pr.title, "Add the PR tab")
         XCTAssertEqual(pr.state, "OPEN")
@@ -718,7 +718,7 @@ final class NatClientTests: XCTestCase {
 
         XCTAssertEqual(
             fakeRunner.lastArguments,
-            ["pr-view", "--project", "proj-123", "--session", "sess-1", "--json", "https://x/pull/42"])
+            ["pr", "view", "--project", "proj-123", "--session", "sess-1", "--json", "https://x/pull/42"])
         XCTAssertEqual(pr.number, 42)
     }
 
@@ -759,7 +759,7 @@ final class NatClientTests: XCTestCase {
 
         try await client.prMerge(projectID: "proj-123", sliceRef: "slice-1")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["pr-merge", "--project", "proj-123", "--json", "slice-1"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["pr", "merge", "--project", "proj-123", "--json", "slice-1"])
     }
 
     func testPRMergeFailure() async throws {
@@ -784,7 +784,7 @@ final class NatClientTests: XCTestCase {
 
         try await client.prComment(projectID: "proj-123", sliceRef: "slice-1", body: "Looks good.")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["pr-comment", "slice-1", "--project", "proj-123", "--body", "-"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["pr", "comment", "slice-1", "--project", "proj-123", "--body", "-"])
         XCTAssertEqual(fakeRunner.lastStandardInput, "Looks good.".data(using: .utf8))
     }
 
@@ -794,7 +794,7 @@ final class NatClientTests: XCTestCase {
 
         try await client.prEdit(projectID: "proj-123", sliceRef: "slice-1", body: "A new description 🎉", sessionID: nil)
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["pr-edit", "slice-1", "--project", "proj-123", "--body", "-"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["pr", "edit", "slice-1", "--project", "proj-123", "--body", "-"])
         XCTAssertEqual(fakeRunner.lastStandardInput, Data("A new description 🎉".utf8))
     }
 
@@ -805,10 +805,10 @@ final class NatClientTests: XCTestCase {
 
         try await client.prComment(projectID: "proj-123", sliceRef: url, body: "Hi.", sessionID: "s1")
         XCTAssertEqual(fakeRunner.lastArguments,
-                       ["pr-comment", url, "--session", "s1", "--project", "proj-123", "--body", "-"])
+                       ["pr", "comment", url, "--session", "s1", "--project", "proj-123", "--body", "-"])
         try await client.prEdit(projectID: "proj-123", sliceRef: url, body: "Body.", sessionID: "s1")
         XCTAssertEqual(fakeRunner.lastArguments,
-                       ["pr-edit", url, "--session", "s1", "--project", "proj-123", "--body", "-"])
+                       ["pr", "edit", url, "--session", "s1", "--project", "proj-123", "--body", "-"])
         XCTAssertEqual(fakeRunner.lastStandardInput, Data("Body.".utf8))
     }
 
@@ -817,13 +817,13 @@ final class NatClientTests: XCTestCase {
         let client = NatClient(commandRunner: fakeRunner)
 
         let read = try await client.prReviewers(projectID: "proj-123", sliceRef: "slice-1")
-        XCTAssertEqual(fakeRunner.lastArguments, ["pr-reviewers", "slice-1", "--project", "proj-123", "--json"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["pr", "reviewers", "slice-1", "--project", "proj-123", "--json"])
         XCTAssertEqual(read, PRReviewers(
             pr: "https://x/pull/7", requested: ["hubot"], candidates: ["mona"], candidatesError: "HTTP 403"))
 
         _ = try await client.prReviewers(projectID: "proj-123", sliceRef: "slice-1", add: ["a", "b"], remove: ["c"])
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "pr-reviewers", "slice-1", "--project", "proj-123", "--json",
+            "pr", "reviewers", "slice-1", "--project", "proj-123", "--json",
             "--add", "a", "--add", "b", "--remove", "c",
         ])
     }
@@ -864,7 +864,7 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(result.branch, "slice/test-slice")
         XCTAssertNil(result.warning)
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "slice-launch", "--project", "proj-123", "--json", "--frontend", "gnat", "--model", "opus", "--effort", "high", "slice-1",
+            "slice", "launch", "--project", "proj-123", "--json", "--frontend", "gnat", "--model", "opus", "--effort", "high", "slice-1",
         ])
     }
 
@@ -878,7 +878,7 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(result.workdir, "/path/to/worktree")
         XCTAssertEqual(result.branch, "slice/test-slice")
         XCTAssertEqual(result.warning, "worktrunk not installed; using shared checkout instead")
-        XCTAssertEqual(fakeRunner.lastArguments, ["slice-launch", "--project", "proj-123", "--json", "--frontend", "gnat", "slice-1"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice", "launch", "--project", "proj-123", "--json", "--frontend", "gnat", "slice-1"])
     }
 
     // gnat always says which frontend it is: the agent's prompt names the app
@@ -924,7 +924,7 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(result.workdir, "/path/to/repo")
         XCTAssertEqual(
             fakeRunner.lastArguments,
-            ["workshop-launch", "--project", "proj-123", "--json", "--frontend", "gnat", "--model", "opus", "--effort", "high"]
+            ["workshop", "launch", "--project", "proj-123", "--json", "--frontend", "gnat", "--model", "opus", "--effort", "high"]
         )
         XCTAssertNil(fakeRunner.lastStandardInput)
     }
@@ -935,7 +935,7 @@ final class NatClientTests: XCTestCase {
 
         _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil, request: nil)
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json", "--frontend", "gnat"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["workshop", "launch", "--project", "proj-123", "--json", "--frontend", "gnat"])
     }
 
     func testWorkshopLaunchSendsTheRequestOverStdin() async throws {
@@ -948,7 +948,7 @@ final class NatClientTests: XCTestCase {
 
         XCTAssertEqual(
             fakeRunner.lastArguments,
-            ["workshop-launch", "--project", "proj-123", "--json", "--frontend", "gnat", "--request", "-"]
+            ["workshop", "launch", "--project", "proj-123", "--json", "--frontend", "gnat", "--request", "-"]
         )
         XCTAssertEqual(fakeRunner.lastStandardInput, "Add dark mode\nto the board.".data(using: .utf8))
     }
@@ -959,7 +959,7 @@ final class NatClientTests: XCTestCase {
 
         _ = try await client.workshopLaunch(projectID: "proj-123", model: nil, effort: nil, request: "")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["workshop-launch", "--project", "proj-123", "--json", "--frontend", "gnat"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["workshop", "launch", "--project", "proj-123", "--json", "--frontend", "gnat"])
         XCTAssertNil(fakeRunner.lastStandardInput)
     }
 
@@ -1002,7 +1002,7 @@ final class NatClientTests: XCTestCase {
             projectID: "proj-123",
             title: "Add the settings scene",
             milestone: "Phase 1",
-            description: "Wire up config-show and config-set."
+            description: "Wire up config show and config set."
         )
 
         XCTAssertEqual(result.id, "slice-new")
@@ -1012,9 +1012,9 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(result.repo, "/path/to/repo")
         XCTAssertEqual(
             fakeRunner.lastArguments,
-            ["slice-add", "Add the settings scene", "--project", "proj-123", "--milestone", "Phase 1", "--json", "--description", "-"]
+            ["slice", "add", "Add the settings scene", "--project", "proj-123", "--milestone", "Phase 1", "--json", "--description", "-"]
         )
-        XCTAssertEqual(fakeRunner.lastStandardInput, "Wire up config-show and config-set.".data(using: .utf8))
+        XCTAssertEqual(fakeRunner.lastStandardInput, "Wire up config show and config set.".data(using: .utf8))
     }
 
     func testSliceAddWithoutDescriptionOmitsTheFlag() async throws {
@@ -1025,7 +1025,7 @@ final class NatClientTests: XCTestCase {
 
         XCTAssertEqual(
             fakeRunner.lastArguments,
-            ["slice-add", "Add the settings scene", "--project", "proj-123", "--milestone", "Phase 1", "--json"]
+            ["slice", "add", "Add the settings scene", "--project", "proj-123", "--milestone", "Phase 1", "--json"]
         )
         XCTAssertNil(fakeRunner.lastStandardInput)
     }
@@ -1038,7 +1038,7 @@ final class NatClientTests: XCTestCase {
 
         XCTAssertEqual(
             fakeRunner.lastArguments,
-            ["slice-add", "Jump threads", "--project", "work", "--container", "4821", "--json", "--description", "-"]
+            ["slice", "add", "Jump threads", "--project", "work", "--container", "4821", "--json", "--description", "-"]
         )
         XCTAssertEqual(fakeRunner.lastStandardInput, Data("Use ⌘J.".utf8))
     }
@@ -1049,7 +1049,7 @@ final class NatClientTests: XCTestCase {
 
         _ = try await client.sliceAdd(projectID: "scratch", title: "Try a thing", milestone: "", description: nil)
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["slice-add", "Try a thing", "--project", "scratch", "--json"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["slice", "add", "Try a thing", "--project", "scratch", "--json"])
     }
 
     func testSliceAddFailure() async throws {
@@ -1083,7 +1083,7 @@ final class NatClientTests: XCTestCase {
         XCTAssertEqual(doc.projects["proj-1"]?.name, "Example Project")
         XCTAssertEqual(doc.projects["proj-1"]?.workingDir, "/path/to/repo")
         XCTAssertEqual(doc.scratchProject, "proj-1")
-        XCTAssertEqual(fakeRunner.lastArguments, ["config-show", "--json"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["config", "show", "--json"])
     }
 
     func testScratchOpen() async throws {
@@ -1091,7 +1091,7 @@ final class NatClientTests: XCTestCase {
         let result = try await NatClient(commandRunner: fakeRunner).scratchOpen()
 
         XCTAssertEqual(result, ScratchOpenResult(id: "scratch-1", created: true))
-        XCTAssertEqual(fakeRunner.lastArguments, ["scratch-open", "--json"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["scratch", "open", "--json"])
     }
 
     func testDoneClear() async throws {
@@ -1099,7 +1099,7 @@ final class NatClientTests: XCTestCase {
         let result = try await NatClient(commandRunner: fakeRunner).doneClear(projectID: "scratch-1")
 
         XCTAssertEqual(result, DoneClearResult(slices: ["a", "b"], sessions: ["s1"], milestones: []))
-        XCTAssertEqual(fakeRunner.lastArguments, ["done-clear", "--project", "scratch-1", "--json"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["project", "done", "clear", "--project", "scratch-1", "--json"])
     }
 
     func testDoneClearRefusalPassesThrough() async {
@@ -1120,7 +1120,7 @@ final class NatClientTests: XCTestCase {
 
         try await client.configSet(key: "agent_split_percent", value: "70")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["config-set", "agent_split_percent", "70"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["config", "set", "agent_split_percent", "70"])
     }
 
     func testConfigSetFailure() async throws {
@@ -1132,7 +1132,7 @@ final class NatClientTests: XCTestCase {
             XCTFail("Should have thrown")
         } catch let error as NatError {
             if case .commandFailed(let message) = error {
-                XCTAssertEqual(message, "config-set: agent_split_percent must be between 10 and 90, given 5")
+                XCTAssertEqual(message, "config set: agent_split_percent must be between 10 and 90, given 5")
             } else {
                 XCTFail("Expected commandFailed error")
             }
@@ -1175,7 +1175,7 @@ final class NatClientTests: XCTestCase {
 
         let listing = try await client.projectList()
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["project-list", "--json"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["project", "list", "--json"])
         XCTAssertEqual(listing.projects.count, 3)
         XCTAssertNil(listing.note)
         XCTAssertTrue(listing.projects[0].configured)
@@ -1222,7 +1222,7 @@ final class NatClientTests: XCTestCase {
 
         let entry = try await client.projectOpen(pageRef: "proj-2")
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["project-open", "--json", "proj-2"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["project", "open", "--json", "proj-2"])
         XCTAssertEqual(entry.id, "proj-2")
         XCTAssertEqual(entry.name, "Untracked Project")
         XCTAssertEqual(entry.slicesDSID, "ds-2")
@@ -1255,7 +1255,7 @@ final class NatClientTests: XCTestCase {
         )
 
         XCTAssertEqual(fakeRunner.lastArguments, [
-            "project-create", "Fresh Project", "--json",
+            "project", "create", "Fresh Project", "--json",
             "--repo", "/src/fresh",
             "--description", "-",
         ])
@@ -1278,7 +1278,7 @@ final class NatClientTests: XCTestCase {
 
         _ = try await client.projectCreate(name: "Fresh Project", repo: "", description: nil)
 
-        XCTAssertEqual(fakeRunner.lastArguments, ["project-create", "Fresh Project", "--json"])
+        XCTAssertEqual(fakeRunner.lastArguments, ["project", "create", "Fresh Project", "--json"])
         XCTAssertNil(fakeRunner.lastStandardInput)
     }
 

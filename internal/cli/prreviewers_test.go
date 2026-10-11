@@ -57,9 +57,9 @@ func TestPRReviewersListsRequestedAndCandidates(t *testing.T) {
 	}
 	env, out := reviewersEnv(t, runner)
 
-	err := Run(context.Background(), []string{"pr-reviewers", testSliceID, "--json", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "reviewers", testSliceID, "--json", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-reviewers: %v", err)
+		t.Fatalf("pr reviewers: %v", err)
 	}
 	var doc prReviewersJSON
 	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
@@ -76,8 +76,8 @@ func TestPRReviewersListsRequestedAndCandidates(t *testing.T) {
 	}
 
 	env, out = reviewersEnv(t, runner)
-	if err := Run(context.Background(), []string{"pr-reviewers", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-reviewers: %v", err)
+	if err := Run(context.Background(), []string{"pr", "reviewers", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr reviewers: %v", err)
 	}
 	for _, line := range []string{"- Requested: octocat", "- Could also ask: hubot"} {
 		if !strings.Contains(out.String(), line) {
@@ -94,11 +94,11 @@ func TestPRReviewersEditReportsTheEditAlone(t *testing.T) {
 	env, out := reviewersEnv(t, runner)
 
 	err := Run(context.Background(), []string{
-		"pr-reviewers", testSliceID, "--add", "hubot,org/core", "--add", "x", "--remove", "octocat",
+		"pr", "reviewers", testSliceID, "--add", "hubot,org/core", "--add", "x", "--remove", "octocat",
 		"--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("pr-reviewers: %v", err)
+		t.Fatalf("pr reviewers: %v", err)
 	}
 	wantEdit := []string{"pr", "edit", reviewersPR, "--add-reviewer", "hubot,org/core,x", "--remove-reviewer", "octocat"}
 	if !reflect.DeepEqual(runner.runs, [][]string{wantEdit}) {
@@ -112,9 +112,9 @@ func TestPRReviewersEditReportsTheEditAlone(t *testing.T) {
 
 	env, out = reviewersEnv(t, runner)
 	if err := Run(context.Background(), []string{
-		"pr-reviewers", testSliceID, "--remove", "octocat", "--json", "--project", "project-1",
+		"pr", "reviewers", testSliceID, "--remove", "octocat", "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("pr-reviewers --json: %v", err)
+		t.Fatalf("pr reviewers --json: %v", err)
 	}
 	var doc prReviewersEditJSON
 	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
@@ -129,8 +129,8 @@ func TestPRReviewersReportsAFailedCandidateListWithoutFailing(t *testing.T) {
 	runner := &fakeReviewersRunner{view: `{"number":7}`, collabErr: &gh.ExitError{Code: 1, Stderr: "HTTP 403"}}
 	env, out := reviewersEnv(t, runner)
 
-	if err := Run(context.Background(), []string{"pr-reviewers", testSliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-reviewers: %v", err)
+	if err := Run(context.Background(), []string{"pr", "reviewers", testSliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr reviewers: %v", err)
 	}
 	var doc prReviewersJSON
 	_ = json.Unmarshal(out.Bytes(), &doc)
@@ -139,8 +139,8 @@ func TestPRReviewersReportsAFailedCandidateListWithoutFailing(t *testing.T) {
 	}
 
 	env, out = reviewersEnv(t, runner)
-	if err := Run(context.Background(), []string{"pr-reviewers", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-reviewers: %v", err)
+	if err := Run(context.Background(), []string{"pr", "reviewers", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr reviewers: %v", err)
 	}
 	if !strings.Contains(out.String(), "unknown (HTTP 403)") {
 		t.Errorf("markdown = %s, want the listing's error", out)
@@ -150,17 +150,17 @@ func TestPRReviewersReportsAFailedCandidateListWithoutFailing(t *testing.T) {
 func TestPRReviewersRefusals(t *testing.T) {
 	runner := &fakeReviewersRunner{editErr: &gh.ExitError{Code: 1, Stderr: "octocat is the author"}}
 	env, _ := reviewersEnv(t, runner)
-	err := Run(context.Background(), []string{"pr-reviewers", testSliceID, "--add", "octocat", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "reviewers", testSliceID, "--add", "octocat", "--project", "project-1"}, env)
 	var exit *gh.ExitError
 	if !errors.As(err, &exit) {
 		t.Errorf("err = %v, want gh's refusal", err)
 	}
 
 	for _, args := range [][]string{
-		{"pr-reviewers", "--project", "project-1"},
-		{"pr-reviewers", "not-an-id", "--project", "project-1"},
-		{"pr-reviewers", testSliceID, "--bogus", "--project", "project-1"},
-		{"pr-reviewers", testSliceID},
+		{"pr", "reviewers", "--project", "project-1"},
+		{"pr", "reviewers", "not-an-id", "--project", "project-1"},
+		{"pr", "reviewers", testSliceID, "--bogus", "--project", "project-1"},
+		{"pr", "reviewers", testSliceID},
 	} {
 		env, _ := reviewersEnv(t, &fakeReviewersRunner{})
 		if err := Run(context.Background(), args, env); err == nil {
@@ -176,7 +176,7 @@ func TestPRReviewersRefusesASliceWithNoPR(t *testing.T) {
 		},
 	}
 	env, _ := testEnv(testConfig(t), api)
-	err := Run(context.Background(), []string{"pr-reviewers", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "reviewers", testSliceID, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no pull request") {
 		t.Errorf("err = %v, want the no-PR refusal", err)
 	}
@@ -191,7 +191,7 @@ func TestPRReviewersFailedReadAndStore(t *testing.T) {
 	}
 	env, _ := testEnv(testConfig(t), api)
 	env.NewGH = func() GH { return gh.NewWithRunner(failing) }
-	if err := Run(context.Background(), []string{"pr-reviewers", testSliceID, "--project", "project-1"}, env); err == nil {
+	if err := Run(context.Background(), []string{"pr", "reviewers", testSliceID, "--project", "project-1"}, env); err == nil {
 		t.Error("a failed pull request read was not reported")
 	}
 }
@@ -211,7 +211,7 @@ func TestPRReviewersReportsAFailedReadAndHydrate(t *testing.T) {
 		{&fakeAPI{dataSourceErr: errors.New("notion is down")}, "hydrate the plan"},
 	} {
 		env, _ := testEnv(testConfig(t), tc.api)
-		err := Run(context.Background(), []string{"pr-reviewers", testSliceID, "--project", "project-1"}, env)
+		err := Run(context.Background(), []string{"pr", "reviewers", testSliceID, "--project", "project-1"}, env)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("err = %v, want %q", err, tc.want)
 		}

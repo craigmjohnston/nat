@@ -45,7 +45,7 @@ final class SourceNatClientTests: XCTestCase {
     func testContainerShow() async throws {
         let runner = StubRunner(stdout: #"{"container": {"id": "4821", "title": "Card"}, "tasks": []}"#)
         let show = try await NatClient(commandRunner: runner).containerShow(projectID: "p", containerID: "4821")
-        XCTAssertEqual(runner.lastArguments, ["container-show", "4821", "--project", "p", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["container", "show", "4821", "--project", "p", "--json"])
         XCTAssertEqual(show.container.title, "Card")
     }
 
@@ -65,7 +65,7 @@ final class SourceNatClientTests: XCTestCase {
         let runner = StubRunner(stdout: "{}")
         let result = try await NatClient(commandRunner: runner).sourceAction(
             projectID: "p", action: "refresh", group: nil, container: nil, input: nil)
-        XCTAssertEqual(runner.lastArguments, ["source-action", "--project", "p", "--action", "refresh", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["source", "action", "--project", "p", "--action", "refresh", "--json"])
         XCTAssertNil(runner.lastStandardInput)
         XCTAssertNil(result.message)
     }
@@ -75,7 +75,7 @@ final class SourceNatClientTests: XCTestCase {
         let result = try await NatClient(commandRunner: runner).sourceAction(
             projectID: "p", action: "segment-owner", group: "seg-mine", container: nil, input: "unassigned")
         XCTAssertEqual(runner.lastArguments, [
-            "source-action", "--project", "p", "--action", "segment-owner",
+            "source", "action", "--project", "p", "--action", "segment-owner",
             "--group", "seg-mine", "--input", "-", "--json",
         ])
         XCTAssertEqual(runner.lastStandardInput, Data("unassigned".utf8))
@@ -87,7 +87,7 @@ final class SourceNatClientTests: XCTestCase {
         _ = try await NatClient(commandRunner: runner).sourceAction(
             projectID: "p", action: "comment", group: "", container: "4821", input: "Line one\nLine two")
         XCTAssertEqual(runner.lastArguments, [
-            "source-action", "--project", "p", "--action", "comment",
+            "source", "action", "--project", "p", "--action", "comment",
             "--container", "4821", "--input", "-", "--json",
         ])
         XCTAssertEqual(runner.lastStandardInput, Data("Line one\nLine two".utf8))
@@ -96,7 +96,7 @@ final class SourceNatClientTests: XCTestCase {
     func testSourceListTakesNoProject() async throws {
         let runner = StubRunner(stdout: #"[{"name": "demo", "path": "/p", "error": "broken"}]"#)
         let plugins = try await NatClient(commandRunner: runner).sourceList()
-        XCTAssertEqual(runner.lastArguments, ["source-list", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["source", "list", "--json"])
         XCTAssertEqual(plugins, [SourcePlugin(name: "demo", path: "/p", error: "broken")])
     }
 
@@ -105,7 +105,7 @@ final class SourceNatClientTests: XCTestCase {
         let created = try await NatClient(commandRunner: runner).projectCreate(
             name: "Work", repo: "/w", description: "Cards first.", source: "demo")
         XCTAssertEqual(runner.lastArguments, [
-            "project-create", "Work", "--json", "--repo", "/w", "--source", "demo", "--description", "-",
+            "project", "create", "Work", "--json", "--repo", "/w", "--source", "demo", "--description", "-",
         ])
         XCTAssertEqual(runner.lastStandardInput, Data("Cards first.".utf8))
         XCTAssertEqual(created.source, "demo")
@@ -115,6 +115,6 @@ final class SourceNatClientTests: XCTestCase {
     func testProjectCreateWithAnEmptySourceIsAnOrdinaryCreate() async throws {
         let runner = StubRunner(stdout: #"{"project": {"id": "p9", "name": "N"}}"#)
         _ = try await NatClient(commandRunner: runner).projectCreate(name: "N", repo: nil, description: nil, source: "")
-        XCTAssertEqual(runner.lastArguments, ["project-create", "N", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["project", "create", "N", "--json"])
     }
 }

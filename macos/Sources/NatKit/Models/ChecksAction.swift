@@ -1,6 +1,6 @@
 import Foundation
 
-/// What `nat slice-checks-rerun` re-runs: every Actions run whole, each run's
+/// What `nat slice checks rerun` re-runs: every Actions run whole, each run's
 /// failed jobs, or named checks' jobs.
 public enum ChecksRerunMode: Equatable, Sendable {
     case all
@@ -8,8 +8,8 @@ public enum ChecksRerunMode: Equatable, Sendable {
     case checks([String])
 }
 
-/// The wire shape of `nat slice-checks-rerun --json` and `nat
-/// slice-checks-cancel --json` (mirrors `internal/cli/slicechecksrerun.go`'s
+/// The wire shape of `nat slice checks rerun --json` and `nat
+/// slice checks cancel --json` (mirrors `internal/cli/slicechecksrerun.go`'s
 /// `checksActionDoc`): the checks cancelled — those asked for and the
 /// siblings stopped with them — the checks re-run, and the checks skipped
 /// for having no Actions run behind them. `rerun` is absent from a cancel.

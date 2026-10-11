@@ -11,7 +11,7 @@ final class DiffCommentsTests: XCTestCase {
 
     /// Builds the same two-hunk section `internal/tui/diffref_test.go`'s
     /// `refSection` diffs, run through our own production `diffRows(for:)` —
-    /// the same builder `DiffModel` uses on a real `nat slice-diff` read —
+    /// the same builder `DiffModel` uses on a real `nat slice diff` read —
     /// rather than hand-built rows, so the row/number mapping this test
     /// checks `lineRef` against is the one the app would actually produce.
     private func refSectionRows() -> [DiffRow] {
@@ -107,9 +107,9 @@ final class DiffCommentsTests: XCTestCase {
         let diff = DiffModel(base: "main", branch: "slice/review", files: [file])
         let comments = [PendingComment(path: "main.go", anchorRowIDs: [row.id], text: "fix")]
 
-        XCTAssertFalse(commentsPrompt(comments, diff: diff).contains("complete-slice"))
+        XCTAssertFalse(commentsPrompt(comments, diff: diff).contains("slice complete"))
         let got = commentsPrompt(comments, diff: diff, handBack: HandBackInstruction(projectID: "p-1", sliceRef: "s-1"))
-        XCTAssertTrue(got.contains("nat complete-slice s-1 --project p-1 --branch slice/review --summary"))
+        XCTAssertTrue(got.contains("nat slice complete s-1 --project p-1 --branch slice/review --summary"))
         XCTAssertFalse(got.contains("opens the pull request"))
         XCTAssertTrue(got.contains("When every comment is addressed and committed"))
         XCTAssertTrue(got.contains("That hand-back pushes the branch: do not push it yourself."))

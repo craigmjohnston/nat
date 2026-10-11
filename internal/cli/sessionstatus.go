@@ -18,7 +18,7 @@ import (
 // sessionStatus reads every branch a session has been on — its worktree's
 // current branch, plus the most recent its `git reflog show HEAD` records a
 // checkout to or from ([sessionBranches]) — and the pull requests each has
-// opened, as the last batched reading (pr-status's, [lastReading]) found
+// opened, as the last batched reading (pr status's, [lastReading]) found
 // them: this command asks GitHub nothing itself. A session that made three
 // branches and three pull requests reports all three, not only whichever
 // branch happens to be checked out now.
@@ -31,7 +31,7 @@ import (
 // short: a read that fails concludes nothing, so a session is never ended
 // on the strength of one.
 func sessionStatus(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("session-status", flag.ContinueOnError)
+	flags := flag.NewFlagSet("session status", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	discard := flags.Bool("discard", false,
@@ -42,9 +42,9 @@ func sessionStatus(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("session-status: want exactly one session ID, given %d", len(rest))
+		return usageErrorf("session status: want exactly one session ID, given %d", len(rest))
 	}
-	id, err := pageID("session-status", rest[0])
+	id, err := pageID("session status", rest[0])
 	if err != nil {
 		return err
 	}

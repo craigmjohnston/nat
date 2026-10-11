@@ -421,7 +421,7 @@ final class DiffModelTests: XCTestCase {
         XCTAssertEqual(model.numberWidth, 1)
     }
 
-    // MARK: - Real-shaped fixture (decoded from the FakeRunner's slice-diff JSON)
+    // MARK: - Real-shaped fixture (decoded from the FakeRunner's slice diff JSON)
 
     func testRealShapedFixtureParsesEveryFileWithoutCrashing() throws {
         let data = fixtureSliceDiff.data(using: .utf8)!

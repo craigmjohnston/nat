@@ -100,7 +100,7 @@ func TestPushHandBackWithNoWorktreeAndNoBranch(t *testing.T) {
 func TestPushHandBackWithNoRepositoryForANamedBranch(t *testing.T) {
 	g := &fakeHandBackGit{}
 	_, err := PushHandBack(&fakeWorktrees{}, g, handBackSlice(), config.ProjectConfig{}, "slice/x")
-	if err == nil || !strings.Contains(err.Error(), "slice-repo") {
+	if err == nil || !strings.Contains(err.Error(), "slice repo") {
 		t.Errorf("err = %v, want it to say to record the repository", err)
 	}
 	if len(g.pushes) != 0 {

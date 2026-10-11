@@ -403,7 +403,7 @@ final class VisualStoreTests: XCTestCase {
         set(store, tall, nil, "and this")
         let sent = try await store.sendComments(projectID: "p", sliceRef: slice, branch: "slice/x", handedBack: true)
         XCTAssertEqual(sent, 2)
-        XCTAssertEqual(client.writes, ["agent-send \(slice)", "slice-rework \(slice)"])
+        XCTAssertEqual(client.writes, ["agent send \(slice)", "slice rework \(slice)"])
         XCTAssertEqual(store.comments(for: slice), [])
     }
 
@@ -413,7 +413,7 @@ final class VisualStoreTests: XCTestCase {
         set(store, wide, nil, "fix it")
         let sent = try await store.sendComments(projectID: "p", sliceRef: slice, branch: nil, handedBack: false)
         XCTAssertEqual(sent, 1)
-        XCTAssertEqual(client.writes, ["agent-send \(slice)"])
+        XCTAssertEqual(client.writes, ["agent send \(slice)"])
     }
 
     func testNothingPendingSendsNothing() async throws {

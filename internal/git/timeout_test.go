@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// TestAFetchThatCannotCompleteGivesUpAtTheLimit is the outage pr-status hit: a
+// TestAFetchThatCannotCompleteGivesUpAtTheLimit is the outage pr status hit: a
 // fetch whose ssh never answers. git is killed at the limit, but the ssh it
 // started still holds git's stderr open — and the read the hand-back
 // conflict test makes must still come back shortly after the limit, with the

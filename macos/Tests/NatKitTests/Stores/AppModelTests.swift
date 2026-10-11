@@ -842,7 +842,7 @@ final class AppModelTests: XCTestCase {
 
         // The command returning is not the pane's cue: the launching state is
         // held over every turn of the wait, so the composer never comes back
-        // between `workshop-launch` and the terminal.
+        // between `workshop launch` and the terminal.
         XCTAssertFalse(probe.launching.isEmpty)
         XCTAssertTrue(probe.launching.allSatisfy { $0 })
         XCTAssertNotNil(appModel.planningAgent)
@@ -1196,7 +1196,7 @@ final class AppModelTests: XCTestCase {
         await appModel.start(configPath: "/fake/config.json", nudgePath: "/fake/nudge")
         XCTAssertTrue(appModel.needsOnboarding)
 
-        // project-create wrote one, so there is a config file now.
+        // project create wrote one, so there is a config file now.
         mockReader.setResponse(.success(NatProjectConfig(projects: [
             "proj-9": ProjectConfig(name: "Fresh Project", slicesDSID: "ds-9", workingDir: "/src/fresh"),
         ])))
@@ -1378,7 +1378,7 @@ final class AppModelPluginChangeTests: XCTestCase {
         await appModel.pluginChanged(Change(plugin: "shortcut", deletedProjectIDs: [made]))
         XCTAssertFalse(appModel.projectTabs.contains { $0.id == made })
         await appModel.ensureSourceProjects()
-        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project-create") }.count, 2)
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project create") }.count, 2)
         appModel.cleanup()
     }
 }
@@ -1412,7 +1412,7 @@ final class SourceProjectNameTests: XCTestCase {
         appModel.cleanup()
     }
 
-    /// `project-create --source` writes no name: an entry without one reads.
+    /// `project create --source` writes no name: an entry without one reads.
     func testAnEntryWithNoNameDecodes() throws {
         let entry = try JSONDecoder().decode(
             ProjectConfig.self, from: Data(#"{"working_dir": "", "backend": "source", "source": "shortcut"}"#.utf8))
