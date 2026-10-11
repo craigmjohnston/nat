@@ -1,7 +1,7 @@
 import XCTest
 @testable import NatKit
 
-/// The status bar's GitHub readout and Settings ▸ GitHub's Diagnostics rows.
+/// The status bar's GitHub readout and Settings ▸ GitHub's API usage rows.
 final class GitHubBudgetDisplayTests: XCTestCase {
     private var calendar: Calendar {
         var c = Calendar(identifier: .gregorian)
@@ -70,18 +70,6 @@ final class GitHubBudgetDisplayTests: XCTestCase {
                        "37 points \u{00B7} 29 readings \u{00B7} 8 actions")
         XCTAssertEqual(DiagnosticsFormat.usage(points: 1, readings: 1, actions: 0),
                        "1 point \u{00B7} 1 reading \u{00B7} 0 actions")
-    }
-
-    /// How long the app has been open: minutes under an hour, hours and
-    /// minutes under a day, days and hours past one.
-    func testSessionLength() {
-        let cases: [(TimeInterval, String)] = [
-            (-5, "0m"), (30, "0m"), (899, "14m"), (3600, "1h 0m"), (8040, "2h 14m"),
-            (86_400, "1d 0h"), (269_940, "3d 2h"),
-        ]
-        for (elapsed, want) in cases {
-            XCTAssertEqual(DiagnosticsFormat.sessionLength(from: now, to: now.addingTimeInterval(elapsed)), want)
-        }
     }
 
     /// The reading's policy fields decode, and an older nat's block without

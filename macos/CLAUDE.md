@@ -294,11 +294,10 @@ the status bar draws `GitHubBudgetReadout` from it — nothing while healthy,
 limit · resets 13:46` paused, in the warning tint (stories
 `status-bar-github-healthy`, `-throttled`, `-paused`). The store also keeps
 gnat's own spend since launch (`sessionPoints` — every reading's `cost` plus
-one per action — `sessionReadings`, `sessionActions`) and `launchedAt` (off
-`AppModel`'s `now`): Settings ▸ GitHub's **Diagnostics** group, always open
-under Artifact storage in the section's `settingRow` shape, its rows
-formatted by `DiagnosticsFormat`, reads all of it (story
-`settings-github-diagnostics`). `idle()` is how a fixture or
+one per action — `sessionReadings`, `sessionActions`): Settings ▸ GitHub's
+**API usage** group, always open under Artifact storage in the section's
+`settingRow` shape, its rows formatted by `DiagnosticsFormat`, reads it
+beside the budget (story `settings-github-api-usage`). `idle()` is how a fixture or
 test waits for the readings to settle. Tests: `GitHubReadingStoreTests`,
 `AppModelGitHubReadingTests` (a nudge reads nothing; a tick is one
 `pr-status` whatever the tab count; actions inside the window are one read;

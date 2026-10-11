@@ -91,8 +91,8 @@ struct SettingsView: View {
 
     @State private var selectedTab: SettingsTab
 
-    /// The GitHub section's Diagnostics read the time through it, so a story
-    /// draws a session length off the gallery's clock.
+    /// The GitHub section's API usage reads the time through it, so a story
+    /// draws the budget's reset against the gallery's clock.
     @Environment(\.clock) private var clock
 
     /// - Parameters:
@@ -477,36 +477,32 @@ struct SettingsView: View {
             ) {
                 StorageUsageSection(model: storage)
             }
-            settingsGroup("Diagnostics") {
-                diagnosticsRows(store: appModel.githubReadingStore)
+            settingsGroup("API usage") {
+                apiUsageRows(store: appModel.githubReadingStore)
             }
         }
         .settingsForm()
         .task { await storage.loadIfNeeded() }
     }
 
-    /// GitHub's budget as the last reading left it, gnat's own spend this
-    /// session (the two side by side tell whether it is gnat burning the
-    /// token), and how long the app has been open, ticking once a minute. All
-    /// of it is what the GitHub reading's store already keeps; nothing here
-    /// asks nat anything.
-    private func diagnosticsRows(store: GitHubReadingStore?) -> some View {
+    /// GitHub's budget as the last reading left it — its reset re-read once a
+    /// minute, which says the day where it falls on another — and gnat's own
+    /// spend this session: the two side by side tell whether it is gnat
+    /// burning the token. Both are what the GitHub reading's store already
+    /// keeps; nothing here asks nat anything.
+    private func apiUsageRows(store: GitHubReadingStore?) -> some View {
         TimelineView(.everyMinute) { _ in
-            let now = clock()
             VStack(alignment: .leading, spacing: SettingsLayout.rowSpacing) {
-                diagnosticsRow("GitHub budget", DiagnosticsFormat.budget(store?.rateLimit, now: now))
-                diagnosticsRow("gnat\u{2019}s usage this session", DiagnosticsFormat.usage(
+                apiUsageRow("GitHub budget", DiagnosticsFormat.budget(store?.rateLimit, now: clock()))
+                apiUsageRow("gnat\u{2019}s usage this session", DiagnosticsFormat.usage(
                     points: store?.sessionPoints ?? 0, readings: store?.sessionReadings ?? 0,
                     actions: store?.sessionActions ?? 0))
-                diagnosticsRow(
-                    "Session length",
-                    store.map { DiagnosticsFormat.sessionLength(from: $0.launchedAt, to: now) } ?? "\u{2014}")
             }
         }
     }
 
-    private func diagnosticsRow(_ title: String, _ value: String) -> some View {
-        settingRow(title: title, labelWidth: SettingsLayout.diagnosticsLabelWidth) {
+    private func apiUsageRow(_ title: String, _ value: String) -> some View {
+        settingRow(title: title, labelWidth: SettingsLayout.apiUsageLabelWidth) {
             Text(value)
                 // The app's mono face at the section's body size.
                 .font(Typo.mono(size: NSFont.systemFontSize))
@@ -859,9 +855,9 @@ enum SettingsLayout {
     static let groupSpacing: CGFloat = 28
     static let rowSpacing: CGFloat = 10
     static let labelWidth: CGFloat = 150
-    /// GitHub's Diagnostics: wide enough for "gnat's usage this session"
+    /// GitHub's API usage: wide enough for "gnat's usage this session"
     /// whole, which the usual column cuts short.
-    static let diagnosticsLabelWidth: CGFloat = 180
+    static let apiUsageLabelWidth: CGFloat = 180
     static let repositoryURL = URL(string: "https://github.com/craigmjohnston/nat")!
 }
 

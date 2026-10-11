@@ -277,14 +277,11 @@ final class GitHubReadingStoreTests: XCTestCase {
 
     /// gnat's own spend this session: every reading's cost, one per action,
     /// and the readings and actions counted; a failed reading counts nothing.
-    /// The launch time is read once, off the clock it is given.
     func testTheSessionTallyAddsEachReadingsCostAndOnePerAction() async {
         let client = FixtureNatClient()
         client.setRateLimit(GitHubRateLimit(limit: 5000, remaining: 4000, resetAt: Date(timeIntervalSince1970: 0), cost: 2))
-        let launched = Date(timeIntervalSince1970: 1_000)
         let reading = GitHubReadingStore(client: client, request: { .init(projectIDs: ["p-1"]) }, deliver: { _ in },
-                                         settleDelay: .zero, now: { launched })
-        XCTAssertEqual(reading.launchedAt, launched)
+                                         settleDelay: .zero)
         await reading.read()
         await reading.read()
         reading.actionRan()

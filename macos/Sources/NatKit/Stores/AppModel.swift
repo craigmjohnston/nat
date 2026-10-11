@@ -1527,7 +1527,7 @@ public final class AppModel {
             client: clientFactory(),
             request: { [weak self] in self?.githubReadingRequest() },
             deliver: { [weak self] reading in await self?.deliver(reading) },
-            tick: tick, settleDelay: githubSettleDelay, now: now)
+            tick: tick, settleDelay: githubSettleDelay)
         githubReadingStore = store
         store.start()
     }

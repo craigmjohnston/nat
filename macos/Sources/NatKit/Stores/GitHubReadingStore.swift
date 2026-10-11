@@ -30,14 +30,14 @@ import Foundation
 /// nineteen hours on a fetch's dead ssh, and no reading landed until relaunch.
 ///
 /// It also keeps gnat's own spend this session — the points its readings
-/// cost (`cost`) and one per action that spent one (`actionRan`) — and when
-/// the app launched: what Settings ▸ GitHub's Diagnostics puts beside the
-/// shared budget, which cannot say whose spend it is.
+/// cost (`cost`) and one per action that spent one (`actionRan`): what
+/// Settings ▸ GitHub's API usage puts beside the shared budget, which cannot
+/// say whose spend it is.
 @MainActor
 @Observable
 public final class GitHubReadingStore {
     /// GitHub's budget as the last reading left it — the status bar's
-    /// readout and Settings' Diagnostics.
+    /// readout and Settings' API usage.
     public private(set) var rateLimit: GitHubRateLimit?
 
     /// The points gnat has spent since launch: every reading's `cost`, and
@@ -48,8 +48,6 @@ public final class GitHubReadingStore {
     /// The actions gnat has run since launch that spend a point: approve,
     /// merge, comment, reviewers, re-run and cancel checks.
     public private(set) var sessionActions = 0
-    /// When the app launched — the store is made once, at launch.
-    public let launchedAt: Date
 
     /// What one reading asks: every project to name, and the pull request to
     /// read in full, if any.
@@ -93,7 +91,6 @@ public final class GitHubReadingStore {
     ///     a stuck one; waited on the real clock, not `sleep`
     ///   - sleep: how a wait is waited — `Task.sleep` in the app, a gate in
     ///     tests
-    ///   - now: the clock `launchedAt` is read off
     public init(
         client: NatClientProtocol,
         request: @escaping @MainActor () -> Request?,
@@ -101,10 +98,8 @@ public final class GitHubReadingStore {
         tick: Duration? = nil,
         settleDelay: Duration = .seconds(5),
         limit: Duration = .seconds(120),
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
-        now: @Sendable () -> Date = { Date() }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
-        self.launchedAt = now()
         self.client = client
         self.request = request
         self.deliver = deliver

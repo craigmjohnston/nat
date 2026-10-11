@@ -75,7 +75,7 @@ public func budgetClock(_ date: Date, now: Date, calendar: Calendar = .current) 
     return formatter.string(from: date)
 }
 
-/// Settings ▸ GitHub's Diagnostics rows, each a label and a value.
+/// Settings ▸ GitHub's API usage rows, each a label and a value.
 public enum DiagnosticsFormat {
     /// `GitHub budget`: the last reading's remaining of its limit and when it
     /// resets, the state after it where throttled or paused; before any
@@ -91,17 +91,6 @@ public enum DiagnosticsFormat {
     /// `gnat's usage this session`: `37 points · 29 readings · 8 actions`.
     public static func usage(points: Int, readings: Int, actions: Int) -> String {
         [count(points, "point"), count(readings, "reading"), count(actions, "action")].joined(separator: " \u{00B7} ")
-    }
-
-    /// `Session length`: `14m` under an hour, `2h 14m` under a day, `3d 2h`
-    /// past one.
-    public static func sessionLength(from launch: Date, to now: Date) -> String {
-        let minutes = max(0, Int(now.timeIntervalSince(launch)) / 60)
-        let days = minutes / (24 * 60)
-        let hours = minutes / 60 % 24
-        if days > 0 { return "\(days)d \(hours)h" }
-        if hours > 0 { return "\(hours)h \(minutes % 60)m" }
-        return "\(minutes)m"
     }
 
     private static func count(_ n: Int, _ noun: String) -> String {
