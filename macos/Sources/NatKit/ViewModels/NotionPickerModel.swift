@@ -4,7 +4,7 @@ import Foundation
 /// the create in flight. The view binds to it and draws; nothing here is a
 /// view's to compute.
 ///
-/// The list is `nat notion-search`'s — the same search the workspace has,
+/// The list is `nat notion search`'s — the same search the workspace has,
 /// narrowed by what is typed — and it is read afresh for every query rather
 /// than filtered here, since what matches is Notion's to say. A newer query
 /// supersedes an older one still in flight: an answer for text no longer in

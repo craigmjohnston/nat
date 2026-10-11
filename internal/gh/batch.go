@@ -157,7 +157,7 @@ func (c CLI) ReadPRs(q BatchQuery) (Batch, error) {
 	return out, errors.Join(errs...)
 }
 
-// PollPRs is [CLI.ReadPRs] for a polling read — pr-status on its tick, the
+// PollPRs is [CLI.ReadPRs] for a polling read — pr status on its tick, the
 // board's reading — which heeds the budget's stop: before its retry time it
 // reads nothing and runs no gh, the empty batch every asked-for thing unread
 // in, and says so in the log once per stop. An action's read is ReadPRs,

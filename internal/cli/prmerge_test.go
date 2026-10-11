@@ -82,7 +82,7 @@ func TestPRMergeRefusesNoPullRequest(t *testing.T) {
 	}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no pull request recorded") {
 		t.Errorf("err = %v, want 'no pull request recorded'", err)
@@ -103,9 +103,9 @@ func TestPRMergeMerges(t *testing.T) {
 	var nudges int
 	env.Nudge = func() { nudges++ }
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-merge: %v", err)
+		t.Fatalf("pr merge: %v", err)
 	}
 	if !strings.Contains(out.String(), "Merged #7") {
 		t.Errorf("output = %q, want it to say #7 was merged", out.String())
@@ -152,10 +152,10 @@ func TestPRMergeMarksDoneLocallyEvenWhenThePushFails(t *testing.T) {
 	env.Nudge = func() { nudges++ }
 	env.NewGH = func() GH { return gh.NewWithRunner(&multiRunner{viewOut: readyToMergePRJSON}) }
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 	if err != nil {
-		t.Fatalf("pr-merge: %v, want it to succeed: the merge landed and MarkDone's local write "+
+		t.Fatalf("pr merge: %v, want it to succeed: the merge landed and MarkDone's local write "+
 			"succeeded even though the push to the workspace failed", err)
 	}
 	if !strings.Contains(out.String(), `Merged #7 and marked "Write the UI" Done`) {
@@ -197,9 +197,9 @@ func TestPRMergeJSON(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 	env.NewGH = func() GH { return gh.NewWithRunner(&multiRunner{viewOut: readyToMergePRJSON}) }
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--json", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--json", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-merge --json: %v", err)
+		t.Fatalf("pr merge --json: %v", err)
 	}
 	var got mergedJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -221,7 +221,7 @@ func TestPRMergeRefusesAFailingVerdict(t *testing.T) {
 	runner := &multiRunner{viewOut: changesRequestedPRJSON}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "cannot merge #7 — review: changes requested") {
 		t.Errorf("err = %v, want the merge box's own wording", err)
@@ -242,7 +242,7 @@ func TestPRMergeRefusesAlreadyMerged(t *testing.T) {
 	runner := &multiRunner{viewOut: alreadyMergedPRJSON}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "nothing to merge") {
 		t.Errorf("err = %v, want 'nothing to merge'", err)
@@ -264,7 +264,7 @@ func TestPRMergeReportsAViewFailure(t *testing.T) {
 		return gh.NewWithRunner(&multiRunner{viewErr: &gh.ExitError{Code: 1, Stderr: "no such pull request"}})
 	}
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no such pull request") {
 		t.Errorf("err = %v, want gh's own reason", err)
@@ -286,7 +286,7 @@ func TestPRMergeReportsAMergeFailure(t *testing.T) {
 		})
 	}
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "a branch protection rule blocks this merge") {
 		t.Errorf("err = %v, want gh's own reason", err)
@@ -319,7 +319,7 @@ func TestPRMergeAttemptsAMergeOfUnknownMergeability(t *testing.T) {
 	runner := &multiRunner{viewOut: unknownMergeabilityPRJSON, mergeErr: &gh.ExitError{Code: 1, Stderr: refusal}}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 	if len(runner.mergeArgs) != 1 {
 		t.Fatalf("gh pr merge calls = %v, want the merge attempted once", runner.mergeArgs)
@@ -346,7 +346,7 @@ func TestPRMergeRefusesAnUnreadPullRequest(t *testing.T) {
 		runner := &multiRunner{viewOut: tt.out}
 		env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
-		err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+		err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 		if err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s: err = %v, want %q", tt.url, err, tt.want)
@@ -360,7 +360,7 @@ func TestPRMergeRefusesAnUnreadPullRequest(t *testing.T) {
 func TestPRMergeRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-merge", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "want exactly one") {
 		t.Errorf("err = %v, want 'want exactly one'", err)
@@ -370,7 +370,7 @@ func TestPRMergeRefusesWrongArgumentCount(t *testing.T) {
 func TestPRMergeRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -381,7 +381,7 @@ func TestPRMergeRefusesAnUnknownFlag(t *testing.T) {
 func TestPRMergeRefusesAnInvalidSliceID(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-merge", "not-a-uuid", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", "not-a-uuid", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
 		t.Errorf("err = %v, want 'not a slice'", err)
@@ -391,7 +391,7 @@ func TestPRMergeRefusesAnInvalidSliceID(t *testing.T) {
 func TestPRMergeRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -402,7 +402,7 @@ func TestPRMergeReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -416,7 +416,7 @@ func TestPRMergeReportsAFailedHydrate(t *testing.T) {
 	api := &fakeAPI{dataSourceErr: errors.New("notion is down")}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "hydrate the plan") {
 		t.Errorf("err = %v, want the failed hydrate named", err)
@@ -441,7 +441,7 @@ func TestPRMergeReportsAFailedLocalMarkDone(t *testing.T) {
 	env, _ := testEnv(cfg, &fakeAPI{})
 	env.NewGH = func() GH { return gh.NewWithRunner(&multiRunner{viewOut: readyToMergePRJSON}) }
 
-	err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "could not mark") {
 		t.Errorf("err = %v, want the failed local MarkDone write named", err)
@@ -465,8 +465,8 @@ func TestPRMergeUsesTheProjectsMergeSettings(t *testing.T) {
 	runner := &multiRunner{viewOut: readyToMergePRJSON}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
-	if err := Run(context.Background(), []string{"pr-merge", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-merge: %v", err)
+	if err := Run(context.Background(), []string{"pr", "merge", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr merge: %v", err)
 	}
 	want := []string{"pr", "merge", "https://github.test/craig/nat/pull/7", "--squash", "--delete-branch"}
 	if len(runner.mergeArgs) != 1 || !reflect.DeepEqual(runner.mergeArgs[0], want) {

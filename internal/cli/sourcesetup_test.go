@@ -34,7 +34,7 @@ func setupEnv(t *testing.T, fake *source.Fake, in string) (Env, *bytes.Buffer) {
 func TestSourceSetup(t *testing.T) {
 	fake := &source.Fake{SetupMessage: "Logged in to scratch as Craig"}
 	env, out := setupEnv(t, fake, "s3cret\n")
-	if err := Run(context.Background(), []string{"source-setup", "shortcut", "--id", "token", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"source", "setup", "shortcut", "--id", "token", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if out.String() != "{\n  \"message\": \"Logged in to scratch as Craig\"\n}\n" {
@@ -44,7 +44,7 @@ func TestSourceSetup(t *testing.T) {
 	// spaces are the plugin's to judge.
 	env.In = strings.NewReader(" two words \r\n")
 	out.Reset()
-	if err := Run(context.Background(), []string{"source-setup", "shortcut", "--id", "token"}, env); err != nil {
+	if err := Run(context.Background(), []string{"source", "setup", "shortcut", "--id", "token"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if out.String() != "Logged in to scratch as Craig\n" {
@@ -59,7 +59,7 @@ func TestSourceSetup(t *testing.T) {
 	fake.SetupMessage = ""
 	env.In = strings.NewReader("v")
 	out.Reset()
-	if err := Run(context.Background(), []string{"source-setup", "shortcut", "--id", "token"}, env); err != nil || out.String() != "Set shortcut's token.\n" {
+	if err := Run(context.Background(), []string{"source", "setup", "shortcut", "--id", "token"}, env); err != nil || out.String() != "Set shortcut's token.\n" {
 		t.Errorf("no message = %q, %v", out.String(), err)
 	}
 }
@@ -75,7 +75,7 @@ func TestSourceSetupRefusals(t *testing.T) {
 		{"shortcut", "--bogus"},
 	} {
 		env, _ := setupEnv(t, &source.Fake{}, "v")
-		if err := Run(ctx, append([]string{"source-setup"}, args...), env); !errors.As(err, &usage) {
+		if err := Run(ctx, append([]string{"source", "setup"}, args...), env); !errors.As(err, &usage) {
 			t.Errorf("%v = %v, want a usage error", args, err)
 		}
 	}
@@ -90,12 +90,12 @@ func TestSourceSetupRefusals(t *testing.T) {
 		{"not installed", &source.Fake{}, []string{"nope", "--id", "token"}, "v", "no task source plugin named nope"},
 		{"will not describe", &source.Fake{DescribeErr: errors.New("describe broke")}, []string{"shortcut", "--id", "token"}, "v", "describe broke"},
 		{"another protocol", &source.Fake{DescribeResult: source.Describe{Protocol: 2}}, []string{"shortcut", "--id", "token"}, "v", "speaks protocol 2"},
-		{"an unknown id", &source.Fake{}, []string{"shortcut", "--id", "workspace"}, "v", `source-setup: shortcut has no setup field "workspace"`},
-		{"an empty value", &source.Fake{}, []string{"shortcut", "--id", "token"}, " \n", "source-setup: no value for shortcut's token on stdin"},
+		{"an unknown id", &source.Fake{}, []string{"shortcut", "--id", "workspace"}, "v", `source setup: shortcut has no setup field "workspace"`},
+		{"an empty value", &source.Fake{}, []string{"shortcut", "--id", "token"}, " \n", "source setup: no value for shortcut's token on stdin"},
 		{"the plugin refuses", &source.Fake{SetupErr: errors.New("Shortcut refused the token")}, []string{"shortcut", "--id", "token"}, "bad", "Shortcut refused the token"},
 	} {
 		env, _ := setupEnv(t, c.fake, c.in)
-		err := Run(ctx, append([]string{"source-setup"}, c.args...), env)
+		err := Run(ctx, append([]string{"source", "setup"}, c.args...), env)
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s = %v, want %q", c.name, err, c.want)
 		}
@@ -107,11 +107,11 @@ func TestSourceSetupRefusals(t *testing.T) {
 	// No stdin at all, and one that cannot be read.
 	env, _ := setupEnv(t, &source.Fake{}, "")
 	env.In = nil
-	if err := Run(ctx, []string{"source-setup", "shortcut", "--id", "token"}, env); !errors.As(err, &usage) {
+	if err := Run(ctx, []string{"source", "setup", "shortcut", "--id", "token"}, env); !errors.As(err, &usage) {
 		t.Errorf("nil stdin = %v, want a usage error", err)
 	}
 	env.In = failingReader{}
-	if err := Run(ctx, []string{"source-setup", "shortcut", "--id", "token"}, env); err == nil || !strings.Contains(err.Error(), "source-setup: read the value") {
+	if err := Run(ctx, []string{"source", "setup", "shortcut", "--id", "token"}, env); err == nil || !strings.Contains(err.Error(), "source setup: read the value") {
 		t.Errorf("unreadable stdin = %v", err)
 	}
 }

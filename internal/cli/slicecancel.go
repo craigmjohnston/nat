@@ -12,21 +12,21 @@ import (
 )
 
 // sliceCancel takes a slice in progress back to Todo and throws its work away
-// — release-slice's destructive sibling, and what the macOS app's Cancel and
+// — slice release's destructive sibling, and what the macOS app's Cancel and
 // discard work runs once the user has confirmed. Where a release keeps the
 // branch and refuses a live agent, a cancel stops the agent, clears the
 // slice's Branch and pull request, and deletes its worktree and branch, so the
 // next launch starts from the brief alone. [actions.Cancel] is the whole flow,
 // shared with the board's cancel key.
 //
-// There is no ownership check, as there is none for slice-resume: the user's
+// There is no ownership check, as there is none for slice resume: the user's
 // confirmation is the gate. A Todo slice (nothing to cancel), a Done one
 // (merged — new work is a new slice) and one that cannot be read are refused
 // before anything is written; so is a slice whose live agent cannot be
 // stopped. Nothing touches GitHub: an open pull request is left as it is, for
 // the user to close.
 func sliceCancel(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-cancel", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice cancel", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -35,9 +35,9 @@ func sliceCancel(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-cancel: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice cancel: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-cancel", rest[0])
+	id, err := pageID("slice cancel", rest[0])
 	if err != nil {
 		return err
 	}

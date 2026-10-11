@@ -3,7 +3,7 @@ import XCTest
 import NatFixtures
 
 /// The reaper verifies and kills a session on its slice's own project, never
-/// the active one — asked on another, `nat slice-status` cannot find the
+/// the active one — asked on another, `nat slice status` cannot find the
 /// slice and answers gone — and touches no session no open plan lists.
 @MainActor
 final class AppModelReapTests: XCTestCase {
@@ -30,7 +30,7 @@ final class AppModelReapTests: XCTestCase {
     }
 
     private func kills(_ client: FixtureNatClient) -> [String] {
-        client.writes.filter { $0.hasPrefix("agent-kill") }
+        client.writes.filter { $0.hasPrefix("agent kill") }
     }
 
     func testAnotherProjectsFinishedSessionIsVerifiedAndKilledOnThatProject() async {
@@ -39,9 +39,9 @@ final class AppModelReapTests: XCTestCase {
         let model = await swept(client)
 
         XCTAssertFalse(client.sliceStatusReads.isEmpty)
-        XCTAssertEqual(Set(client.sliceStatusReads), ["slice-status --project \(projectB) \(doneOnB)"])
+        XCTAssertEqual(Set(client.sliceStatusReads), ["slice status --project \(projectB) \(doneOnB)"])
         XCTAssertFalse(kills(client).isEmpty)
-        XCTAssertEqual(Set(kills(client)), ["agent-kill --project \(projectB) \(doneOnB)"])
+        XCTAssertEqual(Set(kills(client)), ["agent kill --project \(projectB) \(doneOnB)"])
         model.cleanup()
     }
 
@@ -49,7 +49,7 @@ final class AppModelReapTests: XCTestCase {
         let client = FixtureNatClient(agents: [agent(doneOnB)])
         let model = await swept(client)
 
-        XCTAssertEqual(Set(client.sliceStatusReads), ["slice-status --project \(projectB) \(doneOnB)"])
+        XCTAssertEqual(Set(client.sliceStatusReads), ["slice status --project \(projectB) \(doneOnB)"])
         XCTAssertEqual(kills(client), [])
         model.cleanup()
     }

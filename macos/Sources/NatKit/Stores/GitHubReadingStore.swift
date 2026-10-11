@@ -1,17 +1,17 @@
 import Foundation
 
-/// The app's one read of GitHub: `nat pr-status` naming every open project at
+/// The app's one read of GitHub: `nat pr status` naming every open project at
 /// once — one GraphQL document, a point of GitHub's shared hourly budget,
 /// whatever the number of projects or pull requests — and, with `--detail`,
 /// the pull request on a visible PR tab in full. What it reads is handed on
 /// (`deliver`): each project's part to `PRStatusStore` (the marks, the Active
 /// rail, the dock badge), the detail to the PR tab, and the session rows a
-/// fresh `session-list`, which reads the pull requests this reading kept.
+/// fresh `session list`, which reads the pull requests this reading kept.
 ///
 /// It reads on a tick — sleeping for the `poll_after_seconds` the last
 /// reading's budget asked for (nat's throttle and pause), else `tick`, the
 /// poll's `poll_seconds` — and on a **settle read** after an action changed
-/// something on GitHub (`scheduleSettle`), which runs `pr-status --settle`
+/// something on GitHub (`scheduleSettle`), which runs `pr status --settle`
 /// and so goes through whatever the throttle or the pause say:
 /// approve, merge, comment, reviewers, re-run or cancel checks, the manual
 /// refresh. The settle read waits `settleDelay` (5 seconds) first — `gh pr
@@ -26,7 +26,7 @@ import Foundation
 /// A read that fails changes nothing — the last reading stands everywhere.
 /// A read still running after `limit` (two minutes) is abandoned and counted
 /// as failed — its nat is cancelled, logged, and not waited on — so one stuck
-/// `pr-status` cannot hold off every later one: on 9 October one waited
+/// `pr status` cannot hold off every later one: on 9 October one waited
 /// nineteen hours on a fetch's dead ssh, and no reading landed until relaunch.
 ///
 /// It also keeps gnat's own spend this session — the points its readings
@@ -225,7 +225,7 @@ public final class GitHubReadingStore {
                 try? await Task.sleep(for: limit)
                 guard !Task.isCancelled, outcome.settle(nil) else { return }
                 attempt.cancel()
-                NSLog("GitHubReadingStore: pr-status still running after %@; abandoned, the last reading stands",
+                NSLog("GitHubReadingStore: pr status still running after %@; abandoned, the last reading stands",
                       String(describing: limit))
             }
             Task {

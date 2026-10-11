@@ -42,7 +42,7 @@ const matches = (c, f) => (f.owner === "any" || (f.owner === "me" ? c.owner === 
 const SLICES = [
   { id: "ci", project: "sim", ms: "M3: CI", msCount: "0/2", title: "Set up GitHub Actions CI", state: "working", branch: "slice/github-actions-ci", age: "12m" },
   { id: "workshop", project: "nat", ms: "M31: App parity", title: "Workshop the plan", state: "todo", brief: "" },
-  { id: "parity1", project: "nat", ms: "M31: App parity", msCount: "1/3", title: "Add project-list and project-open commands", state: "todo" },
+  { id: "parity1", project: "nat", ms: "M31: App parity", msCount: "1/3", title: "Add project list and project open commands", state: "todo" },
   { id: "parity2", project: "nat", ms: "M31: App parity", title: "Release a stuck slice from the app", state: "todo" },
   { id: "edits", project: "nat", ms: "M32: Review flow", msCount: "1/2", title: "Hand direct line edits back to the agent", state: "todo" },
   { id: "status", project: "nat", ms: "M33: Plan commands & Notion cleanup", msCount: "6/8", title: "Drop the status property type, and keep the select", state: "todo" },

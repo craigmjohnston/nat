@@ -22,7 +22,7 @@ import (
 // what is being worked on now, and a command that adds a phase to the plan has
 // no business making it.
 func milestoneAdd(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("milestone-add", flag.ContinueOnError)
+	flags := flag.NewFlagSet("milestone add", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -31,11 +31,11 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("milestone-add: want exactly one milestone name, given %d", len(rest))
+		return usageErrorf("milestone add: want exactly one milestone name, given %d", len(rest))
 	}
 	name := strings.TrimSpace(rest[0])
 	if name == "" {
-		return usageErrorf("milestone-add: the milestone name is empty")
+		return usageErrorf("milestone add: the milestone name is empty")
 	}
 
 	_, projectID, project, err := env.projectFor(*projectRef)
@@ -76,7 +76,7 @@ func milestoneAdd(ctx context.Context, args []string, env Env) error {
 // The scratch project alone takes none, and files the slice under its reserved
 // unfiledMilestone, adding that milestone the first time it is needed.
 func sliceAdd(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-add", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice add", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	milestoneRef := flags.String("milestone", "", "the milestone to file the slice under, by name")
 	containerRef := flags.String("container", "", "a source project's container to file the task under, by its plugin's `id`")
@@ -91,25 +91,25 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-add: want exactly one slice title, given %d", len(rest))
+		return usageErrorf("slice add: want exactly one slice title, given %d", len(rest))
 	}
 	title := strings.TrimSpace(rest[0])
 	if title == "" {
-		return usageErrorf("slice-add: the slice title is empty")
+		return usageErrorf("slice add: the slice title is empty")
 	}
 	if err := domain.CheckSliceTitle(title); err != nil {
-		return usageErrorf("slice-add: %v", err)
+		return usageErrorf("slice add: %v", err)
 	}
 	unfiled := strings.TrimSpace(*milestoneRef) == ""
-	// The brief is settled before anything is read from Notion, so a slice-add
+	// The brief is settled before anything is read from Notion, so a slice add
 	// whose stdin cannot be read fails having written nothing.
-	brief, err := briefText("slice-add", "--description", *description, env.In)
+	brief, err := briefText("slice add", "--description", *description, env.In)
 	if err != nil {
 		return err
 	}
 	deps := make([]string, len(dependsOn))
 	for i, ref := range dependsOn {
-		if deps[i], err = pageID("slice-add", ref); err != nil {
+		if deps[i], err = pageID("slice add", ref); err != nil {
 			return err
 		}
 	}
@@ -121,13 +121,13 @@ func sliceAdd(ctx context.Context, args []string, env Env) error {
 	containerID := strings.TrimSpace(*containerRef)
 	switch {
 	case project.IsSource() && !unfiled:
-		return usageErrorf("slice-add: %q is a source project, whose tasks are filed under its plugin's containers: pass --container, not --milestone", project.Name)
+		return usageErrorf("slice add: %q is a source project, whose tasks are filed under its plugin's containers: pass --container, not --milestone", project.Name)
 	case project.IsSource() && containerID == "":
-		return usageErrorf("slice-add: no container given: pass --container")
+		return usageErrorf("slice add: no container given: pass --container")
 	case !project.IsSource() && containerID != "":
-		return usageErrorf("slice-add: --container only means something on a source project, and %q is not one", project.Name)
+		return usageErrorf("slice add: --container only means something on a source project, and %q is not one", project.Name)
 	case !project.IsSource() && unfiled && projectID != cfg.ScratchProject:
-		return usageErrorf("slice-add: no milestone given: pass --milestone")
+		return usageErrorf("slice add: no milestone given: pass --milestone")
 	}
 	st, err := env.storeFor(ctx, projectID, project)
 	if err != nil {
@@ -244,14 +244,14 @@ func resolveMilestone(ref string, milestones []domain.Milestone) (domain.Milesto
 // what someone who named one wrongly needs to fix it.
 func knownMilestones(ms []domain.Milestone) string {
 	if len(ms) == 0 {
-		return "the project has no milestones yet — add one with `nat milestone-add`"
+		return "the project has no milestones yet — add one with `nat milestone add`"
 	}
 	return "the project's milestones are " + strings.Join(milestoneNames(ms), ", ")
 }
 
 // stdinRef is what --description is given to mean "the brief is being piped in".
 // Reading stdin whenever the flag is absent would be the shorter rule, but a
-// slice-add typed at a terminal without a brief would then hang waiting for one
+// slice add typed at a terminal without a brief would then hang waiting for one
 // — and a brief is optional, so that is an ordinary way to run the command.
 const stdinRef = "-"
 

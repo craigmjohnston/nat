@@ -39,13 +39,13 @@ func TestSliceApproveRefusesNotHandedBack(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-approve", testSliceID, "--project", "project-1",
+		"slice", "approve", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("slice-approve: expected error for non-handed-back slice")
+		t.Errorf("slice approve: expected error for non-handed-back slice")
 	}
 	if !strings.Contains(err.Error(), "not handed back") {
-		t.Errorf("slice-approve error: %v, want 'not handed back'", err)
+		t.Errorf("slice approve error: %v, want 'not handed back'", err)
 	}
 }
 
@@ -60,10 +60,10 @@ func TestSliceApproveRefusesDone(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-approve", testSliceID, "--project", "project-1",
+		"slice", "approve", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "already Done") {
-		t.Errorf("slice-approve error = %v, want 'already Done'", err)
+		t.Errorf("slice approve error = %v, want 'already Done'", err)
 	}
 }
 
@@ -84,13 +84,13 @@ func TestSliceApproveOpensAndRecordsPR(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-approve", testSliceID, "--project", "project-1",
+		"slice", "approve", testSliceID, "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Errorf("slice-approve: unexpected error: %v", err)
+		t.Errorf("slice approve: unexpected error: %v", err)
 	}
 	if !strings.Contains(out.String(), "https://github.test/craig/nat/pull/42") {
-		t.Errorf("slice-approve output: %q, want URL", out.String())
+		t.Errorf("slice approve output: %q, want URL", out.String())
 	}
 	if len(api.updates) != 1 || api.updates[0].id != testSliceID {
 		t.Fatalf("updates = %+v, want the pull request recorded on the slice", api.updates)
@@ -124,10 +124,10 @@ func TestSliceApproveGHFailure(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-approve", testSliceID, "--project", "project-1",
+		"slice", "approve", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "already exists") {
-		t.Errorf("slice-approve error = %v, want gh's own reason", err)
+		t.Errorf("slice approve error = %v, want gh's own reason", err)
 	}
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want nothing recorded when gh refused", api.updates)
@@ -158,10 +158,10 @@ func TestSliceApproveRecordsLocallyEvenWhenThePushFails(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-approve", testSliceID, "--project", "project-1",
+		"slice", "approve", testSliceID, "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-approve: %v, want it to succeed: the record landed in the plan file "+
+		t.Fatalf("slice approve: %v, want it to succeed: the record landed in the plan file "+
 			"even though the push to the workspace failed", err)
 	}
 	if !strings.Contains(out.String(), "https://github.test/craig/nat/pull/42") {
@@ -196,20 +196,20 @@ func TestSliceApproveRefusesWrongArgumentCount(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-approve", "--project", "project-1",
+		"slice", "approve", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("slice-approve: expected error for missing slice")
+		t.Errorf("slice approve: expected error for missing slice")
 	}
 	if !strings.Contains(err.Error(), "want exactly one") {
-		t.Errorf("slice-approve error: %v, want 'want exactly one'", err)
+		t.Errorf("slice approve error: %v, want 'want exactly one'", err)
 	}
 }
 
 func TestSliceApproveRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-approve", testSliceID, "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "approve", testSliceID, "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -220,7 +220,7 @@ func TestSliceApproveRefusesAnUnknownFlag(t *testing.T) {
 func TestSliceApproveRefusesAnInvalidSliceID(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-approve", "not-a-uuid", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "approve", "not-a-uuid", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
 		t.Errorf("err = %v, want 'not a slice'", err)
@@ -230,7 +230,7 @@ func TestSliceApproveRefusesAnInvalidSliceID(t *testing.T) {
 func TestSliceApproveRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-approve", testSliceID, "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"slice", "approve", testSliceID, "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -245,7 +245,7 @@ func TestSliceApproveReportsAFailedHydrate(t *testing.T) {
 	api := &fakeAPI{dataSourceErr: boom}
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-approve", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "approve", testSliceID, "--project", "project-1"}, env)
 
 	if !errors.Is(err, boom) {
 		t.Errorf("err = %v, want %v", err, boom)
@@ -271,10 +271,10 @@ func TestSliceApproveReportsAFailedLocalRecord(t *testing.T) {
 		return gh.NewWithRunner(&fakeGHRunner{out: "https://github.test/craig/nat/pull/42\n"})
 	}
 
-	err := Run(context.Background(), []string{"slice-approve", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "approve", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Error("slice-approve over a plan that cannot record the slice sent: want an error")
+		t.Error("slice approve over a plan that cannot record the slice sent: want an error")
 	}
 }
 
@@ -282,7 +282,7 @@ func TestSliceApproveReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-approve", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "approve", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -306,10 +306,10 @@ func TestSliceApproveJSON(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-approve", testSliceID, "--json", "--project", "project-1",
+		"slice", "approve", testSliceID, "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-approve: unexpected error: %v", err)
+		t.Fatalf("slice approve: unexpected error: %v", err)
 	}
 
 	var got approveJSON
@@ -338,8 +338,8 @@ func TestSliceApproveOpensIntoTheConfiguredBase(t *testing.T) {
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 	env.Out = &strings.Builder{}
 
-	if err := Run(context.Background(), []string{"slice-approve", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-approve: %v", err)
+	if err := Run(context.Background(), []string{"slice", "approve", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice approve: %v", err)
 	}
 	if got := strings.Join(runner.args, " "); !strings.HasSuffix(got, "--base develop") {
 		t.Errorf("gh args = %q, want --base develop", got)

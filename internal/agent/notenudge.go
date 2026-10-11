@@ -4,7 +4,7 @@ import "fmt"
 
 // NoteArrivedPrompt is the one turn typed at a live agent whose slice has just
 // had a note added to its brief: that the note is there, where it came from
-// (provenance as `slice-note` composed it — already a slice's name or a
+// (provenance as `slice note` composed it — already a slice's name or a
 // person's, never an ID), the note itself verbatim, and that it is context for
 // the work that remains rather than new work. The brief an agent is handed at
 // launch is never re-read mid-session, so without this turn the note would

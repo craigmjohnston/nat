@@ -21,7 +21,7 @@ extension Fixtures {
     ```
     """
 
-    /// The handed-back slice in full, as `nat slice-show --json` reports it.
+    /// The handed-back slice in full, as `nat slice show --json` reports it.
     public static let sliceDetail = SliceDetail(
         id: mergeBoxSliceID,
         name: "Draw the merge box on the PR tab",
@@ -126,7 +126,7 @@ extension Fixtures {
 
     /// The two follow-ups the activity slice's agent handed in as a second
     /// batch, after talking to the user about the first: each pending item's
-    /// index counts on from the first batch's, as `slice-triage` takes it.
+    /// index counts on from the first batch's, as `slice triage` takes it.
     public static func secondBatchFollowUps(from first: Int) -> [FollowUp] {
         [
             FollowUp(
@@ -205,7 +205,7 @@ extension Fixtures {
     /// A merged slice with a history: handed back three times, sent back
     /// with comments between them twice, three follow-ups triaged on the way
     /// (one queued, one folded in, one dropped),
-    /// then approved and merged — `slice-show`'s `events` for it, in order.
+    /// then approved and merged — `slice show`'s `events` for it, in order.
     /// Each section is stamped a day apart, the launch nine days before `now`,
     /// the first hand-back eight and the proposal five; two of its decisions
     /// a day after it, the dropped one's predating stamps.
@@ -272,7 +272,7 @@ extension Fixtures {
     /// An in-progress slice with notes left on its brief: one from the shell
     /// slice (a task on the plan) before it was launched, last year; its
     /// launch, a hand-back and a send-back earlier this year; and one from
-    /// Craig (no task) today — `slice-show`'s `events` for it, in order. The times are
+    /// Craig (no task) today — `slice show`'s `events` for it, in order. The times are
     /// measured from `now`, the clock the gallery draws at, so a story of it
     /// says "today", "this year" and "last year" the same way every run.
     public static var notedTaskLogEvents: [TaskLogEvent] {
@@ -319,7 +319,7 @@ extension Fixtures {
 
     /// The activity slice launched again after a cancel: its first launch's
     /// hand-back, then the cancel that threw that work away (`nat
-    /// slice-cancel`, naming who), then the relaunch from the brief alone.
+    /// slice cancel`, naming who), then the relaunch from the brief alone.
     /// Times measured from `now`, as `notedTaskLogEvents`' are.
     public static var cancelledSliceDetails: [String: SliceDetail] {
         let thisYear = Calendar.current.date(byAdding: .day, value: -3, to: now) ?? now
@@ -452,7 +452,7 @@ extension Fixtures {
         .failed(sliceDetailErrorMessage, previous: sliceDetail)
 
     public static let sliceDetailErrorMessage =
-        "nat slice-show: Notion API: 404 could not find page with ID"
+        "nat slice show: Notion API: 404 could not find page with ID"
 }
 
 // MARK: - Config

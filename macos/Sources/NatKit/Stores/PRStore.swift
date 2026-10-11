@@ -132,11 +132,11 @@ public final class PRStore {
     /// loading) for that same slice. A slice whose pull request was already
     /// read this session shows that reading instantly rather than behind a
     /// spinner again, and is not read again here: the batched reading's
-    /// detail keeps it fresh while its tab is visible, so `pr-view` runs only
+    /// detail keeps it fresh while its tab is visible, so `pr view` runs only
     /// on a tab's first open.
     ///
     /// With `sessionID`, `sliceRef` is instead the URL of one of that ad hoc
-    /// session's pull requests, read with `nat pr-view --session` — the
+    /// session's pull requests, read with `nat pr view --session` — the
     /// session has no slice to name it by. A URL never collides with a
     /// slice's ID in the cache, so the two share one store.
     public func fetch(projectID: String, sliceRef: String, sessionID: String? = nil) async {
@@ -164,7 +164,7 @@ public final class PRStore {
         await load()
     }
 
-    /// Re-read the current slice's pull request with `pr-view` — the Retry
+    /// Re-read the current slice's pull request with `pr view` — the Retry
     /// after a first open that failed. A no-op with nothing fetched yet.
     public func refresh() async {
         guard !isFetching, projectID != nil, sliceRef != nil else { return }
@@ -185,7 +185,7 @@ public final class PRStore {
     /// the settle read that brings it into the conversation — both PR-tab
     /// composers (the one pinned at the tab's own foot and the compact one
     /// at the conversation's foot) call this; neither writes anywhere but
-    /// through `nat pr-comment`, so a failed send leaves nothing posted and
+    /// through `nat pr comment`, so a failed send leaves nothing posted and
     /// propagates the error for the view to show inline. Blank text is a
     /// no-op, since a comment with nothing said is not one to send.
     public func comment(text: String) async throws {
@@ -196,8 +196,8 @@ public final class PRStore {
         await reread()
     }
 
-    /// Replace the description of the pull request on show (`nat pr-edit`),
-    /// then read it again at once (`pr-view`), so the description the editor
+    /// Replace the description of the pull request on show (`nat pr edit`),
+    /// then read it again at once (`pr view`), so the description the editor
     /// gives way to is the one just saved rather than the one a settle read
     /// would bring five seconds later. A refusal from gh propagates for the
     /// editor to show, nothing read; blank text is a no-op.
@@ -210,7 +210,7 @@ public final class PRStore {
     }
 
     /// After a write to the pull request: the settle read while it is open,
-    /// and a `pr-view` of its own once it is merged or closed — the batched
+    /// and a `pr view` of its own once it is merged or closed — the batched
     /// reading reads a settled pull request no more (`shouldRead`), so a
     /// comment left on one would otherwise never be seen.
     private func reread() async {
@@ -222,7 +222,7 @@ public final class PRStore {
     }
 
     /// Who is asked to review the pull request on show and who else could
-    /// be — `nat pr-reviewers`, a read for the reviewer picker. Nil with
+    /// be — `nat pr reviewers`, a read for the reviewer picker. Nil with
     /// nothing fetched, or for an ad hoc session's pull request, which has
     /// no slice to name it by.
     public func reviewers() async throws -> PRReviewers? {
@@ -242,7 +242,7 @@ public final class PRStore {
         return answer
     }
 
-    /// Re-run the pull request's checks (`nat slice-checks-rerun`) from the
+    /// Re-run the pull request's checks (`nat slice checks rerun`) from the
     /// control `source`, say what nat cancelled and re-ran — or why it
     /// refused — and ask for the settle read. One call at a time.
     public func rerunChecks(_ mode: ChecksRerunMode, from source: ChecksActionSource) async {
@@ -252,7 +252,7 @@ public final class PRStore {
     }
 
     /// Cancel the runs still going behind the pull request's checks — all, or
-    /// the named checks' — (`nat slice-checks-cancel`), as `rerunChecks` does.
+    /// the named checks' — (`nat slice checks cancel`), as `rerunChecks` does.
     public func cancelChecks(_ checks: [String], from source: ChecksActionSource) async {
         await checksAction(from: source) { client, projectID, sliceRef in
             try await client.sliceChecksCancel(projectID: projectID, sliceRef: sliceRef, checks: checks)
@@ -312,7 +312,7 @@ public final class PRStore {
     }
 
     /// Takes the batched reading's detail where it is the pull request on
-    /// show — what keeps an open PR tab fresh with no `pr-view` of its own.
+    /// show — what keeps an open PR tab fresh with no `pr view` of its own.
     /// One for any other pull request is not this store's.
     public func applyDetail(_ pr: PRDetail) {
         guard let projectID, let sliceRef, let shown = loadState.pr,

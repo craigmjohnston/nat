@@ -736,7 +736,7 @@ func appendedHeadings(f *fakeNotion) []string {
 }
 
 // A live agent whose pull request goes red is told so through the shared
-// notice — one prompt naming the check and the slice-checks read — and a Sent
+// notice — one prompt naming the check and the slice checks read — and a Sent
 // back goes on its record; the Active panel names the check beside the state.
 func TestALiveAgentIsToldWhenItsChecksGoRed(t *testing.T) {
 	app, _, launcher, client := checksNudgeApp(t)
@@ -746,7 +746,7 @@ func TestALiveAgentIsToldWhenItsChecksGoRed(t *testing.T) {
 		t.Fatalf("sends = %+v, want one prompt to the slice's own session", launcher.prompts)
 	}
 	for _, want := range []string{"- test: https://github.test/actions/runs/9/job/1",
-		"nat slice-checks " + approvedPR + " --log --project " + testProjectID} {
+		"nat slice checks " + approvedPR + " --log --project " + testProjectID} {
 		if !strings.Contains(launcher.prompts[0].text, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, launcher.prompts[0].text)
 		}

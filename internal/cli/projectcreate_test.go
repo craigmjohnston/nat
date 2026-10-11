@@ -15,7 +15,7 @@ import (
 
 // workspaceConfig is a machine that has been through onboarding but is not
 // tracking anything yet: a projects database, and no project at all — which is
-// exactly where the first project-create is run.
+// exactly where the first project create is run.
 func workspaceConfig() config.Config {
 	return config.Config{
 		ProjectDBID:           "projects-db",
@@ -49,10 +49,10 @@ func TestProjectCreateBuildsTheProjectAndRegistersIt(t *testing.T) {
 	api := &fakeAPI{}
 	env, out, saved := createEnv(t, workspaceConfig(), api)
 
-	err := Run(context.Background(), []string{"project-create", "  nat  ",
+	err := Run(context.Background(), []string{"project", "create", "  nat  ",
 		"--repo", "/src/nat", "--description", "Small slices.\n\nOne PR each."}, env)
 	if err != nil {
-		t.Fatalf("project-create: %v", err)
+		t.Fatalf("project create: %v", err)
 	}
 
 	if len(api.projects) != 1 {
@@ -98,8 +98,8 @@ func TestProjectCreateLeavesTheActiveProjectAlone(t *testing.T) {
 	cfg.Projects = map[string]config.ProjectConfig{"project-1": {Name: "nat"}}
 	env, out, saved := createEnv(t, cfg, &fakeAPI{})
 
-	if err := Run(context.Background(), []string{"project-create", "other"}, env); err != nil {
-		t.Fatalf("project-create: %v", err)
+	if err := Run(context.Background(), []string{"project", "create", "other"}, env); err != nil {
+		t.Fatalf("project create: %v", err)
 	}
 
 	if saved.ActiveProjectID != "project-1" {
@@ -118,8 +118,8 @@ func TestProjectCreateLeavesTheActiveProjectAlone(t *testing.T) {
 func TestProjectCreateDefaultsTheWorkingDirToTheCurrentOne(t *testing.T) {
 	env, _, saved := createEnv(t, workspaceConfig(), &fakeAPI{})
 
-	if err := Run(context.Background(), []string{"project-create", "nat"}, env); err != nil {
-		t.Fatalf("project-create: %v", err)
+	if err := Run(context.Background(), []string{"project", "create", "nat"}, env); err != nil {
+		t.Fatalf("project create: %v", err)
 	}
 
 	if got := saved.Projects["new-project"].WorkingDir; got != "/tmp/typed-here" {
@@ -133,7 +133,7 @@ func TestProjectCreateReportsAnUnreadableWorkingDir(t *testing.T) {
 	env, _, _ := createEnv(t, workspaceConfig(), api)
 	stubGetwd(t, "", want)
 
-	err := Run(context.Background(), []string{"project-create", "nat"}, env)
+	err := Run(context.Background(), []string{"project", "create", "nat"}, env)
 
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
@@ -164,8 +164,8 @@ func TestProjectCreateTracksAnAssigneeWhenTheConfigNamesOne(t *testing.T) {
 			api := &fakeAPI{}
 			env, out, _ := createEnv(t, cfg, api)
 
-			if err := Run(context.Background(), []string{"project-create", "nat"}, env); err != nil {
-				t.Fatalf("project-create: %v", err)
+			if err := Run(context.Background(), []string{"project", "create", "nat"}, env); err != nil {
+				t.Fatalf("project create: %v", err)
 			}
 
 			if got := api.projects[0].assignee; got != tt.want {
@@ -184,8 +184,8 @@ func TestProjectCreateWithNoDescriptionWritesNoBody(t *testing.T) {
 	api := &fakeAPI{}
 	env, _, _ := createEnv(t, workspaceConfig(), api)
 
-	if err := Run(context.Background(), []string{"project-create", "nat"}, env); err != nil {
-		t.Fatalf("project-create: %v", err)
+	if err := Run(context.Background(), []string{"project", "create", "nat"}, env); err != nil {
+		t.Fatalf("project create: %v", err)
 	}
 
 	if len(api.appends) != 0 {
@@ -198,8 +198,8 @@ func TestProjectCreateReadsTheDescriptionFromStdin(t *testing.T) {
 	env, _, _ := createEnv(t, workspaceConfig(), api)
 	env.In = strings.NewReader("  Small slices.  ")
 
-	if err := Run(context.Background(), []string{"project-create", "nat", "--description", "-"}, env); err != nil {
-		t.Fatalf("project-create: %v", err)
+	if err := Run(context.Background(), []string{"project", "create", "nat", "--description", "-"}, env); err != nil {
+		t.Fatalf("project create: %v", err)
 	}
 
 	if len(api.appends) != 1 || len(api.appends[0].children) != 1 {
@@ -216,13 +216,13 @@ func TestProjectCreateRejectsAPipedDescriptionWithNoStdin(t *testing.T) {
 	env, _, _ := createEnv(t, workspaceConfig(), &fakeAPI{})
 	env.In = nil
 
-	err := Run(context.Background(), []string{"project-create", "nat", "--description", "-"}, env)
+	err := Run(context.Background(), []string{"project", "create", "nat", "--description", "-"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
 		t.Fatalf("err = %v (%T), want a *UsageError", err, err)
 	}
-	if !strings.Contains(err.Error(), "project-create:") {
+	if !strings.Contains(err.Error(), "project create:") {
 		t.Errorf("err = %q, want it to name the command", err)
 	}
 }
@@ -232,8 +232,8 @@ func TestProjectCreatePrintsJSON(t *testing.T) {
 	cfg.AssigneeUserID = "user-1"
 	env, out, _ := createEnv(t, cfg, &fakeAPI{})
 
-	if err := Run(context.Background(), []string{"project-create", "nat", "--repo", "/src/nat", "--json"}, env); err != nil {
-		t.Fatalf("project-create: %v", err)
+	if err := Run(context.Background(), []string{"project", "create", "nat", "--repo", "/src/nat", "--json"}, env); err != nil {
+		t.Fatalf("project create: %v", err)
 	}
 
 	var doc projectCreatedJSON
@@ -258,7 +258,7 @@ func TestProjectCreateReportsAFailedCreation(t *testing.T) {
 	want := errors.New("notion is down")
 	env, out, saved := createEnv(t, workspaceConfig(), &fakeAPI{projectErr: want})
 
-	err := Run(context.Background(), []string{"project-create", "nat"}, env)
+	err := Run(context.Background(), []string{"project", "create", "nat"}, env)
 
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
@@ -276,7 +276,7 @@ func TestProjectCreateReportsAFailedCreation(t *testing.T) {
 func TestProjectCreateReportsAnEmptyCreation(t *testing.T) {
 	env, _, _ := createEnv(t, workspaceConfig(), &fakeAPI{projectNothing: true})
 
-	err := Run(context.Background(), []string{"project-create", "nat"}, env)
+	err := Run(context.Background(), []string{"project", "create", "nat"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project was returned") {
 		t.Errorf("err = %v, want the empty answer reported", err)
@@ -296,7 +296,7 @@ func TestProjectCreateRecordsAProjectWhoseSchemaDidNotVerify(t *testing.T) {
 	}
 	env, out, saved := createEnv(t, workspaceConfig(), api)
 
-	err := Run(context.Background(), []string{"project-create", "nat"}, env)
+	err := Run(context.Background(), []string{"project", "create", "nat"}, env)
 
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
@@ -315,7 +315,7 @@ func TestProjectCreateReportsAFailedPageBody(t *testing.T) {
 	want := errors.New("no room")
 	env, _, saved := createEnv(t, workspaceConfig(), &fakeAPI{appendErr: want})
 
-	err := Run(context.Background(), []string{"project-create", "nat", "--description", "Small slices."}, env)
+	err := Run(context.Background(), []string{"project", "create", "nat", "--description", "Small slices."}, env)
 
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
@@ -333,7 +333,7 @@ func TestProjectCreateReportsAFailedConfigWrite(t *testing.T) {
 	env, out, _ := createEnv(t, workspaceConfig(), &fakeAPI{})
 	env.Save = func(config.Config) error { return want }
 
-	err := Run(context.Background(), []string{"project-create", "nat"}, env)
+	err := Run(context.Background(), []string{"project", "create", "nat"}, env)
 
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
@@ -349,7 +349,7 @@ func TestProjectCreateReportsAFailedWrite(t *testing.T) {
 	env, _, _ := createEnv(t, workspaceConfig(), &fakeAPI{})
 	env.Out = failingWriter{}
 
-	err := Run(context.Background(), []string{"project-create", "nat"}, env)
+	err := Run(context.Background(), []string{"project", "create", "nat"}, env)
 
 	if !errors.Is(err, errWrite) {
 		t.Errorf("err = %v, want %v", err, errWrite)
@@ -361,8 +361,8 @@ func TestProjectCreateNudgesTheBoard(t *testing.T) {
 	nudged := 0
 	env.Nudge = func() { nudged++ }
 
-	if err := Run(context.Background(), []string{"project-create", "nat"}, env); err != nil {
-		t.Fatalf("project-create: %v", err)
+	if err := Run(context.Background(), []string{"project", "create", "nat"}, env); err != nil {
+		t.Fatalf("project create: %v", err)
 	}
 
 	if nudged != 1 {
@@ -376,10 +376,10 @@ func TestProjectCreateRejectsAMisuse(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "no name", args: []string{"project-create"}, want: "given 0"},
-		{name: "two names", args: []string{"project-create", "a", "b"}, want: "given 2"},
-		{name: "an empty name", args: []string{"project-create", "   "}, want: "name is empty"},
-		{name: "an unknown flag", args: []string{"project-create", "nat", "--nope"}, want: "project-create:"},
+		{name: "no name", args: []string{"project", "create"}, want: "given 0"},
+		{name: "two names", args: []string{"project", "create", "a", "b"}, want: "given 2"},
+		{name: "an empty name", args: []string{"project", "create", "   "}, want: "name is empty"},
+		{name: "an unknown flag", args: []string{"project", "create", "nat", "--nope"}, want: "project create:"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -420,7 +420,7 @@ func TestProjectCreateReportsUnfinishedSetup(t *testing.T) {
 			env, _, _ := createEnv(t, config.Config{}, &fakeAPI{})
 			env.Load = func() (config.Config, bool, error) { return tt.cfg, tt.found, nil }
 
-			err := Run(context.Background(), []string{"project-create", "nat"}, env)
+			err := Run(context.Background(), []string{"project", "create", "nat"}, env)
 
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want it to mention %q", err, tt.want)
@@ -434,7 +434,7 @@ func TestProjectCreateReportsAFailedConfigRead(t *testing.T) {
 	env, _, _ := createEnv(t, config.Config{}, &fakeAPI{})
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, want }
 
-	err := Run(context.Background(), []string{"project-create", "nat"}, env)
+	err := Run(context.Background(), []string{"project", "create", "nat"}, env)
 
 	if !errors.Is(err, want) {
 		t.Errorf("err = %v, want %v", err, want)

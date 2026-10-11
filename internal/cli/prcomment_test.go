@@ -48,10 +48,10 @@ func TestPRCommentPostsTheComment(t *testing.T) {
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
 	err := Run(context.Background(), []string{
-		"pr-comment", testSliceID, "--body", "Looks good.", "--project", "project-1",
+		"pr", "comment", testSliceID, "--body", "Looks good.", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("pr-comment: %v", err)
+		t.Fatalf("pr comment: %v", err)
 	}
 	if runner.dir != "/tmp/nat" {
 		t.Errorf("ran gh in %q, want the project's working dir", runner.dir)
@@ -85,9 +85,9 @@ func TestPRCommentReadsTheBodyFromStdinByDefault(t *testing.T) {
 	runner := &fakeCommentRunner{}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-comment: %v", err)
+		t.Fatalf("pr comment: %v", err)
 	}
 	if runner.stdin != "Piped in comment." {
 		t.Errorf("stdin = %q, want the piped-in comment", runner.stdin)
@@ -106,10 +106,10 @@ func TestPRCommentJSON(t *testing.T) {
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
 	err := Run(context.Background(), []string{
-		"pr-comment", testSliceID, "--body", "Looks good.", "--json", "--project", "project-1",
+		"pr", "comment", testSliceID, "--body", "Looks good.", "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("pr-comment --json: %v", err)
+		t.Fatalf("pr comment --json: %v", err)
 	}
 	var got prCommentedJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -130,7 +130,7 @@ func TestPRCommentRefusesNoPullRequest(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"pr-comment", testSliceID, "--body", "Looks good.", "--project", "project-1",
+		"pr", "comment", testSliceID, "--body", "Looks good.", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "no pull request recorded") {
 		t.Errorf("err = %v, want 'no pull request recorded'", err)
@@ -143,7 +143,7 @@ func TestPRCommentRefusesNoPullRequest(t *testing.T) {
 func TestPRCommentRefusesNoBodyAndNoStdin(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", testSliceID, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no comment given") {
 		t.Errorf("err = %v, want 'no comment given'", err)
 	}
@@ -153,7 +153,7 @@ func TestPRCommentRefusesAnEmptyBody(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"pr-comment", testSliceID, "--body", "   ", "--project", "project-1",
+		"pr", "comment", testSliceID, "--body", "   ", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "no comment given") {
 		t.Errorf("err = %v, want 'no comment given'", err)
@@ -173,7 +173,7 @@ func TestPRCommentReportsAGHFailure(t *testing.T) {
 	}
 
 	err := Run(context.Background(), []string{
-		"pr-comment", testSliceID, "--body", "Looks good.", "--project", "project-1",
+		"pr", "comment", testSliceID, "--body", "Looks good.", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "no such pull request") {
 		t.Errorf("err = %v, want gh's own reason", err)
@@ -183,7 +183,7 @@ func TestPRCommentReportsAGHFailure(t *testing.T) {
 func TestPRCommentRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-comment", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "want exactly one") {
 		t.Errorf("err = %v, want 'want exactly one'", err)
@@ -193,7 +193,7 @@ func TestPRCommentRefusesWrongArgumentCount(t *testing.T) {
 func TestPRCommentRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", testSliceID, "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -204,7 +204,7 @@ func TestPRCommentRefusesAnUnknownFlag(t *testing.T) {
 func TestPRCommentRefusesAnInvalidSliceID(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-comment", "not-a-uuid", "--body", "x", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", "not-a-uuid", "--body", "x", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
 		t.Errorf("err = %v, want 'not a slice'", err)
@@ -214,7 +214,7 @@ func TestPRCommentRefusesAnInvalidSliceID(t *testing.T) {
 func TestPRCommentRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--body", "x", "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", testSliceID, "--body", "x", "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -227,7 +227,7 @@ func TestPRCommentRefusesAnUnreadableStdin(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.In = errReader{err: errors.New("boom")}
 
-	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", testSliceID, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "read the comment") {
 		t.Errorf("err = %v, want the failed stdin read named", err)
 	}
@@ -237,7 +237,7 @@ func TestPRCommentReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--body", "x", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", testSliceID, "--body", "x", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -251,7 +251,7 @@ func TestPRCommentReportsAFailedHydrate(t *testing.T) {
 	api := &fakeAPI{dataSourceErr: errors.New("notion is down")}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--body", "x", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", testSliceID, "--body", "x", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "hydrate the plan") {
 		t.Errorf("err = %v, want the failed hydrate named", err)
@@ -272,9 +272,9 @@ func TestPRCommentKeepsAnEmojiBodyIntact(t *testing.T) {
 	runner := &fakeCommentRunner{}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-comment: %v", err)
+		t.Fatalf("pr comment: %v", err)
 	}
 	if runner.stdin != "Ship it 🎉 👩‍💻 ❤️" {
 		t.Errorf("stdin = %q, want the emoji comment intact", runner.stdin)

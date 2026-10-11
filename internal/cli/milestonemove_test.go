@@ -46,9 +46,9 @@ Moved in nat to milestone 2, directly after M1: Client.
 			env, out := testEnv(testConfig(t), api)
 			nudges := nudgeCounter(&env)
 
-			args := append(append([]string{"milestone-move"}, tt.args...), "--project", "project-1")
+			args := append(append([]string{"milestone", "move"}, tt.args...), "--project", "project-1")
 			if err := Run(context.Background(), args, env); err != nil {
-				t.Fatalf("milestone-move: %v", err)
+				t.Fatalf("milestone move: %v", err)
 			}
 
 			if want := tt.want + "\n- " + reorderNote + "\n"; out.String() != want {
@@ -74,9 +74,9 @@ func TestMilestoneMovePrintsJSON(t *testing.T) {
 	env, out := testEnv(testConfig(t), plannedAPI(addedMilestoneID))
 
 	if err := Run(context.Background(), []string{
-		"milestone-move", "M1: Client", "--after", "M3: Agents", "--json", "--project", "project-1",
+		"milestone", "move", "M1: Client", "--after", "M3: Agents", "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("milestone-move: %v", err)
+		t.Fatalf("milestone move: %v", err)
 	}
 
 	var got milestoneMovedJSON
@@ -104,17 +104,17 @@ func TestMilestoneMoveRefusals(t *testing.T) {
 	}{
 		{
 			name: "a name the plan does not hold",
-			args: []string{"milestone-move", "M9: Nothing", "--before", "M1: Client"},
+			args: []string{"milestone", "move", "M9: Nothing", "--before", "M1: Client"},
 			want: []string{`no milestone named "M9: Nothing"`, `"M1: Client"`},
 		},
 		{
 			name: "a target the plan does not hold",
-			args: []string{"milestone-move", "M1: Client", "--after", "M9: Nothing"},
+			args: []string{"milestone", "move", "M1: Client", "--after", "M9: Nothing"},
 			want: []string{`no milestone named "M9: Nothing"`, `"M3: Agents"`},
 		},
 		{
 			name: "a move relative to itself",
-			args: []string{"milestone-move", "M2: Board", "--before", "  m2: board  "},
+			args: []string{"milestone", "move", "M2: Board", "--before", "  m2: board  "},
 			want: []string{
 				`"M2: Board" cannot be moved relative to itself`,
 				"name the milestone it is to sit beside",
@@ -155,7 +155,7 @@ func TestMilestoneMoveNamesTheMilestonesThePlanHas(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(),
-		[]string{"milestone-move", "M1: Client", "--before", "M2: Board", "--project", "project-1"}, env)
+		[]string{"milestone", "move", "M1: Client", "--before", "M2: Board", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "its milestones are none") {
 		t.Fatalf("err = %v, want the empty plan said out loud", err)
@@ -168,31 +168,31 @@ func TestMilestoneMoveRejectsAMisusedCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "no name", args: []string{"milestone-move", "--before", "M1: Client"}, want: "given 0"},
+		{name: "no name", args: []string{"milestone", "move", "--before", "M1: Client"}, want: "given 0"},
 		{
 			name: "two names",
-			args: []string{"milestone-move", "M2: Board", "M3: Agents", "--before", "M1: Client"},
+			args: []string{"milestone", "move", "M2: Board", "M3: Agents", "--before", "M1: Client"},
 			want: "given 2",
 		},
-		{name: "a blank name", args: []string{"milestone-move", "   ", "--before", "M1: Client"}, want: "name is empty"},
+		{name: "a blank name", args: []string{"milestone", "move", "   ", "--before", "M1: Client"}, want: "name is empty"},
 		{
 			name: "no destination",
-			args: []string{"milestone-move", "M3: Agents"},
+			args: []string{"milestone", "move", "M3: Agents"},
 			want: "no destination given: pass --before or --after",
 		},
 		{
 			name: "a blank destination",
-			args: []string{"milestone-move", "M3: Agents", "--after", "   "},
+			args: []string{"milestone", "move", "M3: Agents", "--after", "   "},
 			want: "no destination given: pass --before or --after",
 		},
 		{
 			name: "both destinations",
-			args: []string{"milestone-move", "M3: Agents", "--before", "M1: Client", "--after", "M2: Board"},
+			args: []string{"milestone", "move", "M3: Agents", "--before", "M1: Client", "--after", "M2: Board"},
 			want: "--before and --after name two places at once",
 		},
 		{
 			name: "unknown flag",
-			args: []string{"milestone-move", "M3: Agents", "--before", "M1: Client", "--nope"},
+			args: []string{"milestone", "move", "M3: Agents", "--before", "M1: Client", "--nope"},
 			want: "not defined",
 		},
 	}
@@ -210,7 +210,7 @@ func TestMilestoneMoveRejectsAMisusedCommandLine(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %q, want it to mention %q", err, tt.want)
 			}
-			if !strings.Contains(err.Error(), "milestone-move:") {
+			if !strings.Contains(err.Error(), "milestone move:") {
 				t.Errorf("err = %q, want it to name the command", err)
 			}
 			noWritesBut(t, api, 0)
@@ -247,7 +247,7 @@ func TestMilestoneMoveReportsAFailedCall(t *testing.T) {
 			nudges := nudgeCounter(&env)
 
 			err := Run(context.Background(),
-				[]string{"milestone-move", "M3: Agents", "--before", "M1: Client", "--project", "project-1"}, env)
+				[]string{"milestone", "move", "M3: Agents", "--before", "M1: Client", "--project", "project-1"}, env)
 
 			if !errors.Is(err, boom) {
 				t.Fatalf("err = %v, want %v", err, boom)
@@ -276,7 +276,7 @@ func TestMilestoneMoveReportsAFailedShapeReadOnAnAlreadyHydratedPlan(t *testing.
 	}
 
 	err := Run(context.Background(),
-		[]string{"milestone-move", "M3: Agents", "--before", "M1: Client", "--project", "project-1"}, env)
+		[]string{"milestone", "move", "M3: Agents", "--before", "M1: Client", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "milestones") {
 		t.Errorf("err = %v, want the broken read reported", err)
@@ -289,7 +289,7 @@ func TestMilestoneMoveNeedsAConfiguredProject(t *testing.T) {
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
 	err := Run(context.Background(),
-		[]string{"milestone-move", "M3: Agents", "--before", "M1: Client", "--project", "project-1"}, env)
+		[]string{"milestone", "move", "M3: Agents", "--before", "M1: Client", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "run `nat` once to set it up") {
 		t.Fatalf("err = %v, want the setup reported", err)
@@ -299,11 +299,11 @@ func TestMilestoneMoveNeedsAConfiguredProject(t *testing.T) {
 
 func TestMilestoneMoveReportsAFailedWrite(t *testing.T) {
 	for _, extra := range [][]string{nil, {"--json"}} {
-		t.Run(strings.Join(append([]string{"milestone-move"}, extra...), " "), func(t *testing.T) {
+		t.Run(strings.Join(append([]string{"milestone", "move"}, extra...), " "), func(t *testing.T) {
 			env, _ := testEnv(testConfig(t), plannedAPI(addedMilestoneID))
 			env.Out = failingWriter{}
 
-			args := append([]string{"milestone-move", "M3: Agents", "--before", "M1: Client"}, extra...)
+			args := append([]string{"milestone", "move", "M3: Agents", "--before", "M1: Client"}, extra...)
 			err := Run(context.Background(), append(args, "--project", "project-1"), env)
 
 			if !errors.Is(err, errWrite) {

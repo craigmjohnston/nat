@@ -27,7 +27,7 @@ any one package does it.
   `nat-source-<name>` binaries own the containers a source project's tasks
   hang off. See `internal/source/CLAUDE.md`.
 - `internal/plugins/` — installs, updates and uninstalls those binaries from
-  plugin sources' GitHub releases (`nat-plugins.json`), behind `nat plugin-*`.
+  plugin sources' GitHub releases (`nat-plugins.json`), behind `nat plugin …`.
 - `internal/domain/` — Project/Milestone/Slice models, `StateOf`, progress math.
 - `internal/actions/` — headless claim/launch/approve/landed/worktree flow,
   shared by `internal/tui` and `internal/cli`. See `internal/actions/CLAUDE.md`.
@@ -44,8 +44,8 @@ any one package does it.
   touching it).
 - `internal/cli/` — the headless `nat` subcommands; the macOS app's whole
   backend contract, served by the `--json` command set (`info`, `status`,
-  `slice-*`, `session-*`, `pr-*`, `milestone-*`, `plan-apply`, `config-*`,
-  `source-*`, `plugin-*` — `source-setup` reading a plugin's token from stdin
+  `slice …`, `session …`, `pr …`, `milestone …`, `plan apply`, `config …`,
+  `source …`, `plugin …` — `source setup` reading a plugin's token from stdin
   only — `usage`, …; `nat help` lists them). See `internal/cli/CLAUDE.md`.
 - `internal/tui/` — the board. See `internal/tui/CLAUDE.md`.
 - `internal/logging/`, `internal/nudge/` — the log file and the
@@ -88,20 +88,20 @@ load.
 
 **Claiming.** Status → In progress, + Assignee where the project has that
 column (status alone otherwise). The *board* claims before tmux is touched —
-a fresh Claude Code takes seconds to reach `start-slice`, and a Todo row in
-the meantime is one a second agent could be launched on. `start-slice`
+a fresh Claude Code takes seconds to reach `slice start`, and a Todo row in
+the meantime is one a second agent could be launched on. `slice start`
 re-opens a claim its own holder already made rather than re-claiming, and
 refuses outright where the claim didn't stick — a race is settled before any
-agent gets a brief. `nat slice-launch` is a third way to reach the same
+agent gets a brief. `nat slice launch` is a third way to reach the same
 `actions.Launch` flow (`internal/actions/CLAUDE.md`).
 
-**Releasing** (`R` / `nat release-slice`) writes its note **before** flipping
-Status back to Todo — the same order `complete-slice` writes in, since a
+**Releasing** (`R` / `nat slice release`) writes its note **before** flipping
+Status back to Todo — the same order `slice complete` writes in, since a
 slice already back at Todo would refuse a note added to it. Assignee cleared;
 everything else on the page (brief, `Depends on`, `Repo`, any `Branch`)
 untouched. Refused on a slice with a live agent.
 
-**Cancelling** (`X` / `nat slice-cancel` / gnat's Cancel and discard work…)
+**Cancelling** (`X` / `nat slice cancel` / gnat's Cancel and discard work…)
 is release's destructive sibling, on the user's confirmation alone (no
 ownership check): `actions.Cancel` refuses Todo and Done by name, stops the
 live agent (refused, before any write, where tmux can't be read or the kill
@@ -122,37 +122,37 @@ recorded is an ordinary relaunch (`agent.Resuming`), its dependencies not
 asked; the board's `l` resumes it first (below).
 
 **Resuming** — work taken back up after a hand-back. `actions.Resume`
-(`nat slice-resume <slice> --note TEXT|-`, no ownership check beyond
+(`nat slice resume <slice> --note TEXT|-`, no ownership check beyond
 status) files a stamped `Resumed` section (the note) **then** clears
-`Branch` — the same order `slice-rework`'s `Sent back` keeps, both through
+`Branch` — the same order `slice rework`'s `Sent back` keeps, both through
 `actions.TakeBack`. In progress with no `Branch` is already work in
 progress and writes nothing (run twice, one card); not In progress is
 refused, Done by name (merged — new work is a new slice). The agent's next
-`complete-slice --branch` re-records the branch, a second `Handed back`.
+`slice complete --branch` re-records the branch, a second `Handed back`.
 A prompt the user types at a slice's agent is resumed by the embedded mod
 (`prompt.submit`, origin `composer`/`bridge`, from `NAT_SLICE`/`NAT_PROJECT`
 set on a slice launch alone); `/next-slice`, run by hand with no mod, tells
 its agent to run it itself; a UI action runs it on the user's behalf
-**before** reaching the agent — `agent-send` with the hand-back line where
+**before** reaching the agent — `agent send` with the hand-back line where
 a session is live, else the ordinary launch (gnat's "Send back to agent";
 the board's `l` on an In progress slice with a PR, note
 `boardResumeNote`). **`resumed`** (`domain.Slice.Resumed`, `info --json`
-and `slice-show --json` per slice) is In progress, PR recorded, `Branch`
+and `slice show --json` per slice) is In progress, PR recorded, `Branch`
 empty, on a project whose shape has a `Branch` column — a project with
 none holds a PR and no branch legitimately. `StateOf` reads it as work in
 progress, gnat's stage as `.working`. **`taken_back`** (both commands) is
 wider — In progress, `Branch` empty on a project with the column, a
 `Handed back` on the task log, PR or not — and is what keeps gnat's Changes
-and Visual changes on a slice sent back from review; it drives no stage. `slice-diff`/`slice-file` read a
+and Visual changes on a slice sent back from review; it drives no stage. `slice diff`/`slice file` read a
 resumed (or sent-back) slice on `actions.AgentBranch` where its log holds a
 hand-back. A launch of a slice with a PR carries `agent.pullRequestPassage`:
 the PR is open, a push updates it, the review snapshot, and exactly one
 `gh` read (`gh pr view <PR> --comments`) — CI still through `nat
-slice-checks`. No hand-back is ever blocked by any of this.
+slice checks`. No hand-back is ever blocked by any of this.
 
-**CI failures.** Every agent reads CI with `nat slice-checks <slice> [--log]`
+**CI failures.** Every agent reads CI with `nat slice checks <slice> [--log]`
 (slice prompt, `/next-slice`), never `gh`. After every batched PR
-reading, `nat pr-status` and the TUI's `refreshPRStates` hand each slice
+reading, `nat pr status` and the TUI's `refreshPRStates` hand each slice
 reading `PRChecksFailing` to `actions.NoticeFailingChecks`: a failure is the
 set of its failing checks' run URLs, news only where the latest `Checks
 failed`/`Sent back` names a different set. A live session is a resumption:
@@ -168,7 +168,7 @@ standing rule: never `tmux kill-server`, never kill, detach or send keys to a
 session the agent did not create, and a tmux of its own goes on a private
 `-L` socket (`TMUX_TMPDIR` does not isolate a process with `$TMUX` set).
 
-**Hand-back.** `complete-slice` (or `/next-slice`'s own end) records the
+**Hand-back.** `slice complete` (or `/next-slice`'s own end) records the
 branch — `--branch`, else the one the slice's worktree is on — and leaves
 status alone — refused outright on a project with no `Branch` column, before
 the note goes on. nat does the git work, not the agent: before any write it
@@ -182,7 +182,7 @@ nothing. The hand-back note and any
 section, since a slice handed back twice has one per hand-back.
 
 **Follow-ups.** Before hand-back, a gnat-launched agent hands in work it
-noticed but didn't do with `nat slice-followups` and stops; the proposals are
+noticed but didn't do with `nat slice followups` and stops; the proposals are
 a `Follow-ups` section of the slice body (numbered items), and the user's
 decision a later `Follow-ups triaged` section (bullets) — no column, both
 stores write the same markdown. Every `Follow-ups` section is a **batch**,
@@ -192,30 +192,30 @@ batch before it, each line the earliest still-undecided item of its title
 (`store.TaskEvents` holds the matching; `store.PendingFollowUps` is its
 undecided items, each with its `Batch` and an `Index` over every pending
 item; `PendingFollowUpsOf` reads none on a Done slice, whose leftovers are
-history). `complete-slice` refuses while any is pending (`--blocked` exempt).
-`nat slice-triage` decides whole batches — every pending item of each batch
+history). `slice complete` refuses while any is pending (`--blocked` exempt).
+`nat slice triage` decides whole batches — every pending item of each batch
 it touches, others left alone, a partial batch refused; `--drop-all` every
 batch (queue → Todo slice under the parent's milestone, blocked on it; fold
 in → needs a live agent; drop), and writes the record **before** its one
-`agent-send`. Only the gnat prompt and `/next-slice` carry the passage — the
+`agent send`. Only the gnat prompt and `/next-slice` carry the passage — the
 TUI has no triage surface. gnat draws one triage card per pending batch in
-the Task log (`slice-show`'s `followUps` and each `follow_ups` event carry the
+the Task log (`slice show`'s `followUps` and each `follow_ups` event carry the
 `batch` that pairs them). Design: `docs/design/follow-up-triage/`.
 
-**Notes.** `nat slice-note <slice> --note TEXT|- [--from <slice>]
+**Notes.** `nat slice note <slice> --note TEXT|- [--from <slice>]
 [--milestone NAME]` appends a `Note` section to a Todo or In progress
 slice's body — for context a *later* slice needs, never for work (that is a
-follow-up). The target is named by name (plan-apply's title match,
+follow-up). The target is named by name (plan apply's title match,
 `--milestone` to disambiguate) or by ID/URL; no ownership check. Under its
 stamp, its first paragraph is provenance nat composes, never the caller:
 `From "<slice>" (<milestone>)` from `--from` (`store.SliceLabel`, parsed
-back into `slice-show`'s `fromSlice`), else `From <Config.AssigneeFor name>`
+back into `slice show`'s `fromSlice`), else `From <Config.AssigneeFor name>`
 — no ID or URL, by the same helper (`fromSlice`) the triage's
 queued-follow-up line uses. Refused, before any write: Done, an unreadable body, an empty note, an
 unknown/ambiguous name, an unreadable `--from`. A note on a Todo slice
 reaches its agent as part of the brief with no further plumbing; one on a
 slice with a live agent is **written before it is sent** into that session
-(`agent.NoteArrivedPrompt`, one `agent-send`, as the triage sends after its
+(`agent.NoteArrivedPrompt`, one `agent send`, as the triage sends after its
 record) — except a note whose `--from` is the target itself, never sent back
 to the agent that wrote it.
 
@@ -226,8 +226,8 @@ never by number, index, page ID, URL or another tracker's id. Tests walk
 every template and every skill for it. A slice title is at most
 `domain.MaxSliceTitleLen` (64) runes, trimmed — one change named, the list
 of what it covers in the brief: every write that sets a title refuses a
-longer one (`plan-apply`/`-propose`/`-accept`, `slice-add`, `slice-edit
---title`, `slice-followups`), titles already on the board are never
+longer one (`plan apply`/`-propose`/`-accept`, `slice add`, `slice edit
+--title`, `slice followups`), titles already on the board are never
 re-validated, and the workshop, new-project and slice (follow-ups) prompts
 and the three skills carry `agent.SliceTitleRule`, walked by tests.
 
@@ -241,7 +241,7 @@ for them. A planner's or follow-up's brief opens on a summary paragraph of
 at most 60 words (`domain.CheckBriefOpening`), which gnat's Brief card shows.
 
 **Task log.** A slice's history is read off its body, in order, by
-`store.TaskEvents`: each `Handed back`, `Sent back` (`slice-rework
+`store.TaskEvents`: each `Handed back`, `Sent back` (`slice rework
 --comments`, filed before the branch is cleared, as hand-back files before
 its property; or a checks nudge, after its resume, opening with a `From CI`
 line read back as its `by`), `Resumed` (`resumed`, its note, filed before
@@ -258,14 +258,14 @@ decided by a later `Follow-ups triaged`. Every one of those sections opens
 with a stamp paragraph, `At <RFC 3339 with offset>` (the released line says
 `… by <name> at <RFC 3339>: …` instead; `PR description` is never stamped,
 being the PR's body); a section without one predates stamps and reads at no
-time. `slice-show --json`'s `events` is that list (each with its `at`), then
+time. `slice show --json`'s `events` is that list (each with its `at`), then
 `approved` (a PR recorded) and `merged` (Done with a PR or branch), which
 have no time. Both stores write the same markdown, through a `Clock` seam.
 
 **Visual changes.** Where a project already has a cheap or usual way to
 render what a slice changed (a gallery story, a screenshot script), every
 slice agent — slice prompt, `/next-slice` — hands the images in
-with `nat slice-visuals`, and is told never to build a way to render where
+with `nat slice visuals`, and is told never to build a way to render where
 there is none. The command is incremental — `--visual` adds or replaces by
 name in place (keeping its before), `--before` gives a visual its before,
 `--remove` drops one — but storage is not: each hand-in appends a whole
@@ -277,16 +277,16 @@ lines — paragraphs nested under the item in Notion; both stores write the
 same markdown, and an empty section reads as no visuals. `changed` is
 derived, never stored: an item differing (by hash, else URI, before
 included) from the section before's item of that name, or with none.
-`slice-show`'s `visuals` reads them (`store.VisualChanges`); gnat's Visual
-changes section shows them, and its comments go back by `agent-send`, then
-`slice-rework` only where the slice is handed back. Nothing blocks hand-back
+`slice show`'s `visuals` reads them (`store.VisualChanges`); gnat's Visual
+changes section shows them, and its comments go back by `agent send`, then
+`slice rework` only where the slice is handed back. Nothing blocks hand-back
 on them. Only a slice you hold may hand them in.
 
-**Approving** (`a` on the diff screen, or `nat slice-approve`) opens the PR
+**Approving** (`a` on the diff screen, or `nat slice approve`) opens the PR
 and records only its URL — status stays In progress. **Done means the work
-is on main**, and only the merge writes it: `m` / `nat pr-merge`, or
+is on main**, and only the merge writes it: `m` / `nat pr merge`, or
 `actions.SettleMerged` (the board's background PR-state read, and headless
-`nat pr-status`) catching a merge made on GitHub directly. A slice marked
+`nat pr status`) catching a merge made on GitHub directly. A slice marked
 Done under the *old* rule (Done written at approve, before this rewrite)
 whose PR reads open is corrected the opposite way, lazily, one slice at a
 time as each is next read: `actions.ReopenUnmerged` writes it back to In
@@ -294,20 +294,20 @@ progress. The macOS app mirrors this exact gate in Swift
 (`RailModel.isReviewSlice`/`isActiveSlice` — see `macos/CLAUDE.md`); change
 one side, change the other.
 
-**Approving over comments** (gnat's diff tab, `nat slice-rework`): with
-comments pending, approve sends them (`agent-send`, prompt ending in the
-`complete-slice --branch` instruction) and takes the slice out of review by
+**Approving over comments** (gnat's diff tab, `nat slice rework`): with
+comments pending, approve sends them (`agent send`, prompt ending in the
+`slice complete --branch` instruction) and takes the slice out of review by
 clearing its `Branch` — no PR opens. The agent's re-hand-back re-records the
 branch, and `AppModel.settlePendingApprovals` (in-memory mark, armed only once
-a refresh has *seen* the slice un-handed-back) then runs `slice-approve`. A
+a refresh has *seen* the slice un-handed-back) then runs `slice approve`. A
 lost mark degrades to a normal review.
 
 **Worktree lifecycle.** A slice's worktree is removed **only** once its
 work has ended — merged, closed Done with no PR, or trashed — by the board
 and the headless commands alike: the board at the merge it witnesses, swept
-again on every plan load; `pr-merge` after its Done, `pr-status` where
-`SettleMerged` writes Done, a Done-closing `complete-slice`, `slice-delete`
-after the trash; and `pr-status`'s sweep (`actions.SweepLanded`, one `git
+again on every plan load; `pr merge` after its Done, `pr status` where
+`SettleMerged` writes Done, a Done-closing `slice complete`, `slice delete`
+after the trash; and `pr status`'s sweep (`actions.SweepLanded`, one `git
 worktree list` per repository) for what nothing witnessed — every Done
 slice whose PR, if any, the reading found merged or closed, with no live
 agent. A Done slice whose PR reads open, or could not be read, keeps it. Every removal goes through `actions.RemoveWorktree`, in
@@ -328,12 +328,12 @@ unread reciprocal, there only so Notion has somewhere to mirror the far end
 read as a mutual block). A slice is blocked while anything it names isn't
 Done; an unreadable dependency is logged and never counted, so a trashed
 page can't wedge the plan forever. A write that would leave a cycle is
-refused before it happens (`plan-apply`, `slice-depends --on`) — `plan-apply`
+refused before it happens (`plan apply`, `slice depends --on`) — `plan apply`
 only over a cycle an edge it adds goes round, a standing one it leaves as it
 found warned of on stderr (`Env.Err`); a cycle
 already on the board is reported as one, not an ordinary wait, everywhere it
-matters (status line, launch refusal, `next-slice`). `next-slice` steps over
-a blocked slice; `start-slice`, pointed at one slice, refuses it by name.
+matters (status line, launch refusal, `slice next`). `slice next` steps over
+a blocked slice; `slice start`, pointed at one slice, refuses it by name.
 
 **One state, one source.** Notion's status is the *only* source of
 lifecycle truth (`domain.StateOf`). A Done slice is Done, full stop, and is
@@ -358,7 +358,7 @@ planning prompts) and every skill spells this out explicitly, and one test walks
 worktree path are derived — in `internal/actions`, `internal/worktree` and
 `internal/git`) is **spelled once, in Go**: an agent that cuts its own
 worktree runs a command that does it (`actions.EnsureWorktree`) — `nat
-slice-worktree` from `/next-slice`, `nat slice-repo --repo`, which cuts it
+slice worktree` from `/next-slice`, `nat slice repo --repo`, which cuts it
 after recording the repository, from the slice prompt's `repoPassage` —
 and works in the path it prints. No prompt or skill re-spells the naming;
 tests refuse `.worktrees` and `symbolic-ref` in `prompt.go` and the skill.
@@ -368,8 +368,8 @@ milestone is nothing but its name, never referenced by URL or ID. Renaming
 one goes the long way (Notion silently ignores an in-place option rename;
 see `internal/notion/CLAUDE.md`); removing one refuses while any slice is
 still filed under it, and the last slice leaving one removes it: every write
-that takes a slice out of a milestone (`slice-move`, `slice-delete`, a
-refiling `slice-reorder`, `plan-apply`'s `move`/`remove` once the whole
+that takes a slice out of a milestone (`slice move`, `slice delete`, a
+refiling `slice reorder`, `plan apply`'s `move`/`remove` once the whole
 document has applied, the board's move and delete) ends in
 `actions.PruneEmptied`, which removes it only where a fresh read finds no
 slice of any status under it — never one that was already empty, never a
@@ -388,17 +388,17 @@ returns the `Local` with no `Mirrored` and no client), and it needs no Notion
 token on any path: startup fetches one only where `Config.UsesNotion`, and
 who works its slices is `Config.AssigneeFor` — the name *is* the identity,
 falling back to whoever is logged in. Creating one writes the plan file
-**before** the config entry (`nat project-create --local [--plan-dir]`; the
+**before** the config entry (`nat project create --local [--plan-dir]`; the
 board's `N`, which asks where the plan lives only when a projects database
-gives a choice). `config-show` says every project's backend. Every entry also carries a
+gives a choice). `config show` says every project's backend. Every entry also carries a
 `color` (a `config.ProjectColors` name, never hex): `config.Save` assigns one
 to any entry without (`Config.AssignColors`, `Load` never does; each the
 least-held name farthest round the hue circle from those held more, so a few
 projects are never neighbours) — the one
 deliberate exception to the round trip, since the first save after it landed
-coloured every entry — and `config-set project.<id>.color` changes it. The
+coloured every entry — and `config set project.<id>.color` changes it. The
 scratch project and source projects take none (`Config.Colorable`): a save
-clears one, `config-set` refuses one, and gnat draws none. gnat's
+clears one, `config set` refuses one, and gnat draws none. gnat's
 `ProjectConfig` / `ConfigDocProject` decode all of it and tolerate a missing `slices_ds_id`.
 
 **Task sources.** A source project is a local plan with `backend: source`
@@ -407,7 +407,7 @@ plugin's *containers* (a Shortcut card, say), keyed by the plugin's id. nat
 owns the tasks; the containers are the plugin's — nat never adds, renames,
 removes or moves one, and never moves a task between them (each refused in
 `store.Sourced`'s own words). Every task is filed under a container
-(`slice-add --container`; `--milestone` refused there). The plugin hears of
+(`slice add --container`; `--milestone` refused there). The plugin hears of
 a task's lifecycle by events sent **after** nat's own write, logged and never
 fatal; request and response bodies are never logged — only method, ids and
 exit code. `info --json` carries a `source` block (describe + sidebar tree)
@@ -416,11 +416,11 @@ that the plugin's tree leaves out, from nat's cached title, so a task never
 vanishes; a plugin that fails or is missing concludes nothing — the project
 still opens and `source.error` says why. gnat talks only to `nat`, and
 agents never see the plugin. **A source project has no working directory**
-(`project-create --source` records none): the repository is each task's own
+(`project create --source` records none): the repository is each task's own
 `Repo`. A task launched with none (`actions.RepoUnknown`) starts in the home
 directory with no worktree or git read, and its prompt sends the agent to
 work the repository out from the card, ask the user where it cannot tell,
-record it with `nat slice-repo`, which cuts its worktree and prints the path;
+record it with `nat slice repo`, which cuts its worktree and prints the path;
 from then on every path finds it through `actions.WorkdirFor`. A new task on
 a card starts from the repository of the card's latest task with one. **A
 source project's name is its plugin's `describe` title** (else the plugin's
@@ -431,7 +431,7 @@ connected (every `describe` setup field set) — there is no new-project entry
 for one. The protocol and the `nat` contract are specified in
 `docs/design/task-sources/README.md`.
 
-**Plugin install.** `nat plugin-install`/`-uninstall` (and gnat's Settings
+**Plugin install.** `nat plugin install`/`uninstall` (and gnat's Settings
 ▸ Sources over them) put a plugin under `<config dir>/plugins/<name>/` from a
 plugin source's release, checked against its manifest's sha256, with an
 `installed.json` beside it. A plugin directory with no such record was put
@@ -446,7 +446,7 @@ can't be read is its `error`, never "no plugins". Format and contract:
 **Plugin setup.** A plugin's credentials are its own; nat never stores one.
 A plugin declares what it needs as `describe`'s `setup` fields (`describe`
 must answer with no credential), gnat draws them under the plugin in
-Settings ▸ Sources, and `nat source-setup <plugin> --id <id>` relays the
+Settings ▸ Sources, and `nat source setup <plugin> --id <id>` relays the
 value to the plugin's `setup` method **on stdin, never argv** — and no log
 line, error or gnat request log carries it.
 

@@ -34,18 +34,20 @@ func (q *queuedGH) next() (string, error) {
 
 func (q *queuedGH) Run(string, string, ...string) (string, error) { return q.next() }
 
-func (q *queuedGH) RunWithStdin(string, io.Reader, string, ...string) (string, error) { return q.next() }
+func (q *queuedGH) RunWithStdin(string, io.Reader, string, ...string) (string, error) {
+	return q.next()
+}
 
-// budgetPRStatus runs pr-status --json, with extra arguments, and decodes it.
+// budgetPRStatus runs pr status --json, with extra arguments, and decodes it.
 func budgetPRStatus(t *testing.T, env Env, out *strings.Builder, args ...string) prStatusDoc {
 	t.Helper()
 	out.Reset()
-	if err := Run(context.Background(), append([]string{"pr-status", "--project", "project-1", "--json"}, args...), env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), append([]string{"pr", "status", "--project", "project-1", "--json"}, args...), env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	var doc prStatusDoc
 	if err := json.Unmarshal([]byte(out.String()), &doc); err != nil {
-		t.Fatalf("pr-status printed %q: %v", out, err)
+		t.Fatalf("pr status printed %q: %v", out, err)
 	}
 	return doc
 }
@@ -53,7 +55,7 @@ func budgetPRStatus(t *testing.T, env Env, out *strings.Builder, args ...string)
 // TestBudgetStopsPollingAndNotActions is the acceptance, end to end through
 // the real gh.CLI and its budget: a reading recorded, then refused on the
 // limit — the stop written until the reading's reset — after which a polling
-// pr-status runs no gh and reports the pause, an action still runs gh and
+// pr status runs no gh and reports the pause, an action still runs gh and
 // fails naming the retry time, a settle read still runs, and an action that
 // goes through clears the stop so polling reads again.
 func TestBudgetStopsPollingAndNotActions(t *testing.T) {
@@ -100,10 +102,10 @@ func TestBudgetStopsPollingAndNotActions(t *testing.T) {
 		t.Errorf("paused rate_limit = %+v, want a 46-minute wait", doc.RateLimit)
 	}
 
-	err := Run(context.Background(), []string{"pr-comment", testSliceID, "--body", "hi", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "comment", testSliceID, "--body", "hi", "--project", "project-1"}, env)
 	want := "GitHub's API limit is spent until " + reset.Format("15:04") + "; try again then"
 	if runner.calls != 3 || err == nil || err.Error() != want {
-		t.Errorf("pr-comment while stopped = %v after %d calls, want gh run and %q", err, runner.calls, want)
+		t.Errorf("pr comment while stopped = %v after %d calls, want gh run and %q", err, runner.calls, want)
 	}
 
 	budgetPRStatus(t, env, &out, "--settle")
@@ -113,8 +115,8 @@ func TestBudgetStopsPollingAndNotActions(t *testing.T) {
 
 	runner.answers = append(runner.answers, queuedAnswer{out: "https://github.test/craig/nat/pull/7#issuecomment-1\n"},
 		queuedAnswer{out: healthy})
-	if err := Run(context.Background(), []string{"pr-comment", testSliceID, "--body", "hi", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-comment: %v", err)
+	if err := Run(context.Background(), []string{"pr", "comment", testSliceID, "--body", "hi", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr comment: %v", err)
 	}
 	doc = budgetPRStatus(t, env, &out)
 	if runner.calls != 6 || doc.RateLimit == nil || doc.RateLimit.PausedUntil != nil {
@@ -123,7 +125,7 @@ func TestBudgetStopsPollingAndNotActions(t *testing.T) {
 	}
 }
 
-// TestPRStatusPollsUnlessSettling: pr-status reads through the polling read,
+// TestPRStatusPollsUnlessSettling: pr status reads through the polling read,
 // and --settle through an action's.
 func TestPRStatusPollsUnlessSettling(t *testing.T) {
 	api := &fakeAPI{
@@ -140,11 +142,11 @@ func TestPRStatusPollsUnlessSettling(t *testing.T) {
 
 	budgetPRStatus(t, env, &out)
 	if reader.polls != 1 || reader.calls != 1 {
-		t.Errorf("pr-status: %d polls of %d reads, want its one read a poll", reader.polls, reader.calls)
+		t.Errorf("pr status: %d polls of %d reads, want its one read a poll", reader.polls, reader.calls)
 	}
 	budgetPRStatus(t, env, &out, "--settle")
 	if reader.polls != 1 || reader.calls != 2 {
-		t.Errorf("pr-status --settle: %d polls of %d reads, want the second read no poll", reader.polls, reader.calls)
+		t.Errorf("pr status --settle: %d polls of %d reads, want the second read no poll", reader.polls, reader.calls)
 	}
 }
 
@@ -177,8 +179,8 @@ func TestPRStatusThrottled(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	line := "GitHub budget: 1004 of 5000 points left, resets at 2026-10-06T13:00:00Z; 300 projected at the reset; " +
 		"this reading cost 1; throttled to keep the reserve; next reading in 120s\n"

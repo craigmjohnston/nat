@@ -232,7 +232,7 @@ type Store interface {
 	ReleaseSlice(ctx context.Context, id string, sh Shape, by string) (domain.Slice, error)
 	// CancelSlice is a release that throws the work away: a line on it naming
 	// who cancelled it first, then Todo, held by nobody, and its Branch and
-	// pull request cleared — what `nat slice-cancel` writes once the agent is
+	// pull request cleared — what `nat slice cancel` writes once the agent is
 	// stopped, before the branch itself is deleted.
 	CancelSlice(ctx context.Context, id string, sh Shape, by string) (domain.Slice, error)
 	// CompleteSlice closes a slice out: the summary written on it first, then
@@ -249,11 +249,11 @@ type Store interface {
 	// Visual changes heading in the body, where [VisualChanges] reads them back.
 	RecordVisuals(ctx context.Context, id string, items []VisualChange) error
 	// RecordSentBack files review comments on a handed-back slice under a
-	// Sent back heading, which `slice-rework` writes before it clears the
+	// Sent back heading, which `slice rework` writes before it clears the
 	// slice's Branch — the task-log counterpart of a hand-back's own note.
 	RecordSentBack(ctx context.Context, id, comments string) error
 	// RecordResumed files why work on a handed-back slice was taken back up
-	// under a Resumed heading, which `slice-resume` writes before it clears
+	// under a Resumed heading, which `slice resume` writes before it clears
 	// the slice's Branch — the same order RecordSentBack keeps.
 	RecordResumed(ctx context.Context, id, note string) error
 	// RecordChecksFailed files the checks a slice's pull request failed under

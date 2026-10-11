@@ -189,7 +189,7 @@ struct NewProjectSheetView: View {
     }
 
     /// The directory chooser: a windowed app has no working directory worth
-    /// defaulting from, so the one `project-create` would fall back to is
+    /// defaulting from, so the one `project create` would fall back to is
     /// never the right answer and the panel is how the real one arrives.
     private func chooseDirectory() {
         let panel = NSOpenPanel()

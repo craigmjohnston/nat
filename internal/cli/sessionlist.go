@@ -16,11 +16,11 @@ import (
 
 // sessionList prints every ad hoc session on the project: whether tmux still
 // has it, its branch, and its pull request summary — each branch's pull
-// requests as the last batched reading (pr-status's, [lastReading]) found
+// requests as the last batched reading (pr status's, [lastReading]) found
 // them, so the listing asks GitHub nothing; a session with no branch at all
 // has nothing to read.
 func sessionList(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("session-list", flag.ContinueOnError)
+	flags := flag.NewFlagSet("session list", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -29,7 +29,7 @@ func sessionList(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("session-list: takes no positional arguments, given %d", len(rest))
+		return usageErrorf("session list: takes no positional arguments, given %d", len(rest))
 	}
 
 	_, projectID, project, err := env.projectFor(*projectRef)

@@ -225,7 +225,7 @@ type Uninstalled struct {
 // title — a source project is called what its plugin calls itself, never
 // what its entry says.
 //
-// Each project goes as project-create made it, in reverse: its plan file
+// Each project goes as project create made it, in reverse: its plan file
 // (and SQLite's -wal/-shm beside it; a file already gone is fine) first, then
 // its config entry, saved through save — so a removal the OS refuses stops
 // with that project still whole, and no entry ever names a plan that is

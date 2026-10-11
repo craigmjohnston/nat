@@ -39,7 +39,7 @@ type fakePRReader struct {
 	outlook *gh.Outlook
 	cost    int
 
-	// viewed records every ViewPR — which nothing pr-status does may make.
+	// viewed records every ViewPR — which nothing pr status does may make.
 	viewed []string
 
 	// logs answers FailedLog by job (or run, where no job is named), logErr
@@ -120,10 +120,10 @@ func (f *fakePRReader) Checks(dir, ref string) (string, error)         { return 
 
 func (f *fakePRReader) ViewPR(dir, ref string) (gh.PR, error) {
 	f.viewed = append(f.viewed, ref)
-	return gh.PR{}, errors.New("pr-status views no pull request")
+	return gh.PR{}, errors.New("pr status views no pull request")
 }
 
-// The rest of [GH] pr-status never calls; stubbed so *fakePRReader can stand
+// The rest of [GH] pr status never calls; stubbed so *fakePRReader can stand
 // in for the whole seam.
 func (f *fakePRReader) CreatePR(dir, branch, base, title, body string) (string, error) {
 	return "", nil
@@ -177,9 +177,9 @@ func TestPRStatusReportsReadiness(t *testing.T) {
 	}}
 	env.NewGH = func() GH { return reader }
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-status: %v", err)
+		t.Fatalf("pr status: %v", err)
 	}
 	if reader.calls != 1 {
 		t.Errorf("gh calls = %d, want one reading", reader.calls)
@@ -215,9 +215,9 @@ func TestPRStatusJSON(t *testing.T) {
 	reader := &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/1": openPR(false, false)}}
 	env.NewGH = func() GH { return reader }
 
-	err := Run(context.Background(), []string{"pr-status", "--json", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--json", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-status --json: %v", err)
+		t.Fatalf("pr status --json: %v", err)
 	}
 	var got prStatusDoc
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -242,9 +242,9 @@ func TestPRStatusNoSlicesWorthReading(t *testing.T) {
 	reader := &fakePRReader{}
 	env.NewGH = func() GH { return reader }
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-status: %v", err)
+		t.Fatalf("pr status: %v", err)
 	}
 	if reader.calls != 0 {
 		t.Errorf("gh calls = %d, want none: nothing on the plan is worth reading", reader.calls)
@@ -265,9 +265,9 @@ func TestPRStatusLeavesAFailedReadingUnread(t *testing.T) {
 	reader := &fakePRReader{err: errors.New("gh: not authenticated")}
 	env.NewGH = func() GH { return reader }
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-status: %v", err)
+		t.Fatalf("pr status: %v", err)
 	}
 	if !strings.Contains(out.String(), "Awaiting review — unread — https://github.test/craig/nat/pull/1") {
 		t.Errorf("output = %q, want the slice reported unread", out.String())
@@ -290,9 +290,9 @@ func TestPRStatusMarksAMergedPRDone(t *testing.T) {
 	reader := &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateMerged}}}
 	env.NewGH = func() GH { return reader }
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-status: %v", err)
+		t.Fatalf("pr status: %v", err)
 	}
 	if len(reader.viewed) != 0 {
 		t.Errorf("viewed = %v, want no pull request viewed", reader.viewed)
@@ -329,9 +329,9 @@ func TestPRStatusReopensADoneSliceWithAnOpenPR(t *testing.T) {
 	env.NewGH = func() GH { return reader }
 	withDoneWorktree(&env, "Awaiting merge")
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-status: %v", err)
+		t.Fatalf("pr status: %v", err)
 	}
 	if len(api.updates) != 1 || api.updates[0].id != "s2" {
 		t.Fatalf("updates = %+v, want the slice reopened", api.updates)
@@ -369,9 +369,9 @@ func TestPRStatusReopensLocallyEvenWhenThePushFails(t *testing.T) {
 	env.NewGH = func() GH { return reader }
 	withDoneWorktree(&env, "Awaiting merge")
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-status: %v", err)
+		t.Fatalf("pr status: %v", err)
 	}
 	if nudges != 1 {
 		t.Errorf("nudges = %d, want one for the local write that landed", nudges)
@@ -417,8 +417,8 @@ func TestPRStatusLeavesAClosedPRAlone(t *testing.T) {
 	reader := &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/7": {State: gh.PRStateClosed}}}
 	env.NewGH = func() GH { return reader }
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if len(api.updates) != 0 || nudges != 0 {
 		t.Errorf("updates = %+v, nudges = %d, want nothing written for a closed pull request", api.updates, nudges)
@@ -438,8 +438,8 @@ func TestPRStatusLeavesAnUnresolvedPRAlone(t *testing.T) {
 	reader := &fakePRReader{}
 	env.NewGH = func() GH { return reader }
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want nothing concluded from a reading that never happened", api.updates)
@@ -466,8 +466,8 @@ func TestPRStatusReadsEveryRepositoryAtOnce(t *testing.T) {
 	}}
 	env.NewGH = func() GH { return reader }
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if reader.calls != 1 || len(reader.queries[0].PRs) != 2 {
 		t.Errorf("gh calls = %d (%+v), want one reading of both", reader.calls, reader.queries)
@@ -477,7 +477,7 @@ func TestPRStatusReadsEveryRepositoryAtOnce(t *testing.T) {
 func TestPRStatusRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-status", "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -488,7 +488,7 @@ func TestPRStatusRefusesAnUnknownFlag(t *testing.T) {
 func TestPRStatusRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -499,7 +499,7 @@ func TestPRStatusReportsAFailedQuery(t *testing.T) {
 	api := &fakeAPI{queryErr: map[string]error{"slices-ds": errors.New("notion is down")}}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load slices") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -529,10 +529,10 @@ func TestPRStatusLeavesADoneSliceAloneWhenItCannotBeReopenedLocally(t *testing.T
 	env.NewGH = func() GH { return reader }
 	withDoneWorktree(&env, "Awaiting merge")
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env)
 
 	if err != nil {
-		t.Fatalf("pr-status: %v, want it to succeed despite the one slice it could not reopen", err)
+		t.Fatalf("pr status: %v, want it to succeed despite the one slice it could not reopen", err)
 	}
 	if nudges != 0 {
 		t.Errorf("nudges = %d, want none: nothing was actually written", nudges)
@@ -554,7 +554,7 @@ func TestPRStatusReportsAFailedLocalPlanRead(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load slices") {
 		t.Errorf("err = %v, want the failed local read named", err)
@@ -629,8 +629,8 @@ func redStatusEnv(t *testing.T, runner *agentTestRunner) (Env, *fakeAPI, interfa
 // green and pending read as they always did, with their verdicts.
 func TestPRStatusJSONReportsFailingChecks(t *testing.T) {
 	env, _, out := redStatusEnv(t, &agentTestRunner{liveSessions: map[string]string{}})
-	if err := Run(context.Background(), []string{"pr-status", "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status --json: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status --json: %v", err)
 	}
 	var got prStatusDoc
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -664,8 +664,8 @@ func TestPRStatusJSONReportsFailingChecks(t *testing.T) {
 func TestPRStatusRecordsFailingChecksWithNoAgent(t *testing.T) {
 	runner := &agentTestRunner{liveSessions: map[string]string{}}
 	env, api, out := redStatusEnv(t, runner)
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if len(api.appends) != 1 || api.appends[0].id != "s1" {
 		t.Fatalf("appends = %+v, want one on s1", api.appends)
@@ -685,11 +685,11 @@ func TestPRStatusRecordsFailingChecksWithNoAgent(t *testing.T) {
 func TestPRStatusNudgesALiveAgent(t *testing.T) {
 	runner := &agentTestRunner{liveSessions: map[string]string{"s1": "nat-s1"}}
 	env, api, _ := redStatusEnv(t, runner)
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if len(runner.sends) != 1 || runner.sends[0].session != "nat-s1" ||
-		!strings.Contains(runner.sends[0].prompt, "nat slice-checks s1 --log --project project-1") {
+		!strings.Contains(runner.sends[0].prompt, "nat slice checks s1 --log --project project-1") {
 		t.Fatalf("sends = %+v, want one checks prompt to nat-s1", runner.sends)
 	}
 	if len(api.appends) != 1 {
@@ -704,8 +704,8 @@ func TestPRStatusNudgesALiveAgent(t *testing.T) {
 func TestPRStatusLeavesFailingChecksWhenTmuxIsUnread(t *testing.T) {
 	runner := &agentTestRunner{liveFatalErr: "tmux broke"}
 	env, api, _ := redStatusEnv(t, runner)
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if len(api.appends) != 0 || len(runner.sends) != 0 {
 		t.Errorf("appends %d, sends %d, want nothing", len(api.appends), len(runner.sends))
@@ -725,7 +725,7 @@ func (r *readingRunner) Run(dir, name string, args ...string) (string, error) {
 }
 
 // realReading is a fakePRReader whose reading is the real gh.CLI's of a real
-// GraphQL answer, so pr-status is tested against the shapes GitHub prints.
+// GraphQL answer, so pr status is tested against the shapes GitHub prints.
 type realReading struct {
 	*fakePRReader
 	cli gh.CLI
@@ -766,8 +766,8 @@ func TestPRStatusJSONConflicting(t *testing.T) {
 		node("p2", "3", "APPROVED", "MERGEABLE", "CLEAN") + `,` + node("p3", "4", "", "UNKNOWN", "UNKNOWN") + `}}}`}
 	env.NewGH = func() GH { return realReading{fakePRReader: &fakePRReader{}, cli: gh.NewWithRunner(runner)} }
 
-	if err := Run(context.Background(), []string{"pr-status", "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status --json: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status --json: %v", err)
 	}
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, out.Bytes()); err != nil {

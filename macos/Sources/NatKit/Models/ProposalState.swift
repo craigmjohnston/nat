@@ -1,7 +1,7 @@
 import Foundation
 
 /// One workshop's proposal, as the app holds it: a small state machine over
-/// the readings of `nat plan-proposal` and the user's Accept, so that what is
+/// the readings of `nat plan proposal` and the user's Accept, so that what is
 /// on screen never depends on which subprocess happens to finish first.
 ///
 /// Every reading takes a ticket before it asks nat and hands it back with

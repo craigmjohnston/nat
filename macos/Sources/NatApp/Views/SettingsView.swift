@@ -12,8 +12,8 @@ import NatKit
 /// taller than it scrolls.
 ///
 /// Underneath it is the same config file the hand-built form edited: fields
-/// read from `nat config-show`, and a write of exactly the keys that changed,
-/// one `config-set` per key, with each key's own refusal shown beside the
+/// read from `nat config show`, and a write of exactly the keys that changed,
+/// one `config set` per key, with each key's own refusal shown beside the
 /// field that caused it — `nat` refuses an out-of-bounds number with its own
 /// message, and that message is the whole of what there is to say about it.
 ///
@@ -128,7 +128,7 @@ struct SettingsView: View {
     @AppStorage(PaletteChoice.darkStorageKey) private var storedDarkPalette = PaletteChoice.defaultDark.rawValue
     @AppStorage(PaletteChoice.lightStorageKey) private var storedLightPalette = PaletteChoice.defaultLight.rawValue
     /// The two text sizes, the theme's kind of preference and kept the same
-    /// way: `UserDefaults`, live, never `nat config-set`.
+    /// way: `UserDefaults`, live, never `nat config set`.
     @AppStorage(TypeSize.uiStorageKey) private var storedUISize = TypeSize.defaultUI
     @AppStorage(TypeSize.monoStorageKey) private var storedMonoSize = TypeSize.defaultMono
 
@@ -149,10 +149,10 @@ struct SettingsView: View {
     /// reasonable answer it starts with.
     @State private var agentOptions = AgentOptions.fallback
 
-    /// The Sources tab: `nat plugin-list` and the buttons over it.
+    /// The Sources tab: `nat plugin list` and the buttons over it.
     @State private var plugins: PluginsModel
 
-    /// The GitHub section: `nat storage-usage`, read when first shown.
+    /// The GitHub section: `nat storage usage`, read when first shown.
     @State private var storage: StorageUsageModel
 
     /// nat's own version for About, read once that section is first shown:
@@ -281,9 +281,9 @@ struct SettingsView: View {
     }
 
     /// The task-source plugins: what is installed, what the plugin sources
-    /// offer, and the sources themselves — all `nat plugin-list`, read the
+    /// offer, and the sources themselves — all `nat plugin list`, read the
     /// first time the tab is shown and again after every button, each of
-    /// which is one `nat plugin-*` call (`PluginsModel`).
+    /// which is one `nat plugin …` call (`PluginsModel`).
     private var sourcesTab: some View {
         VStack(alignment: .leading, spacing: SettingsLayout.groupSpacing) {
             if let listing = plugins.listing {
@@ -360,7 +360,7 @@ struct SettingsView: View {
     /// One of a plugin's setup fields beneath its row: whether the plugin
     /// holds a value for it (where it says), the label, a secure field (or a
     /// plain one for `text`) and Save, the hint under them, then what the
-    /// last Save came to. The value goes to `nat source-setup` on
+    /// last Save came to. The value goes to `nat source setup` on
     /// stdin, through `PluginsModel`.
     private func setupFieldRow(plugin: String, field: PluginSetupField) -> some View {
         let key = PluginsModel.SetupKey(plugin: plugin, field: field.id)
@@ -691,7 +691,7 @@ struct SettingsView: View {
     /// so "Default" stands in for "" on the way in and out.
     ///
     /// Whatever the config already holds is an option too, wherever that is
-    /// not one of the known ones: `config-set` takes any string for these
+    /// not one of the known ones: `config set` takes any string for these
     /// keys — the TUI's own form is free text — and a picker that did not
     /// carry the stored value would show a blank selection for it and lose it
     /// to the first other choice made.

@@ -5,10 +5,10 @@ import NatKit
 // A source container selected: its navigator (the story's facts, then one
 // section per section the plugin declared) and its main pane (the story and
 // its comments, or a links section's list), over `ContainerStore`'s reading
-// of `nat container-show`. What is open and what the pane shows are the
+// of `nat container show`. What is open and what the pane shows are the
 // shell's (`ContainerFocus`), as a slice's are.
 
-/// The container's `container-show` reading, as the views draw it.
+/// The container's `container show` reading, as the views draw it.
 @MainActor
 private func containerState(_ appModel: AppModel, _ containerID: String) -> ContainerLoadState {
     appModel.containerStore(projectID: appModel.activeProjectID ?? "").state(for: containerID)

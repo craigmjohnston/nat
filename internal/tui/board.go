@@ -489,7 +489,7 @@ func (b *Board) rebuild() {
 // order among themselves: what can be worked now is what the milestone is read
 // for, and a slice waiting on another is not it. That is a fact about the rows
 // this board draws and nothing else — the plan in Notion is untouched, so
-// next-slice and the plan order it reads hand work out exactly as they did.
+// slice next and the plan order it reads hand work out exactly as they did.
 func (b *Board) appendGroup(i int) {
 	g := b.groups[i]
 	key := groupKey(g)

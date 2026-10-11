@@ -32,7 +32,7 @@ public final class AppModel {
     /// The current configuration.
     public private(set) var config: NatProjectConfig?
 
-    /// True while a workshop launch is under way — the `nat workshop-launch`
+    /// True while a workshop launch is under way — the `nat workshop launch`
     /// itself, and then the wait for the activity poll to report the session
     /// it started. It is held across both because the pane has nothing to
     /// draw in between: the command returning says a session exists, and the
@@ -245,7 +245,7 @@ public final class AppModel {
 
     /// Each Untitled tab's workspace id, minted with the tab: what a planning
     /// agent launched from it is keyed by, where a project's is keyed by the
-    /// project, and what its `plan-propose` carries so a proposal routes back
+    /// project, and what its `plan propose` carries so a proposal routes back
     /// here. A fresh UUID rather than the tab's own `untitled-N`, which a
     /// later run may reuse once the tab is closed — a stale proposal file or
     /// session of a tab long gone must never be mistaken for this one's. An
@@ -295,13 +295,13 @@ public final class AppModel {
     /// mirrors how `activityStore` is one store rather than one per project).
     public private(set) var reviewStatsStore: ReviewStatsStore?
 
-    /// Every open project's `nat pr-status` reading, held per project — the
+    /// Every open project's `nat pr status` reading, held per project — the
     /// sidebar's marks in every project, the PR section's notices and each
     /// tab's attention all read it.
     public private(set) var prStatusStore: PRStatusStore?
 
     /// The app's one read of GitHub: every open project in one `nat
-    /// pr-status` on the poll tick, and a settle read after an action — see
+    /// pr status` on the poll tick, and a settle read after an action — see
     /// `GitHubReadingStore`. It feeds `prStatusStore`, the visible PR tab and
     /// the session rows; nothing else in the app reads GitHub on a timer.
     public private(set) var githubReadingStore: GitHubReadingStore?
@@ -383,7 +383,7 @@ public final class AppModel {
     /// plan read of it (`info --expand`).
     public private(set) var sourceExpanded: [String: Set<String>] = [:]
 
-    /// Every task-source plugin this machine has (`nat source-list`), read
+    /// Every task-source plugin this machine has (`nat source list`), read
     /// once at startup — what the `+` menu offers a new source project for.
     /// Empty where the read failed: a missing plugin is no reason to say so.
     public private(set) var sourcePlugins: [SourcePlugin] = []
@@ -458,7 +458,7 @@ public final class AppModel {
     public let followUpStore = FollowUpStore()
 
     /// Slices approved over pending review comments: the comments went to
-    /// the agent and the slice was taken out of review (`slice-rework`), and
+    /// the agent and the slice was taken out of review (`slice rework`), and
     /// the approve is owed once its next hand-back lands. The value says
     /// whether that rework has been *seen* — a refresh reading the slice as
     /// no longer handed back — because a plan read taken before the rework
@@ -523,7 +523,7 @@ public final class AppModel {
     private let pathsProvider: @Sendable () async throws -> NatPaths
 
     /// How `launchWorkshop(request:)` launches the planning agent — `nat
-    /// workshop-launch` through the client. Injectable for the same reason
+    /// workshop launch` through the client. Injectable for the same reason
     /// `pathsProvider` is.
     private let workshopLauncher: @Sendable (
         _ projectID: String, _ model: String?, _ effort: String?, _ request: String?
@@ -661,7 +661,7 @@ public final class AppModel {
     /// next launch rather than vanishing under the user.
     private var scratchPrepared = false
 
-    /// `nat scratch-open`, then `nat done-clear` on what it named — both before
+    /// `nat scratch open`, then `nat project done clear` on what it named — both before
     /// the scratch project's first read, so the rail never draws a plan that is
     /// about to be emptied. Neither failure stops the launch: without the
     /// scratch project there is simply no scratch tab, and a failed clear leaves
@@ -828,7 +828,7 @@ public final class AppModel {
     public func start(configPath: String, nudgePath: String) async {
         self.nudgePath = nudgePath
         startProposalWatch()
-        // Off the startup path: `source-list` describes every plugin, and a
+        // Off the startup path: `source list` describes every plugin, and a
         // slow one is no reason to hold the board.
         if !sourcePluginsLoaded { Task { await loadSourcePlugins() } }
         do {
@@ -979,7 +979,7 @@ public final class AppModel {
 
     /// gnat never picks a colour: every config project that takes one
     /// (`NatProjectConfig.takesColor`) and whose entry has none
-    /// is given one by nat — one `config-set project.<id>.color auto` each,
+    /// is given one by nat — one `config set project.<id>.color auto` each,
     /// one at a time — and config is read again, which colours their badges.
     /// Each project is asked once a run; a refusal is logged and leaves it
     /// with the quiet badge until the next launch. Off unless `assignsProjectColors`.
@@ -1018,7 +1018,7 @@ public final class AppModel {
         // Load the project store
         await projectStore.load()
         await updateReviewStats(projectID: projectID, projectStore: projectStore)
-        // Its sessions: `session-list` asks GitHub nothing — each row's pull
+        // Its sessions: `session list` asks GitHub nothing — each row's pull
         // requests are the ones the last GitHub reading kept.
         await sessionStore?.update(projectID: projectID)
         // Every session a previous run left behind on a finished slice is
@@ -1128,7 +1128,7 @@ public final class AppModel {
 
     /// The configured projects with no tab in the strip — every one the user
     /// closed — as the "+" tab's open picker offers them, in config order.
-    /// Read off config itself rather than `nat project-list`, so a closed
+    /// Read off config itself rather than `nat project list`, so a closed
     /// project can be opened again whatever the workspace listing says. The
     /// scratch project is never one: it is never closed.
     public var closedProjects: [ProjectListingEntry] {
@@ -1141,7 +1141,7 @@ public final class AppModel {
     }
 
     /// Take a project just opened or created into the board: re-read config
-    /// so the entry `project-open`/`project-create` wrote is in hand, give it
+    /// so the entry `project open`/`project create` wrote is in hand, give it
     /// a tab if it has none, and activate it. The two paths of the "+" tab
     /// end here, since what each produced is the same thing — one more entry
     /// in local config.
@@ -1512,7 +1512,7 @@ public final class AppModel {
     }
 
     /// Whether a project's plan, as its store holds it, has anything for
-    /// `pr-status` to read: a slice with a pull request, or a handed-back
+    /// `pr status` to read: a slice with a pull request, or a handed-back
     /// branch under review.
     private func hasPullRequestWork(projectID: String) -> Bool {
         guard let info = stores[projectID]?.state.projectInfo else { return false }
@@ -1553,7 +1553,7 @@ public final class AppModel {
 
     /// Hands a GitHub reading on: each open project's part to
     /// `prStatusStore`, the detail to the PR tab showing it, and the active
-    /// project's session rows a fresh `session-list` — which reads the pull
+    /// project's session rows a fresh `session list` — which reads the pull
     /// requests this reading kept, and asks GitHub nothing.
     private func deliver(_ reading: GitHubReading) async {
         let open = Set(projectTabs.map(\.id))
@@ -2000,7 +2000,7 @@ public final class AppModel {
         proposalNameEdits[tabID] = nil
     }
 
-    /// Watch the nudge marker for `plan-propose`, which touches it: the same
+    /// Watch the nudge marker for `plan propose`, which touches it: the same
     /// mtime watch the project's own refresh rides on, so a proposal reaches
     /// the Plan section within its one-second poll. Started with the app and
     /// running for its life, whatever tabs are open — a reading is cheap, and
@@ -2105,7 +2105,7 @@ public final class AppModel {
     /// proposal up: whatever they said makes it stale, and the agent proposes
     /// again on its next turn (`agent.ProposalWithdrawnRule`). The proposal
     /// and its Plan ready badge come down here and now, the Terminal put back
-    /// up; then `nat plan-withdraw` removes the file, off the main actor. A
+    /// up; then `nat plan withdraw` removes the file, off the main actor. A
     /// failed withdraw is logged and the local clear stands — a reading that
     /// still finds the file brings it back. No proposal, or one being
     /// accepted, withdraws nothing. The task is the nat call's, for a test to
@@ -2135,13 +2135,13 @@ public final class AppModel {
     /// Brief goes on showing the request as it was first sent.
     public func continueEndedWorkshop() async {
         guard workshopEnded, let tabID = activeProjectID, let request = workshopRequest else { return }
-        let read = workspaceIDs[tabID].map { "nat plan-proposal --workspace \($0) --json" }
-            ?? "nat plan-proposal --project \(tabID) --json"
+        let read = workspaceIDs[tabID].map { "nat plan proposal --workspace \($0) --json" }
+            ?? "nat plan proposal --project \(tabID) --json"
         let continuing = [
             request,
             "A plan was proposed for this by an earlier planning session, which has since ended, and it is still "
                 + "waiting for the user to accept it. Read it with `\(read)` and take it up from there: ask the "
-                + "user what to change, and propose the revised plan with `nat plan-propose` as before.",
+                + "user what to change, and propose the revised plan with `nat plan propose` as before.",
         ].filter { !$0.isEmpty }.joined(separator: "\n\n")
         await startWorkshop(tabID: tabID, shown: request, description: continuing)
     }
@@ -2238,8 +2238,8 @@ public final class AppModel {
         }
     }
 
-    /// A project workshop's Accept: `nat plan-accept --project` files the
-    /// proposal into the project through plan-apply's own validation and
+    /// A project workshop's Accept: `nat plan accept --project` files the
+    /// proposal into the project through plan apply's own validation and
     /// drops it. The project's plan is then read from the replica — nat wrote
     /// the plan through it, so there is nothing to pull from the workspace —
     /// and only once that read has landed does the Accept end and the
@@ -2298,7 +2298,7 @@ public final class AppModel {
     }
 
     /// The picker's "Create page": put the active local project into Notion
-    /// under `place` (`nat project-mirror`). Answers nil once it has, and
+    /// under `place` (`nat project mirror`). Answers nil once it has, and
     /// otherwise what nat refused with — for the picker to show, with the card
     /// left where it was: a failed mirror changes nothing here.
     ///
@@ -2501,7 +2501,7 @@ public final class AppModel {
     /// Everything waiting on the user across every open project, in tab
     /// order — what the dock badges, lists in its menu and bounces for.
     /// Computed off the same stores the pills are (each plan read, activity
-    /// re-read and `pr-status` reading is observed through them), so it is
+    /// re-read and `pr status` reading is observed through them), so it is
     /// never stale and needs no poll of its own.
     public var dockAttention: [AttentionItem] {
         projectTabs.flatMap { tab -> [AttentionItem] in
@@ -2530,7 +2530,7 @@ public final class AppModel {
 
     /// One project's attention inputs, nil where its plan has not landed.
     ///
-    /// The PR reading is the project's own last `pr-status` reading
+    /// The PR reading is the project's own last `pr status` reading
     /// (`prStatusStore`) — absent, never wrong, for one not yet read, exactly
     /// as the rail does with no reading taken. The planning agent is the one the activity map
     /// attributes to this project by its own scoped tag; the bare legacy
@@ -2586,7 +2586,7 @@ public final class AppModel {
     }
 
     /// Applies the user's choices for one batch of a slice's follow-ups
-    /// (`slice-triage`), then refreshes inside the apply, so the queued slices
+    /// (`slice triage`), then refreshes inside the apply, so the queued slices
     /// land in the plan, the batch's card goes, and every other batch's card
     /// is read with fresh indexes before it can apply.
     public func applyFollowUps(sliceID: String, batch: Int, followUps: [FollowUp]) async {
@@ -2654,7 +2654,7 @@ public final class AppModel {
     /// pip is waiting, the keystroke is read as the answer and drawn working
     /// at once. The one trigger that is a keystroke — an Enter that answered
     /// nothing goes back to waiting when the expectation's TTL runs out, and
-    /// the agent's own `agent-working` nudges the real reading in.
+    /// the agent's own `agent working` nudges the real reading in.
     public func terminalSubmitted(agentKey key: String) {
         guard let store = activityStore, store.activity(for: key) == .waiting else { return }
         store.expectWorking(key)
@@ -2662,12 +2662,12 @@ public final class AppModel {
 
     /// Send back to agent: a handed-back slice — in review, or at its open
     /// pull request — goes back to its agent for more. The record first, as
-    /// `slice-triage` writes before its send: `nat slice-resume` files the
+    /// `slice triage` writes before its send: `nat slice resume` files the
     /// note under a stamped `Resumed` and clears the Branch, so the slice reads
     /// as being worked again (`Slice.resumed`). Then the agent hears of it: a
-    /// live one by `agent-send`, told why and ending in the `complete-slice
+    /// live one by `agent send`, told why and ending in the `slice complete
     /// --branch` hand-back on the branch the slice had; with none, the
-    /// ordinary `slice-launch` — a relaunch, its prompt reading the Resumed
+    /// ordinary `slice launch` — a relaunch, its prompt reading the Resumed
     /// off the page. A refused resume sends nothing; a send or launch that
     /// fails after it leaves the record standing, and its error is the one
     /// shown, so trying again resumes nothing twice (nat writes nothing on a
@@ -2714,7 +2714,7 @@ public final class AppModel {
     }
 
     /// Runs the approve a slice is owed when the plan just read shows it
-    /// handed back again — `slice-approve` exactly as the Approve button runs
+    /// handed back again — `slice approve` exactly as the Approve button runs
     /// it, its refusal (gh's) surfacing the same way on the Diff tab. The
     /// mark is dropped *before* the approve starts, so the nudge and the poll
     /// landing together cannot open it twice, and a slice that failed here is
@@ -2745,7 +2745,7 @@ public final class AppModel {
 
     // MARK: - Agent sessions
 
-    /// End a slice's agent session outright — `nat agent-kill`, the one
+    /// End a slice's agent session outright — `nat agent kill`, the one
     /// thing that actually reaps a session, since closing the Agent tab only
     /// detaches the viewer. The activity poll is re-armed straight after, so
     /// the session leaves the rail's live indicators on its next reading
@@ -2754,7 +2754,7 @@ public final class AppModel {
     /// Answers with the refusal's own first line where nat refused, and nil
     /// where the session is gone. Nothing in the app asks for a kill by hand
     /// — `reapFinishedAgents` is the only caller — so a refusal is something
-    /// to log rather than the app's error banner; `nat agent-kill` is where
+    /// to log rather than the app's error banner; `nat agent kill` is where
     /// a kill is asked for outright. `projectID` is the slice's own
     /// project, never merely the active one: nat finds the session by the
     /// slice it is asked about in the project it is asked on.
@@ -2772,7 +2772,7 @@ public final class AppModel {
         return nil
     }
 
-    /// Ends the project's planning agent outright — `nat agent-kill
+    /// Ends the project's planning agent outright — `nat agent kill
     /// --workshop`, alongside `killAgent(sliceID:projectID:)` above. Unlike that one,
     /// this is asked for by hand: the rail's ✕ on the workshop row is the
     /// only caller, closing a tab a session is still live on.
@@ -2836,11 +2836,11 @@ public final class AppModel {
     // MARK: - Ad hoc sessions
 
     /// The New Session button: launch a bare Claude Code on the active
-    /// project — `nat session-launch`. `dir` is where it runs, or nil for
+    /// project — `nat session launch`. `dir` is where it runs, or nil for
     /// the project's own working directory. Busy while the launch is in
     /// flight, mirroring `launchWorkshop(request:)`'s own shape; unlike a
     /// workshop launch there is no live-reading to wait out afterwards — the
-    /// session is minted before `session-launch` returns, so kicking the
+    /// session is minted before `session launch` returns, so kicking the
     /// activity poll and refreshing the session list is enough for its row
     /// to appear.
     public func launchSession(dir: String? = nil) async {
@@ -2887,7 +2887,7 @@ public final class AppModel {
     }
 
     /// Read a session's branches and pull requests fresh — `nat
-    /// session-status`, the PR tab's own reading. A plain read, unlike
+    /// session status`, the PR tab's own reading. A plain read, unlike
     /// `endSession`/`discardSession`: it never ends the session (`discard`
     /// is always false), leaving whether the strongest fact — the merged/open
     /// state itself — has already ended it to the CLI's own next read.
@@ -2895,7 +2895,7 @@ public final class AppModel {
         try await clientFactory().sessionStatus(projectID: projectID, sessionID: sessionID, discard: false)
     }
 
-    /// End an ad hoc session's agent outright — `nat agent-kill` on its own
+    /// End an ad hoc session's agent outright — `nat agent kill` on its own
     /// pane tag, the rail's own "End session" — and refresh the session list
     /// so the row settles into Needs review or DONE on its next reading
     /// rather than waiting for the poll.
@@ -2918,7 +2918,7 @@ public final class AppModel {
         return nil
     }
 
-    /// Discard an ad hoc session — `nat session-status --discard`, the
+    /// Discard an ad hoc session — `nat session status --discard`, the
     /// rail's confirmed "Discard": ends the session (and removes its
     /// worktree) even with a pull request still unmerged, so long as none is
     /// still open. A session still live, or with a pull request still open,
@@ -2945,7 +2945,7 @@ public final class AppModel {
     }
 
     /// Kills the agent sessions this run's open tabs have finished with —
-    /// `agentSessionsToReap` is the candidate rule, `nat slice-status`, read
+    /// `agentSessionsToReap` is the candidate rule, `nat slice status`, read
     /// fresh per candidate, the last word, and this is the sweep that applies
     /// both. It rides every open tab's own plan-load cadence: the app
     /// starting, a nudge landing and the poll ticking each run it for
@@ -2970,13 +2970,13 @@ public final class AppModel {
     /// fails reaps nothing: a sweep is a kill, and nothing is killed on no
     /// news.
     ///
-    /// Each candidate is then verified with a fresh `nat slice-status` and
+    /// Each candidate is then verified with a fresh `nat slice status` and
     /// reaped only where that read says so (`verifiedForReap`) — closing the
     /// race the plan reading alone cannot: a session's own claim is always
     /// written before the session exists, so this fresh read can never show a
     /// phantom state the way the cached plan might. Both that read and the
     /// kill are asked on the slice's **own** project, the one whose open plan
-    /// nominated it: asked on another, `nat slice-status` cannot find the
+    /// nominated it: asked on another, `nat slice status` cannot find the
     /// slice, answers gone, and a live agent is killed. A session no open
     /// plan lists is never nominated (`agentSessionsToReap`), since there is
     /// no project here to ask about it on.

@@ -1,14 +1,14 @@
 import Foundation
 
 /// The plan a workshop session proposed — for an Untitled tab or a tracked
-/// project's own workshop — what `nat plan-proposal --json` reads back from
-/// the file `nat plan-propose` wrote. Held as the tree the workshop's Plan
+/// project's own workshop — what `nat plan proposal --json` reads back from
+/// the file `nat plan propose` wrote. Held as the tree the workshop's Plan
 /// section draws and the Plan tab reads: milestones in plan order, each with
 /// its proposed slices — title, brief and what each waits on.
 /// A project's proposal may file slices under milestones the project already
 /// has; those show as groups too, after the new ones, since a slice headed
 /// for an existing milestone is still proposed work. Nothing here is a slice
-/// yet; accepting is what files them (`nat plan-accept`).
+/// yet; accepting is what files them (`nat plan accept`).
 ///
 /// A project's proposal may also change Todo slices already on its board —
 /// the work it supersedes: `removals`, `moves` and `edits`, each naming the
@@ -129,11 +129,11 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
         "proposed-\(milestone)-\(slice)"
     }
 
-    // The wire shape is `plan-propose`'s proposal file: the plan document as
+    // The wire shape is `plan propose`'s proposal file: the plan document as
     // validated, slices naming their milestone. Grouping them under it is all
     // this does — validation already ran when the file was written. A
     // milestone a slice names that the document does not create is one the
-    // project already has (plan-propose --project validated it against the
+    // project already has (plan propose --project validated it against the
     // project's shape), and gets a group of its own after the new ones, in
     // the order the slices first name it.
     private enum CodingKeys: String, CodingKey { case name, plan }
@@ -205,7 +205,7 @@ public struct PlanProposal: Equatable, Sendable, Decodable {
     }
 }
 
-/// What `nat plan-accept --json` reports: the project it made and how much of
+/// What `nat plan accept --json` reports: the project it made and how much of
 /// the plan went into it.
 public struct PlanAccepted: Equatable, Sendable, Decodable {
     public let project: ProjectEntry

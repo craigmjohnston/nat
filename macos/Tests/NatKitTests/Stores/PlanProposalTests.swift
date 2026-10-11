@@ -38,7 +38,7 @@ final class PlanProposalModelTests: XCTestCase {
 
         let proposal = try await NatClient(commandRunner: runner).planProposal(workspaceID: "ws-1")
 
-        XCTAssertEqual(runner.lastArguments, ["plan-proposal", "--workspace", "ws-1", "--json"])
+        XCTAssertEqual(runner.lastArguments, ["plan", "proposal", "--workspace", "ws-1", "--json"])
         XCTAssertEqual(proposal?.name, "rust-importer")
         XCTAssertEqual(proposal?.milestones, [
             .init(name: "M1: Parser", slices: [
@@ -208,7 +208,7 @@ final class PlanProposalModelTests: XCTestCase {
         let accepted = try await NatClient(commandRunner: runner).planAccept(workspaceID: "ws-1", name: "Mine")
 
         XCTAssertEqual(
-            runner.lastArguments, ["plan-accept", "--workspace", "ws-1", "--name", "Mine", "--json"])
+            runner.lastArguments, ["plan", "accept", "--workspace", "ws-1", "--name", "Mine", "--json"])
         XCTAssertEqual(accepted.project.id, "p-1")
         XCTAssertEqual(accepted.milestones, 4)
         XCTAssertEqual(accepted.slices, 14)
@@ -264,7 +264,7 @@ final class PlanProposalModelTests: XCTestCase {
         let accepted = try await client.planAccept(workspaceID: "ws", name: "Mine")
         XCTAssertEqual(accepted.project.name, "Mine")
         XCTAssertEqual(accepted.slices, 14)
-        XCTAssertEqual(client.writes, ["plan-accept --workspace ws --name Mine"])
+        XCTAssertEqual(client.writes, ["plan accept --workspace ws --name Mine"])
         let after = try await client.planProposal(workspaceID: "ws")
         XCTAssertNil(after, "an accepted proposal is spent")
 

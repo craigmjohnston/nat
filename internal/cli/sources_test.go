@@ -23,7 +23,7 @@ func demoDescribe() source.Describe {
 		ContainerNoun: "card", TaskNoun: "task", Menu: []source.Action{{ID: "refresh", Label: "Refresh", Input: source.InputNone}}}
 }
 
-// sourceProject is a source project made through project-create --source over
+// sourceProject is a source project made through project create --source over
 // fake, on a machine with no Notion credential and no way to build a client —
 // so every test that runs a command against one is also the proof the command
 // touched Notion nowhere.
@@ -52,10 +52,10 @@ func newSourceProject(t *testing.T, fake *source.Fake) *sourceProject {
 		return fake, nil
 	}
 	sp.env.Nudge = func() { sp.nudges++ }
-	sp.run(t, "project-create", "Work", "--source", "demo", "--plan-dir", sp.planDir, "--json")
+	sp.run(t, "project", "create", "Work", "--source", "demo", "--plan-dir", sp.planDir, "--json")
 	var created projectCreatedJSON
 	if err := json.Unmarshal(out.Bytes(), &created); err != nil {
-		t.Fatalf("project-create --source: not JSON: %v\n%s", err, out.String())
+		t.Fatalf("project create --source: not JSON: %v\n%s", err, out.String())
 	}
 	sp.id = created.Project.ID
 	return sp
@@ -86,7 +86,7 @@ func (sp *sourceProject) fail(t *testing.T, args ...string) error {
 func (sp *sourceProject) addTask(t *testing.T, title, container string) string {
 	t.Helper()
 	var added sliceAddedJSON
-	if err := json.Unmarshal([]byte(sp.run(t, "slice-add", title, "--container", container, "--project", sp.id, "--json")), &added); err != nil {
+	if err := json.Unmarshal([]byte(sp.run(t, "slice", "add", title, "--container", container, "--project", sp.id, "--json")), &added); err != nil {
 		t.Fatal(err)
 	}
 	return added.Slice.ID
@@ -182,7 +182,7 @@ func TestProjectCreateSourceWritesThePlanThenTheConfig(t *testing.T) {
 
 	// The JSON says what was made.
 	sp.out.Reset()
-	sp.run(t, "project-create", "Other", "--source", "demo", "--plan-dir", sp.planDir, "--json")
+	sp.run(t, "project", "create", "Other", "--source", "demo", "--plan-dir", sp.planDir, "--json")
 	var got projectCreatedJSON
 	if err := json.Unmarshal(sp.out.Bytes(), &got); err != nil {
 		t.Fatal(err)
@@ -193,14 +193,14 @@ func TestProjectCreateSourceWritesThePlanThenTheConfig(t *testing.T) {
 	}
 
 	// The text form names the plugin by its title, or its name with none.
-	if out := sp.run(t, "project-create", "Third", "--source", "demo", "--plan-dir", sp.planDir); !strings.Contains(out, "Demo source's containers (nat-source-demo)") ||
+	if out := sp.run(t, "project", "create", "Third", "--source", "demo", "--plan-dir", sp.planDir); !strings.Contains(out, "Demo source's containers (nat-source-demo)") ||
 		!strings.Contains(out, "- Plan directory: "+sp.planDir) {
 		t.Errorf("text = %q", out)
 	}
 	sp.fake.DescribeResult.Title = ""
 	// With no title, and no name given (none is needed with --source), the
 	// plugin's own name.
-	if out := sp.run(t, "project-create", "--source", "demo"); !strings.Contains(out, "under demo's containers") ||
+	if out := sp.run(t, "project", "create", "--source", "demo"); !strings.Contains(out, "under demo's containers") ||
 		strings.Contains(out, "Plan directory") || !strings.HasPrefix(out, "# demo\n") {
 		t.Errorf("text = %q", out)
 	}
@@ -209,7 +209,7 @@ func TestProjectCreateSourceWritesThePlanThenTheConfig(t *testing.T) {
 // A source project takes no --repo: its tasks each name their own.
 func TestProjectCreateSourceRefusesARepo(t *testing.T) {
 	sp := newSourceProject(t, &source.Fake{})
-	err := sp.fail(t, "project-create", "Other", "--source", "demo", "--repo", "/src/app")
+	err := sp.fail(t, "project", "create", "Other", "--source", "demo", "--repo", "/src/app")
 	if err == nil || !strings.Contains(err.Error(), "--repo means nothing with --source") {
 		t.Errorf("err = %v, want --repo refused", err)
 	}
@@ -228,10 +228,10 @@ func TestProjectCreateSourceRefusesBeforeWritingAnything(t *testing.T) {
 		{"with --local", nil, []string{"--source", "demo", "--local"}, "--local and --source are mutually exclusive"},
 		{"plugin missing", func(env *Env) {
 			env.NewSource = func(string) (source.Client, error) { return nil, errors.New("no task source plugin named \"demo\"") }
-		}, []string{"--source", "demo"}, `project-create: no task source plugin named "demo"`},
+		}, []string{"--source", "demo"}, `project create: no task source plugin named "demo"`},
 		{"describe fails", func(env *Env) {
 			env.NewSource = func(string) (source.Client, error) { return &source.Fake{DescribeErr: errors.New("no token")}, nil }
-		}, []string{"--source", "demo"}, "project-create: no token"},
+		}, []string{"--source", "demo"}, "project create: no token"},
 		{"another protocol", func(env *Env) {
 			env.NewSource = func(string) (source.Client, error) {
 				return &source.Fake{DescribeResult: source.Describe{Protocol: 2}}, nil
@@ -245,7 +245,7 @@ func TestProjectCreateSourceRefusesBeforeWritingAnything(t *testing.T) {
 				tt.setup(&env)
 			}
 			planDir := filepath.Join(t.TempDir(), "plans")
-			err := Run(context.Background(), append([]string{"project-create", "Work", "--plan-dir", planDir}, tt.args...), env)
+			err := Run(context.Background(), append([]string{"project", "create", "Work", "--plan-dir", planDir}, tt.args...), env)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want %q", err, tt.want)
 			}
@@ -266,7 +266,7 @@ func TestProjectCreateSourceReportsAPlanItCouldNotLayDown(t *testing.T) {
 	if err := os.WriteFile(file, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := Run(context.Background(), []string{"project-create", "Work", "--source", "demo", "--plan-dir", filepath.Join(file, "plans")}, env)
+	err := Run(context.Background(), []string{"project", "create", "Work", "--source", "demo", "--plan-dir", filepath.Join(file, "plans")}, env)
 	if err == nil || !strings.Contains(err.Error(), "create the plan") {
 		t.Errorf("err = %v, want the plan refused", err)
 	}
@@ -292,14 +292,14 @@ func TestSliceAddContainer(t *testing.T) {
 	}
 
 	// One already in the plan is filed under directly, by its cached title.
-	out := sp.run(t, "slice-add", "Highlighting", "--container", "c1", "--project", sp.id)
+	out := sp.run(t, "slice", "add", "Highlighting", "--container", "c1", "--project", sp.id)
 	if !strings.Contains(out, "Added to Improve diff review") || len(fake.ContainerIDs) != 1 {
 		t.Errorf("out = %q, reads = %v", out, fake.ContainerIDs)
 	}
 
 	// A plugin titling it as nothing leaves it named by its id.
 	var added sliceAddedJSON
-	if err := json.Unmarshal([]byte(sp.run(t, "slice-add", "Mouse", "--container", "c2", "--project", sp.id, "--json")), &added); err != nil {
+	if err := json.Unmarshal([]byte(sp.run(t, "slice", "add", "Mouse", "--container", "c2", "--project", sp.id, "--json")), &added); err != nil {
 		t.Fatal(err)
 	}
 	if added.Slice.MilestoneID != "c2" || added.Slice.MilestoneName != "c2" {
@@ -308,7 +308,7 @@ func TestSliceAddContainer(t *testing.T) {
 
 	// A new container the plugin cannot read is refused, nothing filed.
 	fake.ContainerErr = errors.New("plugin down")
-	if err := sp.fail(t, "slice-add", "Lost", "--container", "c9", "--project", sp.id); !strings.Contains(err.Error(), "read container c9: plugin down") {
+	if err := sp.fail(t, "slice", "add", "Lost", "--container", "c9", "--project", sp.id); !strings.Contains(err.Error(), "read container c9: plugin down") {
 		t.Errorf("err = %v", err)
 	}
 	if len(fake.Events) != 3 {
@@ -319,15 +319,15 @@ func TestSliceAddContainer(t *testing.T) {
 func TestSliceAddContainerRefusals(t *testing.T) {
 	sp := newSourceProject(t, &source.Fake{})
 	var usage *UsageError
-	if err := sp.fail(t, "slice-add", "X", "--milestone", "M1", "--project", sp.id); !errors.As(err, &usage) || !strings.Contains(err.Error(), "pass --container, not --milestone") {
+	if err := sp.fail(t, "slice", "add", "X", "--milestone", "M1", "--project", sp.id); !errors.As(err, &usage) || !strings.Contains(err.Error(), "pass --container, not --milestone") {
 		t.Errorf("--milestone on a source project = %v", err)
 	}
-	if err := sp.fail(t, "slice-add", "X", "--project", sp.id); !errors.As(err, &usage) || !strings.Contains(err.Error(), "no container given") {
+	if err := sp.fail(t, "slice", "add", "X", "--project", sp.id); !errors.As(err, &usage) || !strings.Contains(err.Error(), "no container given") {
 		t.Errorf("no --container = %v", err)
 	}
 
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
-	err := Run(context.Background(), []string{"slice-add", "X", "--container", "c1", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "add", "X", "--container", "c1", "--project", "project-1"}, env)
 	if !errors.As(err, &usage) || !strings.Contains(err.Error(), `--container only means something on a source project, and "nat" is not one`) {
 		t.Errorf("--container on a Notion project = %v", err)
 	}
@@ -452,21 +452,21 @@ func TestContainerShow(t *testing.T) {
 	sp.addTask(t, "B", "c2")
 
 	var doc containerShowJSON
-	if err := json.Unmarshal([]byte(sp.run(t, "container-show", "c1", "--json", "--project", sp.id)), &doc); err != nil {
+	if err := json.Unmarshal([]byte(sp.run(t, "container", "show", "c1", "--json", "--project", sp.id)), &doc); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(doc.Container, detail) || len(doc.Tasks) != 1 || doc.Tasks[0].ID != a ||
 		doc.Tasks[0].Status != "Todo" || doc.Tasks[0].MilestoneID != "c1" {
-		t.Errorf("container-show = %+v", doc)
+		t.Errorf("container show = %+v", doc)
 	}
 
-	text := sp.run(t, "container-show", "c1", "--project", sp.id)
+	text := sp.run(t, "container", "show", "c1", "--project", sp.id)
 	want := "# Improve diff review\n\nhttps://x/c1\n\n- state: Doing\n\n## Tasks\n\n- A — Todo\n"
 	if text != want {
 		t.Errorf("text =\n%s\nwant\n%s", text, want)
 	}
 	fake.Details["c3"] = source.ContainerDetail{Title: "Nothing yet"}
-	if text := sp.run(t, "container-show", "c3", "--project", sp.id); text != "# Nothing yet\n\n\n## Tasks\n\n_none_\n" {
+	if text := sp.run(t, "container", "show", "c3", "--project", sp.id); text != "# Nothing yet\n\n\n## Tasks\n\n_none_\n" {
 		t.Errorf("text = %q", text)
 	}
 }
@@ -475,28 +475,28 @@ func TestContainerShowRefusals(t *testing.T) {
 	fake := &source.Fake{}
 	sp := newSourceProject(t, fake)
 	var usage *UsageError
-	if err := sp.fail(t, "container-show", "--project", sp.id); !errors.As(err, &usage) {
+	if err := sp.fail(t, "container", "show", "--project", sp.id); !errors.As(err, &usage) {
 		t.Errorf("no id = %v", err)
 	}
-	if err := sp.fail(t, "container-show", "c1", "--bogus"); !errors.As(err, &usage) {
+	if err := sp.fail(t, "container", "show", "c1", "--bogus"); !errors.As(err, &usage) {
 		t.Errorf("bad flag = %v", err)
 	}
-	if err := sp.fail(t, "container-show", "c1"); !strings.Contains(err.Error(), "no project given") {
+	if err := sp.fail(t, "container", "show", "c1"); !strings.Contains(err.Error(), "no project given") {
 		t.Errorf("no project = %v", err)
 	}
 	fake.ContainerErr = errors.New("no card c1")
-	if err := sp.fail(t, "container-show", "c1", "--project", sp.id); err.Error() != "no card c1" {
+	if err := sp.fail(t, "container", "show", "c1", "--project", sp.id); err.Error() != "no card c1" {
 		t.Errorf("plugin failure = %v", err)
 	}
 	fake.ContainerErr = nil
 	sp.breakPlan(t)
-	if err := sp.fail(t, "container-show", "c1", "--project", sp.id); !strings.Contains(err.Error(), "slices") {
+	if err := sp.fail(t, "container", "show", "c1", "--project", sp.id); !strings.Contains(err.Error(), "slices") {
 		t.Errorf("plan failure = %v", err)
 	}
 
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
-	err := Run(context.Background(), []string{"container-show", "c1", "--project", "project-1"}, env)
-	if err == nil || err.Error() != `container-show: "nat" is not a source project` {
+	err := Run(context.Background(), []string{"container", "show", "c1", "--project", "project-1"}, env)
+	if err == nil || err.Error() != `container show: "nat" is not a source project` {
 		t.Errorf("Notion project = %v", err)
 	}
 }
@@ -510,7 +510,7 @@ func TestSourceStoreForReportsAPlanThatWillNotOpen(t *testing.T) {
 	entry := sp.saved.Projects[sp.id]
 	entry.PlanDir = filepath.Join(file, "plans")
 	sp.saved.Projects[sp.id] = entry
-	if err := sp.fail(t, "container-show", "c1", "--project", sp.id); !strings.Contains(err.Error(), "a-file") {
+	if err := sp.fail(t, "container", "show", "c1", "--project", sp.id); !strings.Contains(err.Error(), "a-file") {
 		t.Errorf("err = %v, want the plan's open failure", err)
 	}
 }
@@ -519,15 +519,15 @@ func TestSourceAction(t *testing.T) {
 	fake := &source.Fake{ActionResult: source.ActionResult{Message: "Commented."}}
 	sp := newSourceProject(t, fake)
 
-	if out := sp.run(t, "source-action", "--action", "comment", "--container", "c1", "--input", "hi", "--json", "--project", sp.id); out != "{\n  \"message\": \"Commented.\"\n}\n" {
+	if out := sp.run(t, "source", "action", "--action", "comment", "--container", "c1", "--input", "hi", "--json", "--project", sp.id); out != "{\n  \"message\": \"Commented.\"\n}\n" {
 		t.Errorf("json = %q", out)
 	}
 	sp.env.In = strings.NewReader("line one\nline two\n")
-	if out := sp.run(t, "source-action", "--action", "comment", "--group", "g", "--input", "-", "--project", sp.id); out != "Commented.\n" {
+	if out := sp.run(t, "source", "action", "--action", "comment", "--group", "g", "--input", "-", "--project", sp.id); out != "Commented.\n" {
 		t.Errorf("text = %q", out)
 	}
 	fake.ActionResult = source.ActionResult{}
-	if out := sp.run(t, "source-action", "--action", "refresh", "--project", sp.id); out != "Ran refresh.\n" {
+	if out := sp.run(t, "source", "action", "--action", "refresh", "--project", sp.id); out != "Ran refresh.\n" {
 		t.Errorf("text = %q", out)
 	}
 	want := []source.ActionCall{
@@ -557,16 +557,16 @@ func TestSourceActionRefusals(t *testing.T) {
 		{"--action", "x", "--group", "g", "--container", "c", "--project", sp.id},
 		{"--action", "x", "--input", "-", "--project", sp.id},
 	} {
-		if err := sp.fail(t, append([]string{"source-action"}, args...)...); !errors.As(err, &usage) {
+		if err := sp.fail(t, append([]string{"source", "action"}, args...)...); !errors.As(err, &usage) {
 			t.Errorf("%v: err = %v, want a usage error", args, err)
 		}
 	}
-	if err := sp.fail(t, "source-action", "--action", "x"); !strings.Contains(err.Error(), "no project given") {
+	if err := sp.fail(t, "source", "action", "--action", "x"); !strings.Contains(err.Error(), "no project given") {
 		t.Errorf("no project = %v", err)
 	}
 	fake.ActionErr = errors.New("not allowed")
 	before := sp.nudges
-	if err := sp.fail(t, "source-action", "--action", "x", "--project", sp.id); err.Error() != "not allowed" {
+	if err := sp.fail(t, "source", "action", "--action", "x", "--project", sp.id); err.Error() != "not allowed" {
 		t.Errorf("plugin failure = %v", err)
 	}
 	if sp.nudges != before {
@@ -574,8 +574,8 @@ func TestSourceActionRefusals(t *testing.T) {
 	}
 
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
-	err := Run(context.Background(), []string{"source-action", "--action", "x", "--project", "project-1"}, env)
-	if err == nil || err.Error() != `source-action: "nat" is not a source project` {
+	err := Run(context.Background(), []string{"source", "action", "--action", "x", "--project", "project-1"}, env)
+	if err == nil || err.Error() != `source action: "nat" is not a source project` {
 		t.Errorf("Notion project = %v", err)
 	}
 }
@@ -592,7 +592,7 @@ func TestSliceShowCarriesTheContainer(t *testing.T) {
 		Facts: []source.Fact{{Label: "estimate", Value: "3"}}}
 
 	var got sliceShowJSON
-	if err := json.Unmarshal([]byte(sp.run(t, "slice-show", task, "--json", "--project", sp.id)), &got); err != nil {
+	if err := json.Unmarshal([]byte(sp.run(t, "slice", "show", task, "--json", "--project", sp.id)), &got); err != nil {
 		t.Fatal(err)
 	}
 	want := &sliceContainerJSON{ID: "c1", Title: "Remote title", ExternalURL: "https://x/c1", TaskNote: "Linked.",
@@ -604,7 +604,7 @@ func TestSliceShowCarriesTheContainer(t *testing.T) {
 	// A failed read falls back to the id and the cached title.
 	fake.ContainerErr = errors.New("down")
 	got = sliceShowJSON{}
-	if err := json.Unmarshal([]byte(sp.run(t, "slice-show", task, "--json", "--project", sp.id)), &got); err != nil {
+	if err := json.Unmarshal([]byte(sp.run(t, "slice", "show", task, "--json", "--project", sp.id)), &got); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got.Container, &sliceContainerJSON{ID: "c1", Title: "Cached title"}) {
@@ -613,7 +613,7 @@ func TestSliceShowCarriesTheContainer(t *testing.T) {
 }
 
 // A source project is called what its plugin calls itself wherever nat
-// names it — info, config-show, the known-projects list — whatever name its
+// names it — info, config show, the known-projects list — whatever name its
 // config entry or its plan file carries; a plugin that will not describe
 // lends its own name.
 func TestASourceProjectIsNamedByItsPlugin(t *testing.T) {
@@ -641,11 +641,11 @@ func TestASourceProjectIsNamedByItsPlugin(t *testing.T) {
 	}
 
 	var doc configDoc
-	if err := json.Unmarshal([]byte(sp.run(t, "config-show", "--json")), &doc); err != nil {
+	if err := json.Unmarshal([]byte(sp.run(t, "config", "show", "--json")), &doc); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Projects[sp.id].Name != "Demo source" || doc.Projects["local-1"].Name != "Mine" {
-		t.Errorf("config-show projects = %+v", doc.Projects)
+		t.Errorf("config show projects = %+v", doc.Projects)
 	}
 	if sp.saved.Projects[sp.id].Name != "Test" {
 		t.Error("naming it wrote the config")
@@ -656,11 +656,11 @@ func TestASourceProjectIsNamedByItsPlugin(t *testing.T) {
 
 	// A plugin that will not describe, or no way to run one: its name.
 	sp.fake.DescribeErr = errors.New("broken")
-	if err := json.Unmarshal([]byte(sp.run(t, "config-show", "--json")), &doc); err != nil {
+	if err := json.Unmarshal([]byte(sp.run(t, "config", "show", "--json")), &doc); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Projects[sp.id].Name != "demo" {
-		t.Errorf("config-show with a broken plugin = %+v", doc.Projects[sp.id])
+		t.Errorf("config show with a broken plugin = %+v", doc.Projects[sp.id])
 	}
 	sp.env.NewSource = nil
 	if err := sp.fail(t, "info"); !strings.Contains(err.Error(), sp.id+" (demo)") {
@@ -672,14 +672,14 @@ func TestSourceProjectRefusalsAndLocalPaths(t *testing.T) {
 	sp := newSourceProject(t, &source.Fake{Details: map[string]source.ContainerDetail{"c1": {Title: "C"}}})
 	task := sp.addTask(t, "A", "c1")
 
-	if err := sp.fail(t, "project-mirror", "--parent", "p", "--parent-kind", "page", "--project", sp.id); !strings.Contains(err.Error(), `"Demo source" is a source project`) {
-		t.Errorf("project-mirror = %v", err)
+	if err := sp.fail(t, "project", "mirror", "--parent", "p", "--parent-kind", "page", "--project", sp.id); !strings.Contains(err.Error(), `"Demo source" is a source project`) {
+		t.Errorf("project mirror = %v", err)
 	}
-	if err := sp.fail(t, "done-clear", "--project", sp.id); !strings.Contains(err.Error(), `"Demo source" is a source project`) {
-		t.Errorf("done-clear = %v", err)
+	if err := sp.fail(t, "project", "done", "clear", "--project", sp.id); !strings.Contains(err.Error(), `"Demo source" is a source project`) {
+		t.Errorf("project done clear = %v", err)
 	}
-	if out := sp.run(t, "slice-status", task, "--project", sp.id); out != "Todo\n" {
-		t.Errorf("slice-status = %q", out)
+	if out := sp.run(t, "slice", "status", task, "--project", sp.id); out != "Todo\n" {
+		t.Errorf("slice status = %q", out)
 	}
 }
 
@@ -688,7 +688,7 @@ func TestConfigShowSaysASourceProjectsPlugin(t *testing.T) {
 		"p1": {Name: "Work", Backend: config.BackendSource, Source: "shortcut"},
 	}}
 	env, out := testEnv(cfg, &fakeAPI{})
-	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var doc configDoc
@@ -699,7 +699,7 @@ func TestConfigShowSaysASourceProjectsPlugin(t *testing.T) {
 		t.Errorf("project = %+v", p)
 	}
 	out.Reset()
-	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "backend=source working_dir=\"\" source=shortcut") {
@@ -744,7 +744,7 @@ func TestSourceListDescribesEveryPluginBestEffort(t *testing.T) {
 		return nil, errors.New("vanished")
 	}
 
-	if err := Run(context.Background(), []string{"source-list", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"source", "list", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var got []sourcePluginJSON
@@ -760,11 +760,11 @@ func TestSourceListDescribesEveryPluginBestEffort(t *testing.T) {
 		{Name: "old", Path: path("old"), Error: "source plugin old speaks protocol 2; this nat speaks protocol 1"},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("source-list = %+v, want %+v", got, want)
+		t.Errorf("source list = %+v, want %+v", got, want)
 	}
 
 	out.Reset()
-	if err := Run(context.Background(), []string{"source-list"}, env); err != nil {
+	if err := Run(context.Background(), []string{"source", "list"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "demo\t"+path("demo")+"\tDemo source (DM)\n") ||
@@ -776,14 +776,14 @@ func TestSourceListDescribesEveryPluginBestEffort(t *testing.T) {
 func TestSourceListWithNothingInstalled(t *testing.T) {
 	installPlugins(t)
 	env, out := testEnv(config.Config{}, &fakeAPI{})
-	if err := Run(context.Background(), []string{"source-list"}, env); err != nil {
+	if err := Run(context.Background(), []string{"source", "list"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if out.String() != "no task source plugins installed\n" {
 		t.Errorf("text = %q", out.String())
 	}
 	out.Reset()
-	if err := Run(context.Background(), []string{"source-list", "--json"}, env); err != nil || out.String() != "[]\n" {
+	if err := Run(context.Background(), []string{"source", "list", "--json"}, env); err != nil || out.String() != "[]\n" {
 		t.Errorf("json = %q, %v", out.String(), err)
 	}
 }
@@ -792,7 +792,7 @@ func TestSourceListRefusals(t *testing.T) {
 	env, _ := testEnv(config.Config{}, &fakeAPI{})
 	var usage *UsageError
 	for _, args := range [][]string{{"stray"}, {"--bogus"}} {
-		if err := Run(context.Background(), append([]string{"source-list"}, args...), env); !errors.As(err, &usage) {
+		if err := Run(context.Background(), append([]string{"source", "list"}, args...), env); !errors.As(err, &usage) {
 			t.Errorf("%v: err = %v, want a usage error", args, err)
 		}
 	}
@@ -801,13 +801,13 @@ func TestSourceListRefusals(t *testing.T) {
 	if err := os.WriteFile(plugins, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Run(context.Background(), []string{"source-list"}, env); err == nil || !strings.Contains(err.Error(), "look for task source plugins") {
+	if err := Run(context.Background(), []string{"source", "list"}, env); err == nil || !strings.Contains(err.Error(), "look for task source plugins") {
 		t.Errorf("unreadable plugins dir = %v", err)
 	}
 
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("HOME", "")
-	if err := Run(context.Background(), []string{"source-list"}, env); err == nil {
+	if err := Run(context.Background(), []string{"source", "list"}, env); err == nil {
 		t.Error("no config dir = nil, want an error")
 	}
 }

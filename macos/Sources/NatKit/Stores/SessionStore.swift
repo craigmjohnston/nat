@@ -1,6 +1,6 @@
 import Foundation
 
-/// The active project's ad hoc sessions — `nat session-list`, read when a
+/// The active project's ad hoc sessions — `nat session list`, read when a
 /// project is activated, after a session is launched, ended or discarded,
 /// and after every GitHub reading lands (`AppModel.deliver`): the listing
 /// asks GitHub nothing itself, each row's pull requests being the ones that
@@ -11,7 +11,7 @@ import Foundation
 @MainActor
 @Observable
 public final class SessionStore {
-    /// The active project's sessions, as `session-list` last read them.
+    /// The active project's sessions, as `session list` last read them.
     public private(set) var sessions: [Session] = []
 
     private let client: NatClientProtocol
@@ -20,7 +20,7 @@ public final class SessionStore {
         self.client = client
     }
 
-    /// Bring `sessions` in line with a fresh `session-list` read. A read
+    /// Bring `sessions` in line with a fresh `session list` read. A read
     /// that fails leaves the last one standing.
     public func update(projectID: String) async {
         guard let fresh = try? await client.sessionList(projectID: projectID) else { return }

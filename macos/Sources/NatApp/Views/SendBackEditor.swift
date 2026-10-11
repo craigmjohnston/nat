@@ -7,7 +7,7 @@ import NatKit
 /// with no editor — then Cancel and Send back.
 /// Drawn in the column rather than as a popover, so the gallery can render
 /// it, as the visual comment box is. What sending does is
-/// `AppModel.sendBack`'s: the note recorded with `nat slice-resume`, then the
+/// `AppModel.sendBack`'s: the note recorded with `nat slice resume`, then the
 /// live agent told, or one launched.
 struct SendBackEditor: View {
     @Binding var text: String

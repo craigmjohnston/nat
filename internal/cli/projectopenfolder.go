@@ -17,7 +17,7 @@ import (
 
 // projectOpenFolder records a folder that already holds a local plan as a
 // project this machine tracks — the starter card's "From filesystem" tile. It
-// is `project-create --local` for a plan that exists: nothing is written to
+// is `project create --local` for a plan that exists: nothing is written to
 // the plan, and the config entry is written only once a plan is found.
 //
 // What it looks for is the file a local project's plan is: `<slug of project
@@ -27,7 +27,7 @@ import (
 // than a second one — the folder is where its plan lives, and a config that
 // says otherwise is left as the user set it.
 func projectOpenFolder(_ context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("project-open-folder", flag.ContinueOnError)
+	flags := flag.NewFlagSet("project open folder", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	rest, err := parseFlags(flags, args)
@@ -35,14 +35,14 @@ func projectOpenFolder(_ context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("project-open-folder: want exactly one folder, given %d", len(rest))
+		return usageErrorf("project open folder: want exactly one folder, given %d", len(rest))
 	}
 	dir, err := absPlanDir(rest[0])
 	if err != nil {
 		return err
 	}
 	if dir == "" {
-		return usageErrorf("project-open-folder: the folder is empty")
+		return usageErrorf("project open folder: the folder is empty")
 	}
 
 	id, name, err := findFolderPlan(dir)

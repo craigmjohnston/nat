@@ -23,7 +23,7 @@ func releasableAPI() *fakeAPI {
 }
 
 // releaseEnv builds an Env for the command; it reads nothing from stdin, since
-// release-slice takes no note to write.
+// slice release takes no note to write.
 func releaseEnv(t testing.TB, api *fakeAPI) (Env, *strings.Builder) {
 	env, _ := testEnv(testClaimConfig(t), api)
 	var out strings.Builder
@@ -39,8 +39,8 @@ func TestReleaseSliceHandsTheSliceBack(t *testing.T) {
 	var nudges int
 	env.Nudge = func() { nudges++ }
 
-	if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("release-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "release", sliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice release: %v", err)
 	}
 
 	if len(api.appends) != 1 || api.appends[0].id != sliceID {
@@ -97,8 +97,8 @@ func TestReleaseSliceWithoutAnAssigneeColumn(t *testing.T) {
 	delete(api.pages["slices-ds"][0].Properties, notion.PropAssignee)
 	env, _ := releaseEnv(t, api)
 
-	if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("release-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "release", sliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice release: %v", err)
 	}
 
 	if len(api.updates) != 1 {
@@ -118,8 +118,8 @@ func TestReleaseSliceWritesTheStatusShapeItRead(t *testing.T) {
 	}
 	env, _ := releaseEnv(t, api)
 
-	if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("release-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "release", sliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice release: %v", err)
 	}
 
 	status := api.updates[0].props[notion.PropStatus]
@@ -150,7 +150,7 @@ func TestReleaseSliceRefusals(t *testing.T) {
 			var nudges int
 			env.Nudge = func() { nudges++ }
 
-			err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env)
+			err := Run(context.Background(), []string{"slice", "release", sliceID, "--project", "project-1"}, env)
 			if err == nil || err.Error() != tt.want {
 				t.Fatalf("error = %v, want %q", err, tt.want)
 			}
@@ -174,10 +174,10 @@ func TestReleaseSliceMisuse(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"no slice", []string{"release-slice", "--project", "project-1"}, "want exactly one slice"},
-		{"two slices", []string{"release-slice", sliceID, sliceID, "--project", "project-1"}, "want exactly one slice"},
-		{"not a slice", []string{"release-slice", "the one about the board", "--project", "project-1"}, "is not a slice"},
-		{"an unknown flag", []string{"release-slice", sliceID, "--why", "--project", "project-1"}, "flag provided but not defined"},
+		{"no slice", []string{"slice", "release", "--project", "project-1"}, "want exactly one slice"},
+		{"two slices", []string{"slice", "release", sliceID, sliceID, "--project", "project-1"}, "want exactly one slice"},
+		{"not a slice", []string{"slice", "release", "the one about the board", "--project", "project-1"}, "is not a slice"},
+		{"an unknown flag", []string{"slice", "release", sliceID, "--why", "--project", "project-1"}, "flag provided but not defined"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -234,7 +234,7 @@ func TestReleaseSliceFailures(t *testing.T) {
 				tt.env(&env)
 			}
 
-			err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env)
+			err := Run(context.Background(), []string{"slice", "release", sliceID, "--project", "project-1"}, env)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want it to mention %q", err, tt.want)
 			}
@@ -245,7 +245,7 @@ func TestReleaseSliceFailures(t *testing.T) {
 	}
 }
 
-// A push to the workspace that fails does not fail release-slice: the write
+// A push to the workspace that fails does not fail slice release: the write
 // already landed in the local plan file, the command reports success and
 // still nudges the board, and the slice is left dirty for the next sync to
 // resend.
@@ -266,8 +266,8 @@ func TestReleaseSliceLeavesTheSliceDirtyOnAFailedPush(t *testing.T) {
 			var nudges int
 			env.Nudge = func() { nudges++ }
 
-			if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
-				t.Fatalf("release-slice: %v", err)
+			if err := Run(context.Background(), []string{"slice", "release", sliceID, "--project", "project-1"}, env); err != nil {
+				t.Fatalf("slice release: %v", err)
 			}
 			if nudges != 1 {
 				t.Errorf("nudged %d times, want exactly one — the local write landed", nudges)
@@ -308,10 +308,10 @@ func TestReleaseSliceReportsAFailedLocalShapeRead(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 
-	err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "release", sliceID, "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Error("release-slice over a plan that cannot read its own shape: want an error")
+		t.Error("slice release over a plan that cannot read its own shape: want an error")
 	}
 }
 
@@ -326,10 +326,10 @@ func TestReleaseSliceReportsAFailedLocalSliceRead(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 
-	err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "release", sliceID, "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Error("release-slice over a plan that cannot read the slice: want an error")
+		t.Error("slice release over a plan that cannot read the slice: want an error")
 	}
 }
 
@@ -349,9 +349,9 @@ func TestReleaseSliceReportsAFailedLocalWrite(t *testing.T) {
 	})
 	env, _ := testEnv(cfg, &fakeAPI{})
 
-	err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "release", sliceID, "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Error("release-slice over a plan that cannot make the write: want an error")
+		t.Error("slice release over a plan that cannot make the write: want an error")
 	}
 }

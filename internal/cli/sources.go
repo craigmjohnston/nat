@@ -124,7 +124,7 @@ func describeSource(ctx context.Context, name string, src source.Client) (source
 	return d, nil
 }
 
-// sourcePluginJSON is one installed plugin as source-list prints it: where it
+// sourcePluginJSON is one installed plugin as source list prints it: where it
 // was found, and either what it says about itself or why it would not say.
 type sourcePluginJSON struct {
 	Name     string           `json:"name"`
@@ -139,7 +139,7 @@ type sourcePluginJSON struct {
 // installed plugin that is broken is exactly what someone listing them is
 // looking for. It acts on no project.
 func sourceList(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("source-list", flag.ContinueOnError)
+	flags := flag.NewFlagSet("source list", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
 	rest, err := parseFlags(flags, args)
@@ -147,7 +147,7 @@ func sourceList(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("source-list: takes no arguments, given %d", len(rest))
+		return usageErrorf("source list: takes no arguments, given %d", len(rest))
 	}
 	dir, err := config.Dir()
 	if err != nil {
@@ -189,7 +189,7 @@ func describePlugin(ctx context.Context, env Env, name string) (source.Describe,
 // sourceProjectName is what a source project is called wherever nat names
 // it: its plugin's describe title, read fresh, else the plugin's own name
 // (one that will not describe, or an Env with no way to run one). Never the
-// config entry's name — project-create --source writes none, and one an
+// config entry's name — project create --source writes none, and one an
 // older entry carries is ignored.
 func sourceProjectName(ctx context.Context, env Env, plugin string) string {
 	if env.NewSource != nil {
@@ -224,7 +224,7 @@ func withSourceNames(ctx context.Context, env Env, cfg config.Config) config.Con
 	return cfg
 }
 
-// sourceListText is source-list's plain form: one line per plugin.
+// sourceListText is source list's plain form: one line per plugin.
 func sourceListText(listed []sourcePluginJSON) string {
 	if len(listed) == 0 {
 		return "no task source plugins installed\n"
@@ -252,7 +252,7 @@ type containerShowJSON struct {
 // is the command's error — there is no cached detail to fall back on, only a
 // title.
 func containerShow(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("container-show", flag.ContinueOnError)
+	flags := flag.NewFlagSet("container show", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -261,7 +261,7 @@ func containerShow(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 || strings.TrimSpace(rest[0]) == "" {
-		return usageErrorf("container-show: want exactly one container, by id")
+		return usageErrorf("container show: want exactly one container, by id")
 	}
 	id := strings.TrimSpace(rest[0])
 
@@ -269,7 +269,7 @@ func containerShow(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	ss, err := env.sourceStoreFor(ctx, "container-show", projectID, project)
+	ss, err := env.sourceStoreFor(ctx, "container show", projectID, project)
 	if err != nil {
 		return err
 	}
@@ -296,7 +296,7 @@ func containerShow(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// containerMarkdown is container-show's plain form: the title, the facts, the
+// containerMarkdown is container show's plain form: the title, the facts, the
 // tasks.
 func containerMarkdown(d source.ContainerDetail, tasks []sliceJSON) string {
 	var b strings.Builder
@@ -326,7 +326,7 @@ type sourceActionJSON struct {
 // group with --group, a container with --container, the source itself with
 // neither. It is a write — the plugin's — so a board watching is nudged.
 func sourceAction(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("source-action", flag.ContinueOnError)
+	flags := flag.NewFlagSet("source action", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	action := flags.String("action", "", "the plugin action to run, by `id` (required)")
 	group := flags.String("group", "", "run it against this sidebar group, by `id`")
@@ -339,17 +339,17 @@ func sourceAction(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("source-action: takes no arguments, given %d", len(rest))
+		return usageErrorf("source action: takes no arguments, given %d", len(rest))
 	}
 	id := strings.TrimSpace(*action)
 	if id == "" {
-		return usageErrorf("source-action: no action given: pass --action")
+		return usageErrorf("source action: no action given: pass --action")
 	}
 	target := source.Target{Group: strings.TrimSpace(*group), Container: strings.TrimSpace(*container)}
 	if target.Group != "" && target.Container != "" {
-		return usageErrorf("source-action: --group and --container are mutually exclusive")
+		return usageErrorf("source action: --group and --container are mutually exclusive")
 	}
-	text, err := briefText("source-action", "--input", *input, env.In)
+	text, err := briefText("source action", "--input", *input, env.In)
 	if err != nil {
 		return err
 	}
@@ -358,7 +358,7 @@ func sourceAction(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	ss, err := env.sourceStoreFor(ctx, "source-action", projectID, project)
+	ss, err := env.sourceStoreFor(ctx, "source action", projectID, project)
 	if err != nil {
 		return err
 	}
@@ -386,7 +386,7 @@ type sourceSetupJSON struct {
 // refused before the value is read, let alone sent; so is an empty value. It
 // acts on no project.
 func sourceSetup(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("source-setup", flag.ContinueOnError)
+	flags := flag.NewFlagSet("source setup", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	fieldID := flags.String("id", "", "the setup field to set, by `id` (required)")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
@@ -395,11 +395,11 @@ func sourceSetup(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 || strings.TrimSpace(rest[0]) == "" {
-		return usageErrorf("source-setup: want exactly one plugin, by name")
+		return usageErrorf("source setup: want exactly one plugin, by name")
 	}
 	name, id := strings.TrimSpace(rest[0]), strings.TrimSpace(*fieldID)
 	if id == "" {
-		return usageErrorf("source-setup: no setup field given: pass --id")
+		return usageErrorf("source setup: no setup field given: pass --id")
 	}
 
 	src, err := env.NewSource(name)
@@ -411,18 +411,18 @@ func sourceSetup(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if !slices.ContainsFunc(d.Setup, func(f source.SetupField) bool { return f.ID == id }) {
-		return fmt.Errorf("source-setup: %s has no setup field %q", name, id)
+		return fmt.Errorf("source setup: %s has no setup field %q", name, id)
 	}
 	if env.In == nil {
-		return usageErrorf("source-setup: the value is read from stdin, and there is nothing to read")
+		return usageErrorf("source setup: the value is read from stdin, and there is nothing to read")
 	}
 	b, err := io.ReadAll(env.In)
 	if err != nil {
-		return fmt.Errorf("source-setup: read the value: %w", err)
+		return fmt.Errorf("source setup: read the value: %w", err)
 	}
 	value := strings.TrimSuffix(strings.TrimSuffix(string(b), "\n"), "\r")
 	if strings.TrimSpace(value) == "" {
-		return fmt.Errorf("source-setup: no value for %s's %s on stdin", name, id)
+		return fmt.Errorf("source setup: no value for %s's %s on stdin", name, id)
 	}
 	msg, err := src.Setup(ctx, id, value)
 	if err != nil {

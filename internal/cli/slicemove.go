@@ -19,7 +19,7 @@ import (
 // A slice in progress is refused, the same rule the board applies: the plan
 // may still describe it, but the page underneath belongs to whoever took it.
 func sliceMove(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-move", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice move", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	milestoneRef := flags.String("milestone", "", "the milestone to refile the slice under, by name")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
@@ -29,14 +29,14 @@ func sliceMove(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-move: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice move: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-move", rest[0])
+	id, err := pageID("slice move", rest[0])
 	if err != nil {
 		return err
 	}
 	if strings.TrimSpace(*milestoneRef) == "" {
-		return usageErrorf("slice-move: no milestone given: pass --milestone")
+		return usageErrorf("slice move: no milestone given: pass --milestone")
 	}
 
 	_, projectID, project, err := env.projectFor(*projectRef)

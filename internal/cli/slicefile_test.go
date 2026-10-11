@@ -31,7 +31,7 @@ func sliceFileEnv(t *testing.T, runner *fakeGitRunner) (Env, *strings.Builder) {
 }
 
 func runSliceFile(env Env, args ...string) error {
-	return Run(context.Background(), append([]string{"slice-file", testSliceID, "--project", "project-1"}, args...), env)
+	return Run(context.Background(), append([]string{"slice", "file", testSliceID, "--project", "project-1"}, args...), env)
 }
 
 func TestSliceFileJSONIsTheLinesAskedForAtTheBranch(t *testing.T) {
@@ -39,7 +39,7 @@ func TestSliceFileJSONIsTheLinesAskedForAtTheBranch(t *testing.T) {
 	env, out := sliceFileEnv(t, runner)
 
 	if err := runSliceFile(env, "--json", "--path", "main.go", "--from", "3", "--to", "4"); err != nil {
-		t.Fatalf("slice-file: %v", err)
+		t.Fatalf("slice file: %v", err)
 	}
 	if !slices.Contains(runner.showArgs, "feature/ui:main.go") {
 		t.Errorf("show args = %v, want the file read at the slice's branch", runner.showArgs)
@@ -64,7 +64,7 @@ func TestSliceFileReadsOneCommitWhenAsked(t *testing.T) {
 	env, _ := sliceFileEnv(t, runner)
 
 	if err := runSliceFile(env, "--json", "--path", "main.go", "--commit", "abc123"); err != nil {
-		t.Fatalf("slice-file: %v", err)
+		t.Fatalf("slice file: %v", err)
 	}
 	if !slices.Contains(runner.showArgs, "abc123:main.go") {
 		t.Errorf("show args = %v, want the file read at the commit", runner.showArgs)
@@ -75,7 +75,7 @@ func TestSliceFileWithNoLanguageCarriesNoTokens(t *testing.T) {
 	env, out := sliceFileEnv(t, &fakeGitRunner{showOut: "one\ntwo\n"})
 
 	if err := runSliceFile(env, "--json", "--path", "notes.unknownext"); err != nil {
-		t.Fatalf("slice-file: %v", err)
+		t.Fatalf("slice file: %v", err)
 	}
 	var got fileLinesJSON
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -90,7 +90,7 @@ func TestSliceFilePrintsRawLines(t *testing.T) {
 	env, out := sliceFileEnv(t, &fakeGitRunner{showOut: sampleFile})
 
 	if err := runSliceFile(env, "--path", "main.go", "--from", "4"); err != nil {
-		t.Fatalf("slice-file: %v", err)
+		t.Fatalf("slice file: %v", err)
 	}
 	if got, want := out.String(), "\tprintln(\"hi\")\n}\n"; got != want {
 		t.Errorf("output = %q, want %q", got, want)
@@ -101,7 +101,7 @@ func TestSliceFilePastTheEndPrintsNothing(t *testing.T) {
 	env, out := sliceFileEnv(t, &fakeGitRunner{showOut: sampleFile})
 
 	if err := runSliceFile(env, "--path", "main.go", "--from", "9"); err != nil {
-		t.Fatalf("slice-file: %v", err)
+		t.Fatalf("slice file: %v", err)
 	}
 	if out.String() != "" {
 		t.Errorf("output = %q, want nothing past the file's end", out.String())
@@ -145,7 +145,7 @@ func TestSliceFileRefusals(t *testing.T) {
 	}
 
 	env, _ := sliceFileEnv(t, &fakeGitRunner{})
-	if err := Run(context.Background(), []string{"slice-file", "--project", "project-1", "--path", "x"}, env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "file", "--project", "project-1", "--path", "x"}, env); err == nil {
 		t.Error("no slice: want a usage error")
 	}
 	if err := runSliceFile(env, "--path", "x", "--nonsense"); err == nil {

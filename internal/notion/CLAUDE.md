@@ -46,7 +46,7 @@ the fields used. Nothing outside `internal/store` constructs one:
 - **Renaming a select option in place is silently ignored by the API** — a
   200 whose body still echoes the old name. Check the echoed value, never the
   status code, for any select option write.
-- `milestone-rename` therefore goes the long way (`OptionInsertedAfter` next
+- `milestone rename` therefore goes the long way (`OptionInsertedAfter` next
   to the old option, not appended, so order is preserved; refile;
   `WithoutOption` last).
 
@@ -55,7 +55,7 @@ the fields used. Nothing outside `internal/store` constructs one:
 - A **single-property** self-relation is mirrored by Notion automatically:
   writing `A.dependsOn=[B]` also writes `B.dependsOn=[A]` on the far page.
   For a directional relation like a dependency, that's fatal — it reads back
-  as a **mutual block**, wedging both slices, since neither `next-slice` nor
+  as a **mutual block**, wedging both slices, since neither `slice next` nor
   the launch key will step past a slice waiting on one that's waiting on it.
 - The fix is `RelationConfig.Kind = "dual_property"`: give the relation a
   **second** column (`Blocks`) for Notion to mirror into instead of back into

@@ -106,8 +106,8 @@ final class SourceSelectionTests: XCTestCase {
             projectID: work, action: SourceAction(id: "comment", label: "Comment", input: .text),
             container: Fixtures.sourceCardID, input: "Looks good")
         XCTAssertNil(onCard)
-        XCTAssertEqual(client.writes.filter { $0.hasPrefix("source-action") }, [
-            "source-action refresh", "source-action comment --container \(Fixtures.sourceCardID)",
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("source action") }, [
+            "source action refresh", "source action comment --container \(Fixtures.sourceCardID)",
         ])
         XCTAssertNotNil(appModel.containerStore(projectID: work).state(for: Fixtures.sourceCardID).show)
 
@@ -145,10 +145,10 @@ final class SourceSelectionTests: XCTestCase {
         // sourceConfig already has a demo project; Shortcut has none.
         let appModel = await started(client)
         await appModel.loadSourcePlugins()
-        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project-create") }, [],
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project create") }, [],
                        "only the app's own start makes one, never a start a test drives")
         await appModel.ensureSourceProjects()
-        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project-create") }, ["project-create Shortcut --source shortcut"])
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project create") }, ["project create Shortcut --source shortcut"])
         let made = "f1x8500c-0000-4000-8000-shortcut"
         XCTAssertTrue(appModel.projectTabs.contains { $0.id == made && $0.name == "Shortcut" })
         XCTAssertNotEqual(appModel.activeProjectID, made, "taken in, not opened")
@@ -156,7 +156,7 @@ final class SourceSelectionTests: XCTestCase {
         // Read again — the config, here, still not naming it — nothing more.
         await appModel.reloadSourcePlugins()
         await appModel.ensureSourceProjects()
-        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project-create") }.count, 1)
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("project create") }.count, 1)
         XCTAssertEqual(appModel.projectTabs.filter { $0.id == made }.count, 1)
     }
 

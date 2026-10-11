@@ -27,9 +27,9 @@ func mirrorEnv(t *testing.T, api *fakeAPI) (Env, *strings.Builder, *config.Confi
 	env.Out = out
 
 	ctx := context.Background()
-	if err := Run(ctx, []string{"project-create", "Mine", "--local", "--repo", "/src/mine",
+	if err := Run(ctx, []string{"project", "create", "Mine", "--local", "--repo", "/src/mine",
 		"--description", "Be small.", "--json"}, env); err != nil {
-		t.Fatalf("project-create --local: %v", err)
+		t.Fatalf("project create --local: %v", err)
 	}
 	var id string
 	for k := range saved.Projects {
@@ -43,8 +43,8 @@ func mirrorEnv(t *testing.T, api *fakeAPI) (Env, *strings.Builder, *config.Confi
     {"title": "Beta", "milestone": "M2: Second", "description": "Do beta.", "depends_on": ["Alpha"]}
   ]
 }`)
-	if err := Run(ctx, []string{"plan-apply", "--project", id}, env); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+	if err := Run(ctx, []string{"plan", "apply", "--project", id}, env); err != nil {
+		t.Fatalf("plan apply: %v", err)
 	}
 	out.Reset()
 	env.In = nil
@@ -58,10 +58,10 @@ func TestProjectMirrorFilesThePlanAndReRegistersTheProject(t *testing.T) {
 	api := &fakeAPI{}
 	env, out, saved, oldID := mirrorEnv(t, api)
 
-	err := Run(context.Background(), []string{"project-mirror", "--project", oldID,
+	err := Run(context.Background(), []string{"project", "mirror", "--project", oldID,
 		"--parent", "parent-page", "--parent-kind", "page", "--json"}, env)
 	if err != nil {
-		t.Fatalf("project-mirror: %v", err)
+		t.Fatalf("project mirror: %v", err)
 	}
 
 	var got projectMirroredJSON
@@ -119,10 +119,10 @@ func TestProjectMirrorPutsAProjectInADatabaseAsARow(t *testing.T) {
 	api := &fakeAPI{}
 	env, out, _, oldID := mirrorEnv(t, api)
 
-	err := Run(context.Background(), []string{"project-mirror", "--project", oldID,
+	err := Run(context.Background(), []string{"project", "mirror", "--project", oldID,
 		"--parent", "some-ds", "--parent-kind", "database"}, env)
 	if err != nil {
-		t.Fatalf("project-mirror: %v", err)
+		t.Fatalf("project mirror: %v", err)
 	}
 	if len(api.inParents) != 1 || api.inParents[0] != notion.DataSourceParent("some-ds") {
 		t.Errorf("project created under %+v, want the data source", api.inParents)
@@ -142,13 +142,13 @@ func TestProjectMirrorRefusesBeforeTouchingNotion(t *testing.T) {
 		{"no kind", []string{"--parent", "p"}, "--parent-kind is \"\""},
 		{"a bad kind", []string{"--parent", "p", "--parent-kind", "block"}, "--parent-kind is \"block\""},
 		{"an argument", []string{"--parent", "p", "--parent-kind", "page", "extra"}, "takes no arguments"},
-		{"a bad flag", []string{"--nope"}, "project-mirror"},
+		{"a bad flag", []string{"--nope"}, "project mirror"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			api := &fakeAPI{}
 			env, _, saved, id := mirrorEnv(t, api)
-			err := Run(context.Background(), append([]string{"project-mirror", "--project", id}, c.args...), env)
+			err := Run(context.Background(), append([]string{"project", "mirror", "--project", id}, c.args...), env)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("error = %v, want one saying %q", err, c.want)
 			}
@@ -162,7 +162,7 @@ func TestProjectMirrorRefusesBeforeTouchingNotion(t *testing.T) {
 func TestProjectMirrorRefusesAProjectAlreadyInNotion(t *testing.T) {
 	cfg := testConfig(t)
 	env, _ := testEnv(cfg, &fakeAPI{})
-	err := Run(context.Background(), []string{"project-mirror", "--project", "project-1",
+	err := Run(context.Background(), []string{"project", "mirror", "--project", "project-1",
 		"--parent", "p", "--parent-kind", "page"}, env)
 	if err == nil || !strings.Contains(err.Error(), "already tracked in Notion") {
 		t.Errorf("error = %v", err)
@@ -171,7 +171,7 @@ func TestProjectMirrorRefusesAProjectAlreadyInNotion(t *testing.T) {
 
 func TestProjectMirrorNeedsAProject(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
-	err := Run(context.Background(), []string{"project-mirror", "--parent", "p", "--parent-kind", "page"}, env)
+	err := Run(context.Background(), []string{"project", "mirror", "--parent", "p", "--parent-kind", "page"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no project given") {
 		t.Errorf("error = %v", err)
 	}
@@ -181,10 +181,10 @@ func TestProjectMirrorRefusesAStartedPlan(t *testing.T) {
 	api := &fakeAPI{}
 	env, _, _, id := mirrorEnv(t, api)
 	// Claim the first slice, which is what starting is.
-	if err := Run(context.Background(), []string{"next-slice", "--project", id}, env); err != nil {
-		t.Fatalf("next-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "next", "--project", id}, env); err != nil {
+		t.Fatalf("slice next: %v", err)
 	}
-	err := Run(context.Background(), []string{"project-mirror", "--project", id,
+	err := Run(context.Background(), []string{"project", "mirror", "--project", id,
 		"--parent", "p", "--parent-kind", "page"}, env)
 	if err == nil || !strings.Contains(err.Error(), "has been started") {
 		t.Fatalf("error = %v, want a refusal of the started plan", err)
@@ -218,7 +218,7 @@ func TestProjectMirrorReportsAFailedCreateWithNothingChanged(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			env, _, saved, id := mirrorEnv(t, api)
 			api.dataSources = nil
-			err := Run(context.Background(), []string{"project-mirror", "--project", id,
+			err := Run(context.Background(), []string{"project", "mirror", "--project", id,
 				"--parent", "p", "--parent-kind", "page"}, env)
 			if err == nil || !strings.Contains(err.Error(), "create the project page") {
 				t.Fatalf("error = %v", err)
@@ -236,7 +236,7 @@ func TestProjectMirrorSaysWhatExistsWhenFilingFails(t *testing.T) {
 	api.createErr = errors.New("rate limited")
 	api.failCreateAfter = 0
 
-	err := Run(context.Background(), []string{"project-mirror", "--project", id,
+	err := Run(context.Background(), []string{"project", "mirror", "--project", id,
 		"--parent", "p", "--parent-kind", "page"}, env)
 	if err == nil || !strings.Contains(err.Error(), "new-project was created") ||
 		!strings.Contains(err.Error(), "local project is untouched") {
@@ -255,7 +255,7 @@ func TestProjectMirrorSaysWhatExistsWhenFilingFails(t *testing.T) {
 func TestProjectMirrorSaysWhatExistsWhenTheConventionsFail(t *testing.T) {
 	api := &fakeAPI{appendErr: errors.New("boom")}
 	env, _, _, id := mirrorEnv(t, api)
-	err := Run(context.Background(), []string{"project-mirror", "--project", id,
+	err := Run(context.Background(), []string{"project", "mirror", "--project", id,
 		"--parent", "p", "--parent-kind", "page"}, env)
 	if err == nil || !strings.Contains(err.Error(), "new-project was created") {
 		t.Errorf("error = %v", err)
@@ -266,7 +266,7 @@ func TestProjectMirrorFailsWhenTheConfigWillNotSave(t *testing.T) {
 	api := &fakeAPI{}
 	env, _, _, id := mirrorEnv(t, api)
 	env.Save = func(config.Config) error { return errors.New("read-only") }
-	err := Run(context.Background(), []string{"project-mirror", "--project", id,
+	err := Run(context.Background(), []string{"project", "mirror", "--project", id,
 		"--parent", "p", "--parent-kind", "page"}, env)
 	if err == nil || !strings.Contains(err.Error(), "save config") {
 		t.Errorf("error = %v", err)
@@ -285,8 +285,8 @@ func TestNotionSearchListsWhereAProjectPageCouldGo(t *testing.T) {
 	}}
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"notion-search", "--query", " plan ", "--json"}, env); err != nil {
-		t.Fatalf("notion-search: %v", err)
+	if err := Run(context.Background(), []string{"notion", "search", "--query", " plan ", "--json"}, env); err != nil {
+		t.Fatalf("notion search: %v", err)
 	}
 	var got notionSearchJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -315,7 +315,7 @@ func TestNotionSearchMarkdownAndEmpty(t *testing.T) {
 		{Object: notion.SearchPage, ID: "p1", Title: []notion.RichText{{PlainText: "Plans"}}},
 	}}
 	env, out := testEnv(testConfig(t), api)
-	if err := Run(context.Background(), []string{"notion-search"}, env); err != nil {
+	if err := Run(context.Background(), []string{"notion", "search"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if want := "- Plans (page) — p1\n"; out.String() != want {
@@ -324,7 +324,7 @@ func TestNotionSearchMarkdownAndEmpty(t *testing.T) {
 
 	api.searchHits = nil
 	out.Reset()
-	if err := Run(context.Background(), []string{"notion-search"}, env); err != nil {
+	if err := Run(context.Background(), []string{"notion", "search"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "Nothing in the workspace matches") {
@@ -334,15 +334,15 @@ func TestNotionSearchMarkdownAndEmpty(t *testing.T) {
 
 func TestNotionSearchRefusals(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{searchErr: errors.New("offline")})
-	if err := Run(context.Background(), []string{"notion-search"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"notion", "search"}, env); err == nil ||
 		!strings.Contains(err.Error(), "search the workspace: offline") {
 		t.Errorf("error = %v", err)
 	}
-	if err := Run(context.Background(), []string{"notion-search", "extra"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"notion", "search", "extra"}, env); err == nil ||
 		!strings.Contains(err.Error(), "takes no arguments") {
 		t.Errorf("error = %v", err)
 	}
-	if err := Run(context.Background(), []string{"notion-search", "--nope"}, env); err == nil {
+	if err := Run(context.Background(), []string{"notion", "search", "--nope"}, env); err == nil {
 		t.Error("a bad flag was accepted")
 	}
 }
@@ -384,7 +384,7 @@ func TestProjectMirrorRefusesAPlanItCannotRead(t *testing.T) {
 			api := &fakeAPI{}
 			env, _, saved, id := mirrorEnv(t, api)
 			breakPlan(t, saved, id, c.stmt)
-			err := Run(context.Background(), []string{"project-mirror", "--project", id,
+			err := Run(context.Background(), []string{"project", "mirror", "--project", id,
 				"--parent", "p", "--parent-kind", "page"}, env)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("error = %v, want one saying %q", err, c.want)
@@ -406,7 +406,7 @@ func TestProjectMirrorRefusesAPlanFileThatWillNotOpen(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not a database"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Run(context.Background(), []string{"project-mirror", "--project", id,
+	if err := Run(context.Background(), []string{"project", "mirror", "--project", id,
 		"--parent", "p", "--parent-kind", "page"}, env); err == nil {
 		t.Error("a plan that is not a database was mirrored")
 	}
@@ -425,7 +425,7 @@ func TestProjectMirrorSurvivesTheConfigChangingUnderIt(t *testing.T) {
 			}
 			return load()
 		}
-		err := Run(context.Background(), []string{"project-mirror", "--project", id,
+		err := Run(context.Background(), []string{"project", "mirror", "--project", id,
 			"--parent", "p", "--parent-kind", "page"}, env)
 		if err == nil || !strings.Contains(err.Error(), "gone") {
 			t.Errorf("error = %v", err)
@@ -442,9 +442,9 @@ func TestProjectMirrorSurvivesTheConfigChangingUnderIt(t *testing.T) {
 			return load()
 		}
 		env.Save = func(c config.Config) error { saves = append(saves, c); return nil }
-		if err := Run(context.Background(), []string{"project-mirror", "--project", id,
+		if err := Run(context.Background(), []string{"project", "mirror", "--project", id,
 			"--parent", "p", "--parent-kind", "page"}, env); err != nil {
-			t.Fatalf("project-mirror: %v", err)
+			t.Fatalf("project mirror: %v", err)
 		}
 		if _, ok := saves[0].Projects["new-project"]; !ok {
 			t.Errorf("first save = %+v, want the mirror recorded", saves[0])
@@ -460,7 +460,7 @@ func TestProjectMirrorSurvivesTheConfigChangingUnderIt(t *testing.T) {
 			}
 			return nil
 		}
-		err := Run(context.Background(), []string{"project-mirror", "--project", id,
+		err := Run(context.Background(), []string{"project", "mirror", "--project", id,
 			"--parent", "p", "--parent-kind", "page"}, env)
 		if err == nil || !strings.Contains(err.Error(), "read-only") || !strings.Contains(err.Error(), "new-project was created") {
 			t.Errorf("error = %v", err)
@@ -474,7 +474,7 @@ func TestProjectMirrorSaysHowFarItGotWhenFilingFails(t *testing.T) {
 		if ready != nil {
 			ready(saved)
 		}
-		return Run(context.Background(), []string{"project-mirror", "--project", id,
+		return Run(context.Background(), []string{"project", "mirror", "--project", id,
 			"--parent", "p", "--parent-kind", "page"}, env)
 	}
 	t.Run("the new plan file will not open", func(t *testing.T) {

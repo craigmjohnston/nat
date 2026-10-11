@@ -12,7 +12,7 @@ import (
 )
 
 // savingEnv wires env.Save to capture what was written, so a test can assert
-// on the config config-set actually saved rather than only on its own report.
+// on the config config set actually saved rather than only on its own report.
 func savingEnv(cfg config.Config) (Env, *config.Config) {
 	env, _ := testEnv(cfg, &fakeAPI{})
 	var saved config.Config
@@ -26,9 +26,9 @@ func savingEnv(cfg config.Config) (Env, *config.Config) {
 func TestConfigSetSplitPercent(t *testing.T) {
 	env, saved := savingEnv(config.Config{})
 
-	err := Run(context.Background(), []string{"config-set", "agent_split_percent", "70"}, env)
+	err := Run(context.Background(), []string{"config", "set", "agent_split_percent", "70"}, env)
 	if err != nil {
-		t.Fatalf("config-set: %v", err)
+		t.Fatalf("config set: %v", err)
 	}
 	if saved.AgentSplitPercent != 70 {
 		t.Errorf("saved split = %d, want 70", saved.AgentSplitPercent)
@@ -38,9 +38,9 @@ func TestConfigSetSplitPercent(t *testing.T) {
 func TestConfigSetSplitPercentEmptyUnsets(t *testing.T) {
 	env, saved := savingEnv(config.Config{AgentSplitPercent: 70})
 
-	err := Run(context.Background(), []string{"config-set", "agent_split_percent", ""}, env)
+	err := Run(context.Background(), []string{"config", "set", "agent_split_percent", ""}, env)
 	if err != nil {
-		t.Fatalf("config-set: %v", err)
+		t.Fatalf("config set: %v", err)
 	}
 	if saved.AgentSplitPercent != 0 {
 		t.Errorf("saved split = %d, want 0 (unset)", saved.AgentSplitPercent)
@@ -50,7 +50,7 @@ func TestConfigSetSplitPercentEmptyUnsets(t *testing.T) {
 func TestConfigSetSplitPercentRefusesOutOfBounds(t *testing.T) {
 	env, _ := savingEnv(config.Config{})
 
-	err := Run(context.Background(), []string{"config-set", "agent_split_percent", "5"}, env)
+	err := Run(context.Background(), []string{"config", "set", "agent_split_percent", "5"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "between") {
 		t.Errorf("err = %v, want the bounds named", err)
@@ -60,7 +60,7 @@ func TestConfigSetSplitPercentRefusesOutOfBounds(t *testing.T) {
 func TestConfigSetSplitPercentRefusesNonNumeric(t *testing.T) {
 	env, _ := savingEnv(config.Config{})
 
-	err := Run(context.Background(), []string{"config-set", "agent_split_percent", "lots"}, env)
+	err := Run(context.Background(), []string{"config", "set", "agent_split_percent", "lots"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "wants a number") {
 		t.Errorf("err = %v, want 'wants a number'", err)
@@ -70,9 +70,9 @@ func TestConfigSetSplitPercentRefusesNonNumeric(t *testing.T) {
 func TestConfigSetPollSeconds(t *testing.T) {
 	env, saved := savingEnv(config.Config{})
 
-	err := Run(context.Background(), []string{"config-set", "poll_seconds", "45"}, env)
+	err := Run(context.Background(), []string{"config", "set", "poll_seconds", "45"}, env)
 	if err != nil {
-		t.Fatalf("config-set: %v", err)
+		t.Fatalf("config set: %v", err)
 	}
 	if saved.PollSeconds != 45 {
 		t.Errorf("saved poll = %d, want 45", saved.PollSeconds)
@@ -82,7 +82,7 @@ func TestConfigSetPollSeconds(t *testing.T) {
 func TestConfigSetPollSecondsRefusesNonNumeric(t *testing.T) {
 	env, _ := savingEnv(config.Config{})
 
-	err := Run(context.Background(), []string{"config-set", "poll_seconds", "lots"}, env)
+	err := Run(context.Background(), []string{"config", "set", "poll_seconds", "lots"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "wants a number") {
 		t.Errorf("err = %v, want 'wants a number'", err)
@@ -92,7 +92,7 @@ func TestConfigSetPollSecondsRefusesNonNumeric(t *testing.T) {
 func TestConfigSetPollSecondsRefusesOutOfBounds(t *testing.T) {
 	env, _ := savingEnv(config.Config{})
 
-	err := Run(context.Background(), []string{"config-set", "poll_seconds", "1"}, env)
+	err := Run(context.Background(), []string{"config", "set", "poll_seconds", "1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "between") {
 		t.Errorf("err = %v, want the bounds named", err)
@@ -113,9 +113,9 @@ func TestConfigSetModelFields(t *testing.T) {
 		t.Run(tt.key, func(t *testing.T) {
 			env, saved := savingEnv(config.Config{})
 
-			err := Run(context.Background(), []string{"config-set", tt.key, "opus"}, env)
+			err := Run(context.Background(), []string{"config", "set", tt.key, "opus"}, env)
 			if err != nil {
-				t.Fatalf("config-set %s: %v", tt.key, err)
+				t.Fatalf("config set %s: %v", tt.key, err)
 			}
 			if got := tt.check(*saved); got != "opus" {
 				t.Errorf("%s = %q, want %q", tt.key, got, "opus")
@@ -127,9 +127,9 @@ func TestConfigSetModelFields(t *testing.T) {
 func TestConfigSetProjectWorkingDir(t *testing.T) {
 	env, saved := savingEnv(testConfig(t))
 
-	err := Run(context.Background(), []string{"config-set", "project.project-1.working_dir", "/new/dir"}, env)
+	err := Run(context.Background(), []string{"config", "set", "project.project-1.working_dir", "/new/dir"}, env)
 	if err != nil {
-		t.Fatalf("config-set: %v", err)
+		t.Fatalf("config set: %v", err)
 	}
 	if got := saved.Projects["project-1"].WorkingDir; got != "/new/dir" {
 		t.Errorf("working_dir = %q, want %q", got, "/new/dir")
@@ -150,10 +150,10 @@ func TestConfigSetProjectWorkingDirMatchesANormalisedID(t *testing.T) {
 	env, saved := savingEnv(cfg)
 
 	err := Run(context.Background(), []string{
-		"config-set", "project.aaaaaaaabbbbccccddddeeeeeeeeeeee.working_dir", "/new/dir",
+		"config", "set", "project.aaaaaaaabbbbccccddddeeeeeeeeeeee.working_dir", "/new/dir",
 	}, env)
 	if err != nil {
-		t.Fatalf("config-set: %v", err)
+		t.Fatalf("config set: %v", err)
 	}
 	if got := saved.Projects["AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"].WorkingDir; got != "/new/dir" {
 		t.Errorf("working_dir = %q, want %q", got, "/new/dir")
@@ -163,7 +163,7 @@ func TestConfigSetProjectWorkingDirMatchesANormalisedID(t *testing.T) {
 func TestConfigSetProjectWorkingDirRefusesAnUnknownProject(t *testing.T) {
 	env, _ := savingEnv(testConfig(t))
 
-	err := Run(context.Background(), []string{"config-set", "project.nope.working_dir", "/new/dir"}, env)
+	err := Run(context.Background(), []string{"config", "set", "project.nope.working_dir", "/new/dir"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -173,7 +173,7 @@ func TestConfigSetProjectWorkingDirRefusesAnUnknownProject(t *testing.T) {
 func TestConfigSetRefusesAnUnknownKey(t *testing.T) {
 	env, _ := savingEnv(config.Config{})
 
-	err := Run(context.Background(), []string{"config-set", "bogus_key", "x"}, env)
+	err := Run(context.Background(), []string{"config", "set", "bogus_key", "x"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), `unknown key "bogus_key"`) {
 		t.Errorf("err = %v, want the unknown key named", err)
@@ -183,7 +183,7 @@ func TestConfigSetRefusesAnUnknownKey(t *testing.T) {
 func TestConfigSetRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := savingEnv(config.Config{})
 
-	err := Run(context.Background(), []string{"config-set", "poll_seconds"}, env)
+	err := Run(context.Background(), []string{"config", "set", "poll_seconds"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "want exactly a key and a value") {
 		t.Errorf("err = %v, want 'want exactly a key and a value'", err)
@@ -194,7 +194,7 @@ func TestConfigSetReportsNoConfiguration(t *testing.T) {
 	env, _ := testEnv(config.Config{}, &fakeAPI{})
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
-	err := Run(context.Background(), []string{"config-set", "poll_seconds", "45"}, env)
+	err := Run(context.Background(), []string{"config", "set", "poll_seconds", "45"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no configuration yet") {
 		t.Errorf("err = %v, want 'no configuration yet'", err)
@@ -206,7 +206,7 @@ func TestConfigSetReportsAFailedLoad(t *testing.T) {
 	env, _ := testEnv(config.Config{}, &fakeAPI{})
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, want }
 
-	err := Run(context.Background(), []string{"config-set", "poll_seconds", "45"}, env)
+	err := Run(context.Background(), []string{"config", "set", "poll_seconds", "45"}, env)
 
 	if !errors.Is(err, want) {
 		t.Errorf("err = %v, want %v", err, want)
@@ -218,7 +218,7 @@ func TestConfigSetReportsAFailedSave(t *testing.T) {
 	want := errors.New("disk full")
 	env.Save = func(config.Config) error { return want }
 
-	err := Run(context.Background(), []string{"config-set", "poll_seconds", "45"}, env)
+	err := Run(context.Background(), []string{"config", "set", "poll_seconds", "45"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "save config") {
 		t.Errorf("err = %v, want the failed save named", err)
@@ -230,8 +230,8 @@ func TestConfigSetMarkdown(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	if err := Run(context.Background(), []string{"config-set", "poll_seconds", "45"}, env); err != nil {
-		t.Fatalf("config-set: %v", err)
+	if err := Run(context.Background(), []string{"config", "set", "poll_seconds", "45"}, env); err != nil {
+		t.Fatalf("config set: %v", err)
 	}
 	want := "# Config updated\n\n- poll_seconds: 45\n"
 	if out.String() != want {
@@ -244,8 +244,8 @@ func TestConfigSetMarkdownReportsUnset(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	if err := Run(context.Background(), []string{"config-set", "poll_seconds", ""}, env); err != nil {
-		t.Fatalf("config-set: %v", err)
+	if err := Run(context.Background(), []string{"config", "set", "poll_seconds", ""}, env); err != nil {
+		t.Fatalf("config set: %v", err)
 	}
 	want := "# Config updated\n\n- poll_seconds: unset\n"
 	if out.String() != want {
@@ -256,7 +256,7 @@ func TestConfigSetMarkdownReportsUnset(t *testing.T) {
 func TestConfigSetRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := savingEnv(config.Config{})
 
-	err := Run(context.Background(), []string{"config-set", "--bogus", "poll_seconds", "45"}, env)
+	err := Run(context.Background(), []string{"config", "set", "--bogus", "poll_seconds", "45"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -269,8 +269,8 @@ func TestConfigSetRefusesAnUnknownFlag(t *testing.T) {
 func TestConfigSetProjectRuns(t *testing.T) {
 	env, saved := savingEnv(testConfig(t))
 	value := `[{"label":"Run","command":"make run","scope":"slice"},{"label":"Play","command":"./play"}]`
-	if err := Run(context.Background(), []string{"config-set", "project.project-1.runs", value}, env); err != nil {
-		t.Fatalf("config-set: %v", err)
+	if err := Run(context.Background(), []string{"config", "set", "project.project-1.runs", value}, env); err != nil {
+		t.Fatalf("config set: %v", err)
 	}
 	want := []config.RunCommand{{Label: "Run", Command: "make run", Scope: "slice"}, {Label: "Play", Command: "./play"}}
 	if got := saved.Projects["project-1"]; !reflect.DeepEqual(got.Runs, want) || got.Name != "nat" {
@@ -283,8 +283,8 @@ func TestConfigSetProjectRuns(t *testing.T) {
 	cfg.Projects["project-1"] = p
 	for _, empty := range []string{"", "[]"} {
 		env, saved = savingEnv(cfg)
-		if err := Run(context.Background(), []string{"config-set", "project.project-1.runs", empty}, env); err != nil {
-			t.Fatalf("config-set %q: %v", empty, err)
+		if err := Run(context.Background(), []string{"config", "set", "project.project-1.runs", empty}, env); err != nil {
+			t.Fatalf("config set %q: %v", empty, err)
 		}
 		if got := saved.Projects["project-1"].Runs; got != nil {
 			t.Errorf("%q: runs = %+v, want unset", empty, got)
@@ -303,7 +303,7 @@ func TestConfigSetProjectRunsRefusals(t *testing.T) {
 		{"project.nope.runs", `[]`, "no project nope"},
 	} {
 		env, _ := savingEnv(testConfig(t))
-		err := Run(context.Background(), []string{"config-set", tt.key, tt.value}, env)
+		err := Run(context.Background(), []string{"config", "set", tt.key, tt.value}, env)
 		if err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s=%s: err = %v, want %q", tt.key, tt.value, err, tt.want)
 		}
@@ -315,8 +315,8 @@ func TestConfigSetProjectColor(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	if err := Run(context.Background(), []string{"config-set", "project.project-1.color", "teal"}, env); err != nil {
-		t.Fatalf("config-set: %v", err)
+	if err := Run(context.Background(), []string{"config", "set", "project.project-1.color", "teal"}, env); err != nil {
+		t.Fatalf("config set: %v", err)
 	}
 	if got := saved.Projects["project-1"].Color; got != "teal" {
 		t.Errorf("color = %q, want teal", got)
@@ -346,8 +346,8 @@ func TestConfigSetProjectColorAuto(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	if err := Run(context.Background(), []string{"config-set", "project.project-1.color", "auto"}, env); err != nil {
-		t.Fatalf("config-set: %v", err)
+	if err := Run(context.Background(), []string{"config", "set", "project.project-1.color", "auto"}, env); err != nil {
+		t.Fatalf("config set: %v", err)
 	}
 	if cleared != "" {
 		t.Errorf("handed to save with color %q, want it cleared", cleared)
@@ -360,14 +360,14 @@ func TestConfigSetProjectColorAuto(t *testing.T) {
 func TestConfigSetProjectColorRefusals(t *testing.T) {
 	for _, value := range []string{"", "magenta", "Red", "#ff0000"} {
 		env, _ := savingEnv(testConfig(t))
-		err := Run(context.Background(), []string{"config-set", "project.project-1.color", value}, env)
+		err := Run(context.Background(), []string{"config", "set", "project.project-1.color", value}, env)
 		var usage *UsageError
 		if !errors.As(err, &usage) || !strings.Contains(err.Error(), "red, orange, yellow, green, teal, blue, purple, pink") {
 			t.Errorf("%q: err = %v, want a usage error naming the palette", value, err)
 		}
 	}
 	env, _ := savingEnv(testConfig(t))
-	err := Run(context.Background(), []string{"config-set", "project.nope.color", "red"}, env)
+	err := Run(context.Background(), []string{"config", "set", "project.nope.color", "red"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
 	}
@@ -382,7 +382,7 @@ func TestConfigSetProjectColorRefusesScratchAndSourceProjects(t *testing.T) {
 	for _, id := range []string{"scratch", "work"} {
 		for _, value := range []string{"red", "auto"} {
 			env, _ := savingEnv(cfg)
-			err := Run(context.Background(), []string{"config-set", "project." + id + ".color", value}, env)
+			err := Run(context.Background(), []string{"config", "set", "project." + id + ".color", value}, env)
 			if err == nil || !strings.Contains(err.Error(), "take no colour") {
 				t.Errorf("%s %s: err = %v, want it refused", id, value, err)
 			}
@@ -394,9 +394,9 @@ func TestConfigSetProjectName(t *testing.T) {
 	env, saved := savingEnv(testConfig(t))
 	out := env.Out.(*bytes.Buffer)
 
-	err := Run(context.Background(), []string{"config-set", "project.project-1.name", "  gnat  "}, env)
+	err := Run(context.Background(), []string{"config", "set", "project.project-1.name", "  gnat  "}, env)
 	if err != nil {
-		t.Fatalf("config-set: %v", err)
+		t.Fatalf("config set: %v", err)
 	}
 	if got := saved.Projects["project-1"].Name; got != "gnat" {
 		t.Errorf("saved name = %q, want it trimmed to gnat", got)
@@ -415,26 +415,26 @@ func TestConfigSetProjectNameRefusals(t *testing.T) {
 	cfg.Projects["work"] = config.ProjectConfig{Backend: config.BackendSource, Source: "demo"}
 	for _, value := range []string{"", "   "} {
 		env, _ := savingEnv(cfg)
-		err := Run(context.Background(), []string{"config-set", "project.project-1.name", value}, env)
+		err := Run(context.Background(), []string{"config", "set", "project.project-1.name", value}, env)
 		var usage *UsageError
 		if !errors.As(err, &usage) || !strings.Contains(err.Error(), "wants a name") {
 			t.Errorf("%q: err = %v, want a usage error asking for a name", value, err)
 		}
 	}
 	env, _ := savingEnv(cfg)
-	err := Run(context.Background(), []string{"config-set", "project.work.name", "Work"}, env)
+	err := Run(context.Background(), []string{"config", "set", "project.work.name", "Work"}, env)
 	if err == nil || !strings.Contains(err.Error(), "named by its plugin") {
 		t.Errorf("err = %v, want a source project refused", err)
 	}
 	env, _ = savingEnv(cfg)
-	err = Run(context.Background(), []string{"config-set", "project.nope.name", "Nope"}, env)
+	err = Run(context.Background(), []string{"config", "set", "project.nope.name", "Nope"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
 	}
 }
 
-// Every per-project key this slice added round-trips: written by config-set
-// onto the one project, read back by config-show --json, and unset by the
+// Every per-project key this slice added round-trips: written by config set
+// onto the one project, read back by config show --json, and unset by the
 // empty string.
 func TestConfigSetProjectFields(t *testing.T) {
 	for _, tt := range []struct {
@@ -457,8 +457,8 @@ func TestConfigSetProjectFields(t *testing.T) {
 	} {
 		env, saved := savingEnv(testConfig(t))
 		env.Out = &strings.Builder{}
-		if err := Run(context.Background(), []string{"config-set", tt.key, tt.value}, env); err != nil {
-			t.Fatalf("config-set %s %q: %v", tt.key, tt.value, err)
+		if err := Run(context.Background(), []string{"config", "set", tt.key, tt.value}, env); err != nil {
+			t.Fatalf("config set %s %q: %v", tt.key, tt.value, err)
 		}
 		p := saved.Projects["project-1"]
 		if got := tt.check(p); got != tt.want {
@@ -475,8 +475,8 @@ func TestConfigSetProjectTagReportsTheStoredTag(t *testing.T) {
 	env, _ := savingEnv(testConfig(t))
 	var out strings.Builder
 	env.Out = &out
-	if err := Run(context.Background(), []string{"config-set", "project.project-1.tag", "nt"}, env); err != nil {
-		t.Fatalf("config-set: %v", err)
+	if err := Run(context.Background(), []string{"config", "set", "project.project-1.tag", "nt"}, env); err != nil {
+		t.Fatalf("config set: %v", err)
 	}
 	if want := "# Config updated\n\n- project.project-1.tag: NT\n"; out.String() != want {
 		t.Errorf("output = %q, want %q", out.String(), want)
@@ -493,7 +493,7 @@ func TestConfigSetProjectFieldRefusals(t *testing.T) {
 		{"project.project-1.frobnicate", "x", `unknown key "project.project-1.frobnicate"`},
 	} {
 		env, saved := savingEnv(testConfig(t))
-		err := Run(context.Background(), []string{"config-set", tt.key, tt.value}, env)
+		err := Run(context.Background(), []string{"config", "set", tt.key, tt.value}, env)
 		if err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s=%s: err = %v, want %q", tt.key, tt.value, err, tt.want)
 		}

@@ -397,7 +397,7 @@ def main(argv):
         print(f"demo: request is not one JSON object: {e}", file=sys.stderr)
         return 1
     project = req.get("project")
-    # `nat source-list` describes with an empty project, and setup is sent
+    # `nat source list` describes with an empty project, and setup is sent
     # one too (no project is in question), so only the other methods need an
     # id.
     if not isinstance(project, dict) or (argv[1] not in ("describe", "setup") and not project.get("id")):

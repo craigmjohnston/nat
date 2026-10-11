@@ -5,12 +5,12 @@ private struct StatusEnvelope: Codable {
     let agents: [AgentStatus]
 }
 
-/// Envelope for `slice-approve --json`'s output.
+/// Envelope for `slice approve --json`'s output.
 private struct ApproveEnvelope: Codable {
     let url: String
 }
 
-/// Envelope for `pr-merge --json`'s output — always `{"merged":true}` on
+/// Envelope for `pr merge --json`'s output — always `{"merged":true}` on
 /// success, since a refusal comes back as a non-zero exit rather than
 /// `false`. Decoded (and discarded) anyway, so a `nat` whose shape has
 /// drifted fails loudly here rather than being read as a silent success.
@@ -18,13 +18,13 @@ private struct MergedEnvelope: Codable {
     let merged: Bool
 }
 
-/// Envelope for `slice-add --json`'s output: the created slice, wrapped the
+/// Envelope for `slice add --json`'s output: the created slice, wrapped the
 /// same way `add.go`'s `sliceAddedJSON` wraps it.
 private struct SliceAddedEnvelope: Codable {
     let slice: SliceAddResult
 }
 
-/// Envelope for `slice-status --json`'s output, which is one of two shapes:
+/// Envelope for `slice status --json`'s output, which is one of two shapes:
 /// `{"status":..., "trashed":...}` for a page still there to read, or
 /// `{"gone":true}` for one Notion no longer has any record of at all —
 /// `slicestatus.go`'s own two JSON structs, read into one Codable type since
@@ -35,14 +35,14 @@ private struct SliceStatusEnvelope: Codable {
     let gone: Bool?
 }
 
-/// Envelope for `project-open --json`'s and `project-create --json`'s
+/// Envelope for `project open --json`'s and `project create --json`'s
 /// output: the config entry each wrote, wrapped in a named field the way
 /// every other creation in the CLI wraps what it made.
 private struct ProjectEnvelope<Project: Codable>: Codable {
     let project: Project
 }
 
-/// `nat plan-proposal --json`'s answer: the proposal, or null with none yet.
+/// `nat plan proposal --json`'s answer: the proposal, or null with none yet.
 private struct ProposalEnvelope: Decodable {
     let proposal: PlanProposal?
 }
@@ -91,17 +91,17 @@ public final class NatClient: Sendable {
 
     // MARK: - Task sources
 
-    /// One container of a source project in full — `nat container-show`: the
+    /// One container of a source project in full — `nat container show`: the
     /// plugin's own detail as-is, and the plan's tasks filed under it.
     ///
     /// - Throws: NatError if the project is not a source project, or the
     ///   plugin's read failed (its stderr line is the message)
     public func containerShow(projectID: String, containerID: String) async throws -> ContainerShow {
-        let output = try await runNat(arguments: ["container-show", containerID, "--project", projectID, "--json"])
+        let output = try await runNat(arguments: ["container", "show", containerID, "--project", projectID, "--json"])
         return try decodeJSON(ContainerShow.self, from: output)
     }
 
-    /// Run one of a source plugin's own actions — `nat source-action`. The
+    /// Run one of a source plugin's own actions — `nat source action`. The
     /// target is the group or container whose menu it came from (neither:
     /// the source header; the CLI refuses both). The input, where the action
     /// takes one, goes over stdin (`--input -`), as `agentSend`'s prompt does:
@@ -112,7 +112,7 @@ public final class NatClient: Sendable {
     public func sourceAction(
         projectID: String, action: String, group: String?, container: String?, input: String?
     ) async throws -> SourceActionResult {
-        var arguments = ["source-action", "--project", projectID, "--action", action]
+        var arguments = ["source", "action", "--project", projectID, "--action", action]
         if let group, !group.isEmpty { arguments += ["--group", group] }
         if let container, !container.isEmpty { arguments += ["--container", container] }
         var standardInput: Data?
@@ -125,32 +125,32 @@ public final class NatClient: Sendable {
         return try decodeJSON(SourceActionResult.self, from: output)
     }
 
-    /// Every task-source plugin this machine has — `nat source-list`, each
+    /// Every task-source plugin this machine has — `nat source list`, each
     /// described, or listed with why it would not be. Takes no `--project`:
     /// it is about plugins, not any project.
     public func sourceList() async throws -> [SourcePlugin] {
-        let output = try await runNat(arguments: ["source-list", "--json"])
+        let output = try await runNat(arguments: ["source", "list", "--json"])
         return try decodeJSON([SourcePlugin].self, from: output)
     }
 
     // MARK: - Plugin install
 
     /// Every plugin source, installed plugin and plugin on offer — `nat
-    /// plugin-list`. A source nat could not read comes back with its
+    /// plugin list`. A source nat could not read comes back with its
     /// `error`, not as one offering nothing.
     public func pluginList() async throws -> PluginListing {
-        let output = try await runNat(arguments: ["plugin-list", "--json"])
+        let output = try await runNat(arguments: ["plugin", "list", "--json"])
         return try decodeJSON(PluginListing.self, from: output)
     }
 
-    /// Install, or update, one plugin — `nat plugin-install`: from `source`
+    /// Install, or update, one plugin — `nat plugin install`: from `source`
     /// where given, else the first source offering it; at `version` where
     /// given, else the latest.
     ///
     /// - Throws: NatError carrying nat's refusal (one installed by hand, a
     ///   digest that did not match, no source offering it)
     public func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled {
-        var arguments = ["plugin-install", name]
+        var arguments = ["plugin", "install", name]
         if let source, !source.isEmpty { arguments += ["--source", source] }
         if let version, !version.isEmpty { arguments += ["--version", version] }
         arguments.append("--json")
@@ -159,31 +159,31 @@ public final class NatClient: Sendable {
     }
 
     /// Remove one plugin from nat's plugins directory — `nat
-    /// plugin-uninstall`, refused while a project uses it unless
+    /// plugin uninstall`, refused while a project uses it unless
     /// `deleteProjects` (`--delete-projects`) deletes those projects first —
     /// passed only once the user has confirmed it.
     public func pluginUninstall(name: String, deleteProjects: Bool) async throws -> PluginUninstalled {
-        var arguments = ["plugin-uninstall", name]
+        var arguments = ["plugin", "uninstall", name]
         if deleteProjects { arguments.append("--delete-projects") }
         arguments.append("--json")
         let output = try await runNat(arguments: arguments)
         return try decodeJSON(PluginUninstalled.self, from: output)
     }
 
-    /// Add a plugin source, `owner/repo` — `nat plugin-source-add`.
+    /// Add a plugin source, `owner/repo` — `nat plugin source add`.
     public func pluginSourceAdd(repo: String) async throws -> PluginSourceList {
-        let output = try await runNat(arguments: ["plugin-source-add", repo, "--json"])
+        let output = try await runNat(arguments: ["plugin", "source", "add", repo, "--json"])
         return try decodeJSON(PluginSourceList.self, from: output)
     }
 
-    /// Remove a plugin source — `nat plugin-source-remove`, refused for
+    /// Remove a plugin source — `nat plugin source remove`, refused for
     /// nat's own.
     public func pluginSourceRemove(repo: String) async throws -> PluginSourceList {
-        let output = try await runNat(arguments: ["plugin-source-remove", repo, "--json"])
+        let output = try await runNat(arguments: ["plugin", "source", "remove", repo, "--json"])
         return try decodeJSON(PluginSourceList.self, from: output)
     }
 
-    /// Set one of a plugin's setup fields — `nat source-setup`. The value is
+    /// Set one of a plugin's setup fields — `nat source setup`. The value is
     /// often a credential, so it goes on stdin and nowhere else: never in
     /// the arguments (which `ps` shows), and never in an error, which carries
     /// only nat's first stderr line. Nothing here logs a request.
@@ -193,7 +193,7 @@ public final class NatClient: Sendable {
     ///   value, a token the remote turned down)
     public func sourceSetup(plugin: String, id: String, value: String) async throws -> PluginSetupResult {
         let output = try await runNat(
-            arguments: ["source-setup", plugin, "--id", id, "--json"],
+            arguments: ["source", "setup", plugin, "--id", id, "--json"],
             standardInput: Data(value.utf8))
         return try decodeJSON(PluginSetupResult.self, from: output)
     }
@@ -248,18 +248,18 @@ public final class NatClient: Sendable {
     }
 
     /// The installed Claude Code and the newest released — `nat
-    /// claude-version --json`, the release feed read at most hourly by nat
+    /// claude version --json`, the release feed read at most hourly by nat
     /// itself. Takes no `--project`: it is this machine's.
     ///
     /// - Returns: The reading; a side nat could not read is absent
     /// - Throws: NatError if `nat` itself fails (an unreadable side is not
     ///   an error)
     public func claudeVersion() async throws -> ClaudeVersion {
-        let output = try await runNat(arguments: ["claude-version", "--json"])
+        let output = try await runNat(arguments: ["claude", "version", "--json"])
         return try decodeJSON(ClaudeVersion.self, from: output)
     }
 
-    /// This month's GitHub artifact storage by project — `nat storage-usage
+    /// This month's GitHub artifact storage by project — `nat storage usage
     /// --json`, GitHub's billing report for the signed-in gh account. Takes
     /// no `--project`: the reading is the account's.
     ///
@@ -267,16 +267,16 @@ public final class NatClient: Sendable {
     /// - Throws: NatError carrying nat's refusal (gh not signed in, GitHub
     ///   unreachable)
     public func storageUsage() async throws -> StorageUsageAnswer {
-        let output = try await runNat(arguments: ["storage-usage", "--json"])
+        let output = try await runNat(arguments: ["storage", "usage", "--json"])
         return try decodeJSON(StorageUsageAnswer.self, from: output)
     }
 
-    /// Runs `claude update` — `nat claude-update --json` — and answers what
+    /// Runs `claude update` — `nat claude update --json` — and answers what
     /// it printed. Agents already running keep the binary they started with.
     ///
     /// - Throws: NatError if the update failed, carrying claude's own words
     public func claudeUpdate() async throws -> String {
-        let output = try await runNat(arguments: ["claude-update", "--json"])
+        let output = try await runNat(arguments: ["claude", "update", "--json"])
         return try decodeJSON(ClaudeUpdateResult.self, from: output).output
     }
 
@@ -288,14 +288,14 @@ public final class NatClient: Sendable {
     /// - Returns: SliceDetail with all slice information
     /// - Throws: NatError if the command fails or output is invalid
     public func sliceShow(projectID: String, sliceRef: String) async throws -> SliceDetail {
-        let output = try await runNat(arguments: ["slice-show", "--project", projectID, "--json", sliceRef])
+        let output = try await runNat(arguments: ["slice", "show", "--project", projectID, "--json", sliceRef])
         return try decodeJSON(SliceDetail.self, from: output)
     }
 
     /// Get the diff of a handed-back slice's branch against the base it was cut
     /// from, already split into files — or, with `commit` given, the diff of
     /// exactly one commit of that branch's history against its own parent,
-    /// mirroring `nat slice-diff --commit <sha>`.
+    /// mirroring `nat slice diff --commit <sha>`.
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
@@ -304,7 +304,7 @@ public final class NatClient: Sendable {
     /// - Returns: SliceDiff with the base, branch, and per-file diff sections
     /// - Throws: NatError if the command fails or output is invalid
     public func sliceDiff(projectID: String, sliceRef: String, commit: String?) async throws -> SliceDiff {
-        var arguments = ["slice-diff", "--project", projectID, "--json"]
+        var arguments = ["slice", "diff", "--project", projectID, "--json"]
         if let commit, !commit.isEmpty {
             arguments.append(contentsOf: ["--commit", commit])
         }
@@ -314,7 +314,7 @@ public final class NatClient: Sendable {
     }
 
     /// A run of one file's own lines as the branch — or one commit of it —
-    /// leaves it, mirroring `nat slice-file`: what the diff's expand
+    /// leaves it, mirroring `nat slice file`: what the diff's expand
     /// controls reveal between its hunks.
     ///
     /// - Parameters:
@@ -324,7 +324,7 @@ public final class NatClient: Sendable {
     public func sliceFile(
         projectID: String, sliceRef: String, commit: String?, path: String, from: Int, to: Int?
     ) async throws -> SliceFileLines {
-        var arguments = ["slice-file", "--project", projectID, "--json", "--path", path, "--from", String(from)]
+        var arguments = ["slice", "file", "--project", projectID, "--json", "--path", path, "--from", String(from)]
         if let to { arguments.append(contentsOf: ["--to", String(to)]) }
         if let commit, !commit.isEmpty { arguments.append(contentsOf: ["--commit", commit]) }
         arguments.append(sliceRef)
@@ -334,7 +334,7 @@ public final class NatClient: Sendable {
 
     /// List a handed-back slice's branch's own commits since the merge base,
     /// without diffing any of them — the sidebar's "All commits" dropdown,
-    /// mirroring `nat slice-diff --commits`.
+    /// mirroring `nat slice diff --commits`.
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
@@ -342,7 +342,7 @@ public final class NatClient: Sendable {
     /// - Returns: SliceCommitsDoc with the base, branch, and the commits themselves
     /// - Throws: NatError if the command fails or output is invalid
     public func sliceCommits(projectID: String, sliceRef: String) async throws -> SliceCommitsDoc {
-        let output = try await runNat(arguments: ["slice-diff", "--project", projectID, "--json", "--commits", sliceRef])
+        let output = try await runNat(arguments: ["slice", "diff", "--project", projectID, "--json", "--commits", sliceRef])
         return try decodeJSON(SliceCommitsDoc.self, from: output)
     }
 
@@ -360,13 +360,13 @@ public final class NatClient: Sendable {
     /// - Throws: NatError if the command fails or no live session exists
     public func agentSend(projectID: String, sliceRef: String, text: String) async throws {
         _ = try await runNatRaw(
-            arguments: ["agent-send", "--project", projectID, sliceRef, "--text", "-"],
+            arguments: ["agent", "send", "--project", projectID, sliceRef, "--text", "-"],
             standardInput: text.data(using: .utf8)
         )
     }
 
     /// End a slice's agent session outright, taking the agent with it —
-    /// `nat agent-kill`. Closing the Agent tab only detaches the viewer, so
+    /// `nat agent kill`. Closing the Agent tab only detaches the viewer, so
     /// this is the one thing that actually reaps a session; a slice with
     /// nothing running on it is refused by the CLI, which passes straight
     /// through as `NatError.commandFailed`.
@@ -376,10 +376,10 @@ public final class NatClient: Sendable {
     ///   - sliceRef: The slice's URL or Notion page ID
     /// - Throws: NatError if the command fails or no live session exists
     public func agentKill(projectID: String, sliceRef: String) async throws {
-        _ = try await runNatRaw(arguments: ["agent-kill", "--project", projectID, sliceRef])
+        _ = try await runNatRaw(arguments: ["agent", "kill", "--project", projectID, sliceRef])
     }
 
-    /// End a project's planning agent outright — `nat agent-kill --workshop`,
+    /// End a project's planning agent outright — `nat agent kill --workshop`,
     /// the workshop tab's own close button. A project with no live planning
     /// session is refused by the CLI, which passes straight through as
     /// `NatError.commandFailed`.
@@ -387,19 +387,19 @@ public final class NatClient: Sendable {
     /// - Parameter projectID: The project's Notion page ID
     /// - Throws: NatError if the command fails or no live session exists
     public func agentKillWorkshop(projectID: String) async throws {
-        _ = try await runNatRaw(arguments: ["agent-kill", "--workshop", "--project", projectID])
+        _ = try await runNatRaw(arguments: ["agent", "kill", "--workshop", "--project", projectID])
     }
 
-    /// End the planning agent of an Untitled tab — `nat agent-kill --workshop
+    /// End the planning agent of an Untitled tab — `nat agent kill --workshop
     /// --workspace`. Keyed by the tab's workspace id rather than a project;
     /// the CLI refuses a workspace with no live session, which passes
     /// through as `NatError.commandFailed`.
     public func agentKillWorkspace(workspaceID: String) async throws {
-        _ = try await runNatRaw(arguments: ["agent-kill", "--workshop", "--workspace", workspaceID])
+        _ = try await runNatRaw(arguments: ["agent", "kill", "--workshop", "--workspace", workspaceID])
     }
 
     /// Read one slice's status fresh, straight off its page — `nat
-    /// slice-status`, the reaper's last word before a kill. `projectID` only
+    /// slice status`, the reaper's last word before a kill. `projectID` only
     /// pins the credentials the read is made with; the slice need not be in
     /// that project's own plan.
     ///
@@ -410,7 +410,7 @@ public final class NatClient: Sendable {
     ///   `.gone` for a page Notion no longer has any record of
     /// - Throws: NatError if nat itself fails
     public func sliceStatus(projectID: String, sliceRef: String) async throws -> SliceStatusResult {
-        let output = try await runNat(arguments: ["slice-status", "--project", projectID, "--json", sliceRef])
+        let output = try await runNat(arguments: ["slice", "status", "--project", projectID, "--json", sliceRef])
         let envelope = try decodeJSON(SliceStatusEnvelope.self, from: output)
         if envelope.gone == true {
             return .gone
@@ -436,7 +436,7 @@ public final class NatClient: Sendable {
     public func sliceLaunch(
         projectID: String, sliceRef: String, model: String?, effort: String?
     ) async throws -> LaunchResult {
-        var arguments = ["slice-launch", "--project", projectID, "--json", "--frontend", "gnat"]
+        var arguments = ["slice", "launch", "--project", projectID, "--json", "--frontend", "gnat"]
         if let model = model {
             arguments.append(contentsOf: ["--model", model])
         }
@@ -458,14 +458,14 @@ public final class NatClient: Sendable {
     /// - Returns: The URL of the pull request that was opened
     /// - Throws: NatError if the slice is not handed back, or gh refuses
     public func sliceApprove(projectID: String, sliceRef: String) async throws -> String {
-        let output = try await runNat(arguments: ["slice-approve", "--project", projectID, "--json", sliceRef])
+        let output = try await runNat(arguments: ["slice", "approve", "--project", projectID, "--json", sliceRef])
         return try decodeJSON(ApproveEnvelope.self, from: output).url
     }
 
-    /// Take a handed-back slice back out of review — `nat slice-rework`: its
+    /// Take a handed-back slice back out of review — `nat slice rework`: its
     /// branch is cleared and nothing else, so it reads as in progress (its
     /// agent at work on the comments just sent) until the agent's own
-    /// `complete-slice --branch` hands it back again. That re-hand-back is
+    /// `slice complete --branch` hands it back again. That re-hand-back is
     /// what an approve-over-comments waits on. `comments` are what was sent,
     /// filed on the slice's page under `Sent back` before the branch is
     /// cleared — the Task log's record of the send-back — and go over stdin
@@ -474,25 +474,25 @@ public final class NatClient: Sendable {
     /// - Throws: NatError if the slice is not handed back
     public func sliceRework(projectID: String, sliceRef: String, comments: String) async throws {
         _ = try await runNatRaw(
-            arguments: ["slice-rework", "--project", projectID, sliceRef, "--comments", "-"],
+            arguments: ["slice", "rework", "--project", projectID, sliceRef, "--comments", "-"],
             standardInput: Data(comments.utf8))
     }
 
-    /// Resume a handed-back slice — `nat slice-resume`: the note, why the
+    /// Resume a handed-back slice — `nat slice resume`: the note, why the
     /// user wants more, is filed under a stamped `Resumed` on the slice's
     /// page and then its Branch is cleared, so it reads as being worked again
-    /// until the agent's next `complete-slice --branch`. The note goes over
+    /// until the agent's next `slice complete --branch`. The note goes over
     /// stdin (`--note -`), as `sliceRework`'s comments do; nat writes nothing
     /// on a slice already resumed.
     ///
     /// - Throws: NatError if the note is empty or the slice is not In progress
     public func sliceResume(projectID: String, sliceRef: String, note: String) async throws {
         _ = try await runNatRaw(
-            arguments: ["slice-resume", "--project", projectID, sliceRef, "--note", "-"],
+            arguments: ["slice", "resume", "--project", projectID, sliceRef, "--note", "-"],
             standardInput: Data(note.utf8))
     }
 
-    /// Decide every follow-up a slice's agent proposed — `nat slice-triage`:
+    /// Decide every follow-up a slice's agent proposed — `nat slice triage`:
     /// each index queued as a slice, folded into this one or dropped, the
     /// decision recorded on the slice and sent to its agent in one message.
     ///
@@ -506,10 +506,10 @@ public final class NatClient: Sendable {
         return try decodeJSON(TriageResult.self, from: output)
     }
 
-    /// `slice-triage`'s command line for a mix of decisions, each index
+    /// `slice triage`'s command line for a mix of decisions, each index
     /// under its own repeated flag.
     static func triageArguments(projectID: String, sliceRef: String, queue: [Int], fold: [Int], drop: [Int]) -> [String] {
-        var args = ["slice-triage", "--project", projectID, "--json"]
+        var args = ["slice", "triage", "--project", projectID, "--json"]
         for n in queue { args += ["--queue", String(n)] }
         for n in fold { args += ["--fold", String(n)] }
         for n in drop { args += ["--drop", String(n)] }
@@ -525,22 +525,22 @@ public final class NatClient: Sendable {
     /// - Returns: PRDetail with gh's own fields
     /// - Throws: NatError if the slice has no pull request recorded, or gh fails
     public func prView(projectID: String, sliceRef: String) async throws -> PRDetail {
-        let output = try await runNat(arguments: ["pr-view", "--project", projectID, "--json", sliceRef])
+        let output = try await runNat(arguments: ["pr", "view", "--project", projectID, "--json", sliceRef])
         return try decodeJSON(PRDetail.self, from: output)
     }
 
-    /// Read one of an ad hoc session's pull requests in full — `nat pr-view
+    /// Read one of an ad hoc session's pull requests in full — `nat pr view
     /// --session`, which reads it from the session's own directory since a
     /// session has no slice to record a pull request on.
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
     ///   - sessionID: The session's own local ID
-    ///   - prURL: The pull request's URL, as `session-status` reports it
+    ///   - prURL: The pull request's URL, as `session status` reports it
     /// - Returns: PRDetail with gh's own fields
     /// - Throws: NatError if the session is unknown, or gh fails
     public func sessionPRView(projectID: String, sessionID: String, prURL: String) async throws -> PRDetail {
-        let output = try await runNat(arguments: ["pr-view", "--project", projectID, "--session", sessionID, "--json", prURL])
+        let output = try await runNat(arguments: ["pr", "view", "--project", projectID, "--session", sessionID, "--json", prURL])
         return try decodeJSON(PRDetail.self, from: output)
     }
 
@@ -549,7 +549,7 @@ public final class NatClient: Sendable {
     /// number — each slice whose pull request anything might still be waiting
     /// on and how close it is to landing, each project's ad hoc sessions'
     /// branches, GitHub's remaining budget, and with `detail` that one pull
-    /// request in full, as `pr-view` prints it.
+    /// request in full, as `pr view` prints it.
     ///
     /// - Parameters:
     ///   - projectIDs: Every project to read, by Notion page ID — one or more
@@ -560,7 +560,7 @@ public final class NatClient: Sendable {
     /// - Throws: NatError if nat itself fails (a pull request GitHub could not
     ///   answer for is not an error — its slice simply reads "unread")
     public func prStatus(projectIDs: [String], detail: String? = nil, settle: Bool = false) async throws -> GitHubReading {
-        var arguments = ["pr-status", "--json"]
+        var arguments = ["pr", "status", "--json"]
         for id in projectIDs { arguments += ["--project", id] }
         if let detail { arguments += ["--detail", detail] }
         if settle { arguments.append("--settle") }
@@ -584,12 +584,12 @@ public final class NatClient: Sendable {
     ///   - sliceRef: The slice's URL or Notion page ID
     /// - Throws: NatError if the slice has no pull request recorded, or gh refuses
     public func prMerge(projectID: String, sliceRef: String) async throws {
-        let output = try await runNat(arguments: ["pr-merge", "--project", projectID, "--json", sliceRef])
+        let output = try await runNat(arguments: ["pr", "merge", "--project", projectID, "--json", sliceRef])
         _ = try decodeJSON(MergedEnvelope.self, from: output)
     }
 
     /// Leave a top-level comment on a slice's pull request — the PR tab's own
-    /// composers, which post through `nat pr-comment` rather than write
+    /// composers, which post through `nat pr comment` rather than write
     /// anything of their own to GitHub. GitHub's per-line review threads have
     /// a reply API of their own that `nat` does not wrap, so this is always a
     /// new comment on the conversation as a whole, whichever composer sent it.
@@ -607,7 +607,7 @@ public final class NatClient: Sendable {
     ///   session holds no such pull request, or gh refuses
     public func prComment(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
         _ = try await runNatRaw(
-            arguments: ["pr-comment", sliceRef] + Self.sessionArguments(sessionID)
+            arguments: ["pr", "comment", sliceRef] + Self.sessionArguments(sessionID)
                 + ["--project", projectID, "--body", "-"],
             standardInput: body.data(using: .utf8)
         )
@@ -618,14 +618,14 @@ public final class NatClient: Sendable {
     }
 
     /// Replace the description of a slice's pull request, or with `sessionID`
-    /// an ad hoc session's — `nat pr-edit`, the body over stdin (`--body -`)
+    /// an ad hoc session's — `nat pr edit`, the body over stdin (`--body -`)
     /// exactly as `prComment`'s is.
     ///
     /// - Throws: NatError if the slice has no pull request recorded, the
     ///   session holds no such pull request, or gh refuses
     public func prEdit(projectID: String, sliceRef: String, body: String, sessionID: String?) async throws {
         _ = try await runNatRaw(
-            arguments: ["pr-edit", sliceRef] + Self.sessionArguments(sessionID)
+            arguments: ["pr", "edit", sliceRef] + Self.sessionArguments(sessionID)
                 + ["--project", projectID, "--body", "-"],
             standardInput: body.data(using: .utf8)
         )
@@ -637,7 +637,7 @@ public final class NatClient: Sendable {
     }
 
     /// Who is asked to review a slice's pull request and who else could be —
-    /// `nat pr-reviewers`, asking (`add`) and withdrawing (`remove`) first
+    /// `nat pr reviewers`, asking (`add`) and withdrawing (`remove`) first
     /// when either is given. The answer is read back from GitHub after the
     /// edit, so it is what the pull request now says.
     ///
@@ -645,7 +645,7 @@ public final class NatClient: Sendable {
     public func prReviewers(
         projectID: String, sliceRef: String, add: [String] = [], remove: [String] = []
     ) async throws -> PRReviewers {
-        var arguments = ["pr-reviewers", sliceRef, "--project", projectID, "--json"]
+        var arguments = ["pr", "reviewers", sliceRef, "--project", projectID, "--json"]
         for login in add { arguments += ["--add", login] }
         for login in remove { arguments += ["--remove", login] }
         let output = try await runNat(arguments: arguments)
@@ -653,7 +653,7 @@ public final class NatClient: Sendable {
     }
 
     /// Re-run a slice's pull request's GitHub Actions checks — `nat
-    /// slice-checks-rerun`, which cancels a run still going first, waits for
+    /// slice checks rerun`, which cancels a run still going first, waits for
     /// it, and says what it cancelled apart from what it re-ran.
     ///
     /// - Throws: NatError if the slice has no open pull request, nothing
@@ -667,7 +667,7 @@ public final class NatClient: Sendable {
 
     /// Cancel the Actions runs still going behind a slice's pull request's
     /// checks — all of them, or only the named checks' runs — `nat
-    /// slice-checks-cancel`. Returns once the cancels are sent.
+    /// slice checks cancel`. Returns once the cancels are sent.
     public func sliceChecksCancel(
         projectID: String, sliceRef: String, checks: [String]
     ) async throws -> ChecksActionResult {
@@ -675,10 +675,10 @@ public final class NatClient: Sendable {
         return try decodeJSON(ChecksActionResult.self, from: output)
     }
 
-    /// `slice-checks-rerun`'s command line, each named check under its own
+    /// `slice checks rerun`'s command line, each named check under its own
     /// repeated flag.
     static func checksRerunArguments(projectID: String, sliceRef: String, mode: ChecksRerunMode) -> [String] {
-        var args = ["slice-checks-rerun", sliceRef, "--project", projectID, "--json"]
+        var args = ["slice", "checks", "rerun", sliceRef, "--project", projectID, "--json"]
         switch mode {
         case .all: args.append("--all")
         case .failed: args.append("--failed")
@@ -687,9 +687,9 @@ public final class NatClient: Sendable {
         return args
     }
 
-    /// `slice-checks-cancel`'s command line.
+    /// `slice checks cancel`'s command line.
     static func checksCancelArguments(projectID: String, sliceRef: String, checks: [String]) -> [String] {
-        var args = ["slice-checks-cancel", sliceRef, "--project", projectID, "--json"]
+        var args = ["slice", "checks", "cancel", sliceRef, "--project", projectID, "--json"]
         for name in checks { args += ["--check", name] }
         return args
     }
@@ -704,7 +704,7 @@ public final class NatClient: Sendable {
     /// The request goes over stdin (`--request -`) when given, exactly as
     /// `prComment`'s body does: what the user wants to workshop may run to
     /// several lines. A nil or empty request omits the flag entirely, which
-    /// is `workshop-launch`'s own spelling of "a plain session".
+    /// is `workshop launch`'s own spelling of "a plain session".
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
@@ -720,7 +720,7 @@ public final class NatClient: Sendable {
     public func workshopLaunch(
         projectID: String, model: String?, effort: String?, request: String?
     ) async throws -> WorkshopLaunchResult {
-        var arguments = ["workshop-launch", "--project", projectID, "--json", "--frontend", "gnat"]
+        var arguments = ["workshop", "launch", "--project", projectID, "--json", "--frontend", "gnat"]
         if let model = model, !model.isEmpty {
             arguments.append(contentsOf: ["--model", model])
         }
@@ -737,9 +737,9 @@ public final class NatClient: Sendable {
     }
 
     /// Launch the new-project planning agent for an Untitled tab — `nat
-    /// workshop-launch --workspace`, the starter card's "Workshop".
+    /// workshop launch --workspace`, the starter card's "Workshop".
     /// The workspace id stands where a project's would: it keys the session,
-    /// and is what the agent's `plan-propose` carries so a proposal routes
+    /// and is what the agent's `plan propose` carries so a proposal routes
     /// back to the tab. nat makes the session's scratch directory.
     ///
     /// The request goes over stdin like `workshopLaunch`'s, and is required:
@@ -750,7 +750,7 @@ public final class NatClient: Sendable {
     public func workspaceLaunch(
         workspaceID: String, model: String?, effort: String?, request: String
     ) async throws -> WorkshopLaunchResult {
-        var arguments = ["workshop-launch", "--workspace", workspaceID, "--json", "--frontend", "gnat"]
+        var arguments = ["workshop", "launch", "--workspace", workspaceID, "--json", "--frontend", "gnat"]
         if let model = model, !model.isEmpty {
             arguments.append(contentsOf: ["--model", model])
         }
@@ -769,7 +769,7 @@ public final class NatClient: Sendable {
     /// The description goes over stdin (`--description -`) when given,
     /// exactly as `agentSend`'s prompt and `prComment`'s body do: a brief may
     /// run to several lines. A nil or empty description omits the flag
-    /// entirely, which is how `slice-add` itself spells "no brief".
+    /// entirely, which is how `slice add` itself spells "no brief".
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
@@ -784,14 +784,14 @@ public final class NatClient: Sendable {
     }
 
     /// File a new task under one of a source project's containers — `nat
-    /// slice-add --container <id>`, which a source project takes in place of
+    /// slice add --container <id>`, which a source project takes in place of
     /// `--milestone`. The description goes over stdin as `sliceAdd`'s does.
     public func sliceAdd(projectID: String, title: String, container: String, description: String?) async throws -> SliceAddResult {
         try await sliceAdd(projectID: projectID, title: title, filing: ["--container", container], description: description)
     }
 
     private func sliceAdd(projectID: String, title: String, filing: [String], description: String?) async throws -> SliceAddResult {
-        var arguments = ["slice-add", title, "--project", projectID] + filing
+        var arguments = ["slice", "add", title, "--project", projectID] + filing
         arguments.append("--json")
         var standardInput: Data?
         if let description = description, !description.isEmpty {
@@ -818,7 +818,7 @@ public final class NatClient: Sendable {
     /// - Throws: NatError if the slice is not Todo, or the command fails
     public func sliceEdit(projectID: String, sliceRef: String, description: String) async throws -> SliceEditResult {
         let output = try await runNat(
-            arguments: ["slice-edit", "--project", projectID, "--json", "--description", "-", sliceRef],
+            arguments: ["slice", "edit", "--project", projectID, "--json", "--description", "-", sliceRef],
             standardInput: description.data(using: .utf8)
         )
         return try decodeJSON(SliceEditResult.self, from: output)
@@ -836,7 +836,7 @@ public final class NatClient: Sendable {
     /// - Throws: NatError if the slice is in progress, or the command fails
     public func sliceMove(projectID: String, sliceRef: String, milestone: String) async throws {
         _ = try await runNat(arguments: [
-            "slice-move", "--project", projectID, "--milestone", milestone, "--json", sliceRef,
+            "slice", "move", "--project", projectID, "--milestone", milestone, "--json", sliceRef,
         ])
     }
 
@@ -853,7 +853,7 @@ public final class NatClient: Sendable {
     ///   - sliceRef: The slice's URL or Notion page ID
     /// - Throws: NatError if its agent could not be stopped, or the command fails
     public func sliceDelete(projectID: String, sliceRef: String) async throws {
-        _ = try await runNat(arguments: ["slice-delete", "--project", projectID, "--json", sliceRef])
+        _ = try await runNat(arguments: ["slice", "delete", "--project", projectID, "--json", sliceRef])
     }
 
     /// Take a slice in progress back to Todo and throw its work away — the
@@ -870,7 +870,7 @@ public final class NatClient: Sendable {
     /// - Throws: NatError if the slice is not in progress, its agent could not
     ///   be stopped, or the command fails
     public func sliceCancel(projectID: String, sliceRef: String) async throws {
-        _ = try await runNat(arguments: ["slice-cancel", "--project", projectID, "--json", sliceRef])
+        _ = try await runNat(arguments: ["slice", "cancel", "--project", projectID, "--json", sliceRef])
     }
 
     // MARK: - Milestones
@@ -888,7 +888,7 @@ public final class NatClient: Sendable {
     /// - Throws: NatError if either name is refused, or the command fails
     public func milestoneRename(projectID: String, from: String, to: String) async throws {
         _ = try await runNat(arguments: [
-            "milestone-rename", from, to, "--project", projectID, "--json",
+            "milestone", "rename", from, to, "--project", projectID, "--json",
         ])
     }
 
@@ -902,7 +902,7 @@ public final class NatClient: Sendable {
     ///   - name: The new milestone's name
     /// - Throws: NatError if the name is refused, or the command fails
     public func milestoneAdd(projectID: String, name: String) async throws {
-        _ = try await runNat(arguments: ["milestone-add", name, "--project", projectID, "--json"])
+        _ = try await runNat(arguments: ["milestone", "add", name, "--project", projectID, "--json"])
     }
 
     /// Move a milestone in the plan, to sit directly before or after another
@@ -922,7 +922,7 @@ public final class NatClient: Sendable {
     ///   - after: The milestone to sit directly after, by name
     /// - Throws: NatError if either name is refused, or the command fails
     public func milestoneMove(projectID: String, name: String, before: String?, after: String?) async throws {
-        var arguments = ["milestone-move", name, "--project", projectID, "--json"]
+        var arguments = ["milestone", "move", name, "--project", projectID, "--json"]
         if let before = before, !before.isEmpty {
             arguments.append(contentsOf: ["--before", before])
         }
@@ -943,7 +943,7 @@ public final class NatClient: Sendable {
     ///   - name: The milestone to drop, by name
     /// - Throws: NatError if the plan does not hold it, or it still holds slices
     public func milestoneRemove(projectID: String, name: String) async throws {
-        _ = try await runNat(arguments: ["milestone-remove", name, "--project", projectID, "--json"])
+        _ = try await runNat(arguments: ["milestone", "remove", name, "--project", projectID, "--json"])
     }
 
     /// Read local configuration: the fields the settings scene edits and
@@ -952,7 +952,7 @@ public final class NatClient: Sendable {
     /// - Returns: ConfigDoc with the raw stored values — zero and empty mean unset
     /// - Throws: NatError if the command fails (no configuration yet, etc.)
     public func configShow() async throws -> ConfigDoc {
-        let output = try await runNat(arguments: ["config-show", "--json"])
+        let output = try await runNat(arguments: ["config", "show", "--json"])
         return try decodeJSON(ConfigDoc.self, from: output)
     }
 
@@ -966,7 +966,7 @@ public final class NatClient: Sendable {
     ///   - value: The value to write, or "" to unset
     /// - Throws: NatError if the key is unknown or the value is out of bounds
     public func configSet(key: String, value: String) async throws {
-        _ = try await runNat(arguments: ["config-set", key, value])
+        _ = try await runNat(arguments: ["config", "set", key, value])
     }
 
     /// Which build of nat this is — `nat --version`: one line of plain text
@@ -993,7 +993,7 @@ public final class NatClient: Sendable {
     /// - Throws: NatError if nat itself fails (a projects database it could
     ///   not read is a note on the listing, not a failure)
     public func projectList() async throws -> ProjectListing {
-        let output = try await runNat(arguments: ["project-list", "--json"])
+        let output = try await runNat(arguments: ["project", "list", "--json"])
         return try decodeJSON(ProjectListing.self, from: output)
     }
 
@@ -1011,12 +1011,12 @@ public final class NatClient: Sendable {
     /// - Returns: The config entry, including the page ID that `--project` takes
     /// - Throws: NatError if the page will not resolve, or the command fails
     public func projectOpen(pageRef: String) async throws -> ProjectEntry {
-        let output = try await runNat(arguments: ["project-open", "--json", pageRef])
+        let output = try await runNat(arguments: ["project", "open", "--json", pageRef])
         return try decodeJSON(ProjectEnvelope<ProjectEntry>.self, from: output).project
     }
 
     /// Record the local plan a folder already holds as a project — the
-    /// starter card's "From filesystem" tile (`nat project-open-folder`). The
+    /// starter card's "From filesystem" tile (`nat project open folder`). The
     /// plan is only read; a folder with none is refused with what was looked
     /// for, and nothing is written to config.
     ///
@@ -1024,73 +1024,73 @@ public final class NatClient: Sendable {
     /// - Returns: The config entry, including the ID `--project` takes
     /// - Throws: NatError.commandFailed carrying the refusal
     public func projectOpenFolder(path: String) async throws -> ProjectEntry {
-        let output = try await runNat(arguments: ["project-open-folder", "--json", path])
+        let output = try await runNat(arguments: ["project", "open", "folder", "--json", path])
         return try decodeJSON(ProjectEnvelope<ProjectEntry>.self, from: output).project
     }
 
     /// Read the plan a workshop session proposed for an Untitled tab's
-    /// workspace (`nat plan-proposal`) — nil until one has been proposed.
+    /// workspace (`nat plan proposal`) — nil until one has been proposed.
     ///
     /// - Throws: NatError if the proposal file will not parse, or nat fails
     public func planProposal(workspaceID: String) async throws -> PlanProposal? {
-        let output = try await runNat(arguments: ["plan-proposal", "--workspace", workspaceID, "--json"])
+        let output = try await runNat(arguments: ["plan", "proposal", "--workspace", workspaceID, "--json"])
         return try decodeJSON(ProposalEnvelope.self, from: output).proposal
     }
 
     /// Accept a workspace's proposal as a new local project named `name`
-    /// (`nat plan-accept`): the project, its config entry and its plan are all
+    /// (`nat plan accept`): the project, its config entry and its plan are all
     /// nat's doing, and the proposal file is dropped once the plan is in.
     ///
     /// - Throws: NatError.commandFailed carrying the refusal
     public func planAccept(workspaceID: String, name: String) async throws -> PlanAccepted {
-        let output = try await runNat(arguments: ["plan-accept", "--workspace", workspaceID, "--name", name, "--json"])
+        let output = try await runNat(arguments: ["plan", "accept", "--workspace", workspaceID, "--name", name, "--json"])
         return try decodeJSON(PlanAccepted.self, from: output)
     }
 
-    /// Read the plan a project's workshop proposed (`nat plan-proposal
+    /// Read the plan a project's workshop proposed (`nat plan proposal
     /// --project`) — nil until one has been proposed.
     ///
     /// - Throws: NatError if the proposal file will not parse, or nat fails
     public func planProposal(projectID: String) async throws -> PlanProposal? {
-        let output = try await runNat(arguments: ["plan-proposal", "--project", projectID, "--json"])
+        let output = try await runNat(arguments: ["plan", "proposal", "--project", projectID, "--json"])
         return try decodeJSON(ProposalEnvelope.self, from: output).proposal
     }
 
     /// Accept a project workshop's proposal into the project (`nat
-    /// plan-accept --project`): validated against the plan as it now stands,
+    /// plan accept --project`): validated against the plan as it now stands,
     /// filed, and the proposal file dropped — all nat's doing.
     ///
     /// - Throws: NatError.commandFailed carrying the refusal
     public func planAccept(projectID: String) async throws -> PlanAccepted {
-        let output = try await runNat(arguments: ["plan-accept", "--project", projectID, "--json"])
+        let output = try await runNat(arguments: ["plan", "accept", "--project", projectID, "--json"])
         return try decodeJSON(PlanAccepted.self, from: output)
     }
 
-    /// Take a workspace's proposal down (`nat plan-withdraw`) — the user has
+    /// Take a workspace's proposal down (`nat plan withdraw`) — the user has
     /// written to its agent since, so it is stale. None there is no error.
     ///
     /// - Throws: NatError.commandFailed carrying the refusal
     public func planWithdraw(workspaceID: String) async throws {
-        _ = try await runNat(arguments: ["plan-withdraw", "--workspace", workspaceID, "--json"])
+        _ = try await runNat(arguments: ["plan", "withdraw", "--workspace", workspaceID, "--json"])
     }
 
-    /// Take a project workshop's proposal down (`nat plan-withdraw
+    /// Take a project workshop's proposal down (`nat plan withdraw
     /// --project`), as `planWithdraw(workspaceID:)` does.
     ///
     /// - Throws: NatError.commandFailed carrying the refusal
     public func planWithdraw(projectID: String) async throws {
-        _ = try await runNat(arguments: ["plan-withdraw", "--project", projectID, "--json"])
+        _ = try await runNat(arguments: ["plan", "withdraw", "--project", projectID, "--json"])
     }
 
     /// List the pages and databases of the Notion workspace a project page
-    /// could be put under (`nat notion-search`), narrowed by `query` the way
+    /// could be put under (`nat notion search`), narrowed by `query` the way
     /// the workspace's own search is; an empty query lists what was edited
     /// last.
     ///
     /// - Throws: NatError.commandFailed carrying Notion's refusal — no token,
     ///   no network
     public func notionSearch(query: String) async throws -> [NotionPlace] {
-        var arguments = ["notion-search", "--json"]
+        var arguments = ["notion", "search", "--json"]
         if !query.isEmpty {
             arguments.append(contentsOf: ["--query", query])
         }
@@ -1098,7 +1098,7 @@ public final class NatClient: Sendable {
         return try decodeJSON(NotionSearchDoc.self, from: output).places
     }
 
-    /// Put a local project into Notion (`nat project-mirror`): the project
+    /// Put a local project into Notion (`nat project mirror`): the project
     /// page is made under `parent`, the plan filed beneath it, and the project
     /// re-registered as one tracked in Notion — under a new ID, which the
     /// result carries.
@@ -1107,7 +1107,7 @@ public final class NatClient: Sendable {
     ///   started, Notion refusing the write)
     public func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored {
         let output = try await runNat(arguments: [
-            "project-mirror", "--project", projectID, "--json",
+            "project", "mirror", "--project", projectID, "--json",
             "--parent", parent.id, "--parent-kind", parent.kind.rawValue,
         ])
         return try decodeJSON(ProjectMirrored.self, from: output)
@@ -1141,7 +1141,7 @@ public final class NatClient: Sendable {
     public func projectCreate(
         name: String, repo: String?, description: String?, source: String? = nil
     ) async throws -> CreatedProject {
-        var arguments = ["project-create", name, "--json"]
+        var arguments = ["project", "create", name, "--json"]
         if let repo = repo, !repo.isEmpty {
             arguments.append(contentsOf: ["--repo", repo])
         }
@@ -1160,18 +1160,18 @@ public final class NatClient: Sendable {
     // MARK: - Scratch project
 
     /// Make sure the reserved scratch project exists and read its ID — `nat
-    /// scratch-open`, run on every launch: the first call creates it, every
+    /// scratch open`, run on every launch: the first call creates it, every
     /// later one only reads it back.
     ///
     /// - Returns: The scratch project's ID, and whether this call made it
     /// - Throws: NatError if the command fails
     public func scratchOpen() async throws -> ScratchOpenResult {
-        let output = try await runNat(arguments: ["scratch-open", "--json"])
+        let output = try await runNat(arguments: ["scratch", "open", "--json"])
         return try decodeJSON(ScratchOpenResult.self, from: output)
     }
 
     /// Delete a local project's Done slices, its ended sessions and the
-    /// milestones that leaves empty — `nat done-clear`. The CLI refuses a
+    /// milestones that leaves empty — `nat project done clear`. The CLI refuses a
     /// project with a Notion workspace behind it, which passes through as
     /// `NatError.commandFailed`.
     ///
@@ -1179,16 +1179,16 @@ public final class NatClient: Sendable {
     /// - Returns: What was removed
     /// - Throws: NatError if the command fails
     public func doneClear(projectID: String) async throws -> DoneClearResult {
-        let output = try await runNat(arguments: ["done-clear", "--project", projectID, "--json"])
+        let output = try await runNat(arguments: ["project", "done", "clear", "--project", projectID, "--json"])
         return try decodeJSON(DoneClearResult.self, from: output)
     }
 
     // MARK: - Ad hoc sessions
 
     /// Start a bare Claude Code with no slice and no prompt — `nat
-    /// session-launch`, the rail's New Session button. `dir` is the
+    /// session launch`, the rail's New Session button. `dir` is the
     /// directory to run it in; nil takes the project's own working
-    /// directory, `session-launch`'s own default.
+    /// directory, `session launch`'s own default.
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
@@ -1200,7 +1200,7 @@ public final class NatClient: Sendable {
     public func sessionLaunch(
         projectID: String, dir: String?, model: String?, effort: String?
     ) async throws -> SessionLaunchResult {
-        var arguments = ["session-launch", "--project", projectID, "--json"]
+        var arguments = ["session", "launch", "--project", projectID, "--json"]
         if let dir, !dir.isEmpty {
             arguments.append(contentsOf: ["--dir", dir])
         }
@@ -1235,22 +1235,22 @@ public final class NatClient: Sendable {
     }
 
     /// Every ad hoc session on the project, tmux and pull-request readings
-    /// folded in — `nat session-list`, the rail's own reading of what to
+    /// folded in — `nat session list`, the rail's own reading of what to
     /// draw in ACTIVE and DONE.
     ///
     /// - Parameter projectID: The project's Notion page ID
     /// - Returns: One entry per session recorded, live or not
     /// - Throws: NatError if the command fails
     public func sessionList(projectID: String) async throws -> [Session] {
-        let output = try await runNat(arguments: ["session-list", "--project", projectID, "--json"])
+        let output = try await runNat(arguments: ["session", "list", "--project", projectID, "--json"])
         return try decodeJSON([Session].self, from: output)
     }
 
     /// Read every branch a session has been on and the pull requests each
-    /// has opened — `nat session-status`, the PR tab's own reading. With
+    /// has opened — `nat session status`, the PR tab's own reading. With
     /// `discard: true`, a session with no live tmux and no pull request
     /// still open is ended even without every one merged, mirroring
-    /// `session-status --discard`.
+    /// `session status --discard`.
     ///
     /// - Parameters:
     ///   - projectID: The project's Notion page ID
@@ -1260,7 +1260,7 @@ public final class NatClient: Sendable {
     /// - Returns: The session's live/ended state and every branch it read
     /// - Throws: NatError if the command fails, or the session is unknown
     public func sessionStatus(projectID: String, sessionID: String, discard: Bool = false) async throws -> SessionStatusDoc {
-        var arguments = ["session-status", "--project", projectID, "--json"]
+        var arguments = ["session", "status", "--project", projectID, "--json"]
         if discard {
             arguments.append("--discard")
         }
@@ -1270,8 +1270,8 @@ public final class NatClient: Sendable {
     }
 
     /// The diff of one of a session's branches against its merge base — `nat
-    /// session-diff`, the Diff tab's own reading. `branch` names which one;
-    /// nil takes the worktree's own current branch, `session-diff`'s own
+    /// session diff`, the Diff tab's own reading. `branch` names which one;
+    /// nil takes the worktree's own current branch, `session diff`'s own
     /// default.
     ///
     /// - Parameters:
@@ -1279,10 +1279,10 @@ public final class NatClient: Sendable {
     ///   - sessionID: The session's own local ID
     ///   - branch: The branch to diff, or nil for the worktree's current one
     /// - Returns: SliceDiff with the base, branch, and per-file diff sections
-    ///   — the same shape `slice-diff` reports, since both share one renderer
+    ///   — the same shape `slice diff` reports, since both share one renderer
     /// - Throws: NatError if the command fails
     public func sessionDiff(projectID: String, sessionID: String, branch: String?) async throws -> SliceDiff {
-        var arguments = ["session-diff", "--project", projectID, "--json"]
+        var arguments = ["session", "diff", "--project", projectID, "--json"]
         if let branch, !branch.isEmpty {
             arguments.append(contentsOf: ["--branch", branch])
         }
@@ -1308,7 +1308,7 @@ public final class NatClient: Sendable {
     }
 
     /// Runs `nat` and hands back its raw stdout, without requiring any —
-    /// some commands (`agent-send`) say nothing at all on success.
+    /// some commands (`agent send`) say nothing at all on success.
     private func runNatRaw(arguments: [String], standardInput: Data? = nil) async throws -> Data {
         let (stdout, stderr, exitCode) = try await commandRunner.run(
             executable: "nat",

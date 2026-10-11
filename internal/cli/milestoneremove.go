@@ -20,7 +20,7 @@ import (
 // and delete commands that already exist, is the caller's call about the work
 // rather than this command's about the plan.
 func milestoneRemove(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("milestone-remove", flag.ContinueOnError)
+	flags := flag.NewFlagSet("milestone remove", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -29,11 +29,11 @@ func milestoneRemove(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("milestone-remove: want exactly one milestone name, given %d", len(rest))
+		return usageErrorf("milestone remove: want exactly one milestone name, given %d", len(rest))
 	}
 	name := strings.TrimSpace(rest[0])
 	if name == "" {
-		return usageErrorf("milestone-remove: the milestone name is empty")
+		return usageErrorf("milestone remove: the milestone name is empty")
 	}
 
 	_, projectID, project, err := env.projectFor(*projectRef)

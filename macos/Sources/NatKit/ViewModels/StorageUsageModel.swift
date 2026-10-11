@@ -1,6 +1,6 @@
 import Foundation
 
-/// Settings ▸ GitHub's state: `nat storage-usage` as last read, read once
+/// Settings ▸ GitHub's state: `nat storage usage` as last read, read once
 /// when the section is first shown and again on the refresh button — never
 /// polled, and nothing to do with the GraphQL budget. Everything the section
 /// draws — the bar's segments, the legend's rows, the summary — is worked

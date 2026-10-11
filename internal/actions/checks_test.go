@@ -97,7 +97,7 @@ func TestNoticeFailingChecksNudgesALiveAgentOncePerFailure(t *testing.T) {
 		t.Fatalf("sent %d, sent back %d, checks failed %d; want 1, 1, 0", len(sender.sent), len(st.sentBack), len(st.failedRec))
 	}
 	for _, want := range []string{"nat-s1: ", "- test: https://github.test/runs/1",
-		"nat slice-checks s1 --log --project proj", "nat complete-slice s1 --branch slice/red"} {
+		"nat slice checks s1 --log --project proj", "nat slice complete s1 --branch slice/red"} {
 		if !strings.Contains(sender.sent[0], want) {
 			t.Errorf("prompt does not say %q:\n%s", want, sender.sent[0])
 		}

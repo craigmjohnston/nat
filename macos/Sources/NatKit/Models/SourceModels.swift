@@ -557,7 +557,7 @@ public struct ContainerDetail: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// `nat container-show --json`: the plugin's container detail as-is, and
+/// `nat container show --json`: the plugin's container detail as-is, and
 /// the plan's tasks under it, each in `info`'s slice shape.
 public struct ContainerShow: Codable, Equatable, Sendable {
     public let container: ContainerDetail
@@ -577,7 +577,7 @@ public struct ContainerShow: Codable, Equatable, Sendable {
     }
 }
 
-/// A plugin's `describe` response, as `source-list` carries it.
+/// A plugin's `describe` response, as `source list` carries it.
 public struct SourceDescribe: Codable, Equatable, Sendable {
     public let `protocol`: Int
     public let name: String
@@ -638,7 +638,7 @@ public struct SourceDescribe: Codable, Equatable, Sendable {
     }
 }
 
-/// One row of `nat source-list --json`: a discovered plugin, `describe`d —
+/// One row of `nat source list --json`: a discovered plugin, `describe`d —
 /// or, where it would not describe, its `error`.
 public struct SourcePlugin: Codable, Equatable, Sendable, Identifiable {
     public let name: String
@@ -683,7 +683,7 @@ public struct SourcePlugin: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// `slice-show --json`'s `container`, for a task in a source project. On a
+/// `slice show --json`'s `container`, for a task in a source project. On a
 /// failed plugin read only `id` and the cached `title` are filled.
 public struct SliceContainer: Codable, Equatable, Sendable {
     public let id: String
@@ -717,7 +717,7 @@ public struct SliceContainer: Codable, Equatable, Sendable {
     }
 }
 
-/// `nat source-action --json`: what the plugin said, if anything.
+/// `nat source action --json`: what the plugin said, if anything.
 public struct SourceActionResult: Codable, Equatable, Sendable {
     public let message: String?
 

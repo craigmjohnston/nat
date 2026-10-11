@@ -49,7 +49,7 @@ func ResumePrompt(c ResumeContext) string {
 	b.WriteString("says — a command given no project is refused:\n\n")
 	fmt.Fprintf(&b, "    --project %s\n\n", c.ProjectID)
 	b.WriteString("The hand-back is the one your brief gives:\n\n")
-	fmt.Fprintf(&b, "    nat complete-slice %s --project %s ...\n", c.SliceID, c.ProjectID)
+	fmt.Fprintf(&b, "    nat slice complete %s --project %s ...\n", c.SliceID, c.ProjectID)
 	b.WriteString(namingPassage)
 	b.WriteString(tmuxPassage)
 	return b.String()

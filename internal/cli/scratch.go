@@ -34,14 +34,14 @@ const unfiledMilestone = "Unfiled"
 const scratchConventions = "Scratch: ad hoc work with no plan set up first. A local project like any other."
 
 // scratchOpen makes sure the reserved scratch project exists and prints its ID.
-// The first call creates it through the same path as `project-create --local`
+// The first call creates it through the same path as `project create --local`
 // and records it in config under scratch_project; every later call only reads
 // that back, so the app can run it on every launch. --dir picks the working
-// directory on creation only — once the project exists it is config-set's to
+// directory on creation only — once the project exists it is config set's to
 // change, and a flag that silently did nothing is reported as such by not
 // being consulted at all.
 func scratchOpen(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("scratch-open", flag.ContinueOnError)
+	flags := flag.NewFlagSet("scratch open", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	dir := flags.String("dir", "", "the working directory of the scratch project, on creation only; defaults to the home directory")
@@ -50,7 +50,7 @@ func scratchOpen(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("scratch-open: takes no positional arguments, given %d", len(rest))
+		return usageErrorf("scratch open: takes no positional arguments, given %d", len(rest))
 	}
 
 	cfg, _, err := env.Load()
@@ -87,7 +87,7 @@ func scratchOpen(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// scratchOpenJSON is the structured form of scratch-open.
+// scratchOpenJSON is the structured form of scratch open.
 type scratchOpenJSON struct {
 	ID      string `json:"id"`
 	Created bool   `json:"created"`
@@ -101,7 +101,7 @@ type scratchOpenJSON struct {
 // to trash Notion pages. It refuses nothing else: in-progress and Todo slices,
 // and sessions still running, are left exactly as they are.
 func doneClear(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("done-clear", flag.ContinueOnError)
+	flags := flag.NewFlagSet("project done clear", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -110,7 +110,7 @@ func doneClear(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("done-clear: takes no positional arguments, given %d", len(rest))
+		return usageErrorf("project done clear: takes no positional arguments, given %d", len(rest))
 	}
 
 	_, projectID, project, err := env.projectFor(*projectRef)
@@ -121,10 +121,10 @@ func doneClear(ctx context.Context, args []string, env Env) error {
 	// containers are the plugin's, which nat never removes, and each Done task
 	// deleted would tell the plugin `deleted` of work that in fact merged.
 	if project.IsSource() {
-		return fmt.Errorf("done-clear: %q is a source project: its plugin is told of every task deleted, and its containers are the plugin's to remove, not nat's", project.Name)
+		return fmt.Errorf("project done clear: %q is a source project: its plugin is told of every task deleted, and its containers are the plugin's to remove, not nat's", project.Name)
 	}
 	if !project.IsLocal() {
-		return fmt.Errorf("done-clear: %q has a workspace behind it, and its Done slices are the record of the work — only a project kept in a local file is cleared", project.Name)
+		return fmt.Errorf("project done clear: %q has a workspace behind it, and its Done slices are the record of the work — only a project kept in a local file is cleared", project.Name)
 	}
 	st, err := env.storeFor(ctx, projectID, project)
 	if err != nil {
@@ -198,7 +198,7 @@ func doneClear(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// doneClearJSON is what a done-clear removed, by name for the slices and
+// doneClearJSON is what a project done clear removed, by name for the slices and
 // milestones and by ID for the sessions, which have no name.
 type doneClearJSON struct {
 	Slices     []string `json:"slices"`

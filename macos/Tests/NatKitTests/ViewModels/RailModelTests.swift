@@ -579,7 +579,7 @@ final class RailModelTests: XCTestCase {
     /// review entry nor held out of the DONE folder: Notion's status is the
     /// one source of lifecycle truth and is read straight, exactly as
     /// `domain.StateOf` reads it on the Go side. Closing that window is the
-    /// un-done rule's job (`nat pr-status`, `internal/actions.ReopenUnmerged`),
+    /// un-done rule's job (`nat pr status`, `internal/actions.ReopenUnmerged`),
     /// not this view's to paper over.
     func testBuildRailModel_doneSliceWithAnOpenPRIsReadAsDone() {
         let milestones = [

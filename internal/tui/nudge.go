@@ -68,7 +68,7 @@ func (a *App) nudged(msg nudgeMsg) tea.Cmd {
 	}
 	a.nudgeSeen = msg.mtime
 	// The agents are read again too: an agent marking itself waiting or
-	// working (`nat agent-waiting`/`agent-working`) nudges, and its star
+	// working (`nat agent waiting`/`agent working`) nudges, and its star
 	// should not wait out the watcher's interval.
 	return tea.Batch(a.startLoad(false), a.refreshActivity())
 }

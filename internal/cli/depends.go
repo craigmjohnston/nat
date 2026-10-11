@@ -23,7 +23,7 @@ import (
 // is to refuse that here rather than discover it the next time work is handed
 // out.
 func sliceDepends(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-depends", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice depends", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var on stringList
 	flags.Var(&on, "on", "a slice this one waits on, by URL or ID; repeat for more")
@@ -35,18 +35,18 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-depends: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice depends: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
 	if len(on) == 0 && !*clear {
-		return usageErrorf("slice-depends: nothing to record: pass --on, or --clear to drop what is there")
+		return usageErrorf("slice depends: nothing to record: pass --on, or --clear to drop what is there")
 	}
-	id, err := pageID("slice-depends", rest[0])
+	id, err := pageID("slice depends", rest[0])
 	if err != nil {
 		return err
 	}
 	onIDs := make([]string, len(on))
 	for i, ref := range on {
-		if onIDs[i], err = pageID("slice-depends", ref); err != nil {
+		if onIDs[i], err = pageID("slice depends", ref); err != nil {
 			return err
 		}
 	}
@@ -102,7 +102,7 @@ func sliceDepends(ctx context.Context, args []string, env Env) error {
 // often it was given.
 //
 // A slice cannot depend on itself. Notion accepts the relation happily, and
-// what it makes is a slice no run of next-slice or start-slice could ever hand
+// what it makes is a slice no run of slice next or slice start could ever hand
 // out again.
 func dependencyIDs(ctx context.Context, st store.Store, s domain.Slice, kept, added []string) ([]string, error) {
 	var ids []string

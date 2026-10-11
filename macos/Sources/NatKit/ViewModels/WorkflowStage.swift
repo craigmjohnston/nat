@@ -15,7 +15,7 @@ import Foundation
 ///
 /// A live session never moves a slice backwards on its own: it outlives
 /// hand-back and approve, so "a session exists" says nothing about the stage.
-/// A resumed slice (`Slice.resumed`, nat's own reading: `nat slice-resume`
+/// A resumed slice (`Slice.resumed`, nat's own reading: `nat slice resume`
 /// wrote a Resumed and cleared the Branch) is In progress and not handed
 /// back, so it is `working` whatever its PR — the agent is at it again —
 /// until the hand-back that follows re-records the branch.
@@ -49,7 +49,7 @@ public enum WorkflowStage: String, CaseIterable, Equatable, Sendable {
 /// project with no Branch column holds a PR and no branch and is not
 /// resumed) is working again; else a PR means approved, a hand-back means
 /// review, anything else is working — which is also what a sent-back slice
-/// reads as, `slice-rework` having cleared its branch.
+/// reads as, `slice rework` having cleared its branch.
 ///
 /// `agent` is taken so the callers pass what they hold, and deliberately never
 /// read: a live session moves nothing.

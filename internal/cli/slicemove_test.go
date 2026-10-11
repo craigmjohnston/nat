@@ -13,7 +13,7 @@ import (
 )
 
 // movableAPI answers with one Todo slice filed under the first of two
-// milestones, which is what slice-move refiles under the second.
+// milestones, which is what slice move refiles under the second.
 func movableAPI(status string) *fakeAPI {
 	return &fakeAPI{
 		dataSources: map[string]notion.DataSource{
@@ -32,10 +32,10 @@ func TestSliceMoveRefilesTheSlice(t *testing.T) {
 	env.Nudge = func() { nudges++ }
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-move: %v", err)
+		t.Fatalf("slice move: %v", err)
 	}
 
 	if len(api.updates) != 1 || api.updates[0].id != testSliceID {
@@ -64,10 +64,10 @@ func TestSliceMoveAllowsDone(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-move: %v", err)
+		t.Fatalf("slice move: %v", err)
 	}
 	if len(api.updates) != 1 {
 		t.Errorf("updates = %+v, want the move written", api.updates)
@@ -79,10 +79,10 @@ func TestSliceMoveJSON(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--json", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-move --json: %v", err)
+		t.Fatalf("slice move --json: %v", err)
 	}
 	var got sliceMovedJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -98,7 +98,7 @@ func TestSliceMoveRefusesInProgress(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "in progress") {
 		t.Errorf("err = %v, want 'in progress'", err)
@@ -113,7 +113,7 @@ func TestSliceMoveRefusesTheMilestoneItIsAlreadyUnder(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M1: Client", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M1: Client", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "already filed under") {
 		t.Errorf("err = %v, want 'already filed under'", err)
@@ -127,7 +127,7 @@ func TestSliceMoveRefusesAnUnknownMilestone(t *testing.T) {
 	env, _ := testEnv(testConfig(t), movableAPI(notion.SliceTodo))
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M3: Nope", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M3: Nope", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), `no milestone named "M3: Nope"`) {
 		t.Errorf("err = %v, want the unknown milestone named", err)
@@ -137,7 +137,7 @@ func TestSliceMoveRefusesAnUnknownMilestone(t *testing.T) {
 func TestSliceMoveRefusesNoMilestone(t *testing.T) {
 	env, _ := testEnv(testConfig(t), movableAPI(notion.SliceTodo))
 
-	err := Run(context.Background(), []string{"slice-move", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "move", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no milestone given") {
 		t.Errorf("err = %v, want 'no milestone given'", err)
@@ -148,7 +148,7 @@ func TestSliceMoveRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-move", "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", "--milestone", "M2: Board", "--project", "project-1",
 	}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "want exactly one") {
@@ -160,7 +160,7 @@ func TestSliceMoveRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--bogus", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--bogus", "--project", "project-1",
 	}, env)
 
 	var usage *UsageError
@@ -173,7 +173,7 @@ func TestSliceMoveRefusesAnInvalidSliceID(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-move", "not-a-uuid", "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", "not-a-uuid", "--milestone", "M2: Board", "--project", "project-1",
 	}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
@@ -185,7 +185,7 @@ func TestSliceMoveRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--project", "nope",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--project", "nope",
 	}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
@@ -202,7 +202,7 @@ func TestSliceMoveReportsAFailedSliceRead(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "load slices") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -215,7 +215,7 @@ func TestSliceMoveReportsAFailedSchemaRead(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
 	}, env)
 	if err == nil {
 		t.Fatal("err = nil, want the failed schema read reported")
@@ -238,11 +238,11 @@ func TestSliceMoveReportsAFailedLocalShapeRead(t *testing.T) {
 	env, _ := testEnv(cfg, &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
 	}, env)
 
 	if err == nil {
-		t.Error("slice-move over a plan that cannot read its own shape: want an error")
+		t.Error("slice move over a plan that cannot read its own shape: want an error")
 	}
 }
 
@@ -259,11 +259,11 @@ func TestSliceMoveReportsAFailedLoad(t *testing.T) {
 	env, _ := testEnv(cfg, api)
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
 	}, env)
 
 	if err == nil {
-		t.Error("slice-move over a slice neither the file nor the workspace has: want an error")
+		t.Error("slice move over a slice neither the file nor the workspace has: want an error")
 	}
 }
 
@@ -286,15 +286,15 @@ func TestSliceMoveReportsAFailedLocalWrite(t *testing.T) {
 	env, _ := testEnv(cfg, &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
 	}, env)
 
 	if err == nil {
-		t.Error("slice-move over a plan that cannot move the slice: want an error")
+		t.Error("slice move over a plan that cannot move the slice: want an error")
 	}
 }
 
-// A push to the workspace that fails does not fail slice-move: the file
+// A push to the workspace that fails does not fail slice move: the file
 // already holds the new milestone, so the command succeeds, still nudges,
 // and leaves the slice dirty for the next sync to resend.
 func TestSliceMoveSucceedsThoughTheWorkspaceWriteFails(t *testing.T) {
@@ -305,9 +305,9 @@ func TestSliceMoveSucceedsThoughTheWorkspaceWriteFails(t *testing.T) {
 	env.Nudge = func() { nudges++ }
 
 	if err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("slice-move: %v", err)
+		t.Fatalf("slice move: %v", err)
 	}
 	if nudges != 1 {
 		t.Errorf("nudges = %d, want 1: the file's own move landed", nudges)

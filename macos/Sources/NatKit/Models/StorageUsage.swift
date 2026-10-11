@@ -1,7 +1,7 @@
 import Foundation
 
 /// This month's GitHub artifact storage for the signed-in gh account, shared
-/// out by project — `nat storage-usage --json`. GB are GB-months, as GitHub's
+/// out by project — `nat storage usage --json`. GB are GB-months, as GitHub's
 /// billing page counts them; every project is listed, one with no repository
 /// or no storage at zero, and `other` is every repository no project claims.
 public struct StorageUsage: Codable, Equatable, Sendable {
@@ -77,7 +77,7 @@ public struct StorageUsage: Codable, Equatable, Sendable {
     }
 }
 
-/// What `nat storage-usage --json` answers: the reading, or — where gh lacks
+/// What `nat storage usage --json` answers: the reading, or — where gh lacks
 /// the "user" scope GitHub's billing report needs — which command grants it.
 /// The second is a choice the user has yet to make, not a failure.
 public enum StorageUsageAnswer: Equatable, Sendable {

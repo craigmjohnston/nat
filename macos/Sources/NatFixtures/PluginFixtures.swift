@@ -1,7 +1,7 @@
 import Foundation
 import NatKit
 
-/// The plugin installer's canned answers, as `nat plugin-list --json` and
+/// The plugin installer's canned answers, as `nat plugin list --json` and
 /// friends write them.
 extension Fixtures {
     /// A machine with nat's own source and one extra that could not be read;

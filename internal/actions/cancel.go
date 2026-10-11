@@ -50,7 +50,7 @@ type CancelStore interface {
 }
 
 // Cancel takes a slice in progress back to Todo and throws its work away —
-// `nat slice-cancel` and the board's cancel key alike. It is release's
+// `nat slice cancel` and the board's cancel key alike. It is release's
 // destructive sibling: where a release keeps everything and refuses a live
 // agent, a cancel stops the agent and discards the work, on the user's own
 // confirmation, so there is no ownership check.
@@ -104,7 +104,7 @@ type DeleteStore interface {
 	MilestonePruner
 }
 
-// Delete trashes slice s — `nat slice-delete` and the board's delete key
+// Delete trashes slice s — `nat slice delete` and the board's delete key
 // alike — and answers the milestones the delete left empty and so removed
 // ([PruneEmptied]).
 //

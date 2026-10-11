@@ -42,7 +42,7 @@ struct SliceNavigatorView: View {
             slice: slice, agent: agent.map { AgentActivity($0.activity) },
             hasVisuals: !visuals.isEmpty)
     }
-    /// This project's last `pr-status` reading.
+    /// This project's last `pr status` reading.
     private var prReadingOfProject: PRReading { appModel.prStatusStore?.reading(projectID: projectID) ?? .empty }
     /// The failing-checks notice, where the last PR reading has one.
     private var notice: ChecksNotice? {
@@ -51,7 +51,7 @@ struct SliceNavigatorView: View {
             hasLiveAgent: agent != nil, events: detail.detail?.events)
     }
     /// The conflict notice, where the last reading — the loaded pull request
-    /// where it is this one, else `pr-status`'s — has one.
+    /// where it is this one, else `pr status`'s — has one.
     private var conflictNotice: ConflictNotice? {
         NatKit.conflictNotice(
             slice: slice,
@@ -60,7 +60,7 @@ struct SliceNavigatorView: View {
             hasLiveAgent: agent != nil)
     }
     /// The Changes section's conflict notice: a handed-back branch with no
-    /// pull request that `pr-status` tested conflicting with its base.
+    /// pull request that `pr status` tested conflicting with its base.
     private var branchConflictNotice: ConflictNotice? {
         NatKit.branchConflictNotice(
             slice: slice, conflict: prReadingOfProject.branchConflicts[slice.id], hasLiveAgent: agent != nil)
@@ -797,11 +797,11 @@ struct PRSectionBody: View {
     var checks: [PRCheck]?
     /// The store reviewers are asked through — a slice's pull request. Nil
     /// for an ad hoc session's, which lists its requests but cannot edit
-    /// them (`nat pr-reviewers` names a slice).
+    /// them (`nat pr reviewers` names a slice).
     var reviewerStore: PRStore?
     /// The store checks are re-run and cancelled through — a slice's pull
     /// request. Nil for an ad hoc session's, whose rows carry no controls
-    /// (`nat slice-checks-rerun` names a slice).
+    /// (`nat slice checks rerun` names a slice).
     var checksStore: PRStore?
     /// A check drawn as under the pointer whether it is or not — a story's.
     var hoveredCheck: String?

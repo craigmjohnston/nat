@@ -694,7 +694,7 @@ func TestLaunchesATaskWithNoRepositoryInTheHomeDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(prompt), "## First, find the repository") || !strings.Contains(string(prompt), "nat slice-repo s5 --project p1") {
+	if !strings.Contains(string(prompt), "## First, find the repository") || !strings.Contains(string(prompt), "nat slice repo s5 --project p1") {
 		t.Errorf("prompt does not send the agent to find the repository:\n%s", prompt)
 	}
 

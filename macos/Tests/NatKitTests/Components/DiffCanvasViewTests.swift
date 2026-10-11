@@ -55,8 +55,12 @@ final class DiffCanvasViewTests: XCTestCase {
         files: [DiffFileModel]? = nil
     ) -> DiffCanvasView {
         let canvas = DiffCanvasView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        // Far off every screen: the canvas reads the real pointer's place to
+        // re-hover after a scroll, and a pointer resting where the window sat
+        // hovered a row whose comment button then won the hit.
         let window = NSWindow(
-            contentRect: canvas.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            contentRect: canvas.frame.offsetBy(dx: -100_000, dy: -100_000),
+            styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         // Far off screen: the viewport reads the real pointer
         // (`refreshHover`), and a window at the screen's corner put a row

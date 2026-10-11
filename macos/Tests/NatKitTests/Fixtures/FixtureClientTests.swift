@@ -63,17 +63,17 @@ final class FixtureClientTests: XCTestCase {
         try await client.configSet(key: "poll_seconds", value: "30")
 
         XCTAssertEqual(client.writes, [
-            "slice-edit \(Fixtures.mergeBoxSliceID)",
-            "slice-launch \(Fixtures.mergeBoxSliceID)",
-            "agent-send \(Fixtures.mergeBoxSliceID)",
-            "slice-approve \(Fixtures.mergeBoxSliceID)",
-            "pr-merge \(Fixtures.approveSliceID)",
-            "pr-comment \(Fixtures.approveSliceID)",
-            "workshop-launch \(Fixtures.projectID)",
-            "workshop-launch --workspace ws-1",
-            "agent-kill --workshop --workspace ws-1",
-            "slice-add A new slice",
-            "config-set poll_seconds",
+            "slice edit \(Fixtures.mergeBoxSliceID)",
+            "slice launch \(Fixtures.mergeBoxSliceID)",
+            "agent send \(Fixtures.mergeBoxSliceID)",
+            "slice approve \(Fixtures.mergeBoxSliceID)",
+            "pr merge \(Fixtures.approveSliceID)",
+            "pr comment \(Fixtures.approveSliceID)",
+            "workshop launch \(Fixtures.projectID)",
+            "workshop launch --workspace ws-1",
+            "agent kill --workshop --workspace ws-1",
+            "slice add A new slice",
+            "config set poll_seconds",
         ])
     }
 

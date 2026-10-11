@@ -20,7 +20,7 @@ func TestWorkshopLaunchRefusesAlreadyLive(t *testing.T) {
 	runner := &agentTestRunner{liveSessions: map[string]string{agent.PlanSentinel: agent.PlanSession}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "already live") {
 		t.Errorf("err = %v, want 'already live'", err)
@@ -36,8 +36,8 @@ func TestWorkshopLaunchIgnoresAnotherProjectsPlanningAgent(t *testing.T) {
 	}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	if err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+	if err := Run(context.Background(), []string{"workshop", "launch", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("workshop launch: %v", err)
 	}
 	if !strings.Contains(out.String(), agent.PlanSessionName("project-1")) {
 		t.Errorf("output = %q, want this project's own session", out.String())
@@ -52,7 +52,7 @@ func TestWorkshopLaunchRefusesThisProjectsPlanningAgent(t *testing.T) {
 	}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), agent.PlanSessionName("project-1")) {
 		t.Errorf("err = %v, want the project's own session named", err)
 	}
@@ -66,9 +66,9 @@ func TestWorkshopLaunchesAPlainSession(t *testing.T) {
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+		t.Fatalf("workshop launch: %v", err)
 	}
 	want := "# Planning agent launched\n\n- Session: " + agent.PlanSessionName("project-1") + "\n- Working directory: /tmp/nat\n"
 	if out.String() != want {
@@ -92,9 +92,9 @@ func TestWorkshopLaunchWithNoRequestIsAPlainSessionWhateverThePageSays(t *testin
 	env, out := testEnv(testConfig(t), api)
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--json", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--json", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+		t.Fatalf("workshop launch: %v", err)
 	}
 	var got map[string]any
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -144,10 +144,10 @@ func TestWorkshopLaunchFoldsTheRequestIntoThePrompt(t *testing.T) {
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
 	err := Run(context.Background(), []string{
-		"workshop-launch", "--request", "Add dark mode to the board.", "--project", "project-1",
+		"workshop", "launch", "--request", "Add dark mode to the board.", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+		t.Fatalf("workshop launch: %v", err)
 	}
 	prompt := launchedPlanPrompt(t)
 	if !strings.Contains(prompt, "## The request") || !strings.Contains(prompt, "Add dark mode to the board.") {
@@ -155,7 +155,7 @@ func TestWorkshopLaunchFoldsTheRequestIntoThePrompt(t *testing.T) {
 	}
 }
 
-// A hand-run workshop-launch with no --frontend claims nothing about where
+// A hand-run workshop launch with no --frontend claims nothing about where
 // the user is; --frontend gnat carries that claim into the prompt, the same
 // one gnat's own NatClient passes on every launch.
 func TestWorkshopLaunchWritesTheFrontendIntoThePrompt(t *testing.T) {
@@ -163,10 +163,10 @@ func TestWorkshopLaunchWritesTheFrontendIntoThePrompt(t *testing.T) {
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
 	err := Run(context.Background(), []string{
-		"workshop-launch", "--project", "project-1", "--frontend", "gnat",
+		"workshop", "launch", "--project", "project-1", "--frontend", "gnat",
 	}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+		t.Fatalf("workshop launch: %v", err)
 	}
 	prompt := launchedPlanPrompt(t)
 	if !strings.Contains(prompt, "The user is driving this from gnat, the macOS app.") {
@@ -178,9 +178,9 @@ func TestWorkshopLaunchWritesNoFrontendNoteWhenUnset(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+		t.Fatalf("workshop launch: %v", err)
 	}
 	if prompt := launchedPlanPrompt(t); strings.Contains(prompt, "driving this from") {
 		t.Errorf("prompt names a frontend for an unflagged launch:\n%s", prompt)
@@ -193,13 +193,13 @@ func TestWorkshopLaunchRefusesAnInvalidFrontend(t *testing.T) {
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
 	err := Run(context.Background(), []string{
-		"workshop-launch", "--project", "project-1", "--frontend", "web",
+		"workshop", "launch", "--project", "project-1", "--frontend", "web",
 	}, env)
 	if err == nil {
-		t.Fatal("workshop-launch: expected error for an invalid --frontend value")
+		t.Fatal("workshop launch: expected error for an invalid --frontend value")
 	}
 	if !strings.Contains(err.Error(), "--frontend") {
-		t.Errorf("workshop-launch error: %v, want it to name --frontend", err)
+		t.Errorf("workshop launch error: %v, want it to name --frontend", err)
 	}
 }
 
@@ -208,9 +208,9 @@ func TestWorkshopLaunchReadsTheRequestFromStdin(t *testing.T) {
 	env.In = strings.NewReader("  A request too long for an argument.  \n")
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--request", "-", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--request", "-", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+		t.Fatalf("workshop launch: %v", err)
 	}
 	if !strings.Contains(launchedPlanPrompt(t), "A request too long for an argument.") {
 		t.Errorf("prompt should carry the stdin request, trimmed")
@@ -220,7 +220,7 @@ func TestWorkshopLaunchReadsTheRequestFromStdin(t *testing.T) {
 func TestWorkshopLaunchRefusesStdinRequestWithNothingToRead(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"workshop-launch", "--request", "-", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--request", "-", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "--request - was given but there is nothing to read") {
 		t.Errorf("err = %v, want the empty stdin named", err)
@@ -235,10 +235,10 @@ func TestWorkshopLaunchModelFlagsOverrideConfig(t *testing.T) {
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
 	err := Run(context.Background(), []string{
-		"workshop-launch", "--model", "opus", "--effort", "high", "--project", "project-1",
+		"workshop", "launch", "--model", "opus", "--effort", "high", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+		t.Fatalf("workshop launch: %v", err)
 	}
 	argv := strings.Join(runner.launchArgs, " ")
 	if !strings.Contains(argv, "--model 'opus'") || !strings.Contains(argv, "--effort 'high'") {
@@ -254,9 +254,9 @@ func TestWorkshopLaunchCarriesTheAutoTheme(t *testing.T) {
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+		t.Fatalf("workshop launch: %v", err)
 	}
 
 	argv := strings.Join(runner.launchArgs, " ")
@@ -269,9 +269,9 @@ func TestWorkshopLaunchJSON(t *testing.T) {
 	env, out := testEnv(testConfig(t), &fakeAPI{})
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--json", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--json", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch --json: %v", err)
+		t.Fatalf("workshop launch --json: %v", err)
 	}
 	var got workshopLaunchJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -286,7 +286,7 @@ func TestWorkshopLaunchJSON(t *testing.T) {
 func TestWorkshopLaunchRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"workshop-launch", "extra", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "extra", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "takes no arguments") {
 		t.Errorf("err = %v, want 'takes no arguments'", err)
@@ -296,7 +296,7 @@ func TestWorkshopLaunchRefusesWrongArgumentCount(t *testing.T) {
 func TestWorkshopLaunchRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"workshop-launch", "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -307,7 +307,7 @@ func TestWorkshopLaunchRefusesAnUnknownFlag(t *testing.T) {
 func TestWorkshopLaunchRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"workshop-launch", "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -326,7 +326,7 @@ func TestWorkshopLaunchReportsAFailedPromptFile(t *testing.T) {
 	// rather than for whatever the machine running it happens to have launched.
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "launch planning agent: create prompt dir") {
 		t.Errorf("err = %v, want the failed prompt file named", err)
@@ -338,7 +338,7 @@ func TestWorkshopLaunchReportsATmuxFailure(t *testing.T) {
 	runner := &agentTestRunner{launchErr: "duplicate session"}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "duplicate session") {
 		t.Errorf("err = %v, want tmux's own failure", err)
@@ -357,8 +357,8 @@ func TestWorkshopLaunchProjectModelOverridesTheGlobalOne(t *testing.T) {
 	runner := &agentTestRunner{}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	if err := Run(context.Background(), []string{"workshop-launch", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("workshop-launch: %v", err)
+	if err := Run(context.Background(), []string{"workshop", "launch", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("workshop launch: %v", err)
 	}
 	argv := strings.Join(runner.launchArgs, " ")
 	if !strings.Contains(argv, "--model 'sonnet'") || !strings.Contains(argv, "--effort 'max'") {

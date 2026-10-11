@@ -1,9 +1,9 @@
 import Foundation
 
-/// Settings ▸ Sources' state: `nat plugin-list` as last read, which buttons
+/// Settings ▸ Sources' state: `nat plugin list` as last read, which buttons
 /// have a command running, and what nat last refused. The view binds to it
 /// and draws; installing, updating, uninstalling and the source list are all
-/// nat's — every action here is one `nat plugin-*` call, then the listing
+/// nat's — every action here is one `nat plugin …` call, then the listing
 /// read again, so what the tab shows is always what nat last said.
 @MainActor
 @Observable
@@ -195,7 +195,7 @@ public final class PluginsModel {
             && !running.contains(.setup(key))
     }
 
-    /// Saves one setup field: the value to `nat source-setup` (on stdin —
+    /// Saves one setup field: the value to `nat source setup` (on stdin —
     /// `NatClient`'s business), the field cleared once the plugin took it,
     /// and what it said, or why not, kept under the field rather than at the
     /// top of the tab. The listing is read again either way, so a plugin

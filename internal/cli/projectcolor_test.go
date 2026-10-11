@@ -28,7 +28,7 @@ func createdColor(t *testing.T, out []byte) string {
 	return doc.Project.Color
 }
 
-// Each form of project-create reports the colour its save gave the project.
+// Each form of project create reports the colour its save gave the project.
 func TestProjectCreateReportsTheColorItWasGiven(t *testing.T) {
 	ctx := context.Background()
 
@@ -36,7 +36,7 @@ func TestProjectCreateReportsTheColorItWasGiven(t *testing.T) {
 	cfg.Projects = map[string]config.ProjectConfig{"other": {Color: "red"}}
 	env, out, saved := createEnv(t, cfg, &fakeAPI{})
 	env.Save = assigningSave(env.Save)
-	if err := Run(ctx, []string{"project-create", "nat", "--repo", "/src/nat", "--json"}, env); err != nil {
+	if err := Run(ctx, []string{"project", "create", "nat", "--repo", "/src/nat", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if got := createdColor(t, out.Bytes()); got != "teal" || saved.Projects["new-project"].Color != "teal" {
@@ -45,7 +45,7 @@ func TestProjectCreateReportsTheColorItWasGiven(t *testing.T) {
 
 	env, lout, _ := noNotionEnv(t, config.Config{}, false)
 	env.Save = assigningSave(env.Save)
-	if err := Run(ctx, []string{"project-create", "Mine", "--local", "--repo", "/src/mine", "--json"}, env); err != nil {
+	if err := Run(ctx, []string{"project", "create", "Mine", "--local", "--repo", "/src/mine", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if got := createdColor(t, lout.Bytes()); got != "red" {
@@ -55,7 +55,7 @@ func TestProjectCreateReportsTheColorItWasGiven(t *testing.T) {
 	// A source project takes no colour, so reports none.
 	sp := newSourceProject(t, &source.Fake{})
 	sp.env.Save = assigningSave(sp.env.Save)
-	if got := createdColor(t, []byte(sp.run(t, "project-create", "--source", "demo", "--plan-dir", sp.planDir, "--json"))); got != "" {
+	if got := createdColor(t, []byte(sp.run(t, "project", "create", "--source", "demo", "--plan-dir", sp.planDir, "--json"))); got != "" {
 		t.Errorf("source: reported %q, want none", got)
 	}
 }
@@ -68,9 +68,9 @@ func TestProjectMirrorCarriesTheColor(t *testing.T) {
 	p.Color = "teal"
 	saved.Projects[oldID] = p
 
-	if err := Run(context.Background(), []string{"project-mirror", "--project", oldID,
+	if err := Run(context.Background(), []string{"project", "mirror", "--project", oldID,
 		"--parent", "parent-page", "--parent-kind", "page", "--json"}, env); err != nil {
-		t.Fatalf("project-mirror: %v", err)
+		t.Fatalf("project mirror: %v", err)
 	}
 	if got := saved.Projects["new-project"].Color; got != "teal" {
 		t.Errorf("mirrored entry's colour = %q, want teal", got)
@@ -84,12 +84,12 @@ func TestProjectMirrorCarriesTheColor(t *testing.T) {
 	}
 }
 
-// scratch-open saves its project before recording it as the scratch one; the
+// scratch open saves its project before recording it as the scratch one; the
 // second save takes back the colour the first gave, so it ends with none.
 func TestScratchOpenLeavesTheScratchProjectUncoloured(t *testing.T) {
 	env, _, saved := noNotionEnv(t, config.Config{}, false)
 	env.Save = assigningSave(env.Save)
-	if err := Run(context.Background(), []string{"scratch-open", "--dir", "/tmp"}, env); err != nil {
+	if err := Run(context.Background(), []string{"scratch", "open", "--dir", "/tmp"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if got := saved.Projects[saved.ScratchProject].Color; got != "" {

@@ -42,14 +42,14 @@ func publishedLaunchEnv(t *testing.T, status string) (Env, *fakeAPI, *agentTestR
 	return env, api, runner, &out
 }
 
-// slice-launch on a slice in progress with its pull request recorded is an
+// slice launch on a slice in progress with its pull request recorded is an
 // ordinary relaunch: the slice is claimed like any other, and the prompt tells
 // the agent its pull request is open, with the review gathered into it.
 func TestSliceLaunchRelaunchesAPublishedSlice(t *testing.T) {
 	env, api, runner, out := publishedLaunchEnv(t, notion.SliceInProgress)
 
-	if err := Run(context.Background(), []string{"slice-launch", testSliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-launch: %v", err)
+	if err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice launch: %v", err)
 	}
 	if len(api.updates) != 1 {
 		t.Errorf("updates = %+v, want the claim", api.updates)
@@ -69,7 +69,7 @@ func TestSliceLaunchRelaunchesAPublishedSlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the prompt: %v", err)
 	}
-	for _, want := range []string{"## The pull request", publishedPR, "reviewer: rename the helper", "nat complete-slice " + testSliceID} {
+	for _, want := range []string{"## The pull request", publishedPR, "reviewer: rename the helper", "nat slice complete " + testSliceID} {
 		if !strings.Contains(string(prompt), want) {
 			t.Errorf("prompt does not say %q:\n%s", want, prompt)
 		}
@@ -80,7 +80,7 @@ func TestSliceLaunchRelaunchesAPublishedSlice(t *testing.T) {
 // nothing is written or started.
 func TestSliceLaunchRefusesADoneSlice(t *testing.T) {
 	env, api, runner, _ := publishedLaunchEnv(t, notion.SliceDone)
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), `"Write the UI" is Done`) {
 		t.Errorf("err = %v, want a refusal by name", err)
 	}

@@ -146,7 +146,7 @@ enum PRComposerMetrics {
 
 /// The pull request's own comment box, matching the mock's `PRComposer`
 /// chrome (a rounded field with a toolbar row under it, the send button in
-/// accent) but functional: it posts through `pr-comment` rather than sitting
+/// accent) but functional: it posts through `pr comment` rather than sitting
 /// there as decoration. It sits at the end of the conversation, inside its
 /// scroll, and again inside an entry for a reply and in place of the
 /// description while it is edited.
@@ -312,7 +312,7 @@ func sentenceCase(_ word: String) -> String {
 /// The PR section's reviewers: everyone asked and not yet answered, each
 /// with a ✕ that withdraws the request, and Request Review — the
 /// repository's collaborators, read when the section shows, and Other… for
-/// a login (or `org/team`) typed out. All through `nat pr-reviewers`; a
+/// a login (or `org/team`) typed out. All through `nat pr reviewers`; a
 /// refusal shows under the list and changes nothing.
 struct ReviewersBlock: View {
     let pr: PRDetail

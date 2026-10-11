@@ -16,7 +16,7 @@ import (
 //
 // It is the write behind approving over pending review comments: the comments
 // go to the agent, this marks the work as being fixed, and the agent's own
-// `complete-slice --branch` at the end of the fixes re-records the branch —
+// `slice complete --branch` at the end of the fixes re-records the branch —
 // the one event a caller can watch for to know the fixes are in.
 //
 // --comments files what the review said under a Sent back heading, in the
@@ -29,9 +29,9 @@ import (
 // slice sent back is an event in the log whether or not anything was said.
 //
 // The PR description a hand-back filed stays on the page, which is where
-// slice-approve reads it from when the hand-back that follows is approved.
+// slice approve reads it from when the hand-back that follows is approved.
 func sliceRework(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-rework", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice rework", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	comments := flags.String("comments", "", "review comments to send back with the slice; `-` reads them from stdin")
 	projectRef := projectFlag(flags)
@@ -40,9 +40,9 @@ func sliceRework(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-rework: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice rework: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-rework", rest[0])
+	id, err := pageID("slice rework", rest[0])
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func sliceRework(ctx context.Context, args []string, env Env) error {
 }
 
 // reworkCommentsText settles --comments: the flag as given, or stdin where it
-// is exactly "-" — the same convention [commentText] follows for pr-comment,
+// is exactly "-" — the same convention [commentText] follows for pr comment,
 // except the flag's own default is "" rather than stdinRef, since comments
 // here are optional and an absent flag should read nothing rather than block
 // on a pipe nobody is feeding.

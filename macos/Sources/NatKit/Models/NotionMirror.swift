@@ -1,7 +1,7 @@
 import Foundation
 
 /// Somewhere in the Notion workspace a project page can be put: what
-/// `nat notion-search --json` lists. `id` is what `nat project-mirror --parent`
+/// `nat notion search --json` lists. `id` is what `nat project mirror --parent`
 /// takes — a page's own ID, or a database's data source ID.
 public struct NotionPlace: Equatable, Sendable, Decodable, Identifiable {
     public enum Kind: String, Sendable, Decodable {
@@ -20,12 +20,12 @@ public struct NotionPlace: Equatable, Sendable, Decodable, Identifiable {
     }
 }
 
-/// `nat notion-search --json`'s answer, wrapped the way every listing is.
+/// `nat notion search --json`'s answer, wrapped the way every listing is.
 struct NotionSearchDoc: Decodable {
     let places: [NotionPlace]
 }
 
-/// What `nat project-mirror --json` reports: the project as Notion now knows
+/// What `nat project mirror --json` reports: the project as Notion now knows
 /// it — the page ID every later `--project` takes — the local project's ID it
 /// replaces, and how much of the plan went in.
 public struct ProjectMirrored: Equatable, Sendable, Decodable {

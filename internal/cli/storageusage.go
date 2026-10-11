@@ -24,7 +24,7 @@ type StorageReader interface {
 	ArtifactStorage(now time.Time) (gh.StorageReading, error)
 }
 
-// newStorageReader is the gh storage-usage reads through: one keeping no
+// newStorageReader is the gh storage usage reads through: one keeping no
 // budget, since these are two REST reads made when the user opens a page, not
 // the GraphQL polling the budget throttles — and a refusal of them must not
 // pause that polling either. Replaced in tests.
@@ -40,7 +40,7 @@ var storageNow = time.Now
 // origin, a source project's tasks' repositories — and the rest left as
 // other repositories. It takes no --project: the reading is the account's.
 func storageUsage(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("storage-usage", flag.ContinueOnError)
+	flags := flag.NewFlagSet("storage usage", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
 	rest, err := parseFlags(flags, args)
@@ -48,7 +48,7 @@ func storageUsage(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("storage-usage: takes no arguments, given %d", len(rest))
+		return usageErrorf("storage usage: takes no arguments, given %d", len(rest))
 	}
 	cfg, _, err := env.Load()
 	if err != nil {
@@ -72,7 +72,7 @@ func storageUsage(ctx context.Context, args []string, env Env) error {
 	return writeStorageText(env.Out, doc)
 }
 
-// storageScopeJSON is storage-usage's JSON where gh lacks the "user" scope:
+// storageScopeJSON is storage usage's JSON where gh lacks the "user" scope:
 // which scope, and the command that grants it.
 type storageScopeJSON struct {
 	NeedsScope   string `json:"needs_scope"`
@@ -145,13 +145,13 @@ func sourceRepos(ctx context.Context, id string, p config.ProjectConfig) []strin
 	sp := storeProject(id, p)
 	local, err := store.OpenProject(sp)
 	if err != nil {
-		logging.Error("storage-usage could not open a source project's plan", "project", id, "err", err)
+		logging.Error("storage usage could not open a source project's plan", "project", id, "err", err)
 		return nil
 	}
 	defer func() { _ = local.Close() }()
 	plan, err := local.Plan(ctx, sp)
 	if err != nil {
-		logging.Error("storage-usage could not read a source project's plan", "project", id, "err", err)
+		logging.Error("storage usage could not read a source project's plan", "project", id, "err", err)
 		return nil
 	}
 	var dirs []string
@@ -163,7 +163,7 @@ func sourceRepos(ctx context.Context, id string, p config.ProjectConfig) []strin
 	return dirs
 }
 
-// storageDoc is storage-usage's JSON: the month, the plan's allowance, the
+// storageDoc is storage usage's JSON: the month, the plan's allowance, the
 // total, each project's share and every repository no project claims.
 type storageDoc struct {
 	Login       string               `json:"login"`
@@ -247,7 +247,7 @@ func daysLeftInMonth(now time.Time) int {
 	return int(math.Ceil(next.Sub(now).Hours() / 24))
 }
 
-// writeStorageText is storage-usage's plain output: the total against the
+// writeStorageText is storage usage's plain output: the total against the
 // allowance, then a line per project and one for other repositories.
 func writeStorageText(out io.Writer, doc storageDoc) error {
 	var b strings.Builder

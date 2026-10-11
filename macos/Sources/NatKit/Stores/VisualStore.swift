@@ -410,7 +410,7 @@ public final class VisualStore {
     /// prompt, then clear them — only once the send has landed, so a failed
     /// one keeps every comment. Where the slice is handed back, the prompt
     /// ends with the hand-back and the slice is taken out of review
-    /// (`slice-rework`), as Changes does; where it is not, the agent is still
+    /// (`slice rework`), as Changes does; where it is not, the agent is still
     /// working and will hand back of its own accord, so neither is done.
     @discardableResult
     public func sendComments(projectID: String, sliceRef: String, branch: String?, handedBack: Bool) async throws -> Int {

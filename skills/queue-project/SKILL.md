@@ -1,6 +1,6 @@
 ---
 name: queue-project
-description: Turn a workshopped plan into a whole new project in the Notion agent tracker — draft the project's name, its conventions and its milestones/slices, get explicit user approval, then create it with `nat project-create` and file the plan with `nat plan-apply --project`.
+description: Turn a workshopped plan into a whole new project in the Notion agent tracker — draft the project's name, its conventions and its milestones/slices, get explicit user approval, then create it with `nat project create` and file the plan with `nat plan apply --project`.
 ---
 
 # /queue-project — start a new tracked project from a plan
@@ -30,10 +30,10 @@ Two things settle before you draft:
   there and tell the user to run the board (`nat`) once, since creating a
   project needs the workspace the onboarding picked.
 
-That setup read, and `project-create` itself, are the only `nat` commands here
+That setup read, and `project create` itself, are the only `nat` commands here
 that name no project: one because it is asking what the projects are, the other
 because it makes one. Every command after step 3 carries `--project <id>` with
-the ID `project-create` printed, and so must any other `nat` command you run
+the ID `project create` printed, and so must any other `nat` command you run
 about the new project. A command given none refuses outright: there is
 no project the tracker falls back to, and in particular not whichever project
 the user's board is on, which is never the one you just made.
@@ -47,8 +47,8 @@ written.
 board's switch picker.
 
 **The project's brief** — the conventions its agents read. It is written as the
-project page's body, and every `nat info`, `nat next-slice` and `nat
-start-slice` prints it after the slice's own brief, so it is the standing
+project page's body, and every `nat info`, `nat slice next` and `nat
+slice start` prints it after the slice's own brief, so it is the standing
 instruction to every agent that ever works the project. Cover:
 
 - the repo: the default working directory, the module or package name, and to
@@ -77,11 +77,11 @@ every slice: anything true of one slice alone belongs in that slice's brief.
 - Shape every brief as **Writing a brief**, below, says: a summary
   paragraph of its own first, then the detail.
 - Milestones are phases of the work, in the order they should happen: the
-  plan's order is the order they are written in, and `nat next-slice` hands
+  plan's order is the order they are written in, and `nat slice next` hands
   work out from the lowest-ordered milestone that is not Done.
-- **List the slices in the order they should be worked** too. `nat plan-apply`
+- **List the slices in the order they should be worked** too. `nat plan apply`
   lands them on the board in the order the document lists them, and
-  `next-slice` hands out the topmost unblocked slice of the milestone it is
+  `slice next` hands out the topmost unblocked slice of the milestone it is
   working — so the order you write is the order the work comes out in.
 - **Make a dependency pass over every slice, and state what each one waits
   on.** For each slice you draft, ask what has to exist before one agent could
@@ -90,8 +90,8 @@ every slice: anything true of one slice alone belongs in that slice's brief.
   "nothing" for the rest in the proposal, so the user can see the pass was made
   rather than skipped.
 - **Do not chain the plan.** `depends_on` names the slices a slice genuinely
-  cannot start before — a blocked slice is one `nat next-slice` steps over and
-  `nat start-slice` refuses — not the ones that merely read better in order.
+  cannot start before — a blocked slice is one `nat slice next` steps over and
+  `nat slice start` refuses — not the ones that merely read better in order.
   Slices that only share a subject are independent, and leaving them unblocked
   is what lets the user run agents on them in parallel. Order carries the
   reading; `depends_on` carries the blocking.
@@ -180,8 +180,8 @@ the first sentence.
 For example. A title: not "Catch the modified enters with a key monitor
 — performKeyEquivalent never sees them" but "Make shift+enter insert a
 newline in the agent terminal". A summary line: not
-"DiffStore.sendComments now always sends the complete-slice --branch
-instruction and runs slice-rework after agent-send succeeds" but "Review
+"DiffStore.sendComments now always sends the slice complete --branch
+instruction and runs slice rework after agent send succeeds" but "Review
 comments sent to an agent now always ask it to hand the work back again,
 so a slice cannot get stuck in review". A question: not "Where the
 'already there' baseline comes from: a comment counts as new when no
@@ -204,7 +204,7 @@ because you have already seen the five."
 3. On approval, create the project, passing the brief on stdin:
 
    ```
-   nat project-create 'The Project' --repo /abs/path/to/repo --description - <<'BRIEF'
+   nat project create 'The Project' --repo /abs/path/to/repo --description - <<'BRIEF'
    ## Repo
    ...
    BRIEF
@@ -223,7 +223,7 @@ because you have already seen the five."
 4. File the plan into the project you just created:
 
    ```
-   nat plan-apply --project <the id project-create printed> <<'PLAN'
+   nat plan apply --project <the id project create printed> <<'PLAN'
    {
      "milestones": [{ "name": "M1: Foundations" }],
      "slices": [
@@ -239,8 +239,8 @@ because you have already seen the five."
    ```
 
    `--project` is what makes this land in the new project, and **without it
-   `plan-apply` files nothing at all** — it is refused before it
-   writes anything. Pass the page ID `project-create` printed.
+   `plan apply` files nothing at all** — it is refused before it
+   writes anything. Pass the page ID `project create` printed.
 
    `milestone` names one of the plan's own new milestones by name. `description`,
    `repo` and `depends_on` are optional; nothing else is, and any other key is
@@ -260,7 +260,7 @@ because you have already seen the five."
    project's own working directory — a plan for one repo needs none.
 
 5. Report the project's Notion URL and the created page URLs grouped by
-   milestone, which `plan-apply` prints. Then tell the user the last step,
+   milestone, which `plan apply` prints. Then tell the user the last step,
    which is theirs:
 
    > The new project is not the active one. Open the board (`nat`) and press
@@ -275,11 +275,11 @@ because you have already seen the five."
 - Everything you write goes through `nat`. Never edit Notion directly.
 - Nothing is written before the user approves — not the project, not a
   milestone, not one slice.
-- `project-create` creates a project every time it is run. If you are unsure
+- `project create` creates a project every time it is run. If you are unsure
   whether you already created one, check the URL it printed rather than running
   it again — or run `nat info` bare and read the list of projects it refuses
   with, which the new one is now in.
-- `plan-apply` only ever creates, and if a run fails partway it says what it
+- `plan apply` only ever creates, and if a run fails partway it says what it
   had already created. Trim those out of the plan before running it again
   rather than filing them twice.
 - Never switch the active project, and never touch the plan of the project that

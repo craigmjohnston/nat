@@ -20,7 +20,7 @@ import (
 // seedSession files a session directly through the store, with an exact
 // branch of the test's own choosing — [launchOneSession] derives its
 // branch from the session's own ID, which is fine for a test that reads it
-// back with the same fakes, but not for one (like session-list's own
+// back with the same fakes, but not for one (like session list's own
 // pull-request read) that has to name a branch a fake gh is keyed by.
 func seedSession(t *testing.T, env Env, dir, branch string) string {
 	t.Helper()
@@ -113,7 +113,7 @@ func (f *fakeSessionWorktrees) Reset(path, ref string) error {
 }
 
 // fakeSessionRepo stands in for git's own reads: the actions.Repo half of
-// [GitCLI] session-launch calls, and the session-status reads
+// [GitCLI] session launch calls, and the session status reads
 // [CurrentBranch]/[ReflogBranches]; the rest of GitCLI is stubbed since
 // nothing here calls it.
 type fakeSessionRepo struct {
@@ -187,10 +187,10 @@ func TestSessionLaunchRunsInPlaceOutsideARepo(t *testing.T) {
 	env.NewGit = func() GitCLI { return nil }
 
 	err := Run(context.Background(), []string{
-		"session-launch", "--dir", dir, "--json", "--project", "project-1",
+		"session", "launch", "--dir", dir, "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("session-launch: %v", err)
+		t.Fatalf("session launch: %v", err)
 	}
 
 	var doc sessionLaunchJSON
@@ -235,10 +235,10 @@ func TestSessionLaunchCutsAWorktreeInARepo(t *testing.T) {
 	env.NewGit = func() GitCLI { return repo }
 
 	err := Run(context.Background(), []string{
-		"session-launch", "--dir", dir, "--json", "--project", "project-1",
+		"session", "launch", "--dir", dir, "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("session-launch: %v", err)
+		t.Fatalf("session launch: %v", err)
 	}
 
 	var doc sessionLaunchJSON
@@ -259,10 +259,10 @@ func TestSessionLaunchCutsAWorktreeInARepo(t *testing.T) {
 func TestSessionLaunchRefusesAMissingDirectory(t *testing.T) {
 	env, _ := sessionTestEnv(t)
 	err := Run(context.Background(), []string{
-		"session-launch", "--dir", "/no/such/directory", "--project", "project-1",
+		"session", "launch", "--dir", "/no/such/directory", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Fatal("session-launch: want a refusal for a missing directory")
+		t.Fatal("session launch: want a refusal for a missing directory")
 	}
 }
 
@@ -275,8 +275,8 @@ type fakeSessionGH struct {
 }
 
 // keepSessionReading files reading as the last batched reading of every
-// session the project has — what pr-status would have kept — at a reading
-// path of the test's own, so session-list and session-status read it back.
+// session the project has — what pr status would have kept — at a reading
+// path of the test's own, so session list and session status read it back.
 func keepSessionReading(t *testing.T, env *Env, reading *fakeSessionGH) {
 	t.Helper()
 	ctx := context.Background()
@@ -307,7 +307,7 @@ func keepSessionReading(t *testing.T, env *Env, reading *fakeSessionGH) {
 	env.saveLastReading(kept)
 }
 
-// launchOneSession is the shared setup for session-list/-status/-diff tests:
+// launchOneSession is the shared setup for session list/-status/-diff tests:
 // a session already filed against the project, with no live tmux and no
 // pull requests yet, so a test only has to layer on what it means to assert.
 func launchOneSession(t *testing.T, env Env, dir, branch string) string {
@@ -318,9 +318,9 @@ func launchOneSession(t *testing.T, env Env, dir, branch string) string {
 	var out strings.Builder
 	env.Out = &out
 	if err := Run(context.Background(), []string{
-		"session-launch", "--dir", dir, "--json", "--project", "project-1",
+		"session", "launch", "--dir", dir, "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-launch: %v", err)
+		t.Fatalf("session launch: %v", err)
 	}
 	var doc sessionLaunchJSON
 	if err := json.Unmarshal([]byte(out.String()), &doc); err != nil {
@@ -341,9 +341,9 @@ func TestSessionListReportsLiveAndPullRequests(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-list", "--json", "--project", "project-1",
+		"session", "list", "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-list: %v", err)
+		t.Fatalf("session list: %v", err)
 	}
 
 	var docs []sessionListJSON
@@ -351,7 +351,7 @@ func TestSessionListReportsLiveAndPullRequests(t *testing.T) {
 		t.Fatalf("unmarshal: %v (%s)", err, out.String())
 	}
 	if len(docs) != 1 {
-		t.Fatalf("session-list = %+v, want one session", docs)
+		t.Fatalf("session list = %+v, want one session", docs)
 	}
 	if !docs[0].Live {
 		t.Errorf("Live = false, want true: tmux reports it running")
@@ -362,7 +362,7 @@ func TestSessionListReportsLiveAndPullRequests(t *testing.T) {
 }
 
 // This is the slice's own acceptance criterion: two pull requests opened
-// from two branches in one session both appear in session-status.
+// from two branches in one session both appear in session status.
 func TestSessionStatusReportsPullRequestsFromEveryBranch(t *testing.T) {
 	env, _ := sessionTestEnv(t)
 	dir := t.TempDir()
@@ -383,9 +383,9 @@ func TestSessionStatusReportsPullRequestsFromEveryBranch(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-status", id, "--json", "--project", "project-1",
+		"session", "status", id, "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-status: %v", err)
+		t.Fatalf("session status: %v", err)
 	}
 
 	var doc sessionStatusJSON
@@ -429,9 +429,9 @@ func TestSessionStatusEndsOnceEveryPRIsMerged(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-status", id, "--json", "--project", "project-1",
+		"session", "status", id, "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-status: %v", err)
+		t.Fatalf("session status: %v", err)
 	}
 
 	var doc sessionStatusJSON
@@ -449,9 +449,9 @@ func TestSessionStatusEndsOnceEveryPRIsMerged(t *testing.T) {
 	var out2 strings.Builder
 	env.Out = &out2
 	if err := Run(context.Background(), []string{
-		"session-status", id, "--json", "--project", "project-1",
+		"session", "status", id, "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-status (second read): %v", err)
+		t.Fatalf("session status (second read): %v", err)
 	}
 	var doc2 sessionStatusJSON
 	if err := json.Unmarshal([]byte(out2.String()), &doc2); err != nil {
@@ -466,19 +466,19 @@ func TestSessionStatusRefusesAnUnknownID(t *testing.T) {
 	env, _ := sessionTestEnv(t)
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	err := Run(context.Background(), []string{
-		"session-status", "8f654180-9b8d-53fb-1024-9ee08f654180", "--project", "project-1",
+		"session", "status", "8f654180-9b8d-53fb-1024-9ee08f654180", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Fatal("session-status: want a refusal for an unknown session")
+		t.Fatal("session status: want a refusal for an unknown session")
 	}
 }
 
-// tagOrPageID accepts a session's own pane tag literally, so agent-kill and
-// agent-send can end or nudge an ad hoc session the same way they reach a
+// tagOrPageID accepts a session's own pane tag literally, so agent kill and
+// agent send can end or nudge an ad hoc session the same way they reach a
 // slice's live agent.
 func TestTagOrPageIDAcceptsASessionTag(t *testing.T) {
 	tag := agent.SessionTag("project-1", "sess-1")
-	got, err := tagOrPageID("agent-kill", tag)
+	got, err := tagOrPageID("agent kill", tag)
 	if err != nil {
 		t.Fatalf("tagOrPageID: %v", err)
 	}
@@ -494,9 +494,9 @@ func TestAgentKillEndsALiveSession(t *testing.T) {
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
 	if err := Run(context.Background(), []string{
-		"agent-kill", tag, "--project", "project-1",
+		"agent", "kill", tag, "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("agent-kill: %v", err)
+		t.Fatalf("agent kill: %v", err)
 	}
 	if len(runner.kills) != 1 || runner.kills[0] != "nat-session-abcd1234" {
 		t.Errorf("kills = %v, want the session tagged for %q killed", runner.kills, tag)
@@ -516,9 +516,9 @@ func TestSessionDiffIncludesTheWorkingTreeOnTheCheckedOutBranch(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-diff", id, "--project", "project-1",
+		"session", "diff", id, "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-diff: %v", err)
+		t.Fatalf("session diff: %v", err)
 	}
 	if out.String() != sampleDiff {
 		t.Errorf("output = %q, want git's diff verbatim", out.String())
@@ -532,7 +532,7 @@ func TestSessionDiffIncludesTheWorkingTreeOnTheCheckedOutBranch(t *testing.T) {
 }
 
 // A named branch that is not the one checked out is diffed at its own tip,
-// exactly as slice-diff reads a slice's branch.
+// exactly as slice diff reads a slice's branch.
 func TestSessionDiffOfANonCheckedOutBranchReadsItsTip(t *testing.T) {
 	env, _ := sessionTestEnv(t)
 	dir := t.TempDir()
@@ -544,9 +544,9 @@ func TestSessionDiffOfANonCheckedOutBranchReadsItsTip(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-diff", id, "--branch", "session/two", "--project", "project-1",
+		"session", "diff", id, "--branch", "session/two", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-diff: %v", err)
+		t.Fatalf("session diff: %v", err)
 	}
 	if gitCLI.diffWorkingTreeCalls != 0 {
 		t.Errorf("diffWorkingTreeCalls = %d, want 0: session/two is not checked out here", gitCLI.diffWorkingTreeCalls)
@@ -566,9 +566,9 @@ func TestSessionLaunchMarkdown(t *testing.T) {
 	env.NewGit = func() GitCLI { return nil }
 
 	if err := Run(context.Background(), []string{
-		"session-launch", "--dir", dir, "--project", "project-1",
+		"session", "launch", "--dir", dir, "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-launch: %v", err)
+		t.Fatalf("session launch: %v", err)
 	}
 	if !strings.Contains(out.String(), "# Session launched") {
 		t.Errorf("markdown output = %q, want a heading", out.String())
@@ -588,9 +588,9 @@ func TestSessionListMarkdown(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-list", "--project", "project-1",
+		"session", "list", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-list: %v", err)
+		t.Fatalf("session list: %v", err)
 	}
 	if !strings.Contains(out.String(), "# Sessions") {
 		t.Errorf("markdown output = %q, want a heading", out.String())
@@ -604,9 +604,9 @@ func TestSessionListMarkdownWithNoSessions(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-list", "--project", "project-1",
+		"session", "list", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-list: %v", err)
+		t.Fatalf("session list: %v", err)
 	}
 	if !strings.Contains(out.String(), "No ad hoc sessions") {
 		t.Errorf("markdown output = %q, want the empty notice", out.String())
@@ -625,16 +625,16 @@ func TestSessionListReportsAStaleReadRatherThanNone(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 	if err := Run(context.Background(), []string{
-		"session-list", "--json", "--project", "project-1",
+		"session", "list", "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-list: %v", err)
+		t.Fatalf("session list: %v", err)
 	}
 	var docs []sessionListJSON
 	if err := json.Unmarshal([]byte(out.String()), &docs); err != nil {
 		t.Fatalf("unmarshal: %v (%s)", err, out.String())
 	}
 	if len(docs) != 1 {
-		t.Fatalf("session-list = %+v, want one session", docs)
+		t.Fatalf("session list = %+v, want one session", docs)
 	}
 	if !docs[0].PRsStale {
 		t.Errorf("PRsStale = false, want true: the read failed")
@@ -643,9 +643,9 @@ func TestSessionListReportsAStaleReadRatherThanNone(t *testing.T) {
 	var out2 strings.Builder
 	env.Out = &out2
 	if err := Run(context.Background(), []string{
-		"session-list", "--project", "project-1",
+		"session", "list", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-list markdown: %v", err)
+		t.Fatalf("session list markdown: %v", err)
 	}
 	if !strings.Contains(out2.String(), "could not refresh") {
 		t.Errorf("markdown output = %q, want a note that the read failed", out2.String())
@@ -672,15 +672,15 @@ func TestSessionListReportsPullRequestsFromEveryBranch(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	if err := Run(context.Background(), []string{"session-list", "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("session-list: %v", err)
+	if err := Run(context.Background(), []string{"session", "list", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("session list: %v", err)
 	}
 	var docs []sessionListJSON
 	if err := json.Unmarshal([]byte(out.String()), &docs); err != nil {
 		t.Fatalf("unmarshal: %v (%s)", err, out.String())
 	}
 	if len(docs) != 1 || len(docs[0].PRs) != 2 {
-		t.Fatalf("session-list = %+v, want one session with both branches' pull requests", docs)
+		t.Fatalf("session list = %+v, want one session with both branches' pull requests", docs)
 	}
 	if !docs[0].PRsStale {
 		t.Errorf("PRsStale = false, want true: one branch's read failed")
@@ -704,9 +704,9 @@ func TestSessionStatusMarkdown(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-status", id, "--project", "project-1",
+		"session", "status", id, "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-status: %v", err)
+		t.Fatalf("session status: %v", err)
 	}
 	if !strings.Contains(out.String(), "# Session "+id) {
 		t.Errorf("markdown output = %q, want a heading naming the session", out.String())
@@ -731,9 +731,9 @@ func TestSessionStatusMarkdownStaleAndEmptyBranches(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-status", id, "--project", "project-1",
+		"session", "status", id, "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-status: %v", err)
+		t.Fatalf("session status: %v", err)
 	}
 	if !strings.Contains(out.String(), "Could not refresh") {
 		t.Errorf("markdown output = %q, want the stale branch reported", out.String())
@@ -758,8 +758,8 @@ func TestSessionStatusLiveAndGoneStates(t *testing.T) {
 	}
 	var out strings.Builder
 	env.Out = &out
-	if err := Run(context.Background(), []string{"session-status", id, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("session-status: %v", err)
+	if err := Run(context.Background(), []string{"session", "status", id, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("session status: %v", err)
 	}
 	if !strings.Contains(out.String(), "State: live") {
 		t.Errorf("markdown output = %q, want it reported live", out.String())
@@ -768,8 +768,8 @@ func TestSessionStatusLiveAndGoneStates(t *testing.T) {
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 	var out2 strings.Builder
 	env.Out = &out2
-	if err := Run(context.Background(), []string{"session-status", id, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("session-status: %v", err)
+	if err := Run(context.Background(), []string{"session", "status", id, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("session status: %v", err)
 	}
 	if !strings.Contains(out2.String(), "State: gone") {
 		t.Errorf("markdown output = %q, want it reported gone", out2.String())
@@ -794,9 +794,9 @@ func TestSessionStatusDiscardEndsAnIdleSession(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-status", id, "--discard", "--json", "--project", "project-1",
+		"session", "status", id, "--discard", "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-status --discard: %v", err)
+		t.Fatalf("session status --discard: %v", err)
 	}
 	var doc sessionStatusJSON
 	if err := json.Unmarshal([]byte(out.String()), &doc); err != nil {
@@ -826,9 +826,9 @@ func TestSessionStatusDiscardNeverEndsALiveSession(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-status", id, "--discard", "--json", "--project", "project-1",
+		"session", "status", id, "--discard", "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-status --discard: %v", err)
+		t.Fatalf("session status --discard: %v", err)
 	}
 	var doc sessionStatusJSON
 	if err := json.Unmarshal([]byte(out.String()), &doc); err != nil {
@@ -857,9 +857,9 @@ func TestSessionStatusNeverEndsOnAPartialRead(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-status", id, "--json", "--project", "project-1",
+		"session", "status", id, "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-status: %v", err)
+		t.Fatalf("session status: %v", err)
 	}
 	var doc sessionStatusJSON
 	if err := json.Unmarshal([]byte(out.String()), &doc); err != nil {
@@ -887,9 +887,9 @@ func TestSessionDiffMarkdown(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-diff", id, "--project", "project-1",
+		"session", "diff", id, "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-diff: %v", err)
+		t.Fatalf("session diff: %v", err)
 	}
 	if out.String() != sampleDiff {
 		t.Errorf("output = %q, want the raw diff", out.String())
@@ -905,9 +905,9 @@ func TestSessionDiffJSONOfACheckedOutBranch(t *testing.T) {
 	env.Out = &out
 
 	if err := Run(context.Background(), []string{
-		"session-diff", id, "--json", "--project", "project-1",
+		"session", "diff", id, "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("session-diff: %v", err)
+		t.Fatalf("session diff: %v", err)
 	}
 	var doc diffJSON
 	if err := json.Unmarshal([]byte(out.String()), &doc); err != nil {
@@ -920,29 +920,29 @@ func TestSessionDiffJSONOfACheckedOutBranch(t *testing.T) {
 
 func TestSessionDiffRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := sessionTestEnv(t)
-	if err := Run(context.Background(), []string{"session-diff", "--project", "project-1"}, env); err == nil {
-		t.Fatal("session-diff with no session: want a refusal")
+	if err := Run(context.Background(), []string{"session", "diff", "--project", "project-1"}, env); err == nil {
+		t.Fatal("session diff with no session: want a refusal")
 	}
 }
 
 func TestSessionLaunchRefusesPositionalArguments(t *testing.T) {
 	env, _ := sessionTestEnv(t)
-	if err := Run(context.Background(), []string{"session-launch", "extra", "--project", "project-1"}, env); err == nil {
-		t.Fatal("session-launch with a positional argument: want a refusal")
+	if err := Run(context.Background(), []string{"session", "launch", "extra", "--project", "project-1"}, env); err == nil {
+		t.Fatal("session launch with a positional argument: want a refusal")
 	}
 }
 
 func TestSessionListRefusesPositionalArguments(t *testing.T) {
 	env, _ := sessionTestEnv(t)
-	if err := Run(context.Background(), []string{"session-list", "extra", "--project", "project-1"}, env); err == nil {
-		t.Fatal("session-list with a positional argument: want a refusal")
+	if err := Run(context.Background(), []string{"session", "list", "extra", "--project", "project-1"}, env); err == nil {
+		t.Fatal("session list with a positional argument: want a refusal")
 	}
 }
 
 func TestSessionStatusRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := sessionTestEnv(t)
-	if err := Run(context.Background(), []string{"session-status", "--project", "project-1"}, env); err == nil {
-		t.Fatal("session-status with no session: want a refusal")
+	if err := Run(context.Background(), []string{"session", "status", "--project", "project-1"}, env); err == nil {
+		t.Fatal("session status with no session: want a refusal")
 	}
 }
 
@@ -954,9 +954,9 @@ func TestSessionDiffRefusesWithNoRepository(t *testing.T) {
 	// nothing to name a diff against without --branch.
 	env.NewGit = func() GitCLI { return &fakeSessionRepo{} }
 	if err := Run(context.Background(), []string{
-		"session-diff", id, "--project", "project-1",
+		"session", "diff", id, "--project", "project-1",
 	}, env); err == nil {
-		t.Fatal("session-diff outside a repository: want a refusal — there is nothing to diff")
+		t.Fatal("session diff outside a repository: want a refusal — there is nothing to diff")
 	}
 }
 

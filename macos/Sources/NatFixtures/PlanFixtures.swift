@@ -307,7 +307,7 @@ extension Fixtures {
         approveSliceID: "ready to merge",
     ]
 
-    /// `nat pr-status --json` saying the same thing.
+    /// `nat pr status --json` saying the same thing.
     public static let prStatusDoc = PRStatusDoc(slices: [
         PRStatusSlice(
             sliceID: approveSliceID,
@@ -401,7 +401,7 @@ extension Fixtures {
         branch: "session/first-pass"
     )
 
-    /// The branches `session-status` reports for a fixture session, the
+    /// The branches `session status` reports for a fixture session, the
     /// checked-out one first — the recorded branch alone for any other.
     public static func sessionBranchNames(for session: Session) -> [String] {
         switch session.id {
@@ -415,7 +415,7 @@ extension Fixtures {
         "https://github.com/craigmjohnston/notion-agent-tracker/pull/\(number)"
     }
 
-    /// `nat session-list --json`'s reading — one of each state a session's
+    /// `nat session list --json`'s reading — one of each state a session's
     /// rail row can be in.
     public static let sessions: [Session] = [liveSession, reviewSession, doneSession]
 
@@ -513,7 +513,7 @@ extension Fixtures {
     public static let acceptedProjectID = "f1x75111-0000-4000-8000-0000000000aa"
 
     /// The config a machine has once the proposal is accepted: the one local
-    /// project it made, as `plan-accept` leaves it (no working directory).
+    /// project it made, as `plan accept` leaves it (no working directory).
     public static var acceptedConfig: NatProjectConfig {
         NatProjectConfig(projects: [
             acceptedProjectID: ProjectConfig(
@@ -612,7 +612,7 @@ extension Fixtures {
 
     /// A tracked project's own proposal: no name, one new milestone, and two
     /// slices filed into milestones the project already has — the shape
-    /// `plan-propose --project` writes for a revision of the fixture plan.
+    /// `plan propose --project` writes for a revision of the fixture plan.
     public static let revisionProposal = PlanProposal(name: "", milestones: [
         .init(name: "M4: Keyboard", slices: [
             .init(name: "Arrow keys walk the sidebar", brief: """

@@ -10,13 +10,13 @@ import Foundation
 /// the user never has to read.
 public struct MilestoneMenuActions: Equatable, Sendable {
     /// The milestone this one would be moved directly before — "Move up",
-    /// which is `milestone-move --before <that name>`. Nil for the first
+    /// which is `milestone move --before <that name>`. Nil for the first
     /// milestone in the plan, which has nothing above it to go before.
     public let moveBefore: String?
     /// The milestone this one would be moved directly after — "Move down",
-    /// which is `milestone-move --after <that name>`. Nil for the last.
+    /// which is `milestone move --after <that name>`. Nil for the last.
     public let moveAfter: String?
-    /// Whether "Delete" is offered. `milestone-remove` refuses a milestone
+    /// Whether "Delete" is offered. `milestone remove` refuses a milestone
     /// with any slice still filed under it, naming them, so the menu offers
     /// it only on an empty one.
     public let canDelete: Bool

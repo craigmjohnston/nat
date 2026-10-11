@@ -134,7 +134,7 @@ public final class ActivityStore {
     }
 
     /// Read now rather than at the next tick. A nudge is as often an agent
-    /// marking its own pane (`nat agent-waiting`/`agent-working`) as a plan
+    /// marking its own pane (`nat agent waiting`/`agent working`) as a plan
     /// write, and the needs-attention state should follow at once: a live loop
     /// is restarted, its reading taken now, and a stopped one is started.
     public func reread() {

@@ -56,7 +56,7 @@ directly; check each file, don't assume every one routes through `actions`.
   lines (`+++`/`---`) tested *before* the `+`/`-` content lines they'd
   otherwise match. `diffsyntax.go`'s lexing sits inside the +/- colouring,
   never instead of it; ported to `internal/cli/difftokens.go` for
-  `slice-diff --json` — keep the two classification rules level by hand.
+  `slice diff --json` — keep the two classification rules level by hand.
 - **Stale-read exception, asymmetric with the rest of the app**: a failed
   re-read of the diff **drops** what was on screen (a diff is of one branch
   at one moment) — `prview.go`'s failed re-read does the opposite, keeping
@@ -106,7 +106,7 @@ directly; check each file, don't assume every one routes through `actions`.
   (or paused it), `App.prNotBefore` holds every plan landing before then off
   reading (`prNow` is the test clock).
 - `prstate.go` hands every slice a reading finds `PRChecksFailing` to
-  `actions.NoticeFailingChecks` (the same call `nat pr-status` makes): a
+  `actions.NoticeFailingChecks` (the same call `nat pr status` makes): a
   live agent is sent `agent.ChecksPrompt` and a `Sent back` filed, else a
   `Checks failed` is filed — once per set of failing run URLs, read back off
   the task log, so nothing is held in memory.
@@ -157,7 +157,7 @@ directly; check each file, don't assume every one routes through `actions`.
   `App.launcher`, which carries `Kill`). `X` (`slicecancel.go`) is cancel —
   a confirm refused with a note for anything not In progress, then
   `actions.Cancel`; in the help screen, not the hints row; `editable`
-  in `sliceform.go`'s edit flow applies the same Todo-only rule `slice-edit`
+  in `sliceform.go`'s edit flow applies the same Todo-only rule `slice edit`
   enforces headlessly (see `internal/cli/CLAUDE.md`).
 
 ## Blocked slices (board-rendering half — see root CLAUDE.md for the rule)
@@ -165,7 +165,7 @@ directly; check each file, don't assume every one routes through `actions`.
 - `Board.Blockers` indexes blocked slices per plan load. A blocked row draws
   a `⊘` marker (the agent star wins the cell if somehow both are true), muted
   text, and is sunk to the bottom of its milestone group (`appendGroup`) —
-  **drawing only**, Notion's own view order and `next-slice`/`PlanOrder` are
+  **drawing only**, Notion's own view order and `slice next`/`PlanOrder` are
   untouched. What's blocking a selected row is the status band's job
   (`Board.BlockedBy`), not the row's own.
 
@@ -181,7 +181,7 @@ A source project (`store.Project.Source` set) is the same file wrapped in
 `store.NewSourced` over `App.newSource(name)` (a test seam; a lookup failure
 is logged and opens over `source.Unavailable`, as `internal/cli` does), and
 its containers draw as milestones with no other change. `n` refuses on one
-with a toast — tasks are added from gnat or `nat slice-add --container`.
+with a toast — tasks are added from gnat or `nat slice add --container`.
 
 ## Smaller subsystems
 

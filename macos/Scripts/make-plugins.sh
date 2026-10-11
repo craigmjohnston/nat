@@ -4,7 +4,7 @@
 # nat-source-<name>, and writes the nat-plugins.json manifest a release
 # carries beside them — the plugin-source format in
 # docs/design/task-sources/README.md, "Installing plugins". `nat
-# plugin-install` reads that manifest from the latest release and checks each
+# plugin install` reads that manifest from the latest release and checks each
 # binary it downloads against the sha256 written here.
 #
 # A plugin is a directory plugins/<name>/ with a plugin.json of

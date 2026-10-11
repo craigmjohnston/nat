@@ -13,11 +13,11 @@ Tested with Claude Code **2.1.294**.
   run-in-background pill draw empty, the turn duration line and the notices
   under the logo draw nothing, and the spinner says `Working`. The session
   modes are left alone. They also set the pane's waiting flag
-  (`nat agent-waiting` / `nat agent-working`) while an AskUserQuestion
+  (`nat agent waiting` / `nat agent working`) while an AskUserQuestion
   dialog, a permission prompt or an MCP elicitation waits on the user, or a
   turn ended on an error or a refusal. A main-loop turn that ends normally
   waits too, unless one of its Bash calls handed something in (`nat
-  complete-slice`, `slice-followups` or `plan-propose`), since the app shows
+  slice complete`, `slice followups` or `plan propose`), since the app shows
   each of those in its own place; an interrupted turn and a subagent's mark
   nothing. No prompt tells an agent to run either command: the mod alone
   marks the wait, and the next turn or prompt clears it.
@@ -27,7 +27,7 @@ Tested with Claude Code **2.1.294**.
   — a turn of its own once idle, no composer involved.
   And they record a resume: a prompt the user typed (`origin.kind`
   `composer` or `bridge`) on a session with `NAT_SLICE` and `NAT_PROJECT`
-  set runs `nat slice-resume` with the prompt on stdin before it goes on.
+  set runs `nat slice resume` with the prompt on stdin before it goes on.
   And they hand the session its brief: `prompt.context` appends the file
   `NAT_BRIEF` names as a `natBrief` context block, which the model reads
   and the pane never draws; nat starts the session on one opening line

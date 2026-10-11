@@ -1,6 +1,6 @@
 import Foundation
 
-/// One slice's status read straight off its page — `nat slice-status`,
+/// One slice's status read straight off its page — `nat slice status`,
 /// fresh rather than off a cached plan. This is the reaper's last word
 /// before a kill: a session's own claim is always written before the
 /// session exists, so a read taken after observing a live session can

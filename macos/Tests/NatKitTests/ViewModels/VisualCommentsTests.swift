@@ -49,7 +49,7 @@ final class VisualCommentsTests: XCTestCase {
 
         When every comment is addressed and committed, hand the slice back for review by running exactly:
 
-        nat complete-slice slice-1 --project proj --branch slice/x --summary '<what you changed for these comments>'
+        nat slice complete slice-1 --project proj --branch slice/x --summary '<what you changed for these comments>'
 
         That hand-back pushes the branch: do not push it yourself.
 

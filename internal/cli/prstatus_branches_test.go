@@ -72,8 +72,8 @@ func branchesEnv(t *testing.T) (Env, *conflictGit, interface{ String() string })
 func TestPRStatusJSONReadsHandedBackBranches(t *testing.T) {
 	env, g, out := branchesEnv(t)
 
-	if err := Run(context.Background(), []string{"pr-status", "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status --json: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status --json: %v", err)
 	}
 	wantAsked := []string{"/tmp/nat slice/conflicted", "/tmp/nat slice/clean", "/tmp/nat slice/untestable"}
 	if !reflect.DeepEqual(g.asked, wantAsked) {
@@ -100,8 +100,8 @@ func TestPRStatusJSONReadsHandedBackBranches(t *testing.T) {
 func TestPRStatusMarkdownNamesAConflictedBranch(t *testing.T) {
 	env, _, out := branchesEnv(t)
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	want := "\n# Branches awaiting review\n\n- Conflicted — conflicting with origin/main — slice/conflicted\n"
 	if !strings.HasSuffix(out.String(), want) {

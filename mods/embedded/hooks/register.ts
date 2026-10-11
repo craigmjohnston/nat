@@ -20,7 +20,7 @@ const handedIn = atom({ plugin: 'nat-embedded', key: 'handedIn' } as const, fals
 // of follow-ups, a proposed plan. The app shows the user each of those in its
 // own place, so a turn that ran one is no wait. Matched as `nat` (or a path
 // ending in it) at the start of a command, `--project` and the rest after.
-const handIn = /(?:^|[\s;&|(/])nat\s+(?:complete-slice|slice-followups|plan-propose)(?:\s|$)/m
+const handIn = /(?:^|[\s;&|(/])nat\s+(?:slice\s+(?:complete|followups)|plan\s+propose)(?:\s|$)/m
 
 type HandInEngine = StateDollar & Pick<EngineInterface, 'ui'>
 
@@ -46,7 +46,7 @@ async function handedInThisTurn($: HandInEngine): Promise<boolean> {
 }
 
 // Sets the pane's waiting flag to `to` — what the agent's own `nat
-// agent-waiting` / `nat agent-working` set — only where it changes; a wait
+// agent waiting` / `nat agent working` set — only where it changes; a wait
 // for one thing becoming a wait for another rewrites nothing. `from` limits a
 // clear to the waits it names. The session carries nat's PATH and the pane's
 // TMUX_PANE, which is how the command finds the pane. Nothing here throws: a
@@ -60,15 +60,15 @@ async function mark($: Engine, to: Wait | null, from?: readonly Wait[]): Promise
       return to !== null || !from || (value !== null && from.includes(value)) ? to : value
     })
     if ((was === null) === (now === null)) return
-    const command = now === null ? 'agent-working' : 'agent-waiting'
-    const { exitCode, stderr } = await $.process.run(['nat', command], { timeoutMs: 10_000 })
-    if (exitCode !== 0) $.ui.log(`nat ${command} exited ${exitCode}: ${stderr.trim()}`, { to: 'debug' })
+    const command = now === null ? 'working' : 'waiting'
+    const { exitCode, stderr } = await $.process.run(['nat', 'agent', command], { timeoutMs: 10_000 })
+    if (exitCode !== 0) $.ui.log(`nat agent ${command} exited ${exitCode}: ${stderr.trim()}`, { to: 'debug' })
   } catch (err) {
     $.ui.log(`waiting flag (${to ?? 'working'}) not written: ${String(err)}`, { to: 'debug' })
   }
 }
 
-// One prompt nat sent, as `nat agent-send` (and every other sender) names it:
+// One prompt nat sent, as `nat agent send` (and every other sender) names it:
 // the send's Unix time in nanoseconds, so name order is send order. A temp
 // file still being written has another name and is never read.
 const inboxFile = /^\d+\.md$/
@@ -141,8 +141,8 @@ async function record($: RecordEngine, cwd: string): Promise<void> {
 const typed: ReadonlySet<string> = new Set(['composer', 'bridge'])
 
 // Puts a prompt the user typed at a slice's agent on the record as
-// `nat slice-resume`, the prompt its note, before the agent reads it — what
-// every nat send does itself before it sends. `slice-resume` writes nothing
+// `nat slice resume`, the prompt its note, before the agent reads it — what
+// every nat send does itself before it sends. `slice resume` writes nothing
 // where the slice is not handed back, so every typed prompt runs it; where it
 // is, the slice's board card reads as work in progress again. `NAT_SLICE` and
 // `NAT_PROJECT` are set by nat on a slice's launch alone. Nothing here throws:
@@ -154,10 +154,10 @@ async function resume($: ResumeEngine, text: string): Promise<void> {
     const project = await $.env.get('NAT_PROJECT')
     if (!slice || !project) return
     const { exitCode, stderr } = await $.process.run(
-      ['nat', 'slice-resume', slice, '--project', project, '--note', '-'],
+      ['nat', 'slice', 'resume', slice, '--project', project, '--note', '-'],
       { stdin: text, timeoutMs: 30_000 },
     )
-    if (exitCode !== 0) $.ui.log(`nat slice-resume exited ${exitCode}: ${stderr.trim()}`, { to: 'debug' })
+    if (exitCode !== 0) $.ui.log(`nat slice resume exited ${exitCode}: ${stderr.trim()}`, { to: 'debug' })
   } catch (err) {
     $.ui.log(`resume not recorded: ${String(err)}`, { to: 'debug' })
   }
@@ -280,7 +280,7 @@ export const register: Register = on => {
 
   // The waiting flag gnat's star, dock badge and Active rail read, set and
   // cleared at the moments the engine itself knows are a wait on the user. No
-  // prompt tells the agent to run `nat agent-waiting` itself: once a turn
+  // prompt tells the agent to run `nat agent waiting` itself: once a turn
   // ends the agent does nothing until someone types, so a main-loop turn that
   // ends normally with nothing handed in is a wait — a question in prose, or
   // the agent stopped short. An `idle_prompt` notification marks nothing.

@@ -25,7 +25,7 @@ import (
 // the same branch under the same refusals; only what comes back differs, so
 // they are one command's mutually exclusive flags rather than three commands.
 func sliceDiff(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-diff", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice diff", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of the raw diff")
 	commitsFlag := flags.Bool("commits", false, "list the branch's commits against its merge base, instead of diffing it")
@@ -36,13 +36,13 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-diff: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice diff: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
 	if *commitsFlag && *commitFlag != "" {
-		return usageErrorf("slice-diff: --commits and --commit are two different reads: " +
+		return usageErrorf("slice diff: --commits and --commit are two different reads: " +
 			"list the branch's commits, or diff one of them, not both")
 	}
-	s, workdir, project, err := handedBackSlice(ctx, "slice-diff", rest[0], *projectRef, env)
+	s, workdir, project, err := handedBackSlice(ctx, "slice diff", rest[0], *projectRef, env)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func sliceDiff(ctx context.Context, args []string, env Env) error {
 
 // handedBackSlice is the slice a branch read is about and the checkout its
 // branch is read in — refused for a slice with no branch to read. Shared by
-// slice-diff and slice-file.
+// slice diff and slice file.
 //
 // A slice in progress whose branch was cleared after a hand-back — resumed,
 // or sent back — is read on [actions.AgentBranch], the very branch a
@@ -121,7 +121,7 @@ func handedBackSlice(ctx context.Context, command, ref, projectRef string, env E
 	return s, workdir, project, nil
 }
 
-// sliceBranchDiff is the plain, whole-branch read: the same call slice-diff
+// sliceBranchDiff is the plain, whole-branch read: the same call slice diff
 // always made, factored out so the two finer reads sit beside it rather than
 // inside one growing function.
 func sliceBranchDiff(gitCLI GitCLI, workdir, baseName, branch string, asJSON bool, out io.Writer) error {

@@ -45,7 +45,7 @@ func TestPromptTellsAPublishedSliceItsPullRequestIsOpen(t *testing.T) {
 		"    gh pr view " + c.Slice.PRURL + " --comments\n",
 		"That is the only `gh` you may run",
 		"Never open, merge, close or reopen a pull request",
-		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
+		"nat slice complete " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
@@ -54,7 +54,7 @@ func TestPromptTellsAPublishedSliceItsPullRequestIsOpen(t *testing.T) {
 	if strings.Contains(got, "Do not run `gh`") {
 		t.Error("prompt both permits the review read and bans every gh")
 	}
-	// The one gh read is the review's; CI is read with slice-checks, so no
+	// The one gh read is the review's; CI is read with slice checks, so no
 	// template names a gh read of the checks.
 	if regexp.MustCompile(`\bgh pr checks\b`).MatchString(got) {
 		t.Error("prompt names a gh read of the checks")
@@ -118,7 +118,7 @@ func TestPromptResumesAPublishedSliceWithItsBranchCleared(t *testing.T) {
 	}
 }
 
-// No slice prompt names `nat slice-resume`: a request for more typed at a
+// No slice prompt names `nat slice resume`: a request for more typed at a
 // handed-back agent is put on the record by the embedded mod, which runs it
 // for the pane, and every other one by the nat send that carries it.
 func TestNoSlicePromptNamesSliceResume(t *testing.T) {
@@ -130,8 +130,8 @@ func TestNoSlicePromptNamesSliceResume(t *testing.T) {
 		"slice no repo":  repoUnknownContext(),
 		"published":      publishedContext(),
 	} {
-		if got := Prompt(c); strings.Contains(got, "slice-resume") {
-			t.Errorf("the %s prompt names slice-resume", name)
+		if got := Prompt(c); strings.Contains(got, "slice resume") {
+			t.Errorf("the %s prompt names slice resume", name)
 		}
 	}
 }
@@ -170,7 +170,7 @@ func TestPromptTasksAConflictedHandBackWithTheResolving(t *testing.T) {
 		"Resolve each conflict, keeping what both sides meant: origin/main's side\n   is merged work",
 		"`git rebase --continue`",
 		"Run the project's verification gate",
-		"nat complete-slice " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
+		"nat slice complete " + c.Slice.ID + " --project " + testProjectID + " \\\n        --summary",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("prompt does not say %q:\n%s", want, got)
@@ -214,7 +214,7 @@ func TestPromptOnABranchRebasedAtLaunch(t *testing.T) {
 	want := "The launch fetched origin and rebased " + c.Branch + " onto origin/main, and the\n" +
 		"rebase went through with no conflict. What is left:\n\n" +
 		"1. Run the project's verification gate on the rebased branch.\n" +
-		"2. Hand the slice back with `complete-slice`, as below.\n"
+		"2. Hand the slice back with `slice complete`, as below.\n"
 	if !strings.HasSuffix(got, want) {
 		t.Errorf("passage = %q, want it to end %q", got, want)
 	}

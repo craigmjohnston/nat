@@ -8,7 +8,7 @@ public enum ContainerPaneMode: Equatable, Sendable {
     case section(String)
 }
 
-/// The container navigator's reading of one `container-show`: the first
+/// The container navigator's reading of one `container show`: the first
 /// section (the story's facts and its tasks), then one section per remaining
 /// section the plugin declared, of a kind this build draws — an unknown kind
 /// is skipped, never drawn as something it is not.

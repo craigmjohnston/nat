@@ -16,7 +16,7 @@ import (
 //
 // The slice is read first for the shape it can be written in, which a project
 // converted in the Notion UI may have changed under the app — the same read
-// complete-slice makes for the same reason.
+// slice complete makes for the same reason.
 func MarkDone(ctx context.Context, st Store, s domain.Slice) error {
 	_, shape, err := st.Slice(ctx, s.ID)
 	if err != nil {

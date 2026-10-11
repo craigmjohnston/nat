@@ -43,7 +43,7 @@ type fakeChecksGH struct {
 	statusErr error
 	failOn    string
 	calls     []string
-	// views counts ViewPR, which only slice-checks itself may make.
+	// views counts ViewPR, which only slice checks itself may make.
 	views int
 }
 
@@ -53,7 +53,7 @@ func (f *fakeChecksGH) ViewPR(dir, ref string) (gh.PR, error) {
 }
 
 // ReadPRs answers the batched reading with the same pull request ViewPR
-// would — what slice-checks-rerun and -cancel read it by.
+// would — what slice checks rerun and -cancel read it by.
 func (f *fakeChecksGH) ReadPRs(q gh.BatchQuery) (gh.Batch, error) {
 	batch := gh.Batch{PRs: map[gh.PRRef]gh.PR{}}
 	for _, ref := range q.PRs {
@@ -166,8 +166,8 @@ func TestSliceChecksVerdicts(t *testing.T) {
 	}
 	for _, tt := range tests {
 		env, out := checksEnv(t, checksPR, &fakeChecksGH{checks: tt.checks})
-		if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--project", "project-1"}, env); err != nil {
-			t.Fatalf("%s: slice-checks: %v", tt.name, err)
+		if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--project", "project-1"}, env); err != nil {
+			t.Fatalf("%s: slice checks: %v", tt.name, err)
 		}
 		if !strings.HasPrefix(out.String(), "Checks: "+tt.want+" — "+checksPR+"\n") {
 			t.Errorf("%s: output = %q, want the %s verdict first", tt.name, out.String(), tt.want)
@@ -186,8 +186,8 @@ func TestSliceChecksJSON(t *testing.T) {
 	env, out := checksEnv(t, checksPR, &fakeChecksGH{checks: []gh.Check{
 		{Name: "test", State: "FAILURE", URL: "https://github.com/o/r/actions/runs/1/job/2"},
 	}})
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks --json: %v", err)
 	}
 	want := `{"checks":[{"name":"test","state":"FAILURE","url":"https://github.com/o/r/actions/runs/1/job/2"}],"pr":"` + checksPR + `","verdict":"failing"}`
 	if got := compactJSON(t, out.String()); got != want {
@@ -212,8 +212,8 @@ func TestSliceChecksLog(t *testing.T) {
 		logs: map[string]string{"22": strings.Join(long, "\n")},
 	}
 	env, out := checksEnv(t, checksPR, fake)
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks --log: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks --log: %v", err)
 	}
 	if want := []string{"11/22"}; strings.Join(fake.logRuns, ",") != strings.Join(want, ",") {
 		t.Errorf("read logs %v, want only the failed Actions job's %v", fake.logRuns, want)
@@ -240,16 +240,16 @@ func TestSliceChecksLog(t *testing.T) {
 func TestSliceChecksLogShortAndUnreadable(t *testing.T) {
 	failed := []gh.Check{{Name: "test", State: "FAILURE", URL: "https://github.com/o/r/actions/runs/11"}}
 	env, out := checksEnv(t, checksPR, &fakeChecksGH{checks: failed, logs: map[string]string{"": "boom\nat step 3"}})
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks --log: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks --log: %v", err)
 	}
 	if !strings.Contains(out.String(), "```\nboom\nat step 3\n```") || strings.Contains(out.String(), "cut") {
 		t.Errorf("output = %q, want the short log whole", out.String())
 	}
 
 	env, out = checksEnv(t, checksPR, &fakeChecksGH{checks: failed, logErr: errors.New("gone\nand more")})
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks --log over an unreadable log: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks --log over an unreadable log: %v", err)
 	}
 	want := "- test — FAILURE — https://github.com/o/r/actions/runs/11\n  log not available: gone\n"
 	if !strings.HasPrefix(out.String(), "Checks: failing") || !strings.Contains(out.String(), want) ||
@@ -258,8 +258,8 @@ func TestSliceChecksLogShortAndUnreadable(t *testing.T) {
 	}
 
 	env, out = checksEnv(t, checksPR, &fakeChecksGH{checks: failed, logErr: errors.New("gone\nand more")})
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks --log --json over an unreadable log: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--log", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks --log --json over an unreadable log: %v", err)
 	}
 	wantJSON := `{"checks":[{"log_error":"gone","name":"test","state":"FAILURE","url":"https://github.com/o/r/actions/runs/11"}],"pr":"` + checksPR + `","verdict":"failing"}`
 	if got := compactJSON(t, out.String()); got != wantJSON {
@@ -272,15 +272,15 @@ func TestSliceChecksLogShortAndUnreadable(t *testing.T) {
 func TestSliceChecksNoPullRequest(t *testing.T) {
 	fake := &fakeChecksGH{viewErr: errors.New("gh must not be asked")}
 	env, out := checksEnv(t, "", fake)
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks: %v", err)
 	}
 	if !strings.Contains(out.String(), "checks run once the slice is approved") {
 		t.Errorf("output = %q, want it to say when checks run", out.String())
 	}
 	env, out = checksEnv(t, "", fake)
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks --json: %v", err)
 	}
 	if want := `{"checks":[],"pr":"","verdict":"none"}`; compactJSON(t, out.String()) != want {
 		t.Errorf("json = %s, want %s", out.String(), want)
@@ -291,16 +291,16 @@ func TestSliceChecksNoPullRequest(t *testing.T) {
 // are a bad invocation, an unknown project and a slice that cannot be read.
 func TestSliceChecksRefusals(t *testing.T) {
 	env, _ := checksEnv(t, checksPR, &fakeChecksGH{viewErr: errors.New("rate limited")})
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--project", "project-1"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--project", "project-1"}, env); err == nil ||
 		!strings.Contains(err.Error(), "rate limited") {
 		t.Errorf("err = %v, want the gh failure", err)
 	}
 	for _, args := range [][]string{
-		{"slice-checks", "--project", "project-1"},
-		{"slice-checks", testSliceID, "--bogus", "--project", "project-1"},
-		{"slice-checks", "not a page", "--project", "project-1"},
-		{"slice-checks", testSliceID},
-		{"slice-checks", "00000000-0000-0000-0000-000000000099", "--project", "project-1"},
+		{"slice", "checks", "--project", "project-1"},
+		{"slice", "checks", testSliceID, "--bogus", "--project", "project-1"},
+		{"slice", "checks", "not a page", "--project", "project-1"},
+		{"slice", "checks", testSliceID},
+		{"slice", "checks", "00000000-0000-0000-0000-000000000099", "--project", "project-1"},
 	} {
 		env, _ := checksEnv(t, checksPR, &fakeChecksGH{})
 		if err := Run(context.Background(), args, env); err == nil {
@@ -323,8 +323,8 @@ func TestSliceChecksRefusesAnUnopenablePlan(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not a database"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--project", "project-1"}, env); err == nil {
-		t.Error("slice-checks over an unopenable plan: want an error")
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--project", "project-1"}, env); err == nil {
+		t.Error("slice checks over an unopenable plan: want an error")
 	}
 }
 
@@ -374,8 +374,8 @@ func TestSliceChecksLogRunningJob(t *testing.T) {
 		jobLogErr: gh.ErrLogNotReady,
 	}
 	env, out := checksEnv(t, checksPR, fake)
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks --log: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks --log: %v", err)
 	}
 	want := `Checks: pending — ` + checksPR + `
 
@@ -397,8 +397,8 @@ func TestSliceChecksLogRunningJob(t *testing.T) {
 	}
 
 	env, out = checksEnv(t, checksPR, fake)
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--json", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks --log --json: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--log", "--json", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks --log --json: %v", err)
 	}
 	wantJSON := `{"checks":[` +
 		`{"job":{"created_at":"2026-10-05T11:00:00Z","runner":"GitHub Actions 7","started_at":"2026-10-05T11:01:00Z","status":"in_progress","steps":[` +
@@ -427,8 +427,8 @@ func TestSliceChecksLogRunningJobReads(t *testing.T) {
 	fake := &fakeChecksGH{checks: running, jobs: map[string]gh.Job{"21": {Status: gh.JobInProgress, StartedAt: time.Date(2026, 10, 5, 11, 0, 5, 0, time.UTC)}},
 		jobLogs: map[string]string{"21": "step one\nstep two"}}
 	env, out := checksEnv(t, checksPR, fake)
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks --log: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks --log: %v", err)
 	}
 	for _, want := range []string{"  in progress for 0s\n- lint", "## test log\n\n```\nstep one\nstep two\n```"} {
 		if !strings.Contains(out.String(), want) {
@@ -438,8 +438,8 @@ func TestSliceChecksLogRunningJobReads(t *testing.T) {
 
 	fake = &fakeChecksGH{checks: running, jobErr: errors.New("HTTP 502\nmore"), jobLogErr: errors.New("HTTP 500")}
 	env, out = checksEnv(t, checksPR, fake)
-	if err := Run(context.Background(), []string{"slice-checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-checks --log over failed reads: %v", err)
+	if err := Run(context.Background(), []string{"slice", "checks", testSliceID, "--log", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice checks --log over failed reads: %v", err)
 	}
 	want := "Checks: pending — " + checksPR + "\n\n- test — IN_PROGRESS — https://github.com/o/r/actions/runs/11/job/21\n" +
 		"  job not available: HTTP 502\n  log not available: HTTP 500\n- lint — SUCCESS — https://github.com/o/r/actions/runs/11/job/22\n"

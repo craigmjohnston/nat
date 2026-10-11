@@ -13,13 +13,13 @@ import (
 // its own pane, found from $TMUX_PANE, is flagged waiting, which is what
 // `status` reads the needs-attention state from.
 func agentWaiting(args []string, env Env) error {
-	return markOwnPane("agent-waiting", true, args, env)
+	return markOwnPane("agent waiting", true, args, env)
 }
 
 // agentWorking is the calling agent saying it has its answer and is back at
 // work: the flag [agentWaiting] set is cleared.
 func agentWorking(args []string, env Env) error {
-	return markOwnPane("agent-working", false, args, env)
+	return markOwnPane("agent working", false, args, env)
 }
 
 // markOwnPane sets or clears the waiting flag on the caller's own pane. Like

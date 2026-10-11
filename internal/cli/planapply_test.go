@@ -54,7 +54,7 @@ func runPlanWith(t *testing.T, cfg config.Config, api *fakeAPI, doc string, args
 	t.Helper()
 	env, out := testEnv(cfg, api)
 	env.In = strings.NewReader(doc)
-	err := Run(context.Background(), append([]string{"plan-apply"}, args...), env)
+	err := Run(context.Background(), append([]string{"plan", "apply"}, args...), env)
 	return out.String(), err
 }
 
@@ -98,7 +98,7 @@ func TestPlanApplyCreatesTheMilestonesThenTheSlices(t *testing.T) {
 
 	out, err := runPlan(t, api, samplePlan)
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	want := `# Plan applied
@@ -173,7 +173,7 @@ func TestPlanApplyResolvesAnExistingMilestoneByName(t *testing.T) {
 			doc := fmt.Sprintf(`{"slices": [{"title": "Do it", "milestone": %q}]}`, ref)
 
 			if _, err := runPlan(t, api, doc); err != nil {
-				t.Fatalf("plan-apply: %v", err)
+				t.Fatalf("plan apply: %v", err)
 			}
 
 			if got := api.creates[0].props[notion.PropMilestone]; !reflect.DeepEqual(got, notion.NewSelect("M2: Board")) {
@@ -190,7 +190,7 @@ func TestPlanApplyReportsAMilestoneWithNoSlices(t *testing.T) {
 
 	out, err := runPlan(t, api, `{"milestones": [{"name": "M4: Polish"}]}`)
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	want := `# Plan applied
@@ -213,7 +213,7 @@ func TestPlanApplyPrintsJSON(t *testing.T) {
 
 	out, err := runPlan(t, api, samplePlan, "--json")
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	var got planAppliedJSON
@@ -259,7 +259,7 @@ func TestPlanApplyPrintsEmptyJSONLists(t *testing.T) {
 
 	out, err := runPlan(t, api, `{"milestones": [{"name": "M4"}]}`, "--json")
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	for _, want := range []string{`"slices": []`, `"dependencies": []`, `"edited": []`, `"moved": []`, `"removed": []`, `"milestones_removed": []`} {
@@ -277,8 +277,8 @@ func TestPlanApplyReadsAPlanFile(t *testing.T) {
 	api := planAPI(1)
 	env, out := testEnv(testConfig(t), api)
 
-	if err := Run(context.Background(), []string{"plan-apply", path, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+	if err := Run(context.Background(), []string{"plan", "apply", path, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if !strings.Contains(out.String(), "M4: Polish") {
@@ -294,7 +294,7 @@ func TestPlanApplyReadsStdinForADashedFile(t *testing.T) {
 	api := planAPI(1)
 
 	if _, err := runPlan(t, api, `{"milestones": [{"name": "M4"}]}`, "-"); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if len(api.schemaUpdates) != 1 {
@@ -374,8 +374,8 @@ func TestPlanApplyRejectsAMisusedCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "two plan files", args: []string{"plan-apply", "a.json", "b.json", "--project", "project-1"}, want: "given 2"},
-		{name: "unknown flag", args: []string{"plan-apply", "--nope", "--project", "project-1"}, want: "not defined"},
+		{name: "two plan files", args: []string{"plan", "apply", "a.json", "b.json", "--project", "project-1"}, want: "given 2"},
+		{name: "unknown flag", args: []string{"plan", "apply", "--nope", "--project", "project-1"}, want: "not defined"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -401,7 +401,7 @@ func TestPlanApplyRejectsAMisusedCommandLine(t *testing.T) {
 func TestPlanApplyRejectsHavingNothingToRead(t *testing.T) {
 	env, _ := testEnv(testConfig(t), planAPI(1))
 
-	err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"plan", "apply", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -412,7 +412,7 @@ func TestPlanApplyRejectsHavingNothingToRead(t *testing.T) {
 func TestPlanApplyReportsAnUnreadableFile(t *testing.T) {
 	env, _ := testEnv(testConfig(t), planAPI(1))
 
-	err := Run(context.Background(), []string{"plan-apply", filepath.Join(t.TempDir(), "gone.json"), "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"plan", "apply", filepath.Join(t.TempDir(), "gone.json"), "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "read the plan") {
 		t.Errorf("err = %v, want it to report the unreadable plan", err)
@@ -472,7 +472,7 @@ func textSpan(content string) map[string]any {
 }
 
 func TestPlanApplyReportsAFailedWrite(t *testing.T) {
-	for _, args := range [][]string{{"plan-apply", "--project", "project-1"}, {"plan-apply", "--json", "--project", "project-1"}} {
+	for _, args := range [][]string{{"plan", "apply", "--project", "project-1"}, {"plan", "apply", "--json", "--project", "project-1"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			env, _ := testEnv(testConfig(t), planAPI(1))
 			env.In = strings.NewReader(`{"milestones": [{"name": "M4"}]}`)
@@ -502,7 +502,7 @@ func TestPlanApplyAppendsEveryNewMilestoneInOneSchemaWrite(t *testing.T) {
 	  ]
 	}`)
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	want := `# Plan applied
@@ -554,7 +554,7 @@ func TestPlanApplyLeavesTheOptionsAloneWhereItAddsNoMilestone(t *testing.T) {
 	api := planAPI(1)
 
 	if _, err := runPlan(t, api, `{"slices": [{"title": "Do it", "milestone": "M3: Agents"}]}`); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if len(api.schemaUpdates) != 0 {
@@ -636,7 +636,7 @@ func TestPlanApplyReportsAFailedLocalShapeRead(t *testing.T) {
 	out, err := runPlanWith(t, cfg, planAPI(1), samplePlan, "--project", "project-1")
 
 	if err == nil || strings.Contains(err.Error(), "no project given") {
-		t.Fatalf("plan-apply over a plan that cannot read its own shape: want the shape read reported, got %v", err)
+		t.Fatalf("plan apply over a plan that cannot read its own shape: want the shape read reported, got %v", err)
 	}
 	if out != "" {
 		t.Errorf("output = %q, want nothing", out)
@@ -726,7 +726,7 @@ func recordingNotion(t *testing.T, responses []string) (*httptest.Server, *[]not
 // The plan is read from the local file now, and the file is empty the first
 // time any command asks for it — so this run opens with a schema read and an
 // empty slices query, [store.ForProject]'s own hydrate, before it gets to
-// plan-apply's own work: another schema read for the live option list
+// plan apply's own work: another schema read for the live option list
 // [store.Mirrored.AddMilestones] writes against, the schema write itself, and
 // the page.
 func TestPlanApplyWritesTheRequestsNotionExpects(t *testing.T) {
@@ -760,8 +760,8 @@ func TestPlanApplyWritesTheRequestsNotionExpects(t *testing.T) {
 	  "slices": [{"title": "Frame the board", "milestone": "M3: Agents", "description": "Draw a border."}]
 	}`)
 
-	if err := Run(context.Background(), []string{"plan-apply", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+	if err := Run(context.Background(), []string{"plan", "apply", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	want := []notionRequest{
@@ -819,7 +819,7 @@ func TestPlanApplyNamesAPageWithNoURLByItsID(t *testing.T) {
 
 	out, err := runPlan(t, api, `{"slices": [{"title": "Do it", "milestone": "M2: Board"}]}`)
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if !strings.Contains(out, "- Do it — new-1\n") {
@@ -843,7 +843,7 @@ func TestPlanApplyFilesThePlanInTheNamedProject(t *testing.T) {
   ]
 }`, "--project", "project-2")
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if !strings.Contains(out, "Added 1 milestone and 2 slices to other.\n") {
@@ -882,7 +882,7 @@ func TestPlanApplyFindsTheNamedProjectByAnUndashedID(t *testing.T) {
 		`{"slices": [{"title": "Draw it", "milestone": "N1: Groundwork"}]}`,
 		"--project", "AAAAAAAABBBBCCCCDDDDEEEEEEEEEEEE")
 	if err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	if !strings.Contains(out, "to other.\n") {
@@ -893,10 +893,10 @@ func TestPlanApplyFindsTheNamedProjectByAnUndashedID(t *testing.T) {
 	}
 }
 
-// The plan's own order is what the board and next-slice hand work out in.
-// Every plan is now read back from the local file plan-apply wrote it to, in
+// The plan's own order is what the board and slice next hand work out in.
+// Every plan is now read back from the local file plan apply wrote it to, in
 // the order the document put them — no view of Notion's own is read to get
-// it, so this is plan-apply and then `nat info`, both against the same plan
+// it, so this is plan apply and then `nat info`, both against the same plan
 // file, with nothing about the workspace read in between.
 func TestPlanApplyLandsSlicesInDocumentOrder(t *testing.T) {
 	api := planAPI(5)
@@ -912,7 +912,7 @@ func TestPlanApplyLandsSlicesInDocumentOrder(t *testing.T) {
 	}`
 
 	if _, err := runPlanWith(t, cfg, api, doc, "--project", "project-1"); err != nil {
-		t.Fatalf("plan-apply: %v", err)
+		t.Fatalf("plan apply: %v", err)
 	}
 
 	env, out := testEnv(cfg, api)
@@ -939,7 +939,7 @@ func TestPlanApplyLandsSlicesInDocumentOrder(t *testing.T) {
 // applyDependencies and applyAdditions both take a store.Store directly,
 // independent of whatever built it, so the one write either can make —
 // SetDependencies — failing is exactly checkable here without needing a
-// whole plan-apply run to reach a workspace that refuses it.
+// whole plan apply run to reach a workspace that refuses it.
 func TestApplyDependenciesReportsAFailedWrite(t *testing.T) {
 	boom := errors.New("notion is down")
 	st := stubStore{setDependencies: func(string, []string) (domain.Slice, error) { return domain.Slice{}, boom }}
@@ -969,7 +969,7 @@ func TestApplyAdditionsReportsAFailedWrite(t *testing.T) {
 }
 
 // appliedErr reads slightly differently once a run has already made another
-// project's slice wait on more — the one thing plan-apply changes rather
+// project's slice wait on more — the one thing plan apply changes rather
 // than creates — before failing on the write after it.
 func TestAppliedErrNamesDependenciesAlreadyRecorded(t *testing.T) {
 	boom := errors.New("notion is down")

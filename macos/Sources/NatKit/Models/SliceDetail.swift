@@ -20,20 +20,20 @@ public struct SliceDetail: Codable, Equatable, Sendable {
     public let state: String?
     public let brief: String
     /// The follow-ups the slice's agent handed in that still await the
-    /// user's decision — `nat slice-show`'s `followUps`, absent (decoded as
+    /// user's decision — `nat slice show`'s `followUps`, absent (decoded as
     /// empty) when there are none.
     public let followUps: [FollowUp]
     /// The images the slice's agent last handed in of what it changed —
-    /// `nat slice-show`'s `visuals`, absent (decoded as empty) when none were.
+    /// `nat slice show`'s `visuals`, absent (decoded as empty) when none were.
     public let visuals: [VisualChange]
-    /// What has happened to the slice, in order — `nat slice-show`'s
+    /// What has happened to the slice, in order — `nat slice show`'s
     /// `events`: each hand-back, send-back, release, relaunch and proposal of
     /// follow-ups its page records, then the approve and merge its properties
     /// say. Nil from a nat too old to report them, which the Task log reads
     /// as "fall back to what the properties alone say".
     public let events: [TaskLogEvent]?
     /// The container a task in a source project is filed under —
-    /// `slice-show`'s `container`; nil for every other project.
+    /// `slice show`'s `container`; nil for every other project.
     public let container: SliceContainer?
 
     enum CodingKeys: String, CodingKey {
@@ -126,28 +126,28 @@ public struct SliceDetail: Codable, Equatable, Sendable {
     }
 }
 
-/// One thing that happened to a slice, as `nat slice-show`'s `events` reads
+/// One thing that happened to a slice, as `nat slice show`'s `events` reads
 /// it off the slice's page and properties.
 public struct TaskLogEvent: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
         case handedBack = "handed_back"
         case sentBack = "sent_back"
         case released
-        /// Cancelled back to Todo with its work discarded (`nat slice-cancel`):
+        /// Cancelled back to Todo with its work discarded (`nat slice cancel`):
         /// `by` is who cancelled it.
         case cancelled
         /// A fresh launch's own line — what the Launched item takes its time
         /// from. Not drawn as an item of its own.
         case launched
         case relaunched
-        /// Work resumed after a hand-back (`nat slice-resume`): the note is
+        /// Work resumed after a hand-back (`nat slice resume`): the note is
         /// why, and the Branch was cleared after it; the hand-back that
         /// follows is the ordinary `handed_back` after it in the list.
         case resumed
         case blocked
         case summary
         case followUps = "follow_ups"
-        /// A note left on the brief with `nat slice-note`.
+        /// A note left on the brief with `nat slice note`.
         case note
         /// The pull request's checks failed with no agent live to be told:
         /// the note names each failed check and its run URL.
@@ -210,7 +210,7 @@ public struct TaskLogEvent: Codable, Equatable, Sendable {
     }
 }
 
-/// A slice as a note's provenance names it — `slice-show`'s `fromSlice`: its
+/// A slice as a note's provenance names it — `slice show`'s `fromSlice`: its
 /// name, and its milestone's name, empty where it is filed under none.
 public struct NoteSource: Codable, Equatable, Sendable {
     public let name: String
@@ -286,9 +286,9 @@ private struct LossyTaskLogEvent: Decodable {
 }
 
 /// One follow-up an agent proposed and the user has yet to decide, as
-/// `slice-show` reads it: the batch it was handed in under (its proposal's
+/// `slice show` reads it: the batch it was handed in under (its proposal's
 /// `TaskLogEvent.batch`; 0 from a nat too old to say), its 1-based index among
-/// every pending follow-up of the slice — what `slice-triage` names it by —
+/// every pending follow-up of the slice — what `slice triage` names it by —
 /// its title and its brief.
 public struct FollowUp: Codable, Equatable, Hashable, Sendable, Identifiable {
     public let batch: Int
@@ -325,7 +325,7 @@ public func pendingFollowUps(batch: Int?, in pending: [FollowUp]) -> [FollowUp] 
     return pending.filter { $0.batch == batch }
 }
 
-/// One item an agent handed in of what its slice changed, as `slice-show`
+/// One item an agent handed in of what its slice changed, as `slice show`
 /// reads it: its 1-based index in the hand-in, what it shows, and where it is —
 /// an absolute path, or a URI as the agent gave it — and, where the item is a
 /// pair, the before it is best judged against. `hash` is the sha256 of the
@@ -413,7 +413,7 @@ public struct VisualBefore: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// What `nat slice-triage --json` reports: the slices queued, and the
+/// What `nat slice triage --json` reports: the slices queued, and the
 /// titles folded in and dropped.
 public struct TriageResult: Codable, Equatable, Sendable {
     public struct Queued: Codable, Equatable, Sendable {

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Result from `nat workshop-launch`: the planning agent's session and the
+/// Result from `nat workshop launch`: the planning agent's session and the
 /// working directory it started in.
 public struct WorkshopLaunchResult: Codable, Equatable, Sendable {
     public let session: String

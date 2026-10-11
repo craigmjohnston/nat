@@ -41,9 +41,9 @@ func TestFSCarriesEverySkill(t *testing.T) {
 // route around every guardrail the commands enforce, and would do it quietly.
 func TestSkillsWriteThroughTheCLI(t *testing.T) {
 	for skill, want := range map[string][]string{
-		"next-slice":    {"nat next-slice", "nat start-slice", "nat complete-slice"},
-		"queue-project": {"nat info", "nat project-create", "nat plan-apply --project"},
-		"queue-work":    {"nat info", "nat plan-apply"},
+		"next-slice":    {"nat slice next", "nat slice start", "nat slice complete"},
+		"queue-project": {"nat info", "nat project create", "nat plan apply --project"},
+		"queue-work":    {"nat info", "nat plan apply"},
 	} {
 		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
 		if err != nil {
@@ -74,7 +74,7 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 	}
 	text := string(body)
 	for _, want := range []string{
-		"nat complete-slice <slice> --project <project> \\\n    --summary",
+		"nat slice complete <slice> --project <project> \\\n    --summary",
 		"handing back pushes it",
 		"`--no-branch`",
 		"do not open a pull request",
@@ -92,7 +92,7 @@ func TestNextSliceHandsTheBranchBack(t *testing.T) {
 	}
 }
 
-// pushInstruction is a line telling an agent to push: complete-slice pushes
+// pushInstruction is a line telling an agent to push: slice complete pushes
 // the branch it hands back, so an agent told to push as well would race it,
 // and one told to push in place of handing back would skip the dirty check.
 // internal/agent's template walk carries the same pattern.
@@ -127,7 +127,7 @@ func TestNoSkillTellsTheAgentToMarkItsWait(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read the %s skill: %v", e.Name(), err)
 		}
-		for _, old := range []string{"agent-waiting", "agent-working"} {
+		for _, old := range []string{"nat agent waiting", "nat agent working"} {
 			if strings.Contains(string(body), old) {
 				t.Errorf("the %s skill still says %q", e.Name(), old)
 			}
@@ -165,7 +165,7 @@ func TestNextSliceHandsInVisualChanges(t *testing.T) {
 	}
 	text := unwrapped(string(body))
 	for _, want := range []string{
-		"nat slice-visuals <slice> --project <project>",
+		"nat slice visuals <slice> --project <project>",
 		"Do not build a way to render",
 		"hand in only the images that are new or re-rendered",
 		"`--remove '<its name>'`",
@@ -198,7 +198,7 @@ var prEnding = regexp.MustCompile(`--pr($|[^-\w])`)
 // A slice launched from the board is placed in a worktree of its own, and a
 // session started from the skill has to arrive at the same branch and the same
 // worktree path, otherwise the same slice hands back one branch from the board
-// and another from the terminal. nat cuts it for both (slice-worktree), so the
+// and another from the terminal. nat cuts it for both (slice worktree), so the
 // skill names the command — and never re-spells the naming, which lives in Go
 // alone: the words that marked the old prose cannot creep back.
 func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
@@ -208,7 +208,7 @@ func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
 	}
 	text := unwrapped(string(body))
 	for _, want := range []string{
-		"nat slice-worktree <slice> --project <project>",
+		"nat slice worktree <slice> --project <project>",
 		"It prints the worktree's path on one line",
 		"Cut no worktree or branch of your own",
 		"If it refuses, it says why in git's own words",
@@ -219,7 +219,7 @@ func TestNextSliceCutsTheSlicesWorktree(t *testing.T) {
 	}
 	for _, banned := range []string{".worktrees", "symbolic-ref"} {
 		if strings.Contains(text, banned) {
-			t.Errorf("the next-slice skill says %q: name nat slice-worktree instead", banned)
+			t.Errorf("the next-slice skill says %q: name nat slice worktree instead", banned)
 		}
 	}
 }
@@ -251,7 +251,7 @@ func TestSkillsDoNotAssumeMilestonePages(t *testing.T) {
 }
 
 // The queue-project skill drives two commands and the order is the whole of it:
-// `plan-apply` run before the project exists, or run without the `--project` the
+// `plan apply` run before the project exists, or run without the `--project` the
 // create printed, files a whole plan into whichever project happens to be
 // active — the one thing here that cannot be undone by a second run. The skill
 // ships inside the binary, so an order it stated wrongly cannot be corrected
@@ -262,8 +262,8 @@ func TestQueueProjectCreatesBeforeItFilesThePlan(t *testing.T) {
 		t.Fatalf("read the queue-project skill: %v", err)
 	}
 	text := string(body)
-	create := strings.Index(text, "nat project-create")
-	apply := strings.Index(text, "nat plan-apply --project")
+	create := strings.Index(text, "nat project create")
+	apply := strings.Index(text, "nat plan apply --project")
 	if create < 0 || apply < 0 {
 		t.Fatalf("the queue-project skill does not run both commands: create at %d, apply at %d", create, apply)
 	}
@@ -276,7 +276,7 @@ func TestQueueProjectCreatesBeforeItFilesThePlan(t *testing.T) {
 }
 
 // Nothing is written before the user has approved it, and a project is the one
-// thing here with no way back: `plan-apply` only ever creates, but a project
+// thing here with no way back: `plan apply` only ever creates, but a project
 // created by mistake stays created, and no `nat` command deletes one.
 func TestQueueProjectWritesNothingBeforeApproval(t *testing.T) {
 	body, err := fs.ReadFile(FS(), "queue-project/SKILL.md")
@@ -294,10 +294,10 @@ func TestQueueProjectWritesNothingBeforeApproval(t *testing.T) {
 	}
 }
 
-// A created project is not the active one — `project-create` leaves the board
+// A created project is not the active one — `project create` leaves the board
 // on whatever it was on, and the headless commands have no project switch at
 // all — so the last step belongs to the user and the skill has to hand it over.
-// A skill that claimed otherwise would leave the user's next `nat next-slice`
+// A skill that claimed otherwise would leave the user's next `nat slice next`
 // silently pointed at the old project.
 func TestQueueProjectSendsTheUserToTheSwitchPicker(t *testing.T) {
 	body, err := fs.ReadFile(FS(), "queue-project/SKILL.md")
@@ -315,7 +315,7 @@ func TestQueueProjectSendsTheUserToTheSwitchPicker(t *testing.T) {
 
 // natCommand matches a `nat` invocation by its subcommand, so the prose that
 // describes what a command does is not read as a call to it.
-var natCommand = regexp.MustCompile(`\bnat (info|next-slice|start-slice|complete-slice|slice-resume|slice-visuals|slice-checks-rerun|slice-checks-cancel|slice-checks|release-slice|milestone-add|slice-add|slice-depends|plan-apply|project-create)\b`)
+var natCommand = regexp.MustCompile(`\bnat (info|slice next|slice start|slice complete|slice resume|slice visuals|slice checks rerun|slice checks cancel|slice checks|slice release|milestone add|slice add|slice depends|plan apply|project create)\b`)
 
 // fencedNatCommands are the `nat` invocations inside a skill's fenced code
 // blocks: the lines an agent copies and runs, as against the backticked prose
@@ -346,7 +346,7 @@ func fencedNatCommands(text string) []string {
 // A command with no --project is refused outright, so a skill that spelled one
 // out bare would have an agent copy a call that cannot run at all. Every command
 // a skill gives for copying names its project, bar the one that cannot —
-// `project-create`, which is what makes the project there is no ID for yet.
+// `project create`, which is what makes the project there is no ID for yet.
 func TestSkillCommandsNameTheProject(t *testing.T) {
 	for _, skill := range []string{"next-slice", "queue-project", "queue-work"} {
 		body, err := fs.ReadFile(FS(), skill+"/SKILL.md")
@@ -355,7 +355,7 @@ func TestSkillCommandsNameTheProject(t *testing.T) {
 			continue
 		}
 		for _, cmd := range fencedNatCommands(string(body)) {
-			if strings.HasPrefix(cmd, "nat project-create") {
+			if strings.HasPrefix(cmd, "nat project create") {
 				continue
 			}
 			if !strings.Contains(cmd, "--project ") {
@@ -372,17 +372,17 @@ func TestSkillCommandsNameTheProject(t *testing.T) {
 func TestSkillsPinTheProjectTheyWereGiven(t *testing.T) {
 	for skill, want := range map[string][]string{
 		"next-slice": {
-			"nat next-slice --project <project>",
-			"nat start-slice <URL|ID> --project <project>",
+			"nat slice next --project <project>",
+			"nat slice start <URL|ID> --project <project>",
 			"no project the tracker falls back to",
 		},
 		"queue-work": {
 			"nat info --project <project>",
-			"nat plan-apply --project <project>",
+			"nat plan apply --project <project>",
 			"no project the tracker falls back to",
 		},
 		"queue-project": {
-			"nat plan-apply --project <the id project-create printed>",
+			"nat plan apply --project <the id project create printed>",
 			"no project the tracker falls back to",
 		},
 	} {
@@ -401,10 +401,10 @@ func TestSkillsPinTheProjectTheyWereGiven(t *testing.T) {
 
 // A workshopped plan arrives with an order and with the waits between its
 // slices, or it arrives with neither: the planning skills are the only place
-// either is decided, since `plan-apply` records what the document says and the
+// either is decided, since `plan apply` records what the document says and the
 // board has no way to reorder a plan or to guess a dependency afterwards. The
-// order matters because `plan-apply` lands slices in document order and
-// `next-slice` hands out the topmost unblocked one; the pass matters because a
+// order matters because `plan apply` lands slices in document order and
+// `slice next` hands out the topmost unblocked one; the pass matters because a
 // dependency nobody thought about is one the user finds by having an agent
 // refuse a slice. Both skills ship inside the binary, so a drafting rule left
 // out cannot be added where it is read.
@@ -429,7 +429,7 @@ func TestPlanningSkillsDraftOrderAndDependencies(t *testing.T) {
 			"Do not chain the plan.",
 			"run agents on them in parallel",
 			"Order carries the reading; `depends_on` carries the blocking.",
-			// Which is what `plan-apply` itself enforces before it writes.
+			// Which is what `plan apply` itself enforces before it writes.
 			"The dependency graph must be acyclic.",
 		} {
 			if !strings.Contains(text, want) {
@@ -445,7 +445,7 @@ func TestPlanningSkillsDraftOrderAndDependencies(t *testing.T) {
 func unwrapped(text string) string { return strings.Join(strings.Fields(text), " ") }
 
 // Both planning skills ship inside the binary, so how a brief is shaped — a
-// summary paragraph of its own first, the one plan-apply caps and gnat
+// summary paragraph of its own first, the one plan apply caps and gnat
 // shows — has to be said here or it is not said anywhere an agent reads.
 func TestPlanningSkillsCarryTheBriefShape(t *testing.T) {
 	const sentinel = "A brief opens with a summary: one or two sentences, in a paragraph of its own"
@@ -507,7 +507,7 @@ func TestNextSliceCarriesTheQuestionRule(t *testing.T) {
 			t.Errorf("the next-slice skill does not say %q", want)
 		}
 	}
-	for _, old := range []string{"Before you write code", "not read by a person", "agent-waiting"} {
+	for _, old := range []string{"Before you write code", "not read by a person", "nat agent waiting"} {
 		if strings.Contains(text, old) {
 			t.Errorf("the next-slice skill still says %q", old)
 		}
@@ -545,20 +545,20 @@ func TestNextSliceCarriesTheNoteCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the skill: %v", err)
 	}
-	if !strings.Contains(string(body), "nat slice-note '<slice name>' --from <slice> --project <project>") {
+	if !strings.Contains(string(body), "nat slice note '<slice name>' --from <slice> --project <project>") {
 		t.Error("the next-slice skill does not carry the note command")
 	}
 }
 
-// /next-slice tells its agent to read CI with slice-checks, and never gh, as
+// /next-slice tells its agent to read CI with slice checks, and never gh, as
 // the slice prompt does.
 func TestNextSliceReadsCIWithSliceChecks(t *testing.T) {
 	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
 	if err != nil {
 		t.Fatalf("read the skill: %v", err)
 	}
-	for _, want := range []string{"nat slice-checks <slice> --log --project <project>", "That is the one way to read CI: never `gh`.",
-		"It reads a check still running", "nat slice-checks-rerun <slice> --check '<check name>' --project <project>",
+	for _, want := range []string{"nat slice checks <slice> --log --project <project>", "That is the one way to read CI: never `gh`.",
+		"It reads a check still running", "nat slice checks rerun <slice> --check '<check name>' --project <project>",
 		"Never use it to\nretry a real failure without fixing it"} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("the next-slice skill does not say %q", want)
@@ -567,7 +567,7 @@ func TestNextSliceReadsCIWithSliceChecks(t *testing.T) {
 }
 
 // The next-slice skill tells its agent to put a request for more after its
-// hand-back on the record with slice-resume before changing anything, pinned
+// hand-back on the record with slice resume before changing anything, pinned
 // to the project, and what a Done refusal means — as every slice prompt does.
 func TestNextSliceSkillCarriesTheResumePassage(t *testing.T) {
 	body, err := fs.ReadFile(FS(), "next-slice/SKILL.md")
@@ -577,8 +577,8 @@ func TestNextSliceSkillCarriesTheResumePassage(t *testing.T) {
 	text := string(body)
 	for _, want := range []string{
 		"If the user asks for more or different work after you have handed back",
-		"nat slice-resume <slice> --project <project> --note '<what they asked for>'",
-		"same\n`complete-slice` command",
+		"nat slice resume <slice> --project <project> --note '<what they asked for>'",
+		"same\n`slice complete` command",
 		"the slice is Done, the\nwork is merged",
 	} {
 		if !strings.Contains(text, want) {

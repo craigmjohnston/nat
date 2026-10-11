@@ -24,7 +24,7 @@ import (
 // the command's error in git's words. It writes nothing to the plan, so it
 // asks nothing of who holds the slice.
 func sliceWorktreeCmd(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-worktree", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice worktree", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	repo := flags.String("repo", "", "the repository to find or cut the worktree in: a directory, ~ expanded (default: the slice's, else the project's)")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of the path")
@@ -34,15 +34,15 @@ func sliceWorktreeCmd(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-worktree: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice worktree: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-worktree", rest[0])
+	id, err := pageID("slice worktree", rest[0])
 	if err != nil {
 		return err
 	}
 	dir := ""
 	if strings.TrimSpace(*repo) != "" {
-		if dir, err = repoFlagDir("slice-worktree", *repo); err != nil {
+		if dir, err = repoFlagDir("slice worktree", *repo); err != nil {
 			return err
 		}
 	}
@@ -63,11 +63,11 @@ func sliceWorktreeCmd(ctx context.Context, args []string, env Env) error {
 		dir = actions.ExpandHome(strings.TrimSpace(actions.WorkdirFor(s, project)))
 	}
 	if dir == "" {
-		return fmt.Errorf("slice-worktree: %q has no repository yet: record it with slice-repo, or name one with --repo", s.Name)
+		return fmt.Errorf("slice worktree: %q has no repository yet: record it with slice repo, or name one with --repo", s.Name)
 	}
 	wt, err := ensureWorktree(env, project, dir, s)
 	if err != nil {
-		return fmt.Errorf("slice-worktree: %w", err)
+		return fmt.Errorf("slice worktree: %w", err)
 	}
 	if *asJSON {
 		return writeJSON(env.Out, wt)

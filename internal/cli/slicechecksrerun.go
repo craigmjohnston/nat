@@ -14,7 +14,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/logging"
 )
 
-// RunController is what slice-checks-rerun and slice-checks-cancel need of
+// RunController is what slice checks rerun and slice checks cancel need of
 // gh: a run's status, and cancelling and re-running runs and jobs.
 type RunController interface {
 	RunStatus(dir string, ref gh.ActionsRef) (string, error)
@@ -23,7 +23,7 @@ type RunController interface {
 	RerunJob(dir string, ref gh.ActionsRef) error
 }
 
-// How long slice-checks-rerun waits for a run it cancelled to read completed
+// How long slice checks rerun waits for a run it cancelled to read completed
 // before re-running it: a poll every rerunPollEvery, rerunPolls times — about
 // two minutes. checksSleep is the wait, time.Sleep in production and nothing
 // in tests.
@@ -205,7 +205,7 @@ type checksActionDoc struct {
 // jobs stranded as cancelled; what it cancelled is reported apart from what
 // it re-ran.
 func sliceChecksRerun(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-checks-rerun", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice checks rerun", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	all := flags.Bool("all", false, "re-run every Actions run behind the checks whole")
@@ -218,7 +218,7 @@ func sliceChecksRerun(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-checks-rerun: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice checks rerun: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
 	modes := 0
 	for _, on := range []bool{*all, *failed, len(named) > 0} {
@@ -227,9 +227,9 @@ func sliceChecksRerun(ctx context.Context, args []string, env Env) error {
 		}
 	}
 	if modes != 1 {
-		return usageErrorf("slice-checks-rerun: want exactly one of --all, --failed or --check")
+		return usageErrorf("slice checks rerun: want exactly one of --all, --failed or --check")
 	}
-	t, ghClient, err := loadCITarget(ctx, "slice-checks-rerun", rest[0], *projectRef, env)
+	t, ghClient, err := loadCITarget(ctx, "slice checks rerun", rest[0], *projectRef, env)
 	if err != nil {
 		return err
 	}
@@ -253,15 +253,15 @@ func sliceChecksRerun(ctx context.Context, args []string, env Env) error {
 			}
 		}
 	default:
-		if runs, asked, err = t.namedRuns("slice-checks-rerun", named); err != nil {
+		if runs, asked, err = t.namedRuns("slice checks rerun", named); err != nil {
 			return err
 		}
 	}
 	if len(runs) == 0 {
 		if *failed {
-			return fmt.Errorf("slice-checks-rerun: no GitHub Actions check has failed: nothing to re-run")
+			return fmt.Errorf("slice checks rerun: no GitHub Actions check has failed: nothing to re-run")
 		}
-		return fmt.Errorf("slice-checks-rerun: no check has a GitHub Actions run behind it: nothing to re-run")
+		return fmt.Errorf("slice checks rerun: no check has a GitHub Actions run behind it: nothing to re-run")
 	}
 
 	var cancelled []*ciRun
@@ -271,14 +271,14 @@ func sliceChecksRerun(ctx context.Context, args []string, env Env) error {
 		}
 		stopping := r.names(pendingCheck)
 		if err := ghClient.CancelRun(t.dir, r.ref); err != nil {
-			return fmt.Errorf("slice-checks-rerun: cancel the run of %s first: %w%s", strings.Join(stopping, ", "), err, sentSoFar(doc))
+			return fmt.Errorf("slice checks rerun: cancel the run of %s first: %w%s", strings.Join(stopping, ", "), err, sentSoFar(doc))
 		}
 		doc.Cancelled = append(doc.Cancelled, stopping...)
 		cancelled = append(cancelled, r)
 	}
 	for _, r := range cancelled {
 		if err := waitCompleted(ghClient, t.dir, r.ref); err != nil {
-			return fmt.Errorf("slice-checks-rerun: cancelled %s, but %v — nothing was re-run", strings.Join(doc.Cancelled, ", "), err)
+			return fmt.Errorf("slice checks rerun: cancelled %s, but %v — nothing was re-run", strings.Join(doc.Cancelled, ", "), err)
 		}
 	}
 	for _, r := range runs {
@@ -298,7 +298,7 @@ func sliceChecksRerun(ctx context.Context, args []string, env Env) error {
 			err = rerunNamed(ghClient, t.dir, r, asked[r], &doc)
 		}
 		if err != nil {
-			return fmt.Errorf("slice-checks-rerun: re-run the run of %s: %w%s", strings.Join(r.names(anyCheck), ", "), err, sentSoFar(doc))
+			return fmt.Errorf("slice checks rerun: re-run the run of %s: %w%s", strings.Join(r.names(anyCheck), ", "), err, sentSoFar(doc))
 		}
 	}
 	env.nudged()
@@ -371,7 +371,7 @@ func waitCompleted(ghClient GH, dir string, ref gh.ActionsRef) error {
 // check still going in a cancelled run stops and is named. It returns once
 // the cancels are sent, without waiting for them to land.
 func sliceChecksCancel(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-checks-cancel", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice checks cancel", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	var named stringList
@@ -382,16 +382,16 @@ func sliceChecksCancel(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-checks-cancel: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice checks cancel: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	t, ghClient, err := loadCITarget(ctx, "slice-checks-cancel", rest[0], *projectRef, env)
+	t, ghClient, err := loadCITarget(ctx, "slice checks cancel", rest[0], *projectRef, env)
 	if err != nil {
 		return err
 	}
 	doc := checksActionDoc{Cancelled: []string{}, Skipped: []string{}}
 	runs := t.runs
 	if len(named) > 0 {
-		if runs, _, err = t.namedRuns("slice-checks-cancel", named); err != nil {
+		if runs, _, err = t.namedRuns("slice checks cancel", named); err != nil {
 			return err
 		}
 	} else {
@@ -403,11 +403,11 @@ func sliceChecksCancel(ctx context.Context, args []string, env Env) error {
 	}
 	runs = slices.DeleteFunc(slices.Clone(runs), func(r *ciRun) bool { return !r.going() })
 	if len(runs) == 0 {
-		return fmt.Errorf("slice-checks-cancel: no GitHub Actions run behind those checks is still going: nothing to cancel")
+		return fmt.Errorf("slice checks cancel: no GitHub Actions run behind those checks is still going: nothing to cancel")
 	}
 	for _, r := range runs {
 		if err := ghClient.CancelRun(t.dir, r.ref); err != nil {
-			return fmt.Errorf("slice-checks-cancel: cancel the run of %s: %w%s",
+			return fmt.Errorf("slice checks cancel: cancel the run of %s: %w%s",
 				strings.Join(r.names(pendingCheck), ", "), err, sentSoFar(doc))
 		}
 		doc.Cancelled = append(doc.Cancelled, r.names(pendingCheck)...)

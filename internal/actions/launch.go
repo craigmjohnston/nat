@@ -56,10 +56,10 @@ type LaunchResult struct {
 // that reads that prompt. The claim is the board's rather than the agent's: a
 // fresh Claude Code takes seconds to start, and a row that reads Todo all the
 // while is one the user can launch a second agent on. Fetching the brief here
-// rather than leaving the agent to read it with its own start-slice is what
+// rather than leaving the agent to read it with its own slice start is what
 // lets the prompt say nothing about running that command at all — the agent
 // is simply told the slice, its body and the project's conventions, the same
-// document start-slice would have printed.
+// document slice start would have printed.
 //
 // The claim goes before the brief is read and before tmux is asked for
 // anything, so a refused claim — somebody else already holds the slice —

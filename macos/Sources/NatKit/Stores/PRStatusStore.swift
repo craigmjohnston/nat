@@ -1,6 +1,6 @@
 import Foundation
 
-/// Every open project's `nat pr-status` reading — readiness, failing checks,
+/// Every open project's `nat pr status` reading — readiness, failing checks,
 /// conflicts — held per project, app-wide, so a pull request's marks are drawn
 /// in every project whether or not it is the one open, and survive switching
 /// away from it and back.

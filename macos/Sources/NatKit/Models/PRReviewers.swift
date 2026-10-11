@@ -1,6 +1,6 @@
 import Foundation
 
-/// The wire shape of `nat pr-reviewers --json`. A read says who is asked to
+/// The wire shape of `nat pr reviewers --json`. A read says who is asked to
 /// review a slice's pull request, who else could be — the repository's
 /// collaborators bar the author and those already asked — and, when that
 /// listing failed, why: a failed listing is no news about who could review

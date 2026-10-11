@@ -1,6 +1,6 @@
 import Foundation
 
-/// The slice `nat slice-add --json` reports having created: what `info`
+/// The slice `nat slice add --json` reports having created: what `info`
 /// reports about a slice, plus the milestone's name and the resolved working
 /// directory, which are what the person who just filed it wants confirmed.
 public struct SliceAddResult: Codable, Equatable, Sendable {

@@ -45,8 +45,8 @@ saying what is true everywhere in the plugin.
 `nat-source-shortcut <method>` with one JSON object on stdin and one on
 stdout, exit 0; non-zero exit with the message as the first stderr line.
 Every request carries `project: {id, name, working_dir}`. **`describe` is
-also called with an empty project** (by `nat source-list` and
-`project-create --source`), so it must answer with no project at all.
+also called with an empty project** (by `nat source list` and
+`project create --source`), so it must answer with no project at all.
 Unknown JSON fields are ignored both ways. Never print a token to stderr.
 
 Beyond the five methods, the binary may have its own subcommands for
@@ -163,10 +163,10 @@ position order, and let the user override both per project in config.
    `sidebar` output — vendor the rules from the spec rather than importing
    nat).
 2. Drive it with nat itself, in throwaway XDG dirs so nothing of Craig's is
-   touched: `nat source-list`, `nat project-create Work --source shortcut
+   touched: `nat source list`, `nat project create Work --source shortcut
    --plan-dir …`, `nat info --project <id> --json`, `--expand done`,
-   `nat slice-add 'Try it' --container <story id> --project <id>`,
-   `nat container-show <story id> --project <id>`, `nat source-action
+   `nat slice add 'Try it' --container <story id> --project <id>`,
+   `nat container show <story id> --project <id>`, `nat source action
    --action comment --container <story id> --input 'hi' --project <id>`,
    and confirm the story task and comment appear in Shortcut. Use a scratch
    story in a scratch workspace or epic for this, never a real one, and

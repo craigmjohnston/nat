@@ -16,8 +16,8 @@ type ResumeStore interface {
 
 // Resume takes the work on a handed-back slice back up: a Resumed section
 // carrying note goes on its task log, then its Branch is cleared, so the
-// slice reads as work in progress until the agent's next `complete-slice
-// --branch` records the branch again. It is what `nat slice-resume` runs —
+// slice reads as work in progress until the agent's next `slice complete
+// --branch` records the branch again. It is what `nat slice resume` runs —
 // an agent asked for more after its hand-back, or the app on the user's
 // behalf — and what a checks nudge runs before it tells the agent.
 //
@@ -44,7 +44,7 @@ type BranchClearer interface {
 }
 
 // TakeBack takes a handed-back slice out of review: record files the event
-// that says why — a Resumed, or `slice-rework`'s Sent back — and only once it
+// that says why — a Resumed, or `slice rework`'s Sent back — and only once it
 // has landed is the Branch cleared. The order is the one a hand-back keeps
 // for its own note before its status write, and for the same reason: a slice
 // already cleared out of review reads, to the refusal every such write opens

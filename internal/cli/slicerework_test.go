@@ -22,8 +22,8 @@ func TestSliceReworkClearsTheBranchAndNothingElse(t *testing.T) {
 	var nudges int
 	env.Nudge = func() { nudges++ }
 
-	if err := Run(context.Background(), []string{"slice-rework", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-rework: %v", err)
+	if err := Run(context.Background(), []string{"slice", "rework", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice rework: %v", err)
 	}
 	if len(api.updates) != 1 || api.updates[0].id != testSliceID || len(api.updates[0].props) != 1 {
 		t.Fatalf("updates = %+v, want exactly the branch written to the slice", api.updates)
@@ -51,8 +51,8 @@ func TestSliceReworkWithCommentsRecordsBeforeClearing(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), api)
 	env.Out = &strings.Builder{}
 
-	if err := Run(context.Background(), []string{"slice-rework", testSliceID, "--comments", "Rename the helper.", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-rework: %v", err)
+	if err := Run(context.Background(), []string{"slice", "rework", testSliceID, "--comments", "Rename the helper.", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice rework: %v", err)
 	}
 	if len(api.appends) != 1 {
 		t.Fatalf("appends = %d, want the Sent back note filed", len(api.appends))
@@ -66,7 +66,7 @@ func TestSliceReworkWithCommentsRecordsBeforeClearing(t *testing.T) {
 	}
 }
 
-// Comments read from stdin with "-", the same convention pr-comment follows.
+// Comments read from stdin with "-", the same convention pr comment follows.
 func TestSliceReworkReadsCommentsFromStdin(t *testing.T) {
 	api := &fakeAPI{
 		pages: map[string][]notion.Page{
@@ -77,8 +77,8 @@ func TestSliceReworkReadsCommentsFromStdin(t *testing.T) {
 	env.Out = &strings.Builder{}
 	env.In = strings.NewReader("Piped in comments.")
 
-	if err := Run(context.Background(), []string{"slice-rework", testSliceID, "--comments", "-", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-rework: %v", err)
+	if err := Run(context.Background(), []string{"slice", "rework", testSliceID, "--comments", "-", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice rework: %v", err)
 	}
 	got, _ := json.Marshal(api.appends[0].children)
 	if !strings.Contains(string(got), "Piped in comments.") {
@@ -96,8 +96,8 @@ func TestSliceReworkWithNoCommentsStillFilesTheHeading(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), api)
 	env.Out = &strings.Builder{}
 
-	if err := Run(context.Background(), []string{"slice-rework", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-rework: %v", err)
+	if err := Run(context.Background(), []string{"slice", "rework", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice rework: %v", err)
 	}
 	got, _ := json.Marshal(api.appends[0].children)
 	want := `[{"heading_3":{"rich_text":[{"text":{"content":"Sent back"},"type":"text"}]},"object":"block","type":"heading_3"},` +
@@ -118,7 +118,7 @@ func TestSliceReworkRefusesWhatIsNotHandedBackBeforeRecordingComments(t *testing
 	env, _ := testEnv(testClaimConfig(t), api)
 	env.Out = &strings.Builder{}
 
-	err := Run(context.Background(), []string{"slice-rework", testSliceID, "--comments", "Rename the helper.", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "rework", testSliceID, "--comments", "Rename the helper.", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "not handed back") {
 		t.Fatalf("error = %v, want 'not handed back'", err)
 	}
@@ -142,7 +142,7 @@ func TestSliceReworkReportsAFailedStdinRead(t *testing.T) {
 	env.Out = &strings.Builder{}
 	env.In = failingReader{}
 
-	err := Run(context.Background(), []string{"slice-rework", testSliceID, "--comments", "-", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "rework", testSliceID, "--comments", "-", "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "read the comments") {
 		t.Fatalf("err = %v, want the stdin read reported", err)
 	}
@@ -169,7 +169,7 @@ func TestSliceReworkRefusesWhatIsNotHandedBack(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), api)
 	env.Out = &strings.Builder{}
 
-	err := Run(context.Background(), []string{"slice-rework", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "rework", testSliceID, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "not handed back") {
 		t.Fatalf("error = %v, want 'not handed back'", err)
 	}
@@ -188,11 +188,11 @@ func TestSliceReworkMisuseAndFailures(t *testing.T) {
 	env.Out = &strings.Builder{}
 
 	for name, args := range map[string][]string{
-		"no slice":     {"slice-rework", "--project", "project-1"},
-		"not a slice":  {"slice-rework", "the board", "--project", "project-1"},
-		"bad flag":     {"slice-rework", testSliceID, "--nope", "--project", "project-1"},
-		"no project":   {"slice-rework", testSliceID},
-		"unknown proj": {"slice-rework", testSliceID, "--project", "nope"},
+		"no slice":     {"slice", "rework", "--project", "project-1"},
+		"not a slice":  {"slice", "rework", "the board", "--project", "project-1"},
+		"bad flag":     {"slice", "rework", testSliceID, "--nope", "--project", "project-1"},
+		"no project":   {"slice", "rework", testSliceID},
+		"unknown proj": {"slice", "rework", testSliceID, "--project", "nope"},
 	} {
 		if err := Run(context.Background(), args, env); err == nil {
 			t.Errorf("%s: want an error", name)
@@ -206,14 +206,14 @@ func TestSliceReworkReadFailures(t *testing.T) {
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {}}}
 	env, _ := testEnv(testClaimConfig(t), api)
 	env.Out = &strings.Builder{}
-	if err := Run(context.Background(), []string{"slice-rework", testSliceID, "--project", "project-1"}, env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "rework", testSliceID, "--project", "project-1"}, env); err == nil {
 		t.Error("an unknown slice: want an error")
 	}
 
 	broken := &fakeAPI{dataSourceErr: errors.New("boom")}
 	env, _ = testEnv(testClaimConfig(t), broken)
 	env.Out = &strings.Builder{}
-	if err := Run(context.Background(), []string{"slice-rework", testSliceID, "--project", "project-1"}, env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "rework", testSliceID, "--project", "project-1"}, env); err == nil {
 		t.Error("an unreadable schema: want an error")
 	}
 }

@@ -37,7 +37,9 @@ func newResumeFixture(t *testing.T) resumeFixture {
 	t.Helper()
 	ctx := context.Background()
 	env, id, st, sp, _ := scratchWithWork(t)
-	env.NewGit = func() GitCLI { return git.NewWithRunner(&fakeGitRunner{base: "origin/main", diffOut: "diff --git a/x b/x\n"}) }
+	env.NewGit = func() GitCLI {
+		return git.NewWithRunner(&fakeGitRunner{base: "origin/main", diffOut: "diff --git a/x b/x\n"})
+	}
 	env.NewGH = func() GH { return gh.NewWithRunner(&fakeGHRunner{}) }
 	sh, err := st.Shape(ctx, sp)
 	if err != nil {
@@ -78,8 +80,8 @@ func (f resumeFixture) run(t *testing.T, args ...string) (string, error) {
 	return f.out.String(), err
 }
 
-// resumed reads the slice's resumed flag off info --json and slice-show
-// --json both, and slice-show's events.
+// resumed reads the slice's resumed flag off info --json and slice show
+// --json both, and slice show's events.
 func (f resumeFixture) resumed(t *testing.T) (info, show bool, events []taskEventJSON) {
 	t.Helper()
 	out, err := f.run(t, "info", "--json")
@@ -106,21 +108,21 @@ func (f resumeFixture) resumed(t *testing.T) (info, show bool, events []taskEven
 			t.Errorf("slice %s reads as resumed with no pull request", sj.ID)
 		}
 	}
-	out, err = f.run(t, "slice-show", f.slice.ID, "--json")
+	out, err = f.run(t, "slice", "show", f.slice.ID, "--json")
 	if err != nil {
-		t.Fatalf("slice-show: %v", err)
+		t.Fatalf("slice show: %v", err)
 	}
 	var sj struct {
 		Resumed bool            `json:"resumed"`
 		Events  []taskEventJSON `json:"events"`
 	}
 	if err := json.Unmarshal([]byte(out), &sj); err != nil {
-		t.Fatalf("slice-show json: %v", err)
+		t.Fatalf("slice show json: %v", err)
 	}
 	return info, sj.Resumed, sj.Events
 }
 
-// kinds is the body events' kinds, in order, without slice-show's own.
+// kinds is the body events' kinds, in order, without slice show's own.
 func kinds(events []taskEventJSON) []string {
 	var out []string
 	for _, e := range events {
@@ -131,8 +133,8 @@ func kinds(events []taskEventJSON) []string {
 	return out
 }
 
-// slice-resume on a handed-back, approved slice files a stamped Resumed and
-// clears the branch: info and slice-show read it as resumed and in progress,
+// slice resume on a handed-back, approved slice files a stamped Resumed and
+// clears the branch: info and slice show read it as resumed and in progress,
 // the diff still reads its branch, and a second run writes nothing. The next
 // hand-back is a second Handed back after the Resumed, and the slice is back
 // at its pull request.
@@ -144,16 +146,16 @@ func TestSliceResumeTakesAHandedBackSliceBackToWork(t *testing.T) {
 	if info, show, _ := f.resumed(t); info || show {
 		t.Errorf("handed back and approved: resumed = %v/%v, want false", info, show)
 	}
-	out, err := f.run(t, "slice-resume", f.slice.ID, "--note", "Add a footer.")
+	out, err := f.run(t, "slice", "resume", f.slice.ID, "--note", "Add a footer.")
 	if err != nil {
-		t.Fatalf("slice-resume: %v", err)
+		t.Fatalf("slice resume: %v", err)
 	}
 	if !strings.Contains(out, "Resumed.") || nudges != 1 {
 		t.Errorf("output %q, nudges %d; want the confirmation and one nudge", out, nudges)
 	}
 	info, show, events := f.resumed(t)
 	if !info || !show {
-		t.Errorf("after slice-resume: resumed = %v/%v, want true", info, show)
+		t.Errorf("after slice resume: resumed = %v/%v, want true", info, show)
 	}
 	if got := kinds(events); !reflect.DeepEqual(got, []string{"handed_back", "resumed"}) {
 		t.Errorf("events = %q, want the hand-back then the resumed", got)
@@ -161,13 +163,13 @@ func TestSliceResumeTakesAHandedBackSliceBackToWork(t *testing.T) {
 	if last := events[len(events)-2]; last.Note != "Add a footer." || last.At == "" {
 		t.Errorf("resumed event = %+v, want the note and its stamp", last)
 	}
-	if out, err := f.run(t, "slice-diff", f.slice.ID); err != nil || !strings.Contains(out, "diff --git") {
-		t.Errorf("slice-diff on the resumed slice = %q, %v; want its branch read", out, err)
+	if out, err := f.run(t, "slice", "diff", f.slice.ID); err != nil || !strings.Contains(out, "diff --git") {
+		t.Errorf("slice diff on the resumed slice = %q, %v; want its branch read", out, err)
 	}
 
-	out, err = f.run(t, "slice-resume", f.slice.ID, "--note", "Add a footer.")
+	out, err = f.run(t, "slice", "resume", f.slice.ID, "--note", "Add a footer.")
 	if err != nil || !strings.Contains(out, "nothing was written") || nudges != 1 {
-		t.Errorf("second slice-resume = %q, %v, nudges %d; want nothing written", out, err, nudges)
+		t.Errorf("second slice resume = %q, %v, nudges %d; want nothing written", out, err, nudges)
 	}
 	if _, _, again := f.resumed(t); len(again) != len(events) {
 		t.Errorf("events after a second run = %d, want still %d", len(again), len(events))
@@ -190,23 +192,23 @@ func TestSliceResumeTakesAHandedBackSliceBackToWork(t *testing.T) {
 // and a slice that cannot be read is the command's error.
 func TestSliceResumeRefusals(t *testing.T) {
 	f := newResumeFixture(t)
-	if _, err := f.run(t, "slice-resume", f.slice.ID); err == nil || !strings.Contains(err.Error(), "no note given") {
+	if _, err := f.run(t, "slice", "resume", f.slice.ID); err == nil || !strings.Contains(err.Error(), "no note given") {
 		t.Errorf("no note: err = %v, want a refusal", err)
 	}
-	if _, err := f.run(t, "slice-resume", "--note", "x"); err == nil {
+	if _, err := f.run(t, "slice", "resume", "--note", "x"); err == nil {
 		t.Error("no slice: err = nil, want a usage error")
 	}
-	if _, err := f.run(t, "slice-resume", "not-a-page", "--note", "x"); err == nil {
+	if _, err := f.run(t, "slice", "resume", "not-a-page", "--note", "x"); err == nil {
 		t.Error("a bad slice ref: err = nil, want a refusal")
 	}
-	if _, err := f.run(t, "slice-resume", "3b738308-f654-8170-8c99-eccab4463d8f", "--note", "x"); err == nil {
+	if _, err := f.run(t, "slice", "resume", "3b738308-f654-8170-8c99-eccab4463d8f", "--note", "x"); err == nil {
 		t.Error("an unknown slice: err = nil, want the read's failure")
 	}
-	if _, err := f.run(t, "slice-resume", f.slice.ID, "--note", "-"); err == nil {
+	if _, err := f.run(t, "slice", "resume", f.slice.ID, "--note", "-"); err == nil {
 		t.Error("--note - with no stdin: err = nil, want a refusal")
 	}
 	f.env.In = strings.NewReader("Piped.\n")
-	if _, err := f.run(t, "slice-resume", f.slice.ID, "--note", "-"); err != nil {
+	if _, err := f.run(t, "slice", "resume", f.slice.ID, "--note", "-"); err != nil {
 		t.Fatalf("piped note: %v", err)
 	}
 	if _, _, events := f.resumed(t); events[len(events)-2].Note != "Piped." {
@@ -222,10 +224,10 @@ func TestSliceResumeRefusals(t *testing.T) {
 	if err := f.st.MarkDone(ctx, f.slice.ID, sh); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.run(t, "slice-resume", f.slice.ID, "--note", "x"); err == nil || !strings.Contains(err.Error(), `"approved" is Done`) {
+	if _, err := f.run(t, "slice", "resume", f.slice.ID, "--note", "x"); err == nil || !strings.Contains(err.Error(), `"approved" is Done`) {
 		t.Errorf("Done: err = %v, want a refusal by name", err)
 	}
-	if err := Run(ctx, []string{"slice-resume", f.slice.ID, "--note", "x"}, f.env); err == nil {
+	if err := Run(ctx, []string{"slice", "resume", f.slice.ID, "--note", "x"}, f.env); err == nil {
 		t.Error("no --project: err = nil, want a refusal")
 	}
 }
@@ -270,12 +272,12 @@ func TestHandedBackBefore(t *testing.T) {
 	if err := f.st.ReopenSlice(ctx, fresh.ID, sh); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.run(t, "slice-diff", fresh.ID); err == nil || !strings.Contains(err.Error(), "is not handed back") {
-		t.Errorf("slice-diff on a slice never handed back: err = %v, want the refusal", err)
+	if _, err := f.run(t, "slice", "diff", fresh.ID); err == nil || !strings.Contains(err.Error(), "is not handed back") {
+		t.Errorf("slice diff on a slice never handed back: err = %v, want the refusal", err)
 	}
 }
 
-// A Sent back a checks nudge filed comes back from slice-show --json with by
+// A Sent back a checks nudge filed comes back from slice show --json with by
 // set to CI; a review's own carries none.
 func TestSliceShowAttributesANudgeSentBack(t *testing.T) {
 	ctx := context.Background()
@@ -297,8 +299,8 @@ func TestSliceShowAttributesANudgeSentBack(t *testing.T) {
 		Reset()
 	})
 	out.Reset()
-	if err := Run(ctx, []string{"slice-show", s.ID, "--json", "--project", id}, env); err != nil {
-		t.Fatalf("slice-show: %v", err)
+	if err := Run(ctx, []string{"slice", "show", s.ID, "--json", "--project", id}, env); err != nil {
+		t.Fatalf("slice show: %v", err)
 	}
 	var doc struct {
 		Events []taskEventJSON `json:"events"`
@@ -324,14 +326,14 @@ func TestSliceResumeMisuseAndFailures(t *testing.T) {
 	api := &fakeAPI{pages: map[string][]notion.Page{"slices-ds": {}}}
 	env, _ := testEnv(testClaimConfig(t), api)
 	env.Out = &strings.Builder{}
-	if err := Run(context.Background(), []string{"slice-resume", testSliceID, "--nope", "--note", "x", "--project", "project-1"}, env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "resume", testSliceID, "--nope", "--note", "x", "--project", "project-1"}, env); err == nil {
 		t.Error("a bad flag: want an error")
 	}
 
 	broken := &fakeAPI{dataSourceErr: errors.New("boom")}
 	env, _ = testEnv(testClaimConfig(t), broken)
 	env.Out = &strings.Builder{}
-	if err := Run(context.Background(), []string{"slice-resume", testSliceID, "--note", "x", "--project", "project-1"}, env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "resume", testSliceID, "--note", "x", "--project", "project-1"}, env); err == nil {
 		t.Error("an unreadable schema: want an error")
 	}
 	if len(broken.appends) != 0 || len(broken.updates) != 0 {
@@ -340,7 +342,7 @@ func TestSliceResumeMisuseAndFailures(t *testing.T) {
 }
 
 // takenBackFlags reads one slice's taken_back and resumed off info --json and
-// slice-show --json both.
+// slice show --json both.
 func (f resumeFixture) takenBackFlags(t *testing.T, id string) (info, show, resumed bool) {
 	t.Helper()
 	out, err := f.run(t, "info", "--json")
@@ -361,16 +363,16 @@ func (f resumeFixture) takenBackFlags(t *testing.T, id string) (info, show, resu
 			info = sj.TakenBack
 		}
 	}
-	out, err = f.run(t, "slice-show", id, "--json")
+	out, err = f.run(t, "slice", "show", id, "--json")
 	if err != nil {
-		t.Fatalf("slice-show: %v", err)
+		t.Fatalf("slice show: %v", err)
 	}
 	var sj struct {
 		TakenBack bool `json:"taken_back"`
 		Resumed   bool `json:"resumed"`
 	}
 	if err := json.Unmarshal([]byte(out), &sj); err != nil {
-		t.Fatalf("slice-show json: %v", err)
+		t.Fatalf("slice show json: %v", err)
 	}
 	return info, sj.TakenBack, sj.Resumed
 }
@@ -411,8 +413,8 @@ func TestInfoAndSliceShowReadTakenBack(t *testing.T) {
 	if info, show, _ := f.takenBackFlags(t, review.ID); info || show {
 		t.Errorf("handed back: taken_back = %v/%v, want false", info, show)
 	}
-	if _, err := f.run(t, "slice-resume", review.ID, "--note", "Rename it."); err != nil {
-		t.Fatalf("slice-resume: %v", err)
+	if _, err := f.run(t, "slice", "resume", review.ID, "--note", "Rename it."); err != nil {
+		t.Fatalf("slice resume: %v", err)
 	}
 	if info, show, resumed := f.takenBackFlags(t, review.ID); !info || !show || resumed {
 		t.Errorf("taken back with no PR: taken_back = %v/%v, resumed %v; want true, true, false", info, show, resumed)
@@ -422,15 +424,15 @@ func TestInfoAndSliceShowReadTakenBack(t *testing.T) {
 		t.Errorf("handed back again: taken_back = %v/%v, want false", info, show)
 	}
 
-	if _, err := f.run(t, "slice-resume", f.slice.ID, "--note", "More."); err != nil {
-		t.Fatalf("slice-resume: %v", err)
+	if _, err := f.run(t, "slice", "resume", f.slice.ID, "--note", "More."); err != nil {
+		t.Fatalf("slice resume: %v", err)
 	}
 	if info, show, resumed := f.takenBackFlags(t, f.slice.ID); !info || !show || !resumed {
 		t.Errorf("resumed after approval: taken_back = %v/%v, resumed %v; want all true", info, show, resumed)
 	}
 }
 
-// fixingFlags reads one slice's fixing_checks off info --json and slice-show
+// fixingFlags reads one slice's fixing_checks off info --json and slice show
 // --json both.
 func (f resumeFixture) fixingFlags(t *testing.T, id string) (info, show []string) {
 	t.Helper()
@@ -452,15 +454,15 @@ func (f resumeFixture) fixingFlags(t *testing.T, id string) (info, show []string
 			info = sj.FixingChecks
 		}
 	}
-	out, err = f.run(t, "slice-show", id, "--json")
+	out, err = f.run(t, "slice", "show", id, "--json")
 	if err != nil {
-		t.Fatalf("slice-show: %v", err)
+		t.Fatalf("slice show: %v", err)
 	}
 	var sj struct {
 		FixingChecks []string `json:"fixing_checks"`
 	}
 	if err := json.Unmarshal([]byte(out), &sj); err != nil {
-		t.Fatalf("slice-show json: %v", err)
+		t.Fatalf("slice show json: %v", err)
 	}
 	return info, sj.FixingChecks
 }
@@ -475,8 +477,8 @@ func TestInfoAndSliceShowReadFixingChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.run(t, "slice-resume", f.slice.ID, "--note", "Checks failed."); err != nil {
-		t.Fatalf("slice-resume: %v", err)
+	if _, err := f.run(t, "slice", "resume", f.slice.ID, "--note", "Checks failed."); err != nil {
+		t.Fatalf("slice resume: %v", err)
 	}
 	if info, show := f.fixingFlags(t, f.slice.ID); info != nil || show != nil {
 		t.Errorf("resumed with no failure on record: fixing = %v/%v, want none", info, show)
@@ -496,8 +498,8 @@ func TestInfoAndSliceShowReadFixingChecks(t *testing.T) {
 	if info, show := f.fixingFlags(t, f.slice.ID); info != nil || show != nil {
 		t.Errorf("handed back: fixing = %v/%v, want none", info, show)
 	}
-	if _, err := f.run(t, "slice-resume", f.slice.ID, "--note", "Rename it."); err != nil {
-		t.Fatalf("slice-resume: %v", err)
+	if _, err := f.run(t, "slice", "resume", f.slice.ID, "--note", "Rename it."); err != nil {
+		t.Fatalf("slice resume: %v", err)
 	}
 	if info, show := f.fixingFlags(t, f.slice.ID); info != nil || show != nil {
 		t.Errorf("taken back after the fix's hand-back: fixing = %v/%v, want none", info, show)

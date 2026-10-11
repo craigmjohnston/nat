@@ -15,7 +15,7 @@ import (
 // on the slice — the same two-step write the board's approve key makes:
 // [actions.OpenPR] against gh, then [actions.RecordPR] against Notion.
 func sliceApprove(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-approve", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice approve", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -24,9 +24,9 @@ func sliceApprove(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-approve: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice approve: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-approve", rest[0])
+	id, err := pageID("slice approve", rest[0])
 	if err != nil {
 		return err
 	}

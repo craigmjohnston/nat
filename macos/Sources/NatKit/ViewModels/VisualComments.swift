@@ -52,7 +52,7 @@ public func visualCommentsRecord(_ comments: [PendingVisualComment]) -> String {
 /// Builds the one turn every pending visual comment is delivered to the agent
 /// as, in `commentsPrompt`'s shape: what was reviewed, then each image by
 /// name and URI with its comments under it, each saying where on the image it
-/// was left. With `handBack`, it ends with the `complete-slice --branch`
+/// was left. With `handBack`, it ends with the `slice complete --branch`
 /// hand-back `commentsPrompt` ends with — given only where the slice is
 /// handed back, since only then is it taken out of review by the send.
 public func visualCommentsPrompt(
@@ -78,7 +78,7 @@ public func visualCommentsPrompt(
     if let handBack {
         out += "\nWhen every comment is addressed and committed, hand the slice " +
             "back for review by running exactly:\n\n" +
-            "nat complete-slice \(handBack.sliceRef) --project \(handBack.projectID) " +
+            "nat slice complete \(handBack.sliceRef) --project \(handBack.projectID) " +
             "--branch \(branch ?? "<branch>") --summary '<what you changed for these comments>'\n" +
             "\nThat hand-back pushes the branch: do not push it yourself.\n"
     }

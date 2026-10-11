@@ -4,7 +4,7 @@ import Foundation
 /// (`config.ProjectColors`, in nat's order). A name, never a value: each
 /// `Palette` resolves it (`projectTint`), so a project's colour follows light
 /// and dark. nat chooses one for every entry; gnat only ever asks it to
-/// (`config-set project.<id>.color auto`) or writes the user's pick.
+/// (`config set project.<id>.color auto`) or writes the user's pick.
 public enum ProjectColor: String, CaseIterable, Codable, Equatable, Sendable {
     case red, orange, yellow, green, teal, blue, purple, pink
 

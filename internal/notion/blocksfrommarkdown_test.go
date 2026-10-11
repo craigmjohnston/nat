@@ -131,7 +131,7 @@ func TestBlocksFromMarkdown(t *testing.T) {
 }
 
 // TestBlocksFromMarkdownSplitsLongTextUnderTheRichTextLimit is the acceptance
-// case a plan-apply used to fail on: a paragraph past Notion's 2,000-character
+// case a plan apply used to fail on: a paragraph past Notion's 2,000-character
 // rich_text limit is split across spans of the one block rather than refused.
 func TestBlocksFromMarkdownSplitsLongTextUnderTheRichTextLimit(t *testing.T) {
 	long := strings.Repeat("a", 3000)

@@ -33,10 +33,10 @@ func TestPRCommentOnASessionsPullRequest(t *testing.T) {
 			env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
 			err := Run(context.Background(), []string{
-				"pr-comment", "--session", id, ref, "--body", "Looks good.", "--json", "--project", "project-1",
+				"pr", "comment", "--session", id, ref, "--body", "Looks good.", "--json", "--project", "project-1",
 			}, env)
 			if err != nil {
-				t.Fatalf("pr-comment --session: %v", err)
+				t.Fatalf("pr comment --session: %v", err)
 			}
 			if runner.dir != dir {
 				t.Errorf("ran gh in %q, want the session's directory %q", runner.dir, dir)
@@ -58,10 +58,10 @@ func TestPREditOnASessionsPullRequest(t *testing.T) {
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
 	err := Run(context.Background(), []string{
-		"pr-edit", "--session", id, "#7", "--body", "A new description.", "--project", "project-1",
+		"pr", "edit", "--session", id, "#7", "--body", "A new description.", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("pr-edit --session: %v", err)
+		t.Fatalf("pr edit --session: %v", err)
 	}
 	if runner.dir != dir || runner.stdin != "A new description." {
 		t.Errorf("ran gh in %q with %q, want the session's directory and the description", runner.dir, runner.stdin)
@@ -75,7 +75,7 @@ func TestPREditOnASessionsPullRequest(t *testing.T) {
 }
 
 func TestPRWritesOnASessionRefusals(t *testing.T) {
-	for _, command := range []string{"pr-comment", "pr-edit"} {
+	for _, command := range []string{"pr comment", "pr edit"} {
 		env, _, id, _ := sessionWithPR(t)
 		runner := &fakeCommentRunner{}
 		env.NewGH = func() GH { return gh.NewWithRunner(runner) }
@@ -92,7 +92,7 @@ func TestPRWritesOnASessionRefusals(t *testing.T) {
 			{"unknown project", []string{command, "--session", id, "7", "--project", "nope"}, "no project nope"},
 		}
 		for _, tt := range tests {
-			args := append(tt.args, "--body", "x")
+			args := append(append(strings.Fields(tt.args[0]), tt.args[1:]...), "--body", "x")
 			if !strings.Contains(strings.Join(args, " "), "--project") {
 				args = append(args, "--project", "project-1")
 			}

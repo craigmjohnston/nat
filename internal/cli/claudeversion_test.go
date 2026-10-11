@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// claudeVersionFixture points every seam claude-version has at fakes: claude
+// claudeVersionFixture points every seam claude version has at fakes: claude
 // answers installed (or fails with runErr) from a native install's path, the
 // feed answers feedBody with feedStatus and the stable pointer *stable, each
 // counting its hits, the user's settings and the cache live in a temp dir,
@@ -83,8 +83,8 @@ func newClaudeVersionFixture(t *testing.T, installed string, runErr error, feedS
 func runClaudeVersion(t *testing.T) string {
 	t.Helper()
 	var out bytes.Buffer
-	if err := Run(context.Background(), []string{"claude-version", "--json"}, Env{Out: &out}); err != nil {
-		t.Fatalf("claude-version: %v", err)
+	if err := Run(context.Background(), []string{"claude", "version", "--json"}, Env{Out: &out}); err != nil {
+		t.Fatalf("claude version: %v", err)
 	}
 	return out.String()
 }
@@ -235,7 +235,7 @@ func TestClaudeVersionCacheUnwritable(t *testing.T) {
 	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f.cachePath = filepath.Join(blocker, "claude-version.json")
+	f.cachePath = filepath.Join(blocker, "claude version.json")
 	claudeVersionCachePath = func(string) (string, error) { return f.cachePath, nil }
 	if got := runClaudeVersion(t); !strings.Contains(got, `"latest": "2.1.295"`) {
 		t.Errorf("output = %s", got)
@@ -246,8 +246,8 @@ func TestClaudeVersionCacheUnwritable(t *testing.T) {
 func TestClaudeVersionText(t *testing.T) {
 	newClaudeVersionFixture(t, "", errors.New("not found"), http.StatusOK, `{"tag_name":"v2.1.295"}`)
 	var out bytes.Buffer
-	if err := Run(context.Background(), []string{"claude-version"}, Env{Out: &out}); err != nil {
-		t.Fatalf("claude-version: %v", err)
+	if err := Run(context.Background(), []string{"claude", "version"}, Env{Out: &out}); err != nil {
+		t.Fatalf("claude version: %v", err)
 	}
 	want := "installed: unknown\nlatest: 2.1.295\nupdate available: false\nupdates with: claude update\n"
 	if out.String() != want {
@@ -257,8 +257,8 @@ func TestClaudeVersionText(t *testing.T) {
 	// A Homebrew install names the brew command, cask and all.
 	claudePath = func() (string, error) { return "/opt/homebrew/Caskroom/claude-code@latest/2.1.294/claude", nil }
 	out.Reset()
-	if err := Run(context.Background(), []string{"claude-version"}, Env{Out: &out}); err != nil {
-		t.Fatalf("claude-version: %v", err)
+	if err := Run(context.Background(), []string{"claude", "version"}, Env{Out: &out}); err != nil {
+		t.Fatalf("claude version: %v", err)
 	}
 	if !strings.HasSuffix(out.String(), "updates with: brew upgrade claude-code@latest\n") {
 		t.Errorf("homebrew output = %q", out.String())
@@ -268,10 +268,10 @@ func TestClaudeVersionText(t *testing.T) {
 func TestClaudeVersionRefusals(t *testing.T) {
 	newClaudeVersionFixture(t, "2.1.294\n", nil, http.StatusOK, `{}`)
 	for _, args := range [][]string{
-		{"claude-version", "extra"},
-		{"claude-version", "--project", "x"},
-		{"claude-update", "extra"},
-		{"claude-update", "--bogus"},
+		{"claude", "version", "extra"},
+		{"claude", "version", "--project", "x"},
+		{"claude", "update", "extra"},
+		{"claude", "update", "--bogus"},
 	} {
 		if err := Run(context.Background(), args, Env{Out: &bytes.Buffer{}}); err == nil {
 			t.Errorf("%v: want a refusal", args)
@@ -347,8 +347,8 @@ func TestClaudeUpdateHomebrew(t *testing.T) {
 	f := newClaudeVersionFixture(t, "==> Upgrading claude-code@latest\n", nil, http.StatusOK, `{}`)
 	claudePath = func() (string, error) { return "/opt/homebrew/Caskroom/claude-code@latest/2.1.294/claude", nil }
 	var out bytes.Buffer
-	if err := Run(context.Background(), []string{"claude-update"}, Env{Out: &out}); err != nil {
-		t.Fatalf("claude-update: %v", err)
+	if err := Run(context.Background(), []string{"claude", "update"}, Env{Out: &out}); err != nil {
+		t.Fatalf("claude update: %v", err)
 	}
 	if len(*f.ran) != 1 || strings.Join((*f.ran)[0], " ") != "brew upgrade claude-code@latest" {
 		t.Errorf("ran %v, want brew upgrade claude-code@latest", *f.ran)
@@ -363,7 +363,7 @@ func TestClaudeUpdateHomebrew(t *testing.T) {
 func TestClaudeUpdateNoClaudePath(t *testing.T) {
 	f := newClaudeVersionFixture(t, "", errors.New("not found"), http.StatusOK, `{}`)
 	claudePath = func() (string, error) { return "", errors.New("not found") }
-	err := Run(context.Background(), []string{"claude-update"}, Env{Out: &bytes.Buffer{}})
+	err := Run(context.Background(), []string{"claude", "update"}, Env{Out: &bytes.Buffer{}})
 	if err == nil || !strings.HasPrefix(err.Error(), "claude update: ") {
 		t.Errorf("err = %v, want claude update's failure", err)
 	}
@@ -403,12 +403,12 @@ func TestNewerVersion(t *testing.T) {
 	}
 }
 
-// claude-update runs claude update and relays what it said.
+// claude update runs claude update and relays what it said.
 func TestClaudeUpdate(t *testing.T) {
 	f := newClaudeVersionFixture(t, "Successfully updated from 2.1.294 to version 2.1.295\n", nil, http.StatusOK, `{}`)
 	var out bytes.Buffer
-	if err := Run(context.Background(), []string{"claude-update", "--json"}, Env{Out: &out}); err != nil {
-		t.Fatalf("claude-update: %v", err)
+	if err := Run(context.Background(), []string{"claude", "update", "--json"}, Env{Out: &out}); err != nil {
+		t.Fatalf("claude update: %v", err)
 	}
 	want := "{\n  \"output\": \"Successfully updated from 2.1.294 to version 2.1.295\\n\"\n}\n"
 	if out.String() != want {
@@ -419,8 +419,8 @@ func TestClaudeUpdate(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := Run(context.Background(), []string{"claude-update"}, Env{Out: &out}); err != nil {
-		t.Fatalf("claude-update: %v", err)
+	if err := Run(context.Background(), []string{"claude", "update"}, Env{Out: &out}); err != nil {
+		t.Fatalf("claude update: %v", err)
 	}
 	if out.String() != "Successfully updated from 2.1.294 to version 2.1.295\n" {
 		t.Errorf("text output = %q", out.String())
@@ -430,7 +430,7 @@ func TestClaudeUpdate(t *testing.T) {
 // A failed update is the command's error, carrying what claude said.
 func TestClaudeUpdateFailure(t *testing.T) {
 	newClaudeVersionFixture(t, "Error: permission denied\n", errors.New("exit status 1"), http.StatusOK, `{}`)
-	err := Run(context.Background(), []string{"claude-update", "--json"}, Env{Out: &bytes.Buffer{}})
+	err := Run(context.Background(), []string{"claude", "update", "--json"}, Env{Out: &bytes.Buffer{}})
 	if err == nil || !strings.Contains(err.Error(), "permission denied") {
 		t.Errorf("err = %v, want claude's own words", err)
 	}

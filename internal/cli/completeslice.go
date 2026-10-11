@@ -41,7 +41,7 @@ import (
 // claimed the slice has no business saying it is done, and a slice held by
 // someone else is theirs to finish.
 func completeSlice(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("complete-slice", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice complete", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	pr := flags.String("pr", "", "URL of the pull request this slice produced")
 	branch := flags.String("branch", "",
@@ -57,13 +57,13 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("complete-slice: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice complete: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
 	*branch = strings.TrimSpace(*branch)
 	if err := endings(*branch, *pr, *description, *blocked, *noBranch); err != nil {
 		return err
 	}
-	pageID, err := pageID("complete-slice", rest[0])
+	pageID, err := pageID("slice complete", rest[0])
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	// stdin and either flag may want it, so `--pr-description -` takes it and the
 	// summary has to have been given as an argument.
 	if *description == "-" && strings.TrimSpace(*summary) == "" {
-		return usageErrorf("complete-slice: --pr-description - reads stdin, " +
+		return usageErrorf("slice complete: --pr-description - reads stdin, " +
 			"so the summary cannot: pass --summary as well")
 	}
 	prDescription, err := descriptionText(*description, env.In)
@@ -145,7 +145,7 @@ func completeSlice(ctx context.Context, args []string, env Env) error {
 	if handingBack {
 		pushed, err := actions.PushHandBack(env.NewWorktrees(), env.gitFor(project), s, project, *branch)
 		if errors.Is(err, actions.ErrNoWorktree) {
-			return usageErrorf("complete-slice: %q has no worktree to read its branch off: "+
+			return usageErrorf("slice complete: %q has no worktree to read its branch off: "+
 				"pass --branch with the branch the work is committed on, "+
 				"or --no-branch for a slice that produced none (docs, research)", s.Name)
 		}
@@ -200,23 +200,23 @@ func endings(branch, pr, description string, blocked, noBranch bool) error {
 	if description != "" {
 		switch {
 		case pr != "" && branch == "":
-			return usageErrorf("complete-slice: --pr-description is for the pull request a hand-back has yet to open: " +
+			return usageErrorf("slice complete: --pr-description is for the pull request a hand-back has yet to open: " +
 				"--pr records one that is already open")
 		case blocked && branch == "":
-			return usageErrorf("complete-slice: --pr-description is for a branch handed back, not for stopped work: " +
+			return usageErrorf("slice complete: --pr-description is for a branch handed back, not for stopped work: " +
 				"say what stopped it in --summary")
 		case noBranch && branch == "":
-			return usageErrorf("complete-slice: --pr-description needs a branch to describe: " +
+			return usageErrorf("slice complete: --pr-description needs a branch to describe: " +
 				"a slice closed out with --no-branch opens no pull request")
 		}
 	}
 	if noBranch {
 		if branch != "" {
-			return usageErrorf("complete-slice: --branch and --no-branch contradict each other: " +
+			return usageErrorf("slice complete: --branch and --no-branch contradict each other: " +
 				"hand the branch back, or close out a slice that produced none")
 		}
 		if pr != "" || blocked {
-			return usageErrorf("complete-slice: --no-branch is its own ending: " +
+			return usageErrorf("slice complete: --no-branch is its own ending: " +
 				"--pr and --blocked already hand no branch back")
 		}
 	}
@@ -224,11 +224,11 @@ func endings(branch, pr, description string, blocked, noBranch bool) error {
 		return nil
 	}
 	if pr != "" {
-		return usageErrorf("complete-slice: --branch and --pr are two different endings: " +
+		return usageErrorf("slice complete: --branch and --pr are two different endings: " +
 			"hand the branch back, or record the pull request that came of it")
 	}
 	if blocked {
-		return usageErrorf("complete-slice: --branch and --blocked are two different endings: " +
+		return usageErrorf("slice complete: --branch and --blocked are two different endings: " +
 			"a slice handed back is finished work waiting to be reviewed, not stopped work")
 	}
 	return nil
@@ -236,7 +236,7 @@ func endings(branch, pr, description string, blocked, noBranch bool) error {
 
 // parseFlags parses a command line whose flags may come either side of its
 // arguments, and returns the arguments. The flag package stops at the first
-// non-flag, which would make `complete-slice <slice> --pr ...` — the order
+// non-flag, which would make `slice complete <slice> --pr ...` — the order
 // anyone writes it in — silently drop the flags, so parsing resumes after each
 // argument until the line is used up.
 func parseFlags(flags *flag.FlagSet, args []string) ([]string, error) {
@@ -293,14 +293,14 @@ func noteText(summary string, in io.Reader) (string, error) {
 		text = string(b)
 	}
 	if text = strings.TrimSpace(text); text == "" {
-		return "", usageErrorf("complete-slice: no summary given: pass --summary or pipe one in")
+		return "", usageErrorf("slice complete: no summary given: pass --summary or pipe one in")
 	}
 	return text, nil
 }
 
 // descriptionText settles the pull request description: the flag as it was
 // given, or stdin for the lone `-`, which is how a description longer than a
-// shell argument gets in — the same convention `slice-add --description -`
+// shell argument gets in — the same convention `slice add --description -`
 // follows. A `-` with nothing behind it is a misuse rather than an empty
 // description: the flag was asked for and nothing arrived, and writing no
 // heading at all would silently leave the pull request to be filled from the
@@ -310,7 +310,7 @@ func descriptionText(description string, in io.Reader) (string, error) {
 		return strings.TrimSpace(description), nil
 	}
 	if in == nil {
-		return "", usageErrorf("complete-slice: --pr-description - has no stdin to read the description from")
+		return "", usageErrorf("slice complete: --pr-description - has no stdin to read the description from")
 	}
 	b, err := io.ReadAll(in)
 	if err != nil {
@@ -318,7 +318,7 @@ func descriptionText(description string, in io.Reader) (string, error) {
 	}
 	text := strings.TrimSpace(string(b))
 	if text == "" {
-		return "", usageErrorf("complete-slice: --pr-description - was given nothing on stdin")
+		return "", usageErrorf("slice complete: --pr-description - was given nothing on stdin")
 	}
 	return text, nil
 }

@@ -19,7 +19,7 @@ import (
 // body, and the project's conventions. The claim happens before the printing —
 // an agent that reads a brief has, by then, already been given the slice.
 func nextSlice(ctx context.Context, args []string, env Env) error {
-	asJSON, projectRef, err := parseJSONFlag("next-slice", args)
+	asJSON, projectRef, err := parseJSONFlag("slice next", args)
 	if err != nil {
 		return err
 	}

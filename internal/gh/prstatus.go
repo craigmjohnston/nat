@@ -38,7 +38,7 @@ const (
 // reading from the next: a re-push that fails again fails in a new run.
 //
 // All is every check the verdict was rolled up from, in the order gh listed
-// them — GitHub's own, workflow-led names, as `pr-view` and `slice-checks`
+// them — GitHub's own, workflow-led names, as `pr view` and `slice checks`
 // print them — each with the raw state [Check.Outcome] reads.
 //
 // State is GitHub's word for where the pull request is — OPEN, MERGED or
@@ -159,7 +159,7 @@ func (c Check) Outcome() CheckOutcome {
 // the lot, then any check unfinished leaves it pending. The checks that failed
 // come back with it, every one of them, in the order they were given. It is
 // the one roll-up, so the board's listing and a single pull request's view —
-// `nat slice-checks` reads [PR.Checks] through it — can never disagree.
+// `nat slice checks` reads [PR.Checks] through it — can never disagree.
 func Verdict(checks []Check) (ChecksVerdict, []Check) {
 	if len(checks) == 0 {
 		return ChecksNone, nil

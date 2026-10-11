@@ -13,7 +13,7 @@ import (
 )
 
 // fullPROpenJSON is gh's answer for an open pull request with a description,
-// one check, one review and one comment — everything pr-view can draw.
+// one check, one review and one comment — everything pr view can draw.
 const fullPROpenJSON = `{
   "number": 7,
   "title": "Read a pull request",
@@ -74,7 +74,7 @@ func TestPRViewRefusesNoPullRequest(t *testing.T) {
 	}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "view", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no pull request recorded") {
 		t.Errorf("err = %v, want 'no pull request recorded'", err)
@@ -92,9 +92,9 @@ func TestPRViewReadsThePullRequest(t *testing.T) {
 	runner := &fakeGHRunner{out: fullPROpenJSON}
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "view", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-view: %v", err)
+		t.Fatalf("pr view: %v", err)
 	}
 	if runner.dir != "/tmp/nat" {
 		t.Errorf("ran gh in %q, want the project's working dir", runner.dir)
@@ -120,9 +120,9 @@ func TestPRViewOfABarePullRequest(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 	env.NewGH = func() GH { return gh.NewWithRunner(&fakeGHRunner{out: barePROpenJSON}) }
 
-	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "view", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-view: %v", err)
+		t.Fatalf("pr view: %v", err)
 	}
 	for _, want := range []string{
 		"Author: (no status)", "Review: (no status)", "Mergeable: (no status)", "Merge state: (no status)",
@@ -144,9 +144,9 @@ func TestPRViewJSON(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 	env.NewGH = func() GH { return gh.NewWithRunner(&fakeGHRunner{out: fullPROpenJSON}) }
 
-	err := Run(context.Background(), []string{"pr-view", testSliceID, "--json", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "view", testSliceID, "--json", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("pr-view --json: %v", err)
+		t.Fatalf("pr view --json: %v", err)
 	}
 
 	var got prDoc
@@ -183,7 +183,7 @@ func TestPRViewReportsAGHFailure(t *testing.T) {
 		return gh.NewWithRunner(&fakeGHRunner{err: &gh.ExitError{Code: 1, Stderr: "no such pull request"}})
 	}
 
-	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "view", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no such pull request") {
 		t.Errorf("err = %v, want gh's own reason", err)
@@ -193,7 +193,7 @@ func TestPRViewReportsAGHFailure(t *testing.T) {
 func TestPRViewRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-view", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "view", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "want exactly one") {
 		t.Errorf("err = %v, want 'want exactly one'", err)
@@ -203,7 +203,7 @@ func TestPRViewRefusesWrongArgumentCount(t *testing.T) {
 func TestPRViewRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-view", testSliceID, "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "view", testSliceID, "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -214,7 +214,7 @@ func TestPRViewRefusesAnUnknownFlag(t *testing.T) {
 func TestPRViewRefusesAnInvalidSliceID(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-view", "not-a-uuid", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "view", "not-a-uuid", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
 		t.Errorf("err = %v, want 'not a slice'", err)
@@ -224,7 +224,7 @@ func TestPRViewRefusesAnInvalidSliceID(t *testing.T) {
 func TestPRViewRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"pr", "view", testSliceID, "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -235,7 +235,7 @@ func TestPRViewReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "view", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -252,8 +252,8 @@ func TestPRViewOfASessionsPullRequest(t *testing.T) {
 	env.NewGH = func() GH { return gh.NewWithRunner(runner) }
 	ref := "https://github.test/craig/nat/pull/7"
 
-	if err := Run(context.Background(), []string{"pr-view", "--session", id, "--json", "--project", "project-1", ref}, env); err != nil {
-		t.Fatalf("pr-view --session: %v", err)
+	if err := Run(context.Background(), []string{"pr", "view", "--session", id, "--json", "--project", "project-1", ref}, env); err != nil {
+		t.Fatalf("pr view --session: %v", err)
 	}
 	if runner.dir != dir {
 		t.Errorf("ran gh in %q, want the session's directory %q", runner.dir, dir)
@@ -272,8 +272,8 @@ func TestPRViewOfASessionsPullRequestAsMarkdown(t *testing.T) {
 	id := seedSession(t, env, t.TempDir(), "session/one")
 	env.NewGH = func() GH { return gh.NewWithRunner(&fakeGHRunner{out: fullPROpenJSON}) }
 
-	if err := Run(context.Background(), []string{"pr-view", "--session", id, "--project", "project-1", "7"}, env); err != nil {
-		t.Fatalf("pr-view --session: %v", err)
+	if err := Run(context.Background(), []string{"pr", "view", "--session", id, "--project", "project-1", "7"}, env); err != nil {
+		t.Fatalf("pr view --session: %v", err)
 	}
 	if !strings.Contains(out.String(), "# #7 Read a pull request") {
 		t.Errorf("output = %s, want the pull request", out.String())
@@ -291,11 +291,11 @@ func TestPRViewOfASessionRefusals(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"no pull request named", []string{"pr-view", "--session", id, "--project", "project-1"}, "want exactly one pull request"},
-		{"invalid session", []string{"pr-view", "--session", "not-a-uuid", "--project", "project-1", "7"}, "not a slice"},
-		{"unknown session", []string{"pr-view", "--session", testSessionUUID, "--project", "project-1", "7"}, "no session"},
-		{"unknown project", []string{"pr-view", "--session", id, "--project", "nope", "7"}, "no project nope"},
-		{"gh refuses", []string{"pr-view", "--session", id, "--project", "project-1", "7"}, "no such pull request"},
+		{"no pull request named", []string{"pr", "view", "--session", id, "--project", "project-1"}, "want exactly one pull request"},
+		{"invalid session", []string{"pr", "view", "--session", "not-a-uuid", "--project", "project-1", "7"}, "not a slice"},
+		{"unknown session", []string{"pr", "view", "--session", testSessionUUID, "--project", "project-1", "7"}, "no session"},
+		{"unknown project", []string{"pr", "view", "--session", id, "--project", "nope", "7"}, "no project nope"},
+		{"gh refuses", []string{"pr", "view", "--session", id, "--project", "project-1", "7"}, "no such pull request"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -309,7 +309,7 @@ func TestPRViewOfASessionRefusals(t *testing.T) {
 func TestPRViewOfASessionReportsAFailedStoreRead(t *testing.T) {
 	api := &fakeAPI{queryErr: map[string]error{"slices-ds": errors.New("notion: 500")}}
 	env, _ := testEnv(testClaimConfig(t), api)
-	err := Run(context.Background(), []string{"pr-view", "--session", testSessionUUID, "--project", "project-1", "7"}, env)
+	err := Run(context.Background(), []string{"pr", "view", "--session", testSessionUUID, "--project", "project-1", "7"}, env)
 	if err == nil || !strings.Contains(err.Error(), "notion: 500") {
 		t.Errorf("err = %v, want the failed hydrate reported", err)
 	}
@@ -318,7 +318,7 @@ func TestPRViewOfASessionReportsAFailedStoreRead(t *testing.T) {
 func TestPRViewOfASessionReportsAFailedSessionsRead(t *testing.T) {
 	env, _ := sessionTestEnv(t)
 	seedHydratedProject(t, "project-1", func(db *sql.DB) { dropSessionsTable(t, db) })
-	err := Run(context.Background(), []string{"pr-view", "--session", testSessionUUID, "--project", "project-1", "7"}, env)
+	err := Run(context.Background(), []string{"pr", "view", "--session", testSessionUUID, "--project", "project-1", "7"}, env)
 	if err == nil || !strings.Contains(err.Error(), "read the sessions") {
 		t.Errorf("err = %v, want 'read the sessions'", err)
 	}
@@ -348,7 +348,7 @@ func TestPRViewReportsAFailedHydrate(t *testing.T) {
 	api := &fakeAPI{dataSourceErr: errors.New("notion is down")}
 	env, _ := testEnv(testConfig(t), api)
 
-	err := Run(context.Background(), []string{"pr-view", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"pr", "view", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "hydrate the plan") {
 		t.Errorf("err = %v, want the failed hydrate named", err)

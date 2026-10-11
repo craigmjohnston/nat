@@ -11,14 +11,14 @@ import (
 )
 
 // milestoneRename gives one milestone another name, in place. It is the other
-// half of milestone-add: a phase of the plan that has been renamed in the
+// half of milestone add: a phase of the plan that has been renamed in the
 // user's head and nowhere else, put right without opening the board.
 //
 // The plan keeps its order and the milestone keeps its slices — which is the
 // whole of what "in place" means, and is the store's to arrange, since how a
 // backend renames one is its own business.
 func milestoneRename(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("milestone-rename", flag.ContinueOnError)
+	flags := flag.NewFlagSet("milestone rename", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	projectRef := projectFlag(flags)
@@ -27,11 +27,11 @@ func milestoneRename(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 2 {
-		return usageErrorf("milestone-rename: want the milestone's name and its new one, given %d", len(rest))
+		return usageErrorf("milestone rename: want the milestone's name and its new one, given %d", len(rest))
 	}
 	old, name := strings.TrimSpace(rest[0]), strings.TrimSpace(rest[1])
 	if old == "" || name == "" {
-		return usageErrorf("milestone-rename: a milestone name is empty")
+		return usageErrorf("milestone rename: a milestone name is empty")
 	}
 
 	_, projectID, project, err := env.projectFor(*projectRef)

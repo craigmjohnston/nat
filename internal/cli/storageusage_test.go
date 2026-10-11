@@ -17,7 +17,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/source"
 )
 
-// fakeStorage answers storage-usage's GitHub read with a fixed reading.
+// fakeStorage answers storage usage's GitHub read with a fixed reading.
 type fakeStorage struct {
 	reading gh.StorageReading
 	err     error
@@ -42,7 +42,7 @@ func (r remoteGit) Run(dir, _ string, args ...string) (string, error) {
 	return "", errors.New("no such remote")
 }
 
-// stubStorage points storage-usage at fake and pins the clock to 10 October
+// stubStorage points storage usage at fake and pins the clock to 10 October
 // 2026, midday UTC.
 func stubStorage(t *testing.T, fake *fakeStorage) time.Time {
 	t.Helper()
@@ -58,7 +58,7 @@ func TestStorageUsageSharesTheMonthOutByProject(t *testing.T) {
 	sp := newSourceProject(t, &source.Fake{Details: map[string]source.ContainerDetail{"c1": {ID: "c1", Title: "Card"}}})
 	task := sp.addTask(t, "Task", "c1")
 	cardRepo := t.TempDir()
-	sp.run(t, "slice-repo", task, "--repo", cardRepo, "--project", sp.id)
+	sp.run(t, "slice", "repo", task, "--repo", cardRepo, "--project", sp.id)
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -80,7 +80,7 @@ func TestStorageUsageSharesTheMonthOutByProject(t *testing.T) {
 	now := stubStorage(t, fake)
 
 	var doc storageDoc
-	if err := json.Unmarshal([]byte(sp.run(t, "storage-usage", "--json")), &doc); err != nil {
+	if err := json.Unmarshal([]byte(sp.run(t, "storage", "usage", "--json")), &doc); err != nil {
 		t.Fatal(err)
 	}
 	if !fake.asked.Equal(now) {
@@ -117,7 +117,7 @@ func TestStorageUsageSharesTheMonthOutByProject(t *testing.T) {
 		t.Errorf("other = %+v, want craig/older then craig/old, 0.25", doc.Other)
 	}
 
-	text := sp.run(t, "storage-usage")
+	text := sp.run(t, "storage", "usage")
 	for _, line := range []string{
 		"Artifact storage 2026-10: 0.95 GB of 1.00 GB · 22 days left",
 		"  nat  0.50 GB",
@@ -133,7 +133,7 @@ func TestStorageUsageWithNoProjectsOrAllowance(t *testing.T) {
 	env, out, _ := noNotionEnv(t, config.Config{}, false)
 	stubStorage(t, &fakeStorage{reading: gh.StorageReading{Login: "craig", Repos: map[string]float64{}}})
 
-	if err := Run(context.Background(), []string{"storage-usage", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"storage", "usage", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	// Always arrays, never null: gnat ranges over both.
@@ -141,7 +141,7 @@ func TestStorageUsageWithNoProjectsOrAllowance(t *testing.T) {
 		t.Errorf("json = %s", s)
 	}
 	out.Reset()
-	if err := Run(context.Background(), []string{"storage-usage"}, env); err != nil {
+	if err := Run(context.Background(), []string{"storage", "usage"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(out.String(), "Artifact storage 2026-10: 0.00 GB no known allowance · 22 days left\n") {
@@ -155,13 +155,13 @@ func TestStorageUsageRefusals(t *testing.T) {
 
 	// The text form refuses, saying the command; the JSON form answers the
 	// scope and the command, for gnat to offer.
-	err := Run(context.Background(), []string{"storage-usage"}, env)
+	err := Run(context.Background(), []string{"storage", "usage"}, env)
 	if !errors.Is(err, gh.ErrBillingScope) || !strings.Contains(err.Error(), gh.ScopeCommand) {
 		t.Errorf("err = %v, want the scope refusal", err)
 	}
 	var out strings.Builder
 	env.Out = &out
-	if err := Run(context.Background(), []string{"storage-usage", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"storage", "usage", "--json"}, env); err != nil {
 		t.Fatalf("--json: %v", err)
 	}
 	var scope storageScopeJSON
@@ -169,23 +169,23 @@ func TestStorageUsageRefusals(t *testing.T) {
 		t.Errorf("--json = %s (%v)", out.String(), err)
 	}
 	stubStorage(t, &fakeStorage{err: errors.New("offline")})
-	if err := Run(context.Background(), []string{"storage-usage", "--json"}, env); err == nil || !strings.Contains(err.Error(), "offline") {
+	if err := Run(context.Background(), []string{"storage", "usage", "--json"}, env); err == nil || !strings.Contains(err.Error(), "offline") {
 		t.Errorf("err = %v, want the read's own", err)
 	}
-	for _, args := range [][]string{{"storage-usage", "extra"}, {"storage-usage", "--project", "x"}} {
+	for _, args := range [][]string{{"storage", "usage", "extra"}, {"storage", "usage", "--project", "x"}} {
 		var usage *UsageError
 		if err := Run(context.Background(), args, env); !errors.As(err, &usage) {
 			t.Errorf("%v: err = %v, want a usage error", args, err)
 		}
 	}
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, errors.New("bad config") }
-	if err := Run(context.Background(), []string{"storage-usage"}, env); err == nil || !strings.Contains(err.Error(), "bad config") {
+	if err := Run(context.Background(), []string{"storage", "usage"}, env); err == nil || !strings.Contains(err.Error(), "bad config") {
 		t.Errorf("err = %v, want the config's", err)
 	}
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 	env.Out = failingWriter{}
 	stubStorage(t, &fakeStorage{reading: gh.StorageReading{Repos: map[string]float64{}}})
-	if err := Run(context.Background(), []string{"storage-usage"}, env); err == nil {
+	if err := Run(context.Background(), []string{"storage", "usage"}, env); err == nil {
 		t.Error("a failed write was not reported")
 	}
 }
@@ -199,7 +199,7 @@ func TestStorageUsageSourcePlanUnreadable(t *testing.T) {
 	env.NewSource = func(string) (source.Client, error) { return nil, errors.New("gone") }
 	stubStorage(t, &fakeStorage{reading: gh.StorageReading{Repos: map[string]float64{"a/b": 1}}})
 
-	if err := Run(context.Background(), []string{"storage-usage", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"storage", "usage", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var doc storageDoc
@@ -224,7 +224,7 @@ func TestStorageUsageTiesAndSharedDirectories(t *testing.T) {
 	}
 	stubStorage(t, &fakeStorage{reading: gh.StorageReading{Repos: map[string]float64{"o/x": 1, "o/z": 0.5, "o/y": 0.5}}})
 
-	if err := Run(context.Background(), []string{"storage-usage", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"storage", "usage", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var doc storageDoc
@@ -267,7 +267,7 @@ func TestStorageUsageSourcePlanBroken(t *testing.T) {
 	stubStorage(t, &fakeStorage{reading: gh.StorageReading{Repos: map[string]float64{}}})
 
 	var doc storageDoc
-	if err := json.Unmarshal([]byte(sp.run(t, "storage-usage", "--json")), &doc); err != nil {
+	if err := json.Unmarshal([]byte(sp.run(t, "storage", "usage", "--json")), &doc); err != nil {
 		t.Fatal(err)
 	}
 	if len(doc.Projects) != 1 || len(doc.Projects[0].Repos) != 0 {

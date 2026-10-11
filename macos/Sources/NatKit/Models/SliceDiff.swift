@@ -1,6 +1,6 @@
 import Foundation
 
-/// The wire shape of `nat slice-diff <slice> --project <id> --json`: the
+/// The wire shape of `nat slice diff <slice> --project <id> --json`: the
 /// unified diff of a handed-back branch, already split into files by the Go
 /// side (`git.ParseFiles`). Each file's `lines` are its section of the diff
 /// exactly as git wrote it — headers, hunk headers, +/-/context lines — since
@@ -23,7 +23,7 @@ public struct SliceDiff: Codable, Equatable, Sendable {
     }
 }
 
-/// One file's section of a unified diff, as `nat slice-diff --json` reports it.
+/// One file's section of a unified diff, as `nat slice diff --json` reports it.
 ///
 /// `oldPath` names where the file came from. It is set to the same value as
 /// `path` for a file that is not a rename — created and deleted files included,
@@ -100,7 +100,7 @@ public struct SliceDiffFile: Codable, Equatable, Sendable {
     }
 }
 
-/// A run of one file's own lines, as `nat slice-file --json` reads them:
+/// A run of one file's own lines, as `nat slice file --json` reads them:
 /// lines `from`… of a file `total` lines long, each lexed as the diff's own
 /// lines are (`tokens`, one per line, where the path matched a language).
 public struct SliceFileLines: Codable, Equatable, Sendable {

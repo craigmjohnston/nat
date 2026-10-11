@@ -28,7 +28,7 @@ var marshalIndent = json.MarshalIndent
 type ProjectConfig struct {
 	// Name is what the project is called — except a source project's, which
 	// is always its plugin's title (read by nat when it names one), so
-	// project-create --source writes none and one an older entry carries is
+	// project create --source writes none and one an older entry carries is
 	// never read. Omitted where empty.
 	Name string `json:"name,omitempty"`
 	// SlicesDSID is the Notion data source the plan is kept in. A project of
@@ -163,7 +163,7 @@ func hueDistance(a, b string) float64 {
 // go, never neighbours — a tie going to the earlier name in palette order.
 // An entry already coloured
 // is never changed — except one that takes no colour ([Config.Colorable]),
-// whose colour is cleared and counts against nothing: scratch-open saves its
+// whose colour is cleared and counts against nothing: scratch open saves its
 // project before recording it as the scratch one, and the second save takes
 // back what the first gave. It writes into c.Projects in place, so a caller
 // holding the same map sees what was assigned.
@@ -418,7 +418,7 @@ type Config struct {
 	SliceAgent    AgentModel               `json:"slice_agent,omitzero"`
 	Projects      map[string]ProjectConfig `json:"projects"`
 	// ScratchProject is the ID of the reserved local project ad hoc work lives
-	// in, recorded by `nat scratch-open` the first time it runs. It is one of
+	// in, recorded by `nat scratch open` the first time it runs. It is one of
 	// Projects like any other; this only says which. Omitted until then.
 	ScratchProject string `json:"scratch_project,omitempty"`
 	// PluginSources are the GitHub repositories, as owner/repo, task-source

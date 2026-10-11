@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-/// The state of one container's `container-show` read, keyed by container id
+/// The state of one container's `container show` read, keyed by container id
 /// in `ContainerStore`'s cache. A failed re-read keeps what was read before,
 /// as the pull request screen does: a stale reading of the right container
 /// is still about the right container.

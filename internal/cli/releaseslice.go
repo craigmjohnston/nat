@@ -17,8 +17,8 @@ import (
 //
 // It is the way out of the one state nothing else can leave. A session that
 // dies — a crashed agent, a killed pane, a context that ran out — leaves its
-// slice in progress and held, where next-slice steps over it and start-slice
-// refuses it; complete-slice only goes forward, and --blocked is what leaves a
+// slice in progress and held, where slice next steps over it and slice start
+// refuses it; slice complete only goes forward, and --blocked is what leaves a
 // slice held on purpose in the first place.
 //
 // Nothing else on the page is touched. The description, the dependencies, the
@@ -27,11 +27,11 @@ import (
 // so far.
 //
 // Only a slice this user already holds can be released — the same ownership
-// rule complete-slice applies, and for the same reason: a slice somebody else
+// rule slice complete applies, and for the same reason: a slice somebody else
 // is working is theirs, and pulling it out from under them is how two sessions
 // end up on one branch.
 func releaseSlice(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("release-slice", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice release", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	projectRef := projectFlag(flags)
 	rest, err := parseFlags(flags, args)
@@ -39,9 +39,9 @@ func releaseSlice(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("release-slice: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice release: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	pageID, err := pageID("release-slice", rest[0])
+	pageID, err := pageID("slice release", rest[0])
 	if err != nil {
 		return err
 	}

@@ -15,13 +15,13 @@ import (
 // not do, for the user to triage before the agent hands back: each one queued
 // as a slice of its own, folded into this one, or dropped. The agent stops once
 // it has run this, and the user's decision reaches it as a message
-// (`slice-triage`); complete-slice refuses until it has.
+// (`slice triage`); slice complete refuses until it has.
 //
-// Only a slice this user holds takes them, for the reason complete-slice is
+// Only a slice this user holds takes them, for the reason slice complete is
 // held to the same rule: the agent working it is the one with something to
 // hand in.
 func sliceFollowUps(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-followups", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice followups", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	var given stringList
 	flags.Var(&given, "follow-up", "a follow-up: its first line the title, the rest its brief; repeat for more")
@@ -31,9 +31,9 @@ func sliceFollowUps(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-followups: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice followups: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-followups", rest[0])
+	id, err := pageID("slice followups", rest[0])
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func sliceFollowUps(ctx context.Context, args []string, env Env) error {
 // record names each one by, so two alike could never be told apart in it.
 func followUpsOf(given []string) ([]store.FollowUp, error) {
 	if len(given) == 0 {
-		return nil, usageErrorf("slice-followups: no follow-up given: pass --follow-up '<title>\\n\\n<brief>'")
+		return nil, usageErrorf("slice followups: no follow-up given: pass --follow-up '<title>\\n\\n<brief>'")
 	}
 	seen := map[string]bool{}
 	items := make([]store.FollowUp, 0, len(given))
@@ -90,24 +90,24 @@ func followUpsOf(given []string) ([]store.FollowUp, error) {
 		title, brief = strings.TrimSpace(title), strings.TrimSpace(brief)
 		switch {
 		case title == "":
-			return nil, usageErrorf("slice-followups: a follow-up has no title: its first line is the title")
+			return nil, usageErrorf("slice followups: a follow-up has no title: its first line is the title")
 		case brief == "":
-			return nil, usageErrorf("slice-followups: %q has no brief: say the change after the title line, then a \"Done when:\" line", title)
+			return nil, usageErrorf("slice followups: %q has no brief: say the change after the title line, then a \"Done when:\" line", title)
 		case !hasDoneWhen(brief):
-			return nil, usageErrorf("slice-followups: %q has no \"Done when:\" line: say how anyone checks it is finished", title)
+			return nil, usageErrorf("slice followups: %q has no \"Done when:\" line: say how anyone checks it is finished", title)
 		case seen[title]:
-			return nil, usageErrorf("slice-followups: two follow-ups are titled %q: give each its own title", title)
+			return nil, usageErrorf("slice followups: two follow-ups are titled %q: give each its own title", title)
 		}
 		// A queued follow-up's title is the new slice's, so it is held to the
 		// cap here, where the agent can still shorten it, rather than at the
 		// user's queue.
 		if err := domain.CheckSliceTitle(title); err != nil {
-			return nil, usageErrorf("slice-followups: %v", err)
+			return nil, usageErrorf("slice followups: %v", err)
 		}
 		// Its brief is the new slice's too, so its opening is held to the
-		// summary cap plan-apply holds a planner's to.
+		// summary cap plan apply holds a planner's to.
 		if err := domain.CheckBriefOpening(brief); err != nil {
-			return nil, usageErrorf("slice-followups: %q: %v", title, err)
+			return nil, usageErrorf("slice followups: %q: %v", title, err)
 		}
 		seen[title] = true
 		items = append(items, store.FollowUp{Title: title, Brief: brief})

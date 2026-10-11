@@ -14,7 +14,7 @@ import (
 )
 
 // prunePlan is a local project with one slice under Lone, two under Pair, and
-// Empty holding nothing — the milestone milestone-add makes, which no move or
+// Empty holding nothing — the milestone milestone add makes, which no move or
 // delete elsewhere may take with it.
 type prunePlan struct {
 	env Env
@@ -33,7 +33,7 @@ func newPrunePlan(t *testing.T) prunePlan {
 	t.Helper()
 	ctx := context.Background()
 	env, out, saved := noNotionEnv(t, config.Config{}, false)
-	if err := Run(ctx, []string{"scratch-open"}, env); err != nil {
+	if err := Run(ctx, []string{"scratch", "open"}, env); err != nil {
 		t.Fatal(err)
 	}
 	id := saved.ScratchProject
@@ -91,7 +91,7 @@ func (p prunePlan) milestones(t *testing.T) string {
 
 func TestSliceMoveRemovesTheMilestoneItEmptied(t *testing.T) {
 	p := newPrunePlan(t)
-	out := p.run(t, "slice-move", p.lone.ID, "--milestone", "Pair", "--json")
+	out := p.run(t, "slice", "move", p.lone.ID, "--milestone", "Pair", "--json")
 	var got sliceMovedJSON
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, out)
@@ -106,11 +106,11 @@ func TestSliceMoveRemovesTheMilestoneItEmptied(t *testing.T) {
 
 func TestSliceMoveKeepsAMilestoneStillHoldingASlice(t *testing.T) {
 	p := newPrunePlan(t)
-	out := p.run(t, "slice-move", p.pair[0].ID, "--milestone", "Lone", "--json")
+	out := p.run(t, "slice", "move", p.pair[0].ID, "--milestone", "Lone", "--json")
 	if strings.Contains(out, "removed_milestone") {
 		t.Errorf("json = %s, want no removed_milestone", out)
 	}
-	out = p.run(t, "slice-move", p.pair[1].ID, "--milestone", "Lone")
+	out = p.run(t, "slice", "move", p.pair[1].ID, "--milestone", "Lone")
 	if !strings.Contains(out, "Removed Pair, which no slice is filed under any more.") {
 		t.Errorf("output = %q, want the removal named", out)
 	}
@@ -121,11 +121,11 @@ func TestSliceMoveKeepsAMilestoneStillHoldingASlice(t *testing.T) {
 
 func TestSliceDeleteRemovesTheMilestoneItEmptied(t *testing.T) {
 	p := newPrunePlan(t)
-	out := p.run(t, "slice-delete", p.pair[0].ID)
+	out := p.run(t, "slice", "delete", p.pair[0].ID)
 	if strings.Contains(out, "Removed") {
 		t.Errorf("output = %q, want no removal: Pair still holds a slice", out)
 	}
-	out = p.run(t, "slice-delete", p.lone.ID, "--json")
+	out = p.run(t, "slice", "delete", p.lone.ID, "--json")
 	var got sliceDeletedJSON
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, out)
@@ -133,7 +133,7 @@ func TestSliceDeleteRemovesTheMilestoneItEmptied(t *testing.T) {
 	if got.RemovedMilestone != "Lone" {
 		t.Errorf("removed_milestone = %q, want Lone", got.RemovedMilestone)
 	}
-	out = p.run(t, "slice-delete", p.pair[1].ID)
+	out = p.run(t, "slice", "delete", p.pair[1].ID)
 	if !strings.Contains(out, "Removed Pair") {
 		t.Errorf("output = %q, want the removal named", out)
 	}
@@ -145,11 +145,11 @@ func TestSliceDeleteRemovesTheMilestoneItEmptied(t *testing.T) {
 func TestSliceReorderRemovesTheMilestoneARefileEmptied(t *testing.T) {
 	p := newPrunePlan(t)
 	// Within one milestone, nothing is left anywhere.
-	out := p.run(t, "slice-reorder", p.pair[1].ID, "--before", p.pair[0].ID, "--json")
+	out := p.run(t, "slice", "reorder", p.pair[1].ID, "--before", p.pair[0].ID, "--json")
 	if strings.Contains(out, "removed_milestone") {
 		t.Errorf("json = %s, want no removed_milestone", out)
 	}
-	out = p.run(t, "slice-reorder", p.lone.ID, "--after", p.pair[1].ID, "--json")
+	out = p.run(t, "slice", "reorder", p.lone.ID, "--after", p.pair[1].ID, "--json")
 	var got sliceReorderedJSON
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, out)
@@ -160,7 +160,7 @@ func TestSliceReorderRemovesTheMilestoneARefileEmptied(t *testing.T) {
 	if ms := p.milestones(t); ms != "Pair,Empty" {
 		t.Errorf("milestones = %s, want Lone gone", ms)
 	}
-	out = p.run(t, "slice-reorder", p.lone.ID, "--before", p.pair[0].ID)
+	out = p.run(t, "slice", "reorder", p.lone.ID, "--before", p.pair[0].ID)
 	if strings.Contains(out, "Removed") {
 		t.Errorf("output = %q, want no removal", out)
 	}
@@ -168,7 +168,7 @@ func TestSliceReorderRemovesTheMilestoneARefileEmptied(t *testing.T) {
 
 func TestSliceReorderTextNamesTheRemovedMilestone(t *testing.T) {
 	p := newPrunePlan(t)
-	out := p.run(t, "slice-reorder", p.lone.ID, "--before", p.pair[0].ID)
+	out := p.run(t, "slice", "reorder", p.lone.ID, "--before", p.pair[0].ID)
 	if !strings.Contains(out, "Refiled under Pair.\n\nRemoved Lone") {
 		t.Errorf("output = %q, want the refile then the removal", out)
 	}
@@ -178,7 +178,7 @@ func TestPlanApplyRemovesTheMilestonesItsMovesAndRemovalsEmptied(t *testing.T) {
 	p := newPrunePlan(t)
 	p.env.In = strings.NewReader(`{"move": [{"slice": "first", "milestone": "Lone"}, {"slice": "second", "milestone": "Lone"}],
 		"remove": ["lone"]}`)
-	out := p.run(t, "plan-apply", "--json")
+	out := p.run(t, "plan", "apply", "--json")
 	var got planAppliedJSON
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, out)
@@ -196,7 +196,7 @@ func TestPlanApplyKeepsAMilestoneItAlsoCreatesASliceUnder(t *testing.T) {
 	p := newPrunePlan(t)
 	p.env.In = strings.NewReader(`{"remove": ["lone"],
 		"slices": [{"title": "replacement", "milestone": "Lone"}]}`)
-	out := p.run(t, "plan-apply")
+	out := p.run(t, "plan", "apply")
 	if strings.Contains(out, "Milestones removed") {
 		t.Errorf("output = %q, want nothing removed", out)
 	}
@@ -205,7 +205,7 @@ func TestPlanApplyKeepsAMilestoneItAlsoCreatesASliceUnder(t *testing.T) {
 	}
 
 	p.env.In = strings.NewReader(`{"remove": ["replacement"]}`)
-	out = p.run(t, "plan-apply")
+	out = p.run(t, "plan", "apply")
 	if !strings.Contains(out, "## Milestones removed\n\n- Lone — no slice is filed under it any more") {
 		t.Errorf("output = %q, want Lone's removal listed", out)
 	}
@@ -240,9 +240,9 @@ func TestSliceMoveRemovesTheEmptiedMilestoneFromAMirroredWorkspace(t *testing.T)
 	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--json", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("slice-move: %v", err)
+		t.Fatalf("slice move: %v", err)
 	}
 	var got sliceMovedJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -269,9 +269,9 @@ func TestSliceMoveSucceedsThoughTheRemovalFails(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 
 	if err := Run(context.Background(), []string{
-		"slice-move", testSliceID, "--milestone", "M2: Board", "--json", "--project", "project-1",
+		"slice", "move", testSliceID, "--milestone", "M2: Board", "--json", "--project", "project-1",
 	}, env); err != nil {
-		t.Fatalf("slice-move: %v", err)
+		t.Fatalf("slice move: %v", err)
 	}
 	if strings.Contains(out.String(), "removed_milestone") {
 		t.Errorf("json = %s, want no removed_milestone", out.String())

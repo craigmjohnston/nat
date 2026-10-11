@@ -1,6 +1,6 @@
 import Foundation
 
-/// One batched GitHub reading — `nat pr-status --project …` naming every
+/// One batched GitHub reading — `nat pr status --project …` naming every
 /// project at once, one GraphQL document behind it — as the app takes it:
 /// each project's reading by ID, the budget GitHub said is left, and the pull
 /// request asked for in full (`--detail`), where one was.

@@ -19,7 +19,7 @@ import (
 // on a task with none is told to work out which repository its card is about
 // and record it here; from then on relaunch, approve, merge and the merge's
 // worktree removal all find it through [actions.WorkdirFor]. Once recorded,
-// the slice's worktree is found or cut there as slice-worktree does it, and
+// the slice's worktree is found or cut there as slice worktree does it, and
 // its path printed — the agent's one command from a repository to a place to
 // work.
 //
@@ -27,9 +27,9 @@ import (
 // it — the agent working it — and a Done one from nobody, its work being on
 // main already. Only a plan of nat's own can record it on its own
 // ([store.RepoSetter]); a Notion project's slice names its repo through
-// slice-edit's form on the board.
+// slice edit's form on the board.
 func sliceRepoCmd(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("slice-repo", flag.ContinueOnError)
+	flags := flag.NewFlagSet("slice repo", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	repo := flags.String("repo", "", "the repository the slice is worked in: a directory, ~ expanded (required)")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
@@ -39,13 +39,13 @@ func sliceRepoCmd(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("slice-repo: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("slice repo: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := pageID("slice-repo", rest[0])
+	id, err := pageID("slice repo", rest[0])
 	if err != nil {
 		return err
 	}
-	dir, err := repoFlagDir("slice-repo", *repo)
+	dir, err := repoFlagDir("slice repo", *repo)
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func sliceRepoCmd(ctx context.Context, args []string, env Env) error {
 	}
 	setter, ok := st.(store.RepoSetter)
 	if !ok {
-		return fmt.Errorf("slice-repo: %s keeps its plan in Notion: name a slice's repository with slice-edit on the board", project.Name)
+		return fmt.Errorf("slice repo: %s keeps its plan in Notion: name a slice's repository with slice edit on the board", project.Name)
 	}
 	shape, err := sliceShape(ctx, st, projectID, project)
 	if err != nil {
@@ -81,11 +81,11 @@ func sliceRepoCmd(ctx context.Context, args []string, env Env) error {
 	logging.Action("slice repository recorded", "slice", s.ID, "repo", dir)
 
 	// The repository stands recorded whatever the cut makes of it: it is
-	// still the slice's, and slice-worktree cuts the worktree once the
+	// still the slice's, and slice worktree cuts the worktree once the
 	// repository is fit for one.
 	wt, err := ensureWorktree(env, project, dir, s)
 	if err != nil {
-		return fmt.Errorf("slice-repo: recorded %s, but could not cut the slice's worktree there: %w", dir, err)
+		return fmt.Errorf("slice repo: recorded %s, but could not cut the slice's worktree there: %w", dir, err)
 	}
 	if *asJSON {
 		return writeJSON(env.Out, sliceRepoJSON{ID: s.ID, Name: s.Name, Repo: dir, Worktree: wt})

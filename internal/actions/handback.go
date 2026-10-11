@@ -52,7 +52,7 @@ func PushHandBack(w Worktrees, g HandBackGit, s domain.Slice, p config.ProjectCo
 		if branch == "" {
 			return "", ErrNoWorktree
 		}
-		return "", fmt.Errorf("%q has no repository recorded to push %s from: record it with nat slice-repo",
+		return "", fmt.Errorf("%q has no repository recorded to push %s from: record it with nat slice repo",
 			s.Name, branch)
 	}
 	lookup := branch

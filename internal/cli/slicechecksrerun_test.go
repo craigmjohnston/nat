@@ -74,9 +74,9 @@ func runCI(t *testing.T, fake *fakeChecksGH, args ...string) (string, int, error
 func TestSliceChecksRerunAll(t *testing.T) {
 	slept := noSleep(t)
 	fake := &fakeChecksGH{checks: ciChecks(), statuses: map[string][]string{"11": {"in_progress", "completed"}}}
-	out, nudges, err := runCI(t, fake, "slice-checks-rerun", "--all", "--json")
+	out, nudges, err := runCI(t, fake, "slice", "checks", "rerun", "--all", "--json")
 	if err != nil {
-		t.Fatalf("slice-checks-rerun --all: %v", err)
+		t.Fatalf("slice checks rerun --all: %v", err)
 	}
 	want := "cancel o/r 11,status 11,status 11,rerun 11,rerun 12"
 	if got := strings.Join(fake.calls, ","); got != want {
@@ -100,9 +100,9 @@ func TestSliceChecksRerunAll(t *testing.T) {
 func TestSliceChecksRerunFailed(t *testing.T) {
 	noSleep(t)
 	fake := &fakeChecksGH{checks: ciChecks()}
-	out, _, err := runCI(t, fake, "slice-checks-rerun", "--failed")
+	out, _, err := runCI(t, fake, "slice", "checks", "rerun", "--failed")
 	if err != nil {
-		t.Fatalf("slice-checks-rerun --failed: %v", err)
+		t.Fatalf("slice checks rerun --failed: %v", err)
 	}
 	if got := strings.Join(fake.calls, ","); got != "rerun 12 --failed" {
 		t.Errorf("calls = %s, want only run 12's failed jobs", got)
@@ -116,9 +116,9 @@ func TestSliceChecksRerunFailed(t *testing.T) {
 	checks := ciChecks()
 	checks[2].State = "FAILURE"
 	fake = &fakeChecksGH{checks: checks}
-	out, _, err = runCI(t, fake, "slice-checks-rerun", "--failed")
+	out, _, err = runCI(t, fake, "slice", "checks", "rerun", "--failed")
 	if err != nil {
-		t.Fatalf("slice-checks-rerun --failed over a run going: %v", err)
+		t.Fatalf("slice checks rerun --failed over a run going: %v", err)
 	}
 	if got := strings.Join(fake.calls, ","); got != "cancel o/r 11,status 11,rerun 11,rerun 12 --failed" {
 		t.Errorf("calls = %s", got)
@@ -129,7 +129,7 @@ func TestSliceChecksRerunFailed(t *testing.T) {
 
 	passing := []gh.Check{{Name: "test", State: "SUCCESS", URL: "https://github.com/o/r/actions/runs/11/job/21"}}
 	fake = &fakeChecksGH{checks: passing}
-	if _, _, err := runCI(t, fake, "slice-checks-rerun", "--failed"); err == nil || !strings.Contains(err.Error(), "no GitHub Actions check has failed") || len(fake.calls) != 0 {
+	if _, _, err := runCI(t, fake, "slice", "checks", "rerun", "--failed"); err == nil || !strings.Contains(err.Error(), "no GitHub Actions check has failed") || len(fake.calls) != 0 {
 		t.Errorf("--failed with nothing failed = %v after %v, want a refusal before gh", err, fake.calls)
 	}
 }
@@ -141,9 +141,9 @@ func TestSliceChecksRerunFailed(t *testing.T) {
 func TestSliceChecksRerunCheck(t *testing.T) {
 	noSleep(t)
 	fake := &fakeChecksGH{checks: ciChecks()}
-	out, _, err := runCI(t, fake, "slice-checks-rerun", "--check", "macos", "--check", "docs", "--check", "macos")
+	out, _, err := runCI(t, fake, "slice", "checks", "rerun", "--check", "macos", "--check", "docs", "--check", "macos")
 	if err != nil {
-		t.Fatalf("slice-checks-rerun --check: %v", err)
+		t.Fatalf("slice checks rerun --check: %v", err)
 	}
 	if got := strings.Join(fake.calls, ","); got != "rerun --job 31,rerun --job 32" {
 		t.Errorf("calls = %s", got)
@@ -153,9 +153,9 @@ func TestSliceChecksRerunCheck(t *testing.T) {
 	}
 
 	fake = &fakeChecksGH{checks: ciChecks()}
-	out, _, err = runCI(t, fake, "slice-checks-rerun", "--check", "test", "--json")
+	out, _, err = runCI(t, fake, "slice", "checks", "rerun", "--check", "test", "--json")
 	if err != nil {
-		t.Fatalf("slice-checks-rerun --check over a run going: %v", err)
+		t.Fatalf("slice checks rerun --check over a run going: %v", err)
 	}
 	if got := strings.Join(fake.calls, ","); got != "cancel o/r 11,status 11,rerun 11" {
 		t.Errorf("calls = %s", got)
@@ -167,11 +167,11 @@ func TestSliceChecksRerunCheck(t *testing.T) {
 	// A check whose URL names its run alone is re-run with the run whole.
 	runOnly := []gh.Check{{Name: "ci", State: "FAILURE", URL: "https://github.com/o/r/actions/runs/40"}}
 	fake = &fakeChecksGH{checks: runOnly}
-	if _, _, err := runCI(t, fake, "slice-checks-rerun", "--check", "ci"); err != nil || strings.Join(fake.calls, ",") != "rerun 40" {
+	if _, _, err := runCI(t, fake, "slice", "checks", "rerun", "--check", "ci"); err != nil || strings.Join(fake.calls, ",") != "rerun 40" {
 		t.Errorf("--check of a run-only URL = %v, calls %v, want the run whole", err, fake.calls)
 	}
 	fake = &fakeChecksGH{checks: runOnly, failOn: "rerun"}
-	if _, _, err := runCI(t, fake, "slice-checks-rerun", "--check", "ci"); err == nil {
+	if _, _, err := runCI(t, fake, "slice", "checks", "rerun", "--check", "ci"); err == nil {
 		t.Error("--check of a run-only URL gh refuses: want an error")
 	}
 }
@@ -188,16 +188,16 @@ func TestSliceChecksRerunRefusals(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"no mode", &fakeChecksGH{checks: ciChecks()}, []string{"slice-checks-rerun"}, "exactly one of"},
-		{"two modes", &fakeChecksGH{checks: ciChecks()}, []string{"slice-checks-rerun", "--all", "--failed"}, "exactly one of"},
-		{"bad flag", &fakeChecksGH{checks: ciChecks()}, []string{"slice-checks-rerun", "--bogus"}, ""},
-		{"unknown", &fakeChecksGH{checks: ciChecks()}, []string{"slice-checks-rerun", "--check", "nope"}, "the checks are: test, lint, build, macos, docs, deploy"},
-		{"external", &fakeChecksGH{checks: ciChecks()}, []string{"slice-checks-rerun", "--check", "deploy"}, "other than GitHub Actions"},
-		{"merged", &fakeChecksGH{checks: ciChecks(), prState: "MERGED"}, []string{"slice-checks-rerun", "--all"}, "is merged, not open"},
-		{"unread", &fakeChecksGH{viewErr: errors.New("rate limited")}, []string{"slice-checks-rerun", "--all"}, "rate limited"},
-		{"none", &fakeChecksGH{checks: []gh.Check{{Name: "deploy", State: "FAILURE", URL: "https://ci.example.com/9"}}}, []string{"slice-checks-rerun", "--all"}, "no check has a GitHub Actions run"},
-		{"cancel unknown", &fakeChecksGH{checks: ciChecks()}, []string{"slice-checks-cancel", "--check", "nope"}, "no check is named"},
-		{"cancel bad flag", &fakeChecksGH{checks: ciChecks()}, []string{"slice-checks-cancel", "--bogus"}, ""},
+		{"no mode", &fakeChecksGH{checks: ciChecks()}, []string{"slice", "checks", "rerun"}, "exactly one of"},
+		{"two modes", &fakeChecksGH{checks: ciChecks()}, []string{"slice", "checks", "rerun", "--all", "--failed"}, "exactly one of"},
+		{"bad flag", &fakeChecksGH{checks: ciChecks()}, []string{"slice", "checks", "rerun", "--bogus"}, ""},
+		{"unknown", &fakeChecksGH{checks: ciChecks()}, []string{"slice", "checks", "rerun", "--check", "nope"}, "the checks are: test, lint, build, macos, docs, deploy"},
+		{"external", &fakeChecksGH{checks: ciChecks()}, []string{"slice", "checks", "rerun", "--check", "deploy"}, "other than GitHub Actions"},
+		{"merged", &fakeChecksGH{checks: ciChecks(), prState: "MERGED"}, []string{"slice", "checks", "rerun", "--all"}, "is merged, not open"},
+		{"unread", &fakeChecksGH{viewErr: errors.New("rate limited")}, []string{"slice", "checks", "rerun", "--all"}, "rate limited"},
+		{"none", &fakeChecksGH{checks: []gh.Check{{Name: "deploy", State: "FAILURE", URL: "https://ci.example.com/9"}}}, []string{"slice", "checks", "rerun", "--all"}, "no check has a GitHub Actions run"},
+		{"cancel unknown", &fakeChecksGH{checks: ciChecks()}, []string{"slice", "checks", "cancel", "--check", "nope"}, "no check is named"},
+		{"cancel bad flag", &fakeChecksGH{checks: ciChecks()}, []string{"slice", "checks", "cancel", "--bogus"}, ""},
 	}
 	for _, tt := range tests {
 		_, nudges, err := runCI(t, tt.fake, tt.args...)
@@ -205,21 +205,21 @@ func TestSliceChecksRerunRefusals(t *testing.T) {
 			t.Errorf("%s: err = %v after %v (nudged %d), want %q before any run call", tt.name, err, tt.fake.calls, nudges, tt.want)
 		}
 	}
-	for cmd, mode := range map[string]string{"slice-checks-rerun": "--all", "slice-checks-cancel": "--json"} {
+	for cmd, mode := range map[string]string{"rerun": "--all", "cancel": "--json"} {
 		env, _ := checksEnv(t, "", &fakeChecksGH{})
-		if err := Run(context.Background(), []string{cmd, testSliceID}, env); err == nil {
+		if err := Run(context.Background(), []string{"slice", "checks", cmd, testSliceID}, env); err == nil {
 			t.Errorf("%s with no project: want a refusal", cmd)
 		}
-		if err := Run(context.Background(), []string{cmd, "--project", "project-1"}, env); err == nil {
+		if err := Run(context.Background(), []string{"slice", "checks", cmd, "--project", "project-1"}, env); err == nil {
 			t.Errorf("%s with no slice: want a refusal", cmd)
 		}
-		if err := Run(context.Background(), []string{cmd, "not a page", mode, "--project", "project-1"}, env); err == nil {
+		if err := Run(context.Background(), []string{"slice", "checks", cmd, "not a page", mode, "--project", "project-1"}, env); err == nil {
 			t.Errorf("%s of no page: want a refusal", cmd)
 		}
-		if err := Run(context.Background(), []string{cmd, "00000000-0000-0000-0000-000000000099", mode, "--project", "project-1"}, env); err == nil {
+		if err := Run(context.Background(), []string{"slice", "checks", cmd, "00000000-0000-0000-0000-000000000099", mode, "--project", "project-1"}, env); err == nil {
 			t.Errorf("%s of an unknown slice: want a refusal", cmd)
 		}
-		if err := Run(context.Background(), []string{cmd, testSliceID, mode, "--project", "project-1"}, env); err == nil ||
+		if err := Run(context.Background(), []string{"slice", "checks", cmd, testSliceID, mode, "--project", "project-1"}, env); err == nil ||
 			!strings.Contains(err.Error(), "no pull request recorded") {
 			t.Errorf("%s with no pull request = %v, want a refusal", cmd, err)
 		}
@@ -233,12 +233,12 @@ func TestSliceChecksRerunRefusals(t *testing.T) {
 func TestSliceChecksRerunFailures(t *testing.T) {
 	slept := noSleep(t)
 	fake := &fakeChecksGH{checks: ciChecks(), failOn: "cancel"}
-	if _, nudges, err := runCI(t, fake, "slice-checks-rerun", "--all"); err == nil || !strings.Contains(err.Error(), "cancel the run of test, lint first") || nudges != 0 {
+	if _, nudges, err := runCI(t, fake, "slice", "checks", "rerun", "--all"); err == nil || !strings.Contains(err.Error(), "cancel the run of test, lint first") || nudges != 0 {
 		t.Errorf("refused cancel = %v (nudged %d)", err, nudges)
 	}
 
 	fake = &fakeChecksGH{checks: ciChecks(), statuses: map[string][]string{"11": {"in_progress"}}, statusErr: errors.New("blip")}
-	_, _, err := runCI(t, fake, "slice-checks-rerun", "--all")
+	_, _, err := runCI(t, fake, "slice", "checks", "rerun", "--all")
 	if err == nil || !strings.Contains(err.Error(), "cancelled test, lint, but run 11 had not finished cancelling after 2m0s — nothing was re-run") {
 		t.Errorf("timeout = %v", err)
 	}
@@ -247,16 +247,16 @@ func TestSliceChecksRerunFailures(t *testing.T) {
 	}
 
 	fake = &fakeChecksGH{checks: ciChecks(), failOn: "rerun 12"}
-	if _, _, err := runCI(t, fake, "slice-checks-rerun", "--all"); err == nil ||
+	if _, _, err := runCI(t, fake, "slice", "checks", "rerun", "--all"); err == nil ||
 		!strings.Contains(err.Error(), "(already cancelled test, lint; re-ran test, lint, build)") {
 		t.Errorf("refused re-run = %v", err)
 	}
 	fake = &fakeChecksGH{checks: ciChecks(), failOn: "rerun 12"}
-	if _, _, err := runCI(t, fake, "slice-checks-rerun", "--failed"); err == nil {
+	if _, _, err := runCI(t, fake, "slice", "checks", "rerun", "--failed"); err == nil {
 		t.Error("refused re-run of failed jobs: want an error")
 	}
 	fake = &fakeChecksGH{checks: ciChecks(), failOn: "rerun --job"}
-	if _, _, err := runCI(t, fake, "slice-checks-rerun", "--check", "docs"); err == nil {
+	if _, _, err := runCI(t, fake, "slice", "checks", "rerun", "--check", "docs"); err == nil {
 		t.Error("refused re-run of a job: want an error")
 	}
 }
@@ -270,9 +270,9 @@ func TestSliceChecksCancel(t *testing.T) {
 		gh.Check{Name: "e2e", State: "IN_PROGRESS", URL: "https://github.com/x/y/actions/runs/50/job/51"},
 		gh.Check{Name: "vercel", State: "PENDING", URL: "https://vercel.example.com/1"})
 	fake := &fakeChecksGH{checks: checks}
-	out, nudges, err := runCI(t, fake, "slice-checks-cancel")
+	out, nudges, err := runCI(t, fake, "slice", "checks", "cancel")
 	if err != nil {
-		t.Fatalf("slice-checks-cancel: %v", err)
+		t.Fatalf("slice checks cancel: %v", err)
 	}
 	if got := strings.Join(fake.calls, ","); got != "cancel o/r 11,cancel x/y 50" || nudges != 1 || fake.views != 0 {
 		t.Errorf("calls = %s, nudged %d, viewed %d, want no view", got, nudges, fake.views)
@@ -282,21 +282,21 @@ func TestSliceChecksCancel(t *testing.T) {
 	}
 
 	fake = &fakeChecksGH{checks: checks}
-	out, _, err = runCI(t, fake, "slice-checks-cancel", "--check", "lint", "--json")
+	out, _, err = runCI(t, fake, "slice", "checks", "cancel", "--check", "lint", "--json")
 	if err != nil {
-		t.Fatalf("slice-checks-cancel --check: %v", err)
+		t.Fatalf("slice checks cancel --check: %v", err)
 	}
 	if want := `{"cancelled":["test","lint"],"skipped":[]}`; compactJSON(t, out) != want || strings.Join(fake.calls, ",") != "cancel o/r 11" {
 		t.Errorf("json = %s, calls %v", compactJSON(t, out), fake.calls)
 	}
 
 	fake = &fakeChecksGH{checks: ciChecks()}
-	if _, _, err := runCI(t, fake, "slice-checks-cancel", "--check", "macos"); err == nil || !strings.Contains(err.Error(), "nothing to cancel") || len(fake.calls) != 0 {
+	if _, _, err := runCI(t, fake, "slice", "checks", "cancel", "--check", "macos"); err == nil || !strings.Contains(err.Error(), "nothing to cancel") || len(fake.calls) != 0 {
 		t.Errorf("cancel of a finished run = %v, calls %v", err, fake.calls)
 	}
 
 	fake = &fakeChecksGH{checks: checks, failOn: "cancel x/y"}
-	if _, _, err := runCI(t, fake, "slice-checks-cancel"); err == nil || !strings.Contains(err.Error(), "(already cancelled test, lint)") {
+	if _, _, err := runCI(t, fake, "slice", "checks", "cancel"); err == nil || !strings.Contains(err.Error(), "(already cancelled test, lint)") {
 		t.Errorf("refused cancel = %v", err)
 	}
 }
@@ -323,7 +323,7 @@ func TestSliceChecksRerunRefusesAnUnopenablePlan(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not a database"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Run(context.Background(), []string{"slice-checks-cancel", testSliceID, "--project", "project-1"}, env); err == nil || len(fake.calls) != 0 {
-		t.Errorf("slice-checks-cancel over an unopenable plan = %v after %v, want an error before gh", err, fake.calls)
+	if err := Run(context.Background(), []string{"slice", "checks", "cancel", testSliceID, "--project", "project-1"}, env); err == nil || len(fake.calls) != 0 {
+		t.Errorf("slice checks cancel over an unopenable plan = %v after %v, want an error before gh", err, fake.calls)
 	}
 }

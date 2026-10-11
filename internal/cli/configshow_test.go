@@ -26,8 +26,8 @@ func fullConfig() config.Config {
 func TestConfigShowMarkdown(t *testing.T) {
 	env, out := testEnv(fullConfig(), &fakeAPI{})
 
-	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
-		t.Fatalf("config-show: %v", err)
+	if err := Run(context.Background(), []string{"config", "show"}, env); err != nil {
+		t.Fatalf("config show: %v", err)
 	}
 	for _, want := range []string{
 		"Agent split percent: 70", "Poll seconds: 45",
@@ -48,7 +48,7 @@ func TestConfigShowSaysEachBackend(t *testing.T) {
 	cfg.Projects["local-1"] = config.ProjectConfig{Name: "mine", WorkingDir: "/w", Backend: "local", PlanDir: "/plans"}
 	cfg.Projects["local-2"] = config.ProjectConfig{Name: "bare", WorkingDir: "/b", Backend: "local"}
 	env, out := testEnv(cfg, &fakeAPI{})
-	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show"}, env); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
@@ -62,7 +62,7 @@ func TestConfigShowSaysEachBackend(t *testing.T) {
 	}
 
 	env, out = testEnv(cfg, &fakeAPI{})
-	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var got configDoc
@@ -81,8 +81,8 @@ func TestConfigShowSaysEachBackend(t *testing.T) {
 func TestConfigShowMarkdownWithNoProjects(t *testing.T) {
 	env, out := testEnv(config.Config{}, &fakeAPI{})
 
-	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
-		t.Fatalf("config-show: %v", err)
+	if err := Run(context.Background(), []string{"config", "show"}, env); err != nil {
+		t.Fatalf("config show: %v", err)
 	}
 	if !strings.Contains(out.String(), "_none_") {
 		t.Errorf("output = %q, want it to say there are no projects", out.String())
@@ -92,8 +92,8 @@ func TestConfigShowMarkdownWithNoProjects(t *testing.T) {
 func TestConfigShowJSON(t *testing.T) {
 	env, out := testEnv(fullConfig(), &fakeAPI{})
 
-	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
-		t.Fatalf("config-show --json: %v", err)
+	if err := Run(context.Background(), []string{"config", "show", "--json"}, env); err != nil {
+		t.Fatalf("config show --json: %v", err)
 	}
 	var got configDoc
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -118,7 +118,7 @@ func TestConfigShowJSON(t *testing.T) {
 func TestConfigShowRefusesArguments(t *testing.T) {
 	env, _ := testEnv(fullConfig(), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"config-show", "extra"}, env)
+	err := Run(context.Background(), []string{"config", "show", "extra"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "takes no arguments") {
 		t.Errorf("err = %v, want 'takes no arguments'", err)
@@ -128,7 +128,7 @@ func TestConfigShowRefusesArguments(t *testing.T) {
 func TestConfigShowRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(fullConfig(), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"config-show", "--bogus"}, env)
+	err := Run(context.Background(), []string{"config", "show", "--bogus"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -140,7 +140,7 @@ func TestConfigShowReportsNoConfiguration(t *testing.T) {
 	env, _ := testEnv(config.Config{}, &fakeAPI{})
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, nil }
 
-	err := Run(context.Background(), []string{"config-show"}, env)
+	err := Run(context.Background(), []string{"config", "show"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no configuration yet") {
 		t.Errorf("err = %v, want 'no configuration yet'", err)
@@ -152,7 +152,7 @@ func TestConfigShowReportsAFailedLoad(t *testing.T) {
 	env, _ := testEnv(config.Config{}, &fakeAPI{})
 	env.Load = func() (config.Config, bool, error) { return config.Config{}, false, want }
 
-	err := Run(context.Background(), []string{"config-show"}, env)
+	err := Run(context.Background(), []string{"config", "show"}, env)
 
 	if !errors.Is(err, want) {
 		t.Errorf("err = %v, want %v", err, want)
@@ -166,7 +166,7 @@ func TestConfigShowListsRuns(t *testing.T) {
 	runs := []config.RunCommand{{Label: "Run", Command: "make run", Scope: "slice"}, {Label: "Play", Command: "./play"}}
 	cfg.Projects["game"] = config.ProjectConfig{Name: "game", WorkingDir: "/g", Runs: runs}
 	env, out := testEnv(cfg, &fakeAPI{})
-	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show"}, env); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{`  - run "Run" (slice): make run`, `  - run "Play" (global+slice): ./play`} {
@@ -176,7 +176,7 @@ func TestConfigShowListsRuns(t *testing.T) {
 	}
 
 	env, out = testEnv(cfg, &fakeAPI{})
-	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var got configDoc
@@ -196,7 +196,7 @@ func TestConfigShowSaysEachColor(t *testing.T) {
 	cfg := fullConfig()
 	cfg.Projects["local-1"] = config.ProjectConfig{Name: "mine", WorkingDir: "/w", Backend: "local", Color: "teal"}
 	env, out := testEnv(cfg, &fakeAPI{})
-	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show"}, env); err != nil {
 		t.Fatal(err)
 	}
 	if want := `local-1 (mine): backend=local working_dir="/w" color=teal` + "\n"; !strings.Contains(out.String(), want) {
@@ -207,7 +207,7 @@ func TestConfigShowSaysEachColor(t *testing.T) {
 	}
 
 	env, out = testEnv(cfg, &fakeAPI{})
-	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var got configDoc
@@ -230,7 +230,7 @@ func TestConfigShowSaysEachProjectSetting(t *testing.T) {
 		SliceAgent: config.AgentModel{Model: "opus"}, WorkshopAgent: config.AgentModel{Effort: "low"},
 		MergeMethod: "squash", DeleteBranch: true, BaseBranch: "develop"}
 	env, out := testEnv(cfg, &fakeAPI{})
-	if err := Run(context.Background(), []string{"config-show"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show"}, env); err != nil {
 		t.Fatal(err)
 	}
 	want := `set-1 (set): backend=notion working_dir="/s" tag=ST slice_agent=model="opus",effort="" ` +
@@ -240,7 +240,7 @@ func TestConfigShowSaysEachProjectSetting(t *testing.T) {
 	}
 
 	env, out = testEnv(cfg, &fakeAPI{})
-	if err := Run(context.Background(), []string{"config-show", "--json"}, env); err != nil {
+	if err := Run(context.Background(), []string{"config", "show", "--json"}, env); err != nil {
 		t.Fatal(err)
 	}
 	var doc struct {

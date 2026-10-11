@@ -2,7 +2,7 @@ import XCTest
 @testable import NatKit
 
 /// A client that answers a plan per project, a tmux reading, a fresh
-/// `nat slice-status` per candidate, and remembers every session it was
+/// `nat slice status` per candidate, and remembers every session it was
 /// asked to kill — the whole of what the reaper reads and does.
 final class ReapingClient: MockActivityClient, @unchecked Sendable {
     private let lock = NSLock()

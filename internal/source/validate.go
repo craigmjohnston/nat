@@ -11,7 +11,7 @@ import (
 var tagPattern = regexp.MustCompile(`^[A-Z0-9]{1,3}$`)
 
 // setupIDPattern is what a setup field's id must be: lower-case letters,
-// digits and `-`, since it is passed back as `nat source-setup --id`.
+// digits and `-`, since it is passed back as `nat source setup --id`.
 var setupIDPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 // ValidateDescribe refuses a describe nat could not draw: a tag outside the

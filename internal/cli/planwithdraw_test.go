@@ -23,8 +23,8 @@ func TestPlanWithdrawRemovesTheProposal(t *testing.T) {
 	nudges := nudgeCounter(&env)
 	out.Reset()
 
-	if err := Run(context.Background(), []string{"plan-withdraw", "--workspace", "ws-1", "--json"}, env); err != nil {
-		t.Fatalf("plan-withdraw: %v", err)
+	if err := Run(context.Background(), []string{"plan", "withdraw", "--workspace", "ws-1", "--json"}, env); err != nil {
+		t.Fatalf("plan withdraw: %v", err)
 	}
 	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("proposal file still there: %v", err)
@@ -38,8 +38,8 @@ func TestPlanWithdrawRemovesTheProposal(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := Run(context.Background(), []string{"plan-withdraw", "--workspace", "ws-1"}, env); err != nil {
-		t.Fatalf("plan-withdraw with none: %v", err)
+	if err := Run(context.Background(), []string{"plan", "withdraw", "--workspace", "ws-1"}, env); err != nil {
+		t.Fatalf("plan withdraw with none: %v", err)
 	}
 	if *nudges != 1 {
 		t.Errorf("nudges = %d, want none for nothing withdrawn", *nudges)
@@ -56,18 +56,18 @@ func TestPlanWithdrawByProject(t *testing.T) {
 	proposeToProject(t, env, id, validProposalDoc)
 	out.Reset()
 
-	if err := Run(context.Background(), []string{"plan-withdraw", "--project", id}, env); err != nil {
-		t.Fatalf("plan-withdraw --project: %v", err)
+	if err := Run(context.Background(), []string{"plan", "withdraw", "--project", id}, env); err != nil {
+		t.Fatalf("plan withdraw --project: %v", err)
 	}
 	if want := "Withdrew the proposal for " + id + ".\n"; out.String() != want {
 		t.Errorf("out = %q, want %q", out.String(), want)
 	}
 	out.Reset()
-	if err := Run(context.Background(), []string{"plan-proposal", "--project", id}, env); err != nil {
+	if err := Run(context.Background(), []string{"plan", "proposal", "--project", id}, env); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), `"proposal": null`) && !strings.Contains(out.String(), `"proposal":null`) {
-		t.Errorf("plan-proposal = %q, want null", out.String())
+		t.Errorf("plan proposal = %q, want null", out.String())
 	}
 }
 
@@ -82,8 +82,8 @@ func TestPlanWithdrawLeavesAClaimedProposal(t *testing.T) {
 	}
 	out.Reset()
 
-	if err := Run(context.Background(), []string{"plan-withdraw", "--workspace", "ws-1", "--json"}, env); err != nil {
-		t.Fatalf("plan-withdraw: %v", err)
+	if err := Run(context.Background(), []string{"plan", "withdraw", "--workspace", "ws-1", "--json"}, env); err != nil {
+		t.Fatalf("plan withdraw: %v", err)
 	}
 	if _, err := os.Stat(claimed.claimed); err != nil {
 		t.Errorf("claimed proposal touched: %v", err)
@@ -96,17 +96,17 @@ func TestPlanWithdrawLeavesAClaimedProposal(t *testing.T) {
 func TestPlanWithdrawRefusals(t *testing.T) {
 	env, _, _ := acceptEnv(t)
 	cases := map[string][]string{
-		"neither":      {"plan-withdraw"},
-		"both":         {"plan-withdraw", "--workspace", "ws-1", "--project", "p1"},
-		"extra args":   {"plan-withdraw", "--workspace", "ws-1", "stray"},
-		"unknown flag": {"plan-withdraw", "--workspace", "ws-1", "--nope"},
+		"neither":      {"plan", "withdraw"},
+		"both":         {"plan", "withdraw", "--workspace", "ws-1", "--project", "p1"},
+		"extra args":   {"plan", "withdraw", "--workspace", "ws-1", "stray"},
+		"unknown flag": {"plan", "withdraw", "--workspace", "ws-1", "--nope"},
 	}
 	for name, args := range cases {
 		if err := Run(context.Background(), args, env); err == nil {
 			t.Errorf("%s: want a refusal", name)
 		}
 	}
-	if err := Run(context.Background(), []string{"plan-withdraw", "--workspace", "ws-1", "--project", "p1"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "withdraw", "--workspace", "ws-1", "--project", "p1"}, env); err == nil ||
 		!strings.Contains(err.Error(), "exactly one of --workspace or --project") {
 		t.Errorf("err = %v, want the refusal naming exactly one of the two", err)
 	}
@@ -119,7 +119,7 @@ func TestPlanWithdrawRefusals(t *testing.T) {
 	if path, _ := proposalPath("stuck"); path != filepath.Join(dir, "proposals", "stuck.json") {
 		t.Fatalf("proposal path = %q, the test's assumption no longer holds", path)
 	}
-	if err := Run(context.Background(), []string{"plan-withdraw", "--workspace", "stuck"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "withdraw", "--workspace", "stuck"}, env); err == nil ||
 		!strings.Contains(err.Error(), "withdraw the proposal") {
 		t.Errorf("err = %v, want the removal's failure", err)
 	}
@@ -127,7 +127,7 @@ func TestPlanWithdrawRefusals(t *testing.T) {
 	prev := stateDir
 	stateDir = func() (string, error) { return "", errors.New("no state dir") }
 	defer func() { stateDir = prev }()
-	if err := Run(context.Background(), []string{"plan-withdraw", "--workspace", "ws-1"}, env); err == nil ||
+	if err := Run(context.Background(), []string{"plan", "withdraw", "--workspace", "ws-1"}, env); err == nil ||
 		!strings.Contains(err.Error(), "resolve the proposal file") {
 		t.Errorf("err = %v, want refused at the proposal file", err)
 	}

@@ -125,7 +125,7 @@ public struct AttentionItem: Hashable, Sendable {
 
 /// Everything in a project waiting on the user, read off the same facts the
 /// rail is built from: the plan's slices, the live tmux map, the project's
-/// `pr-status` reading, the planning agent and the active project's ad hoc
+/// `pr status` reading, the planning agent and the active project's ad hoc
 /// sessions. Pure, on the `buildRailModel` pattern. Ordered by kind, then by
 /// plan order, then sessions, then the planning agent.
 ///
@@ -140,7 +140,7 @@ public struct AttentionItem: Hashable, Sendable {
 /// - **waiting** — its agent waiting for input;
 /// - **review** — handed back, no pull request yet (stage `review`);
 /// - **checksFailed** — at the PR stage, read failing, and **no live agent**:
-///   with one, `pr-status` has already sent the failure to it in the same
+///   with one, `pr status` has already sent the failure to it in the same
 ///   reading (`actions.NoticeFailingChecks`), so it is never the user's —
 ///   not even for the one plan read before `resumed` lands;
 /// - **conflict** — at the PR stage, conflicting, and no live agent (the

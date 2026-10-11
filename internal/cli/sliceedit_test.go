@@ -14,7 +14,7 @@ import (
 )
 
 // editableAPI answers with one Todo slice carrying an existing brief of two
-// blocks, which is what slice-edit has to clear before it writes the new one.
+// blocks, which is what slice edit has to clear before it writes the new one.
 func editableAPI() *fakeAPI {
 	return &fakeAPI{
 		pages: map[string][]notion.Page{
@@ -33,10 +33,10 @@ func TestSliceEditReplacesTheBrief(t *testing.T) {
 	env.Nudge = func() { nudges++ }
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "The new brief.", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "The new brief.", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-edit: %v", err)
+		t.Fatalf("slice edit: %v", err)
 	}
 
 	if len(api.blockReads) != 1 || api.blockReads[0] != testSliceID {
@@ -65,10 +65,10 @@ func TestSliceEditReadsTheDescriptionFromStdin(t *testing.T) {
 	env.In = strings.NewReader("Piped in brief.")
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "-", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "-", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-edit: %v", err)
+		t.Fatalf("slice edit: %v", err)
 	}
 	if got := blockTexts(t, api.appends[0].children); !equalLines(got, []string{"paragraph: Piped in brief."}) {
 		t.Errorf("blocks = %v, want the piped-in brief", got)
@@ -80,10 +80,10 @@ func TestSliceEditJSON(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "The new brief.", "--json", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "The new brief.", "--json", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-edit --json: %v", err)
+		t.Fatalf("slice edit --json: %v", err)
 	}
 	var got sliceEditedJSON
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
@@ -107,10 +107,10 @@ func TestSliceEditReportsTheSlicesOwnRepo(t *testing.T) {
 	env, out := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "New text.", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-edit: %v", err)
+		t.Fatalf("slice edit: %v", err)
 	}
 	if !strings.Contains(out.String(), "Working directory: custom/repo/path") {
 		t.Errorf("output missing the slice's own repo:\n%s", out.String())
@@ -120,7 +120,7 @@ func TestSliceEditReportsTheSlicesOwnRepo(t *testing.T) {
 func TestSliceEditRefusesNoDescription(t *testing.T) {
 	env, _ := testEnv(testConfig(t), editableAPI())
 
-	err := Run(context.Background(), []string{"slice-edit", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "edit", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "nothing to edit: pass --title, --description") {
 		t.Errorf("err = %v, want it refused as nothing to edit", err)
@@ -136,7 +136,7 @@ func TestSliceEditRefusesInProgress(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "New text.", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "in progress") {
 		t.Errorf("err = %v, want 'in progress'", err)
@@ -156,14 +156,14 @@ func TestSliceEditRefusesDone(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "New text.", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "already Done") {
 		t.Errorf("err = %v, want 'already Done'", err)
 	}
 }
 
-// A push to the workspace that fails does not fail slice-edit: the brief
+// A push to the workspace that fails does not fail slice edit: the brief
 // already landed in the local plan file, so the command reports success and
 // leaves the slice dirty for the next sync to resend.
 func TestSliceEditLeavesTheSliceDirtyOnAFailedPush(t *testing.T) {
@@ -184,10 +184,10 @@ func TestSliceEditLeavesTheSliceDirtyOnAFailedPush(t *testing.T) {
 			env, out := testEnv(testConfig(t), api)
 
 			err := Run(context.Background(), []string{
-				"slice-edit", testSliceID, "--description", "New text.", "--project", "project-1",
+				"slice", "edit", testSliceID, "--description", "New text.", "--project", "project-1",
 			}, env)
 			if err != nil {
-				t.Fatalf("slice-edit: %v", err)
+				t.Fatalf("slice edit: %v", err)
 			}
 			if out.Len() == 0 {
 				t.Errorf("output = %q, want the edit reported despite the failed push", out.String())
@@ -216,7 +216,7 @@ func TestSliceEditLeavesTheSliceDirtyOnAFailedPush(t *testing.T) {
 func TestSliceEditRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-edit", "--description", "x", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "edit", "--description", "x", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "want exactly one") {
 		t.Errorf("err = %v, want 'want exactly one'", err)
@@ -227,7 +227,7 @@ func TestSliceEditRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "x", "--bogus", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "x", "--bogus", "--project", "project-1",
 	}, env)
 
 	var usage *UsageError
@@ -239,7 +239,7 @@ func TestSliceEditRefusesAnUnknownFlag(t *testing.T) {
 func TestSliceEditRefusesAnInvalidSliceID(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-edit", "not-a-uuid", "--description", "x", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "edit", "not-a-uuid", "--description", "x", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
 		t.Errorf("err = %v, want 'not a slice'", err)
@@ -250,7 +250,7 @@ func TestSliceEditRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "x", "--project", "nope",
+		"slice", "edit", testSliceID, "--description", "x", "--project", "nope",
 	}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
@@ -267,7 +267,7 @@ func TestSliceEditReportsAFailedHydrate(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "x", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "x", "--project", "project-1",
 	}, env)
 
 	if !errors.Is(err, boom) {
@@ -287,11 +287,11 @@ func TestSliceEditReportsAFailedLocalWrite(t *testing.T) {
 	env, _ := testEnv(cfg, &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "x", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "x", "--project", "project-1",
 	}, env)
 
 	if err == nil {
-		t.Error("slice-edit over a plan that cannot write the brief: want an error")
+		t.Error("slice edit over a plan that cannot write the brief: want an error")
 	}
 }
 
@@ -300,7 +300,7 @@ func TestSliceEditReportsAFailedRead(t *testing.T) {
 	env, _ := testEnv(testConfig(t), api)
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "x", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "x", "--project", "project-1",
 	}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
@@ -314,7 +314,7 @@ func TestSliceEditRefusesAnUnreadableStdin(t *testing.T) {
 	env.In = errReader{err: fmt.Errorf("boom")}
 
 	err := Run(context.Background(), []string{
-		"slice-edit", testSliceID, "--description", "-", "--project", "project-1",
+		"slice", "edit", testSliceID, "--description", "-", "--project", "project-1",
 	}, env)
 	if err == nil || !strings.Contains(err.Error(), "read the description") {
 		t.Errorf("err = %v, want the failed stdin read named", err)

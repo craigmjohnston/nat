@@ -1,6 +1,6 @@
 import Foundation
 
-/// The slice `nat slice-edit --json` reports having edited: the page it wrote
+/// The slice `nat slice edit --json` reports having edited: the page it wrote
 /// to and the brief that landed on it, so the caller can see exactly what was
 /// saved rather than trust the write went through (mirrors
 /// `internal/cli/sliceedit.go`'s `sliceEditedJSON`).

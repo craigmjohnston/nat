@@ -71,24 +71,24 @@ func TestEveryProjectScopedCommandTakesAProjectFlag(t *testing.T) {
 		touched string
 	}{
 		{name: "info", args: []string{"info"}, touched: otherProjectID},
-		{name: "next-slice", args: []string{"next-slice"}, touched: "other-ds"},
-		{name: "start-slice", args: []string{"start-slice", otherTodoID}, touched: "other-ds"},
-		{name: "milestone-add", args: []string{"milestone-add", "M2: Other"}, touched: "other-ds"},
+		{name: "slice next", args: []string{"slice", "next"}, touched: "other-ds"},
+		{name: "slice start", args: []string{"slice", "start", otherTodoID}, touched: "other-ds"},
+		{name: "milestone add", args: []string{"milestone", "add", "M2: Other"}, touched: "other-ds"},
 		{
-			name:    "slice-add",
-			args:    []string{"slice-add", "Wire it up", "--milestone", "M1: Other"},
+			name:    "slice add",
+			args:    []string{"slice", "add", "Wire it up", "--milestone", "M1: Other"},
 			touched: "other-ds",
 		},
-		{name: "slice-depends", args: []string{"slice-depends", otherTodoID, "--on", otherWorkingID}},
+		{name: "slice depends", args: []string{"slice", "depends", otherTodoID, "--on", otherWorkingID}},
 		{
-			name:    "complete-slice",
-			args:    []string{"complete-slice", otherWorkingID, "--branch", "slice/ship-it", "--summary", "shipped"},
+			name:    "slice complete",
+			args:    []string{"slice", "complete", otherWorkingID, "--branch", "slice/ship-it", "--summary", "shipped"},
 			touched: "other-ds",
 		},
-		{name: "release-slice", args: []string{"release-slice", otherWorkingID}, touched: "other-ds"},
+		{name: "slice release", args: []string{"slice", "release", otherWorkingID}, touched: "other-ds"},
 		{
-			name:    "plan-apply",
-			args:    []string{"plan-apply"},
+			name:    "plan apply",
+			args:    []string{"plan", "apply"},
 			in:      `{"milestones": [{"name": "M2: Other"}]}`,
 			touched: "other-ds",
 		},
@@ -155,7 +155,7 @@ func touches(ids []string, want string) bool {
 
 // A project the config does not hold is refused before anything is read, and
 // the refusal lists the projects it does hold — the same refusal --project
-// already gave on plan-apply, now given by every command that takes the flag.
+// already gave on plan apply, now given by every command that takes the flag.
 func TestProjectFlagRefusesAProjectTheConfigDoesNotHold(t *testing.T) {
 	api := everyCommandAPI(t)
 	env, out := testEnv(everyCommandConfig(t), api)
@@ -183,14 +183,14 @@ func TestProjectFlagRefusesAProjectTheConfigDoesNotHold(t *testing.T) {
 func TestWithoutTheFlagEveryProjectScopedCommandIsRefused(t *testing.T) {
 	for _, args := range [][]string{
 		{"info"},
-		{"next-slice"},
-		{"start-slice", otherTodoID},
-		{"milestone-add", "M2: Other"},
-		{"slice-add", "Wire it up", "--milestone", "M1: Other"},
-		{"slice-depends", otherTodoID, "--on", otherWorkingID},
-		{"complete-slice", otherWorkingID, "--branch", "slice/ship-it"},
-		{"release-slice", otherWorkingID},
-		{"plan-apply"},
+		{"slice", "next"},
+		{"slice", "start", otherTodoID},
+		{"milestone", "add", "M2: Other"},
+		{"slice", "add", "Wire it up", "--milestone", "M1: Other"},
+		{"slice", "depends", otherTodoID, "--on", otherWorkingID},
+		{"slice", "complete", otherWorkingID, "--branch", "slice/ship-it"},
+		{"slice", "release", otherWorkingID},
+		{"plan", "apply"},
 	} {
 		t.Run(args[0], func(t *testing.T) {
 			api := everyCommandAPI(t)
@@ -234,9 +234,9 @@ func TestWithoutTheFlagAnUnreadableConfigStillNamesTheFlag(t *testing.T) {
 func TestAProjectScopedCommandNamesTheProjectItRanAgainst(t *testing.T) {
 	env, out := testEnv(everyCommandConfig(t), everyCommandAPI(t))
 
-	args := []string{"start-slice", otherTodoID, "--project", otherProjectID}
+	args := []string{"slice", "start", otherTodoID, "--project", otherProjectID}
 	if err := Run(context.Background(), args, env); err != nil {
-		t.Fatalf("start-slice: %v", err)
+		t.Fatalf("slice start: %v", err)
 	}
 
 	if !strings.Contains(out.String(), "- Project: other") {

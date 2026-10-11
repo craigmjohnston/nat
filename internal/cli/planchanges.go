@@ -10,7 +10,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
-// planMove refiles a slice the project already has, as `nat slice-move` does:
+// planMove refiles a slice the project already has, as `nat slice move` does:
 // Slice names it by title, Milestone the milestone it goes under — one the
 // project has, or one the same document creates.
 type planMove struct {
@@ -19,7 +19,7 @@ type planMove struct {
 }
 
 // planEdit retitles a slice the project already has, replaces its brief, or
-// both, as `nat slice-edit` does: Title is the new title, Description the
+// both, as `nat slice edit` does: Title is the new title, Description the
 // whole new body, not an append. Each is optional, but not both. Title is
 // omitted when empty, so a proposal written before it existed round-trips
 // unchanged; Description is not, since the app reads it as always present.
@@ -288,7 +288,7 @@ func applyMoves(ctx context.Context, st store.Store, moves []resolvedMove, appli
 }
 
 // applyRemovals drops every wait on a removed slice, then removes each one as
-// slice-delete does.
+// slice delete does.
 func applyRemovals(ctx context.Context, st store.Store, changes planChanges, applied *appliedPlan) error {
 	for _, s := range changes.unhooked {
 		if _, err := st.SetDependencies(ctx, s.ID, s.DependsOn); err != nil {

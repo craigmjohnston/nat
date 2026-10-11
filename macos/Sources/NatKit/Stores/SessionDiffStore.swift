@@ -1,6 +1,6 @@
 import Foundation
 
-/// An ad hoc session's Diff tab: fetching `nat session-diff` on demand and
+/// An ad hoc session's Diff tab: fetching `nat session diff` on demand and
 /// the screen's own viewed/collapsed marks over it — `DiffStore`'s own
 /// shape, cut down to what a session's diff actually is. A session has no
 /// hand-back to approve and no review to leave comments into (there is no
@@ -24,7 +24,7 @@ public final class SessionDiffStore {
     }
 
     /// Fetch a session's diff of `branch` — nil for the worktree's own
-    /// checked-out one, `session-diff`'s default — unless one is already
+    /// checked-out one, `session diff`'s default — unless one is already
     /// loaded (or loading) for that same session and branch; mirrors
     /// `DiffStore.fetch(projectID:sliceRef:)`. A different session or branch
     /// is a different diff: what was on screen goes, and so do the viewed and

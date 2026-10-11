@@ -36,8 +36,8 @@ func exists(path string) bool {
 func TestReleaseSliceForgetsTheSession(t *testing.T) {
 	env, _ := releaseEnv(t, releasableAPI())
 	path := leaveRecord(t, agent.SessionName(sliceID))
-	if err := Run(context.Background(), []string{"release-slice", sliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("release-slice: %v", err)
+	if err := Run(context.Background(), []string{"slice", "release", sliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice release: %v", err)
 	}
 	if exists(path) {
 		t.Error("the released slice's session record is still there")
@@ -52,9 +52,9 @@ func TestAgentKillKeepsOnlyASliceRecord(t *testing.T) {
 		args               []string
 		keep               bool
 	}{
-		{"slice", testSliceID, "nat-slice-kill", []string{"agent-kill", testSliceID, "--project", "project-1"}, true},
-		{"planning", agent.PlanTag("project-1"), "nat-plan-kill", []string{"agent-kill", "--workshop", "--project", "project-1"}, false},
-		{"ad hoc", agent.SessionTag("project-1", "s1"), "nat-session-kill", []string{"agent-kill", agent.SessionTag("project-1", "s1"), "--project", "project-1"}, false},
+		{"slice", testSliceID, "nat-slice-kill", []string{"agent", "kill", testSliceID, "--project", "project-1"}, true},
+		{"planning", agent.PlanTag("project-1"), "nat-plan-kill", []string{"agent", "kill", "--workshop", "--project", "project-1"}, false},
+		{"ad hoc", agent.SessionTag("project-1", "s1"), "nat-session-kill", []string{"agent", "kill", agent.SessionTag("project-1", "s1"), "--project", "project-1"}, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
@@ -62,7 +62,7 @@ func TestAgentKillKeepsOnlyASliceRecord(t *testing.T) {
 			runner := &agentTestRunner{liveSessions: map[string]string{tt.tag: tt.session}}
 			env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 			if err := Run(context.Background(), tt.args, env); err != nil {
-				t.Fatalf("agent-kill: %v", err)
+				t.Fatalf("agent kill: %v", err)
 			}
 			if exists(path) != tt.keep {
 				t.Errorf("record kept = %v, want %v", exists(path), tt.keep)

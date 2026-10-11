@@ -30,13 +30,13 @@ func TestSliceLaunchRefusesDone(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-launch", testSliceID, "--project", "project-1",
+		"slice", "launch", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("slice-launch: expected error for Done slice")
+		t.Errorf("slice launch: expected error for Done slice")
 	}
 	if !strings.Contains(err.Error(), "Done") {
-		t.Errorf("slice-launch error: %v, want 'Done'", err)
+		t.Errorf("slice launch error: %v, want 'Done'", err)
 	}
 }
 
@@ -46,13 +46,13 @@ func TestSliceLaunchRefusesWrongArgumentCount(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-launch", "--project", "project-1",
+		"slice", "launch", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("slice-launch: expected error for missing slice")
+		t.Errorf("slice launch: expected error for missing slice")
 	}
 	if !strings.Contains(err.Error(), "want exactly one") {
-		t.Errorf("slice-launch error: %v, want 'want exactly one'", err)
+		t.Errorf("slice launch error: %v, want 'want exactly one'", err)
 	}
 }
 
@@ -73,13 +73,13 @@ func TestSliceLaunchRefusesBlocked(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-launch", testSliceID, "--project", "project-1",
+		"slice", "launch", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("slice-launch: expected error for blocked slice")
+		t.Errorf("slice launch: expected error for blocked slice")
 	}
 	if !strings.Contains(err.Error(), "waits on") {
-		t.Errorf("slice-launch error: %v, want 'waits on'", err)
+		t.Errorf("slice launch error: %v, want 'waits on'", err)
 	}
 }
 
@@ -98,13 +98,13 @@ func TestSliceLaunchRefusesAlreadyRunning(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-launch", testSliceID, "--project", "project-1",
+		"slice", "launch", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("slice-launch: expected error for already running slice")
+		t.Errorf("slice launch: expected error for already running slice")
 	}
 	if !strings.Contains(err.Error(), "already has a live session") {
-		t.Errorf("slice-launch error: %v, want 'already has a live session'", err)
+		t.Errorf("slice launch error: %v, want 'already has a live session'", err)
 	}
 }
 
@@ -121,20 +121,20 @@ func TestSliceLaunchRefusesNoAssignee(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-launch", testSliceID, "--project", "project-1",
+		"slice", "launch", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("slice-launch: expected error for missing assignee")
+		t.Errorf("slice launch: expected error for missing assignee")
 	}
 	if !strings.Contains(err.Error(), "no assignee") {
-		t.Errorf("slice-launch error: %v, want 'no assignee'", err)
+		t.Errorf("slice launch error: %v, want 'no assignee'", err)
 	}
 }
 
 func TestSliceLaunchRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -145,7 +145,7 @@ func TestSliceLaunchRefusesAnUnknownFlag(t *testing.T) {
 func TestSliceLaunchRefusesAnInvalidSliceID(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-launch", "not-a-uuid", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", "not-a-uuid", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
 		t.Errorf("err = %v, want 'not a slice'", err)
@@ -155,7 +155,7 @@ func TestSliceLaunchRefusesAnInvalidSliceID(t *testing.T) {
 func TestSliceLaunchRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -166,7 +166,7 @@ func TestSliceLaunchReportsAFailedRead(t *testing.T) {
 	api := &fakeAPI{getErr: errors.New("notion is down")}
 	env, _ := testEnv(testClaimConfig(t), api)
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "load the slice") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -178,7 +178,7 @@ func TestSliceLaunchReportsAFailedRead(t *testing.T) {
 // filled in.
 // The plan read this used to survive — falling back to no milestone digest —
 // is now the same read [store.ForProject] makes to hydrate the local plan in
-// the first place, before slice-launch reads the slice at all: a workspace
+// the first place, before slice launch reads the slice at all: a workspace
 // that will not answer it fails the whole command, not just the digest.
 func TestSliceLaunchFailsWhenThePlanCannotBeHydrated(t *testing.T) {
 	dir := t.TempDir()
@@ -194,7 +194,7 @@ func TestSliceLaunchFailsWhenThePlanCannotBeHydrated(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "notion: 500") {
 		t.Fatalf("err = %v, want the failed hydrate reported", err)
 	}
@@ -227,9 +227,9 @@ func TestSliceLaunchGoesAheadWithoutADigestWhenThatSecondPlanReadFails(t *testin
 	var out strings.Builder
 	env.Out = &out
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-launch: %v, want it to launch anyway with no digest", err)
+		t.Fatalf("slice launch: %v, want it to launch anyway with no digest", err)
 	}
 	if len(runner.launchArgs) == 0 {
 		t.Error("want the agent launched despite the failed digest read")
@@ -259,10 +259,10 @@ func TestSliceLaunchReportsALaunchThatClaimedNothing(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil {
-		t.Fatal("slice-launch over a plan that cannot claim the slice: want an error")
+		t.Fatal("slice launch over a plan that cannot claim the slice: want an error")
 	}
 	if len(runner.launchArgs) != 0 {
 		t.Error("want no agent launched: the claim never landed")
@@ -292,9 +292,9 @@ func TestSliceLaunchClaimsAndLaunches(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-launch: %v", err)
+		t.Fatalf("slice launch: %v", err)
 	}
 
 	wantSession := agent.SessionName(testSliceID)
@@ -322,9 +322,9 @@ func TestSliceLaunchClaimsAndLaunches(t *testing.T) {
 	}
 }
 
-// The bug this pins down: slice-launch built its PromptContext from the
+// The bug this pins down: slice launch built its PromptContext from the
 // project's ID, the slice and the working directory alone, so the prompt told
-// the agent it was working a slice of the "" project and that start-slice
+// the agent it was working a slice of the "" project and that slice start
 // "claims the slice for  and prints your brief". The board's own launch fills
 // in the project and the assignee, and the headless launch must hand
 // [agent.Prompt] — whose output the golden files in internal/agent/testdata
@@ -342,9 +342,9 @@ func TestSliceLaunchWritesTheFullPromptContext(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-launch: %v", err)
+		t.Fatalf("slice launch: %v", err)
 	}
 
 	argv := strings.Join(runner.launchArgs, " ")
@@ -369,7 +369,7 @@ func TestSliceLaunchWritesTheFullPromptContext(t *testing.T) {
 	}
 }
 
-// A hand-run slice-launch with no --frontend claims nothing about where the
+// A hand-run slice launch with no --frontend claims nothing about where the
 // user is; --frontend gnat carries that claim straight into the prompt, the
 // same one gnat's own NatClient passes on every launch.
 func TestSliceLaunchWritesTheFrontendIntoThePrompt(t *testing.T) {
@@ -386,10 +386,10 @@ func TestSliceLaunchWritesTheFrontendIntoThePrompt(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-launch", testSliceID, "--project", "project-1", "--frontend", "gnat",
+		"slice", "launch", testSliceID, "--project", "project-1", "--frontend", "gnat",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-launch: %v", err)
+		t.Fatalf("slice launch: %v", err)
 	}
 
 	argv := strings.Join(runner.launchArgs, " ")
@@ -417,13 +417,13 @@ func TestSliceLaunchRefusesAnInvalidFrontend(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-launch", testSliceID, "--project", "project-1", "--frontend", "web",
+		"slice", "launch", testSliceID, "--project", "project-1", "--frontend", "web",
 	}, env)
 	if err == nil {
-		t.Fatal("slice-launch: expected error for an invalid --frontend value")
+		t.Fatal("slice launch: expected error for an invalid --frontend value")
 	}
 	if !strings.Contains(err.Error(), "--frontend") {
-		t.Errorf("slice-launch error: %v, want it to name --frontend", err)
+		t.Errorf("slice launch error: %v, want it to name --frontend", err)
 	}
 	if len(api.updates) != 0 {
 		t.Errorf("updates = %+v, want nothing claimed for a refused launch", api.updates)
@@ -444,10 +444,10 @@ func TestSliceLaunchModelFlagsOverrideConfig(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"slice-launch", testSliceID, "--model", "opus", "--effort", "xhigh", "--project", "project-1",
+		"slice", "launch", testSliceID, "--model", "opus", "--effort", "xhigh", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Fatalf("slice-launch: %v", err)
+		t.Fatalf("slice launch: %v", err)
 	}
 
 	argv := strings.Join(runner.launchArgs, " ")
@@ -473,9 +473,9 @@ func TestSliceLaunchCarriesTheAutoTheme(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-launch: %v", err)
+		t.Fatalf("slice launch: %v", err)
 	}
 
 	argv := strings.Join(runner.launchArgs, " ")
@@ -494,9 +494,9 @@ func TestSliceLaunchJSON(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--json", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--json", "--project", "project-1"}, env)
 	if err != nil {
-		t.Fatalf("slice-launch --json: %v", err)
+		t.Fatalf("slice launch --json: %v", err)
 	}
 
 	var got launchJSON
@@ -530,10 +530,10 @@ func TestSliceLaunchClaimsLocallyAndLaunchesEvenWhenThePushFails(t *testing.T) {
 	env.NewGit = func() GitCLI { return nil }
 	env.NewWorktrees = func() actions.Worktrees { return nil }
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env)
 
 	if err != nil {
-		t.Fatalf("slice-launch: %v, want it to succeed: the claim landed locally even though "+
+		t.Fatalf("slice launch: %v, want it to succeed: the claim landed locally even though "+
 			"the push to the workspace failed", err)
 	}
 	if len(runner.launchArgs) == 0 {
@@ -571,7 +571,7 @@ func TestSliceLaunchReportsATmuxFailure(t *testing.T) {
 	env.NewGit = func() GitCLI { return nil }
 	env.NewWorktrees = func() actions.Worktrees { return nil }
 
-	err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "duplicate session") {
 		t.Errorf("err = %v, want tmux's own failure", err)
@@ -599,8 +599,8 @@ func TestSliceLaunchProjectModelOverridesTheGlobalOne(t *testing.T) {
 	env.NewWorktrees = func() actions.Worktrees { return nil }
 	env.Out = &strings.Builder{}
 
-	if err := Run(context.Background(), []string{"slice-launch", testSliceID, "--project", "project-1"}, env); err != nil {
-		t.Fatalf("slice-launch: %v", err)
+	if err := Run(context.Background(), []string{"slice", "launch", testSliceID, "--project", "project-1"}, env); err != nil {
+		t.Fatalf("slice launch: %v", err)
 	}
 	argv := strings.Join(runner.launchArgs, " ")
 	if !strings.Contains(argv, "--model 'opus'") || !strings.Contains(argv, "--effort 'low'") {

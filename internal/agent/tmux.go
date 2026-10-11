@@ -48,8 +48,8 @@ const sessionIDLen = 8
 const SlicePaneOption = "@nat_slice"
 
 // WaitingPaneOption is the tmux pane option set on an agent's own pane, with
-// `nat agent-waiting`, to say it has stopped and needs the user — and cleared,
-// with `nat agent-working`, once it has its answer. The embedded mod runs both
+// `nat agent waiting`, to say it has stopped and needs the user — and cleared,
+// with `nat agent working`, once it has its answer. The embedded mod runs both
 // from the agent's session, off Claude Code's own events. It is the whole of
 // what [Tmux.Activity] reads a waiting agent from, never the screen. It lives on the pane and nowhere else,
 // so it goes with the pane and a relaunch starts clear.
@@ -549,7 +549,7 @@ func LaunchArgs(session, workdir, promptFile, opening string, m config.AgentMode
 // with. It blocks Claude Code's own update paths in that session, and with
 // them the "Update available! Run: brew upgrade …" line that otherwise shows
 // in every agent pane at once — gnat says once instead that a newer Claude
-// Code exists (`nat claude-version`), and updates it from nat's own process,
+// Code exists (`nat claude version`), and updates it from nat's own process,
 // which this does not reach. Verified live on 2.1.290 under a Homebrew cask:
 // the line shows without it and not with it. DISABLE_AUTOUPDATER leaves the
 // line up, and CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, which also hides
@@ -582,7 +582,7 @@ func agentEnvArgs(session string, sessionEnv bool, slice []string) []string {
 
 // sliceEnv and projectEnv name the slice a session works and the project it
 // is in, set on a slice's session only, beside [inboxEnv]. The embedded mod
-// reads them to run `nat slice-resume` for a prompt the user types at a
+// reads them to run `nat slice resume` for a prompt the user types at a
 // handed-back agent: every nat-driven send resumes the slice before it sends,
 // and the typed prompt is the one only the mod sees.
 const (
@@ -1029,9 +1029,9 @@ func (t *Tmux) pastePrompt(session, text string) error {
 // in session once a prompt has gone to it: an agent that has just been told
 // something is, by definition, no longer waiting on the user, and every reader
 // of presence would otherwise show it waiting until the agent got round to
-// the mod's `nat agent-working` on the turn's start. A pane not waiting is
+// the mod's `nat agent working` on the turn's start. A pane not waiting is
 // left alone, and a flag that cannot be cleared is logged and never fails the
-// send — the mod's agent-working clears it all the same.
+// send — the mod's agent working clears it all the same.
 func (t *Tmux) clearWaiting(session string) {
 	panes, err := t.listPanes("-s", "-t", session)
 	if err != nil {

@@ -22,7 +22,7 @@ import (
 // a plain `git diff` against the merge base, with no second ref, sees the
 // worktree as it stands rather than only its last commit.
 func sessionDiff(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("session-diff", flag.ContinueOnError)
+	flags := flag.NewFlagSet("session diff", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of the raw diff")
 	branchFlag := flags.String("branch", "", "the branch to diff; the worktree's current one if unset")
@@ -32,9 +32,9 @@ func sessionDiff(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("session-diff: want exactly one session ID, given %d", len(rest))
+		return usageErrorf("session diff: want exactly one session ID, given %d", len(rest))
 	}
-	id, err := pageID("session-diff", rest[0])
+	id, err := pageID("session diff", rest[0])
 	if err != nil {
 		return err
 	}

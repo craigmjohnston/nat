@@ -72,7 +72,7 @@ public func truncatedPickerTitle(_ title: String, limit: Int = pickerTitleLimit)
     return String(trimmed.prefix(max(limit - 1, 1))).trimmingCharacters(in: .whitespaces) + "…"
 }
 
-/// The chips for a session's pull requests, in the order `session-status`
+/// The chips for a session's pull requests, in the order `session status`
 /// reported them.
 public func pullRequestChips(_ prs: [SessionPR]) -> [PickerChip] {
     prs.map {

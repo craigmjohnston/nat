@@ -1,6 +1,6 @@
 import Foundation
 
-/// One `config-set` write the settings scene's Save button would make:
+/// One `config set` write the settings scene's Save button would make:
 /// the key exactly as `internal/cli/configset.go` names it, and the value to
 /// write.
 public struct ConfigChange: Equatable, Sendable {
@@ -52,7 +52,7 @@ public struct SettingsFields: Equatable, Sendable {
 
 /// The settings scene's one piece of logic worth testing on its own: diffing
 /// what was loaded against what a person edited, into exactly the
-/// `config-set` writes a Save button should make. The form view stays thin —
+/// `config set` writes a Save button should make. The form view stays thin —
 /// it holds a `SettingsFields` for editing and calls this once, on Save.
 public enum SettingsModel {
     private static let keyPollSeconds = "poll_seconds"
@@ -61,7 +61,7 @@ public enum SettingsModel {
     private static let keySliceModel = "slice_agent.model"
     private static let keySliceEffort = "slice_agent.effort"
 
-    /// The key `config-set` reads a project's working directory from,
+    /// The key `config set` reads a project's working directory from,
     /// mirroring `internal/cli/configset.go`'s own `project.<id>.working_dir`
     /// — written from a project's own settings sheet (`ProjectSettingsModel`),
     /// not from this window.
@@ -69,48 +69,48 @@ public enum SettingsModel {
         "project.\(projectID).working_dir"
     }
 
-    /// The `config-set` key for one project's colour: a palette name, or
+    /// The `config set` key for one project's colour: a palette name, or
     /// `auto` for nat to choose one.
     public static func colorKey(projectID: String) -> String {
         "project.\(projectID).color"
     }
 
-    /// The `config-set` key for one project's name — refused by nat on a
+    /// The `config set` key for one project's name — refused by nat on a
     /// source project, which its plugin names.
     public static func nameKey(projectID: String) -> String {
         "project.\(projectID).name"
     }
 
-    /// The `config-set` key for one project's run commands: the whole list
+    /// The `config set` key for one project's run commands: the whole list
     /// as a JSON array, the empty string for none.
     public static func runsKey(projectID: String) -> String {
         "project.\(projectID).runs"
     }
 
-    /// The `config-set` keys of one project's own model pairs, each half
+    /// The `config set` keys of one project's own model pairs, each half
     /// over the global pair's; the empty string unsets one.
     public static func sliceModelKey(projectID: String) -> String { "project.\(projectID).slice_agent.model" }
     public static func sliceEffortKey(projectID: String) -> String { "project.\(projectID).slice_agent.effort" }
     public static func workshopModelKey(projectID: String) -> String { "project.\(projectID).workshop_agent.model" }
     public static func workshopEffortKey(projectID: String) -> String { "project.\(projectID).workshop_agent.effort" }
 
-    /// The `config-set` key for how a project's pull requests merge: merge,
+    /// The `config set` key for how a project's pull requests merge: merge,
     /// squash or rebase, the empty string for nat's default (merge).
     public static func mergeMethodKey(projectID: String) -> String { "project.\(projectID).merge_method" }
 
-    /// The `config-set` key for whether a merge deletes the branch: true or
+    /// The `config set` key for whether a merge deletes the branch: true or
     /// false.
     public static func deleteBranchKey(projectID: String) -> String { "project.\(projectID).delete_branch" }
 
-    /// The `config-set` key for a project's base branch by name, the empty
+    /// The `config set` key for a project's base branch by name, the empty
     /// string for the repository's own default.
     public static func baseBranchKey(projectID: String) -> String { "project.\(projectID).base_branch" }
 
-    /// The `config-set` key for a project's tag: 1–3 letters or digits, nat
+    /// The `config set` key for a project's tag: 1–3 letters or digits, nat
     /// uppercasing it and refusing anything else; empty derives it.
     public static func tagKey(projectID: String) -> String { "project.\(projectID).tag" }
 
-    /// The `config-set` writes that would carry `edited` onto `original` —
+    /// The `config set` writes that would carry `edited` onto `original` —
     /// one per field that actually changed, nothing for a field left alone.
     /// Order is fixed so a save always writes in the same order twice.
     public static func changes(from original: SettingsFields, to edited: SettingsFields) -> [ConfigChange] {

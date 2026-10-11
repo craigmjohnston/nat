@@ -231,7 +231,7 @@ final class WorkshopReconnectTests: XCTestCase {
         XCTAssertEqual(sent.count, 1)
         XCTAssertTrue(sent.first?.hasPrefix("Split the importer.\n\n") == true, sent.first ?? "")
         XCTAssertTrue(
-            sent.first?.contains("`nat plan-proposal --project \(projectID) --json`") == true, sent.first ?? "")
+            sent.first?.contains("`nat plan proposal --project \(projectID) --json`") == true, sent.first ?? "")
         XCTAssertEqual(model.workshopRequest, "Split the importer.", "the Brief shows what was first sent")
         XCTAssertNotNil(model.planningAgent)
         XCTAssertFalse(model.workshopEnded)

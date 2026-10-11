@@ -55,10 +55,10 @@ func TestPRStatusReadsEveryProjectInOneDocument(t *testing.T) {
 		`"r1":{"p2":` + status("2", "APPROVED") + `}}}}`}
 	env.NewGH = func() GH { return realReading{fakePRReader: &fakePRReader{}, cli: gh.NewWithRunner(runner)} }
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1", "--project", "project-2",
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1", "--project", "project-2",
 		"--project", "project-1", "--detail", "https://github.test/craig/nat/pull/1", "--json"}, env)
 	if err != nil {
-		t.Fatalf("pr-status: %v", err)
+		t.Fatalf("pr status: %v", err)
 	}
 	if len(runner.docs) != 1 {
 		t.Fatalf("ran %d documents, want one", len(runner.docs))
@@ -110,10 +110,10 @@ func TestPRStatusMarkdownOfSeveralProjects(t *testing.T) {
 		}
 	}
 
-	err := Run(context.Background(), []string{"pr-status", "--project", "project-1", "--project", "project-2",
+	err := Run(context.Background(), []string{"pr", "status", "--project", "project-1", "--project", "project-2",
 		"--detail", "https://github.test/craig/nat/pull/1"}, env)
 	if err != nil {
-		t.Fatalf("pr-status: %v", err)
+		t.Fatalf("pr status: %v", err)
 	}
 	for _, line := range []string{
 		"# nat\n\n# Pull requests\n\n- Nat work — ready to merge — ",
@@ -132,8 +132,8 @@ func TestPRStatusMarkdownOfSeveralProjects(t *testing.T) {
 // are each refused before anything is read.
 func TestPRStatusRefusesItsUsage(t *testing.T) {
 	for _, args := range [][]string{
-		{"pr-status", "--project", "project-1", "--detail", "https://github.test/craig/nat/issues/1"},
-		{"pr-status", "--project", "project-1", "extra"},
+		{"pr", "status", "--project", "project-1", "--detail", "https://github.test/craig/nat/issues/1"},
+		{"pr", "status", "--project", "project-1", "extra"},
 	} {
 		env, _ := testEnv(testConfig(t), &fakeAPI{})
 		var usage *UsageError
@@ -142,7 +142,7 @@ func TestPRStatusRefusesItsUsage(t *testing.T) {
 		}
 	}
 	env, _ := testEnv(testConfig(t), &fakeAPI{})
-	if err := Run(context.Background(), []string{"pr-status"}, env); err == nil || !strings.Contains(err.Error(), "project-1") {
+	if err := Run(context.Background(), []string{"pr", "status"}, env); err == nil || !strings.Contains(err.Error(), "project-1") {
 		t.Errorf("err = %v, want the projects this machine tracks listed", err)
 	}
 }
@@ -156,8 +156,8 @@ func TestPRStatusLeavesAnUnparseableURLUnread(t *testing.T) {
 	reader := &fakePRReader{}
 	env.NewGH = func() GH { return reader }
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if reader.calls != 0 || !strings.Contains(out.String(), "Odd link — unread — ") {
 		t.Errorf("calls = %d, output = %q, want nothing asked and the slice unread", reader.calls, out)
@@ -167,7 +167,7 @@ func TestPRStatusLeavesAnUnparseableURLUnread(t *testing.T) {
 // Each session that has not ended rides the reading: its five most recent
 // branches in the repository its origin names, its pull requests in the
 // output — stale where a branch went unread — and kept on disk, where
-// session-list reads them back without asking GitHub. A session whose origin
+// session list reads them back without asking GitHub. A session whose origin
 // is no GitHub repository is asked nothing and reads stale; one with no
 // branch at all, nothing.
 func TestPRStatusReadsSessionBranches(t *testing.T) {
@@ -195,8 +195,8 @@ func TestPRStatusReadsSessionBranches(t *testing.T) {
 	var out strings.Builder
 	env.Out = &out
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1", "--json"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1", "--json"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	var heads []string
 	for _, h := range reader.queries[0].Heads {
@@ -232,20 +232,20 @@ func TestPRStatusReadsSessionBranches(t *testing.T) {
 	reader.calls = 0
 	var listed strings.Builder
 	env.Out = &listed
-	if err := Run(context.Background(), []string{"session-list", "--project", "project-1", "--json"}, env); err != nil {
-		t.Fatalf("session-list: %v", err)
+	if err := Run(context.Background(), []string{"session", "list", "--project", "project-1", "--json"}, env); err != nil {
+		t.Fatalf("session list: %v", err)
 	}
 	var rows []sessionListJSON
 	if err := json.Unmarshal([]byte(listed.String()), &rows); err != nil {
-		t.Fatalf("session-list is not JSON: %v\n%s", err, listed.String())
+		t.Fatalf("session list is not JSON: %v\n%s", err, listed.String())
 	}
 	for _, row := range rows {
 		if row.ID == read && (len(row.PRs) != 1 || row.PRs[0].Number != 4 || !row.PRsStale) {
-			t.Errorf("session-list row = %+v, want the reading kept", row)
+			t.Errorf("session list row = %+v, want the reading kept", row)
 		}
 	}
 	if reader.calls != 0 {
-		t.Errorf("session-list read GitHub %d times, want none", reader.calls)
+		t.Errorf("session list read GitHub %d times, want none", reader.calls)
 	}
 }
 
@@ -313,8 +313,8 @@ func TestPRStatusReadsPullRequestsDespiteUnreadSessions(t *testing.T) {
 	env.NewGH = func() GH { return reader }
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(&agentTestRunner{}) }
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 }
 
@@ -335,9 +335,9 @@ func TestPRStatusKeepsTheBases(t *testing.T) {
 		return &fakePRReader{prs: map[string]gh.PR{"https://github.test/craig/nat/pull/1": release}, detail: &detail}
 	}
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1",
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1",
 		"--detail", "https://github.test/craig/nat/pull/5"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+		t.Fatalf("pr status: %v", err)
 	}
 	want := map[string]string{
 		"https://github.test/craig/nat/pull/99": "old",
@@ -414,8 +414,8 @@ func TestPRStatusLeavesAMergeUnsettledWhenDoneCannotBeWritten(t *testing.T) {
 	}
 	w := withWorktree(&env)
 
-	if err := Run(context.Background(), []string{"pr-status", "--project", "project-1"}, env); err != nil {
-		t.Fatalf("pr-status: %v", err)
+	if err := Run(context.Background(), []string{"pr", "status", "--project", "project-1"}, env); err != nil {
+		t.Fatalf("pr status: %v", err)
 	}
 	if nudges != 0 || len(w.removed) != 0 {
 		t.Errorf("nudges = %d, removed = %+v, want neither", nudges, w.removed)

@@ -7,8 +7,8 @@ import "fmt"
 // than detected, because nothing on the agent's side of a launch — a tmux
 // session, a `nat` subprocess — can tell the two apart on its own.
 //
-// The zero value means unspecified: a hand-run `nat slice-launch` or
-// `nat workshop-launch` with no --frontend flag claims nothing about where
+// The zero value means unspecified: a hand-run `nat slice launch` or
+// `nat workshop launch` with no --frontend flag claims nothing about where
 // the user is, and the prompt it writes reads exactly as it did before this
 // type existed.
 type Frontend string

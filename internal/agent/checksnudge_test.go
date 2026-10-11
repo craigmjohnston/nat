@@ -6,8 +6,8 @@ import (
 )
 
 // The nudge names the pull request, each failed check with its run URL (a
-// check with none by name alone), the pinned slice-checks read, the branch a
-// fix is pushed to and the complete-slice hand-back it ends in — and no `gh`.
+// check with none by name alone), the pinned slice checks read, the branch a
+// fix is pushed to and the slice complete hand-back it ends in — and no `gh`.
 func TestChecksPrompt(t *testing.T) {
 	got := ChecksPrompt(ChecksContext{
 		SliceID: "s1", ProjectID: testProjectID, PRURL: "https://github.test/pr/7", Branch: "slice/red",
@@ -17,12 +17,12 @@ func TestChecksPrompt(t *testing.T) {
 		"checks on your pull request are failing: https://github.test/pr/7",
 		"- test: https://github.test/runs/1\n",
 		"- deploy\n",
-		"nat slice-checks s1 --log --project " + testProjectID,
+		"nat slice checks s1 --log --project " + testProjectID,
 		"shows what a check still running is doing",
-		"nat slice-checks-rerun s1 --check '<check name>' --project " + testProjectID,
+		"nat slice checks rerun s1 --check '<check name>' --project " + testProjectID,
 		"commit on slice/red",
 		"do not push it yourself",
-		"nat complete-slice s1 --branch slice/red --summary '<what you fixed>' --project " + testProjectID,
+		"nat slice complete s1 --branch slice/red --summary '<what you fixed>' --project " + testProjectID,
 		"Never run `gh`",
 	} {
 		if !strings.Contains(got, want) {

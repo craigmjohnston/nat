@@ -77,7 +77,7 @@ final class AppModelExpectationTests: XCTestCase {
         let (appModel, seen) = await started(FixtureNatClient())
         let sent = await appModel.sendBack(slice: waitingSlice, note: "Fix the test.")
         XCTAssertTrue(sent)
-        XCTAssertEqual(seen.calls.map(\.0), ["slice-resume \(waitingID) Fix the test.", "agent-send \(waitingID)"])
+        XCTAssertEqual(seen.calls.map(\.0), ["slice resume \(waitingID) Fix the test.", "agent send \(waitingID)"])
         assertDrawnWorking(appModel, seen)
     }
 
@@ -106,7 +106,7 @@ final class AppModelExpectationTests: XCTestCase {
         await pendDiffComment(appModel)
         let count = try await appModel.sendDiffComments(slice: waitingSlice, handedBack: false)
         XCTAssertEqual(count, 1)
-        XCTAssertEqual(seen.calls.map(\.0), ["agent-send \(waitingID)"])
+        XCTAssertEqual(seen.calls.map(\.0), ["agent send \(waitingID)"])
         assertDrawnWorking(appModel, seen)
     }
 

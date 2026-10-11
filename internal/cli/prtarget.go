@@ -12,7 +12,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/gh"
 )
 
-// prTarget is the pull request a write to one names — pr-comment's, pr-edit's
+// prTarget is the pull request a write to one names — pr comment's, pr edit's
 // — as its command line gave it: a slice's recorded pull request, or, with
 // --session, one of an ad hoc session's, named by URL or number. Settled from
 // the arguments alone, before anything else is read, so a misuse is refused
@@ -86,7 +86,7 @@ func (t prTarget) resolve(ctx context.Context, env Env, projectRef, verb string)
 }
 
 // lookupSession is one of a project's ad hoc sessions by ID — the lookup
-// pr-view --session, pr-comment --session and pr-edit --session share.
+// pr view --session, pr comment --session and pr edit --session share.
 func lookupSession(ctx context.Context, env Env, projectRef, id string) (domain.Session, error) {
 	_, projectID, project, err := env.projectFor(projectRef)
 	if err != nil {
@@ -110,7 +110,7 @@ func lookupSession(ctx context.Context, env Env, projectRef, id string) (domain.
 // sessionHeldPR is the URL of the pull request ref names — by URL, whatever
 // its case, query or trailing slash, or by number — among every pull request
 // the last batched reading kept for the session's branches: exactly what
-// session-list hands gnat to show. False where none matches, a reading that
+// session list hands gnat to show. False where none matches, a reading that
 // has kept nothing for the session included.
 func sessionHeldPR(kept lastReading, sess domain.Session, ref string) (string, bool) {
 	branches := make([]string, 0, len(kept.Sessions[sess.ID]))

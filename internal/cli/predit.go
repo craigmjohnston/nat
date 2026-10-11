@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-// PRBodyEditor is what pr-edit needs of the GitHub CLI: the body of a pull
+// PRBodyEditor is what pr edit needs of the GitHub CLI: the body of a pull
 // request already open replaced, in the slice's repository. It names exactly
 // the one gh call this command makes, the way [PRCommenter] does for
-// pr-comment.
+// pr comment.
 type PRBodyEditor interface {
 	EditPRBody(dir, ref, body string) error
 }
@@ -19,13 +19,13 @@ type PRBodyEditor interface {
 // prEdit replaces the description of the pull request recorded on a slice —
 // the body under its title, as gnat's PR section edits it in place.
 //
-// It is pr-comment line for line: only a slice with a pull request recorded
+// It is pr comment line for line: only a slice with a pull request recorded
 // has one to edit, --session names one of an ad hoc session's instead
 // ([prTarget]), and nothing is written to Notion — the slice's own
 // `PR description` section is what the pull request was opened with, and stays
 // the record of that.
 func prEdit(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("pr-edit", flag.ContinueOnError)
+	flags := flag.NewFlagSet("pr edit", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	body := flags.String("body", stdinRef, "the new description; `-` or absent reads it from stdin")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
@@ -36,18 +36,18 @@ func prEdit(ctx context.Context, args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	target, err := parsePRTarget("pr-edit", *sessionID, rest)
+	target, err := parsePRTarget("pr edit", *sessionID, rest)
 	if err != nil {
 		return err
 	}
 	// The description is settled before anything is read from Notion, so a
-	// pr-edit whose stdin cannot be read fails having written nothing.
+	// pr edit whose stdin cannot be read fails having written nothing.
 	text, err := editText(*body, env.In)
 	if err != nil {
 		return err
 	}
 	if text == "" {
-		return usageErrorf("pr-edit: no description given: pass --body or pipe one in")
+		return usageErrorf("pr edit: no description given: pass --body or pipe one in")
 	}
 
 	workdir, pr, err := target.resolve(ctx, env, *projectRef, "edit")

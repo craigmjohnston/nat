@@ -25,7 +25,7 @@ func noteText(from, text string) string {
 }
 
 // RecordSentBack files review comments on the slice page under a heading of
-// their own, in one append. Comments go on before `slice-rework`'s own
+// their own, in one append. Comments go on before `slice rework`'s own
 // [Notion.ClearBranch] — the same order a hand-back's own note goes on before
 // its status write, for the same reason: a slice already cleared back out of
 // review would read, to the refusal every write here opens with, as a slice
@@ -41,7 +41,7 @@ func (n *Notion) RecordSentBack(ctx context.Context, id, comments string) error 
 
 // RecordResumed files why work on a handed-back slice was taken back up on
 // the slice page under a heading of its own, stamped, in one append — before
-// `slice-resume`'s own [Notion.ClearBranch], for [Notion.RecordSentBack]'s
+// `slice resume`'s own [Notion.ClearBranch], for [Notion.RecordSentBack]'s
 // reason.
 func (n *Notion) RecordResumed(ctx context.Context, id, note string) error {
 	if _, err := n.api.AppendBlockChildren(ctx, id, noteBlocks(notion.ResumedHeading, stamped(clockOr(n.Clock), note))); err != nil {

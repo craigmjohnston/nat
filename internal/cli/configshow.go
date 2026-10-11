@@ -21,7 +21,7 @@ import (
 // in the config file at all — it is read back from the Notion CLI on every
 // request.
 func configShow(args []string, env Env) error {
-	flags := flag.NewFlagSet("config-show", flag.ContinueOnError)
+	flags := flag.NewFlagSet("config show", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	rest, err := parseFlags(flags, args)
@@ -29,7 +29,7 @@ func configShow(args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("config-show: takes no arguments, given %d", len(rest))
+		return usageErrorf("config show: takes no arguments, given %d", len(rest))
 	}
 
 	cfg, found, err := env.Load()
@@ -49,7 +49,7 @@ func configShow(args []string, env Env) error {
 	return err
 }
 
-// agentModelJSON is a model pair as config-show and config-set both print it.
+// agentModelJSON is a model pair as config show and config set both print it.
 type agentModelJSON struct {
 	Model  string `json:"model,omitempty"`
 	Effort string `json:"effort,omitempty"`
@@ -57,7 +57,7 @@ type agentModelJSON struct {
 
 // configProjectJSON is one tracked project's share of the config file: its
 // name, for reading the listing without a second lookup, and its working
-// directory, the one field config-set can change on it.
+// directory, the one field config set can change on it.
 //
 // The backend is always said, even for a Notion project whose config entry
 // leaves it unwritten: what a project's plan is kept in is a fact about it,
@@ -106,7 +106,7 @@ type configDoc struct {
 	SliceAgent        agentModelJSON               `json:"slice_agent"`
 	Projects          map[string]configProjectJSON `json:"projects"`
 	// ScratchProject names the reserved scratch project, so the app finds it
-	// without a second call. Empty until scratch-open has run.
+	// without a second call. Empty until scratch open has run.
 	ScratchProject string `json:"scratch_project,omitempty"`
 }
 

@@ -6,7 +6,7 @@ const U3 = {
     { id: "M31", title: "M31: App parity", done: 1, total: 4, slices: [
       ["todo", "s-stuck", "Release a stuck slice from the app"],
       ["todo", "s-wish", "Show the wishlist in the app"],
-      ["todo", "s-projcmd", "Add project-list and project-open commands"]
+      ["todo", "s-projcmd", "Add project list and project open commands"]
     ] },
     { id: "M32", title: "M32: Review flow", done: 0, total: 2, collapsed: true },
     { id: "M33", title: "M33: Plan commands & Notion cleanup", done: 4, total: 10, slices: [
@@ -15,7 +15,7 @@ const U3 = {
       ["todo", "s-migration", "Remove the migration path"],
       ["todo", "s-depth", "Raise the block depth cap for deeply nested plans"],
       ["todo", "s-seedwish", "Seed a Wishlist section on new project pages"],
-      ["todo", "s-msmove", "Add a milestone-move command"]
+      ["todo", "s-msmove", "Add a milestone move command"]
     ] },
     { id: "M34", title: "M34: Completion checks", done: 0, total: 4, collapsed: true },
     { id: "M35", title: "M35: Docs & versioning", done: 0, total: 2, collapsed: true },
@@ -185,7 +185,7 @@ function U3BriefCard() {
         <span style={{ font: "var(--font-body)", color: "var(--label-tertiary)" }}>Edit…</span>
       </div>
       <div style={{ font: "400 15px/24px var(--font-system)", color: "var(--label-secondary)", textWrap: "pretty" }}>
-        One planning agent exists machine-wide today — agent.PlanSentinel = "plan" and the nat-plan session (internal/agent/tmux.go) — so a workshop session launched on one project reads as the planning agent for every project: the app's AppModel.planningAgent (keyed at the bare sentinel), the workshop pane, the TUI's w, and workshop-launch's refusal of a second all carry it across projects. Scope it per project: the pane tag and status key become project-qualified (e.g. plan:&lt;project page ID&gt;), the session name takes the project ID's tail the way slice sessions take the slice ID's, nat workshop-launch — which already takes --project — refuses a second planning agent for that project only, nat status reports each under its project-qualified key, and the TUI and the app read only the active project's (the app keying planningAgent by active project ID). A pre-upgrade bare "plan" session is still read rather than orphaned — treat it as unscoped legacy that any project may attach. Acceptance: two projects can each run a planning agent at once, switching project tabs never shows another project's workshop session, and Go + macos tests pass.
+        One planning agent exists machine-wide today — agent.PlanSentinel = "plan" and the nat-plan session (internal/agent/tmux.go) — so a workshop session launched on one project reads as the planning agent for every project: the app's AppModel.planningAgent (keyed at the bare sentinel), the workshop pane, the TUI's w, and workshop launch's refusal of a second all carry it across projects. Scope it per project: the pane tag and status key become project-qualified (e.g. plan:&lt;project page ID&gt;), the session name takes the project ID's tail the way slice sessions take the slice ID's, nat workshop launch — which already takes --project — refuses a second planning agent for that project only, nat status reports each under its project-qualified key, and the TUI and the app read only the active project's (the app keying planningAgent by active project ID). A pre-upgrade bare "plan" session is still read rather than orphaned — treat it as unscoped legacy that any project may attach. Acceptance: two projects can each run a planning agent at once, switching project tabs never shows another project's workshop session, and Go + macos tests pass.
       </div>
     </div>
   );

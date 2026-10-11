@@ -18,7 +18,7 @@ import (
 	"github.com/craigmjohnston/nat/internal/subprocess"
 )
 
-// claudeLatestURL is the release feed `claude-version` reads the newest
+// claudeLatestURL is the release feed `claude version` reads the newest
 // Claude Code on the latest channel from: one unauthenticated GitHub REST
 // read, no gh and no token. A var so tests point it at an httptest server.
 var claudeLatestURL = "https://api.github.com/repos/anthropics/claude-code/releases/latest"
@@ -118,7 +118,7 @@ func claudeChannel() string {
 }
 
 // claudeVersionCachePath is where the newest version read for channel is
-// kept: `<state dir>/claude-version-<channel>.json`, beside the pr-status
+// kept: `<state dir>/claude-version-<channel>.json`, beside the pr status
 // reading — one file a channel, so the two answers never mix. A var so tests
 // point it at a throwaway directory.
 var claudeVersionCachePath = func(channel string) (string, error) {
@@ -136,13 +136,13 @@ type claudeVersionCache struct {
 	ReadAt time.Time `json:"read_at"`
 }
 
-// The two ways `claude-update` updates Claude Code.
+// The two ways `claude update` updates Claude Code.
 const (
 	updateMethodHomebrew = "homebrew"
 	updateMethodClaude   = "claude"
 )
 
-// claudeUpdateMethod is how `claude-update` will update this install, and the
+// claudeUpdateMethod is how `claude update` will update this install, and the
 // one place that is decided: `brew upgrade <cask>` where claude's real path
 // is in a Caskroom ([homebrewCask]), else `claude update` — a claude not
 // found included, whose own update then says why. The cask is "" for the
@@ -156,9 +156,9 @@ func claudeUpdateMethod() (method, cask string) {
 	return updateMethodClaude, ""
 }
 
-// claudeVersionJSON is `claude-version --json`'s answer. A side not read is
+// claudeVersionJSON is `claude version --json`'s answer. A side not read is
 // absent, never empty, and then update_available is false. update_method is
-// always there: how `claude-update` would run, homebrew_cask naming the cask
+// always there: how `claude update` would run, homebrew_cask naming the cask
 // where it is Homebrew's.
 type claudeVersionJSON struct {
 	Installed       string `json:"installed,omitempty"`
@@ -173,7 +173,7 @@ type claudeVersionJSON struct {
 // is a property of this machine, not of any tracked project. It never fails
 // over a read: either side unreadable is that field left out.
 func claudeVersion(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("claude-version", flag.ContinueOnError)
+	flags := flag.NewFlagSet("claude version", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
 	rest, err := parseFlags(flags, args)
@@ -181,7 +181,7 @@ func claudeVersion(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("claude-version: takes no arguments, given %d", len(rest))
+		return usageErrorf("claude version: takes no arguments, given %d", len(rest))
 	}
 
 	doc := claudeVersionJSON{Installed: installedClaude(ctx), Latest: latestClaude(ctx)}
@@ -354,10 +354,10 @@ func versionPart(parts []string, i int) int {
 // printing the brew command and exiting 0. Any other install runs `claude
 // update`. Live agents keep the binary they started with; a session launched
 // after it gets the new one. The installed version is read afresh on every
-// `claude-version`, so the notice goes with the next read. A failed update is
+// `claude version`, so the notice goes with the next read. A failed update is
 // the command's error, carrying the updater's output.
 func claudeUpdate(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("claude-update", flag.ContinueOnError)
+	flags := flag.NewFlagSet("claude update", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
 	rest, err := parseFlags(flags, args)
@@ -365,7 +365,7 @@ func claudeUpdate(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageErrorf("claude-update: takes no arguments, given %d", len(rest))
+		return usageErrorf("claude update: takes no arguments, given %d", len(rest))
 	}
 	name, updateArgs := "claude", []string{"update"}
 	if method, cask := claudeUpdateMethod(); method == updateMethodHomebrew {

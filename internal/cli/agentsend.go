@@ -13,7 +13,7 @@ import (
 // (through the session's inbox, else a paste), reached headlessly rather than
 // from the board.
 func agentSend(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("agent-send", flag.ContinueOnError)
+	flags := flag.NewFlagSet("agent send", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	text := flags.String("text", "", "the prompt to send; `-` or absent reads from stdin")
 	projectRef := projectFlag(flags)
@@ -22,9 +22,9 @@ func agentSend(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageErrorf("agent-send: want exactly one slice, by URL or ID, given %d", len(rest))
+		return usageErrorf("agent send: want exactly one slice, by URL or ID, given %d", len(rest))
 	}
-	id, err := tagOrPageID("agent-send", rest[0])
+	id, err := tagOrPageID("agent send", rest[0])
 	if err != nil {
 		return err
 	}
@@ -39,7 +39,7 @@ func agentSend(ctx context.Context, args []string, env Env) error {
 	prompt := *text
 	if strings.TrimSpace(prompt) == "-" || strings.TrimSpace(prompt) == "" {
 		if env.In == nil {
-			return fmt.Errorf("agent-send: no stdin to read the prompt from")
+			return fmt.Errorf("agent send: no stdin to read the prompt from")
 		}
 		b, err := io.ReadAll(env.In)
 		if err != nil {
@@ -48,7 +48,7 @@ func agentSend(ctx context.Context, args []string, env Env) error {
 		prompt = string(b)
 	}
 	if strings.TrimSpace(prompt) == "" {
-		return fmt.Errorf("agent-send: no prompt given: pass --text or pipe one in")
+		return fmt.Errorf("agent send: no prompt given: pass --text or pipe one in")
 	}
 
 	tmux := env.NewTmux()

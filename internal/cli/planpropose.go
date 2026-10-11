@@ -19,7 +19,7 @@ import (
 // tracked) names where the plan is headed. The new-project workshop, or a
 // gnat-launched planning agent working an existing project, drafts a plan
 // with the user and hands it here; the app's own rail reads the file back
-// and shows it, and it is the user's Accept (plan-accept) that turns it into
+// and shows it, and it is the user's Accept (plan accept) that turns it into
 // a real project, or new milestones and slices on one, and files it.
 // Nothing here talks to Notion, and nothing here creates anything the user
 // has not yet seen.
@@ -30,16 +30,16 @@ import (
 // only reach a slice the document itself creates. Its top-level dependencies
 // list exists only to reach a slice already on a board — there is none yet
 // — so it is refused outright rather than silently accepted and later
-// ignored, and so are its remove, move and edit lists, for the same reason. --project's plan is validated exactly as plan-apply validates
+// ignored, and so are its remove, move and edit lists, for the same reason. --project's plan is validated exactly as plan apply validates
 // one, against that project's current shape and (where the plan depends on
 // anything) its slices — [validateAgainstProject] is the one implementation
-// both this and plan-apply run, so the two can never drift apart.
+// both this and plan apply run, so the two can never drift apart.
 //
-// Running plan-propose again for the same --workspace or --project overwrites
+// Running plan propose again for the same --workspace or --project overwrites
 // its proposal file: that is how a revision lands, whether the user asked
 // for changes or the planning session simply drafted again.
 func planPropose(ctx context.Context, args []string, env Env) error {
-	flags := flag.NewFlagSet("plan-propose", flag.ContinueOnError)
+	flags := flag.NewFlagSet("plan propose", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	asJSON := flags.Bool("json", false, "print structured JSON instead of markdown")
 	workspace := flags.String("workspace", "", "the app's own id for a new-project session (exclusive with --project)")
@@ -50,7 +50,7 @@ func planPropose(ctx context.Context, args []string, env Env) error {
 		return err
 	}
 	if len(rest) > 1 {
-		return usageErrorf("plan-propose: want at most one plan file, given %d", len(rest))
+		return usageErrorf("plan propose: want at most one plan file, given %d", len(rest))
 	}
 
 	// The workspace id is the app's own, with no fallback: it is what tells the
@@ -62,15 +62,15 @@ func planPropose(ctx context.Context, args []string, env Env) error {
 	ws := strings.TrimSpace(*workspace)
 	proj := strings.TrimSpace(*projectRef)
 	if (ws == "") == (proj == "") {
-		return usageErrorf("plan-propose: give exactly one of --workspace or --project")
+		return usageErrorf("plan propose: give exactly one of --workspace or --project")
 	}
 	suggested := strings.TrimSpace(*name)
 	if ws != "" && suggested == "" {
-		return usageErrorf("plan-propose: no --name given: the plan's suggested project name")
+		return usageErrorf("plan propose: no --name given: the plan's suggested project name")
 	}
 
 	// The plan is read and validated before anything is written, exactly as
-	// plan-apply's is — a proposal half-written is worse than no proposal at
+	// plan apply's is — a proposal half-written is worse than no proposal at
 	// all, since the app would show it as though the workshop had settled.
 	source := stdinRef
 	if len(rest) == 1 {
@@ -85,14 +85,14 @@ func planPropose(ctx context.Context, args []string, env Env) error {
 	doc := proposalDoc{Name: suggested, Plan: p}
 	if ws != "" {
 		if len(p.Dependencies) > 0 {
-			return fmt.Errorf("plan-propose: the plan holds a top-level `dependencies` list, which reaches a " +
+			return fmt.Errorf("plan propose: the plan holds a top-level `dependencies` list, which reaches a " +
 				"slice already on a project's board — there is no project yet for it to reach. Put what a new " +
 				"slice waits on in its own `depends_on` instead")
 		}
 		// remove, move and edit name slices already on a board, and there is
 		// none yet for them to change.
 		if p.changesAnything() {
-			return fmt.Errorf("plan-propose: the plan holds a `remove`, `move` or `edit` list, which changes " +
+			return fmt.Errorf("plan propose: the plan holds a `remove`, `move` or `edit` list, which changes " +
 				"slices already on a project's board — there is no project yet for it to change")
 		}
 		// No existing project means no existing milestones or slices to resolve
@@ -142,7 +142,7 @@ func planPropose(ctx context.Context, args []string, env Env) error {
 	return err
 }
 
-// proposalDoc is what plan-propose writes to the proposal file: the plan
+// proposalDoc is what plan propose writes to the proposal file: the plan
 // exactly as validated, and the name the app shows in the rail until the
 // user accepts it or edits it first. Exactly one of Workspace or Project
 // rides along in the file itself as well as in its name, so a reader handed
@@ -171,7 +171,7 @@ var stateDir = logging.Dir
 var marshalIndent = json.MarshalIndent
 
 // proposalPath is the file one workspace's proposal lives in: nat's state
-// directory, named by the workspace id the app gave plan-propose.
+// directory, named by the workspace id the app gave plan propose.
 func proposalPath(workspaceID string) (string, error) {
 	dir, err := stateDir()
 	if err != nil {

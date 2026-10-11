@@ -39,10 +39,10 @@ func TestWorkshopLaunchWorkspaceLaunchesTheNewProjectPromptOnAScratchDir(t *test
 	env, out, state, tmp := workspaceLaunchEnv(t, cfg, runner)
 
 	err := Run(context.Background(), []string{
-		"workshop-launch", "--workspace", testWorkspace, "--request", "A habit tracker.",
+		"workshop", "launch", "--workspace", testWorkspace, "--request", "A habit tracker.",
 	}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch --workspace: %v", err)
+		t.Fatalf("workshop launch --workspace: %v", err)
 	}
 
 	workdir := filepath.Join(state, "workspaces", testWorkspace)
@@ -78,10 +78,10 @@ func TestWorkshopLaunchWorkspaceFlagsOverrideTheConfigsModel(t *testing.T) {
 	env, _, _, _ := workspaceLaunchEnv(t, cfg, runner)
 
 	err := Run(context.Background(), []string{
-		"workshop-launch", "--workspace", testWorkspace, "--request", "x", "--model", "opus", "--effort", "high",
+		"workshop", "launch", "--workspace", testWorkspace, "--request", "x", "--model", "opus", "--effort", "high",
 	}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch --workspace: %v", err)
+		t.Fatalf("workshop launch --workspace: %v", err)
 	}
 	argv := strings.Join(runner.launchArgs, " ")
 	if !strings.Contains(argv, "--model 'opus'") || !strings.Contains(argv, "--effort 'high'") {
@@ -93,10 +93,10 @@ func TestWorkshopLaunchWorkspaceJSON(t *testing.T) {
 	env, out, state, _ := workspaceLaunchEnv(t, testConfig(t), &agentTestRunner{})
 
 	err := Run(context.Background(), []string{
-		"workshop-launch", "--json", "--workspace", testWorkspace, "--request", "x",
+		"workshop", "launch", "--json", "--workspace", testWorkspace, "--request", "x",
 	}, env)
 	if err != nil {
-		t.Fatalf("workshop-launch --workspace: %v", err)
+		t.Fatalf("workshop launch --workspace: %v", err)
 	}
 	var got workshopLaunchJSON
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
@@ -116,7 +116,7 @@ func TestWorkshopLaunchWorkspaceRefusesItsOwnLiveSession(t *testing.T) {
 	}}
 	env, _, _, _ := workspaceLaunchEnv(t, testConfig(t), runner)
 
-	err := Run(context.Background(), []string{"workshop-launch", "--workspace", testWorkspace, "--request", "x"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--workspace", testWorkspace, "--request", "x"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "already live: "+agent.PlanSessionName(testWorkspace)) {
 		t.Errorf("err = %v, want the live session named", err)
@@ -136,10 +136,10 @@ func TestWorkshopLaunchWorkspaceIgnoresEveryOtherPlanningAgent(t *testing.T) {
 	}}
 	env, _, _, _ := workspaceLaunchEnv(t, testConfig(t), runner)
 
-	err := Run(context.Background(), []string{"workshop-launch", "--workspace", testWorkspace, "--request", "x"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--workspace", testWorkspace, "--request", "x"}, env)
 
 	if err != nil {
-		t.Fatalf("workshop-launch --workspace: %v", err)
+		t.Fatalf("workshop launch --workspace: %v", err)
 	}
 	if len(runner.tagged) != 1 {
 		t.Errorf("tagged = %v, want one launch", runner.tagged)
@@ -149,7 +149,7 @@ func TestWorkshopLaunchWorkspaceIgnoresEveryOtherPlanningAgent(t *testing.T) {
 func TestWorkshopLaunchWorkspaceNeedsARequest(t *testing.T) {
 	env, _, _, _ := workspaceLaunchEnv(t, testConfig(t), &agentTestRunner{})
 
-	err := Run(context.Background(), []string{"workshop-launch", "--workspace", testWorkspace, "--request", "  "}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--workspace", testWorkspace, "--request", "  "}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "needs a --request") {
 		t.Errorf("err = %v, want the missing request named", err)
@@ -160,7 +160,7 @@ func TestWorkshopLaunchRefusesWorkspaceWithProject(t *testing.T) {
 	env, _, _, _ := workspaceLaunchEnv(t, testConfig(t), &agentTestRunner{})
 
 	err := Run(context.Background(), []string{
-		"workshop-launch", "--workspace", testWorkspace, "--project", "project-1", "--request", "x",
+		"workshop", "launch", "--workspace", testWorkspace, "--project", "project-1", "--request", "x",
 	}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not both") {
@@ -172,7 +172,7 @@ func TestWorkshopLaunchWorkspaceReportsAMissingStateDir(t *testing.T) {
 	env, _, _, _ := workspaceLaunchEnv(t, testConfig(t), &agentTestRunner{})
 	stateDir = func() (string, error) { return "", errors.New("no home directory") }
 
-	err := Run(context.Background(), []string{"workshop-launch", "--workspace", testWorkspace, "--request", "x"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--workspace", testWorkspace, "--request", "x"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no home directory") {
 		t.Errorf("err = %v, want the state dir failure", err)
@@ -186,7 +186,7 @@ func TestWorkshopLaunchWorkspaceReportsAScratchDirItCannotMake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := Run(context.Background(), []string{"workshop-launch", "--workspace", testWorkspace, "--request", "x"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--workspace", testWorkspace, "--request", "x"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "create the scratch directory") {
 		t.Errorf("err = %v, want the scratch dir failure", err)
@@ -202,7 +202,7 @@ func TestWorkshopLaunchWorkspaceReportsAPromptItCannotWrite(t *testing.T) {
 	}
 	pinStateDir(t, file)
 
-	err := Run(context.Background(), []string{"workshop-launch", "--workspace", testWorkspace, "--request", "x"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--workspace", testWorkspace, "--request", "x"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "launch planning agent") {
 		t.Errorf("err = %v, want the prompt write failure", err)
@@ -212,7 +212,7 @@ func TestWorkshopLaunchWorkspaceReportsAPromptItCannotWrite(t *testing.T) {
 func TestWorkshopLaunchWorkspaceReportsAFailedLaunch(t *testing.T) {
 	env, _, _, _ := workspaceLaunchEnv(t, testConfig(t), &agentTestRunner{launchErr: "duplicate session"})
 
-	err := Run(context.Background(), []string{"workshop-launch", "--workspace", testWorkspace, "--request", "x"}, env)
+	err := Run(context.Background(), []string{"workshop", "launch", "--workspace", testWorkspace, "--request", "x"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "duplicate session") {
 		t.Errorf("err = %v, want the launch failure", err)
@@ -228,10 +228,10 @@ func TestAgentKillWorkshopWorkspaceKillsOnlyItsOwnSession(t *testing.T) {
 	}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--workspace", testWorkspace}, env)
+	err := Run(context.Background(), []string{"agent", "kill", "--workshop", "--workspace", testWorkspace}, env)
 
 	if err != nil {
-		t.Fatalf("agent-kill --workshop --workspace: %v", err)
+		t.Fatalf("agent kill --workshop --workspace: %v", err)
 	}
 	if len(runner.kills) != 1 || runner.kills[0] != "nat-plan-ws" {
 		t.Errorf("kills = %v, want only the workspace's session", runner.kills)
@@ -244,7 +244,7 @@ func TestAgentKillWorkshopWorkspaceNeverFallsBackToTheLegacySentinel(t *testing.
 	runner := &agentTestRunner{liveSessions: map[string]string{agent.PlanSentinel: "nat-plan"}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--workspace", testWorkspace}, env)
+	err := Run(context.Background(), []string{"agent", "kill", "--workshop", "--workspace", testWorkspace}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no live planning session") {
 		t.Errorf("err = %v, want no live planning session", err)
@@ -257,7 +257,7 @@ func TestAgentKillWorkshopWorkspaceNeverFallsBackToTheLegacySentinel(t *testing.
 func TestAgentKillRefusesWorkspaceWithoutWorkshop(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--workspace", testWorkspace}, env)
+	err := Run(context.Background(), []string{"agent", "kill", testSliceID, "--workspace", testWorkspace}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "only names a planning agent") {
 		t.Errorf("err = %v, want --workspace refused without --workshop", err)
@@ -268,7 +268,7 @@ func TestAgentKillRefusesWorkspaceWithProject(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
 	err := Run(context.Background(), []string{
-		"agent-kill", "--workshop", "--workspace", testWorkspace, "--project", "project-1",
+		"agent", "kill", "--workshop", "--workspace", testWorkspace, "--project", "project-1",
 	}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not both") {

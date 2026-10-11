@@ -265,7 +265,7 @@ extension Fixtures {
     public static let prStateStale: PRLoadState = .failed(prErrorMessage, previous: prGreen)
 
     public static let prErrorMessage =
-        "nat pr-view: gh: no pull requests found for branch \"\(diffBranch)\""
+        "nat pr view: gh: no pull requests found for branch \"\(diffBranch)\""
 }
 
 extension Fixtures {

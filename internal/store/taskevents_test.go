@@ -4,7 +4,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
 )
 
 func TestTaskEventsNone(t *testing.T) {
@@ -281,7 +280,7 @@ func TestTaskEventsNote(t *testing.T) {
 }
 
 // A stamped Note reads its stamp first, then its provenance — the order
-// slice-note writes them in — and a hand-typed one under a stamp is all note.
+// slice note writes them in — and a hand-typed one under a stamp is all note.
 func TestTaskEventsStampedNote(t *testing.T) {
 	body := "### Note\n\n" + testStamp + "\n\nFrom \"Loose end\"\n\nSelf.\n\n" +
 		"### Note\n\n" + testStamp + "\n\nJust a remark."

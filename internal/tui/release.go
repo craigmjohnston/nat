@@ -75,11 +75,11 @@ const releaseNote = "Releasing the slice…"
 //
 // The page is read first for the type of its Status column, which a project
 // converted in the Notion UI may have changed under the app — the same read
-// complete-slice and the approve key make, for the same reason. It is also
+// slice complete and the approve key make, for the same reason. It is also
 // what says whether the slice carries an Assignee at all: a project without
 // that column has none to clear.
 //
-// The line goes on before the status does, which is the order release-slice
+// The line goes on before the status does, which is the order slice release
 // writes in: a slice still in progress carrying the line can be released by
 // running the key again, whereas one already back at Todo would refuse to have
 // a line added to it.

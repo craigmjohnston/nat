@@ -3,7 +3,7 @@ import XCTest
 @testable import NatFixtures
 
 /// gnat never picks a colour: once config is read, each project with none
-/// is given one by nat (`config-set project.<id>.color auto`), once a run.
+/// is given one by nat (`config set project.<id>.color auto`), once a run.
 @MainActor
 final class AppModelProjectColorTests: XCTestCase {
     /// `twoProjectConfig` with the second project's colour taken off.

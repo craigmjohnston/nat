@@ -2,7 +2,7 @@ import XCTest
 import NatFixtures
 @testable import NatKit
 
-/// A double whose `project-open-folder` answers with a canned entry or refusal
+/// A double whose `project open folder` answers with a canned entry or refusal
 /// and records the folders it was asked about.
 final class FolderOpeningClient: WorkspaceWorkshopClient, @unchecked Sendable {
     private let folderLock = NSLock()
@@ -209,7 +209,7 @@ final class StarterOpenExistingTests: XCTestCase {
             _ = try await client.projectOpenFolder(path: "/x")
             XCTFail("expected a refusal")
         } catch {
-            XCTAssertEqual(error.localizedDescription, "nat: project-open-folder: not supported by this client")
+            XCTAssertEqual(error.localizedDescription, "nat: project open folder: not supported by this client")
         }
     }
 }

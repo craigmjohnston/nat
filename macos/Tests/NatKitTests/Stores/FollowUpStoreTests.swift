@@ -73,7 +73,7 @@ final class FollowUpStoreTests: XCTestCase {
 
         let result = await store.apply(projectID: "p", sliceID: sliceID, batch: 1, followUps: followUps, client: client)
 
-        XCTAssertEqual(client.writes, ["slice-triage \(sliceID) queue=[1] fold=[2] drop=[3]"])
+        XCTAssertEqual(client.writes, ["slice triage \(sliceID) queue=[1] fold=[2] drop=[3]"])
         XCTAssertEqual(result?.queued.map(\.title), [followUps[0].title])
         XCTAssertEqual(result?.folded, [followUps[1].title])
         XCTAssertEqual(result?.dropped, [followUps[2].title])
@@ -95,7 +95,7 @@ final class FollowUpStoreTests: XCTestCase {
         let second = pendingFollowUps(batch: 2, in: detail.followUps)
         let result = await store.apply(projectID: "p", sliceID: sliceID, batch: 2, followUps: second, client: client)
 
-        XCTAssertEqual(client.writes, ["slice-triage \(sliceID) queue=[5] fold=[] drop=[4]"])
+        XCTAssertEqual(client.writes, ["slice triage \(sliceID) queue=[5] fold=[] drop=[4]"])
         XCTAssertEqual(result?.dropped, [second[0].title])
         XCTAssertTrue(store.choices(sliceID: sliceID, batch: 2).isEmpty)
         XCTAssertEqual(store.choices(sliceID: sliceID, batch: 1), [1: .queue])
@@ -126,7 +126,7 @@ final class FollowUpStoreTests: XCTestCase {
         let result = await store.discard(
             projectID: "p", sliceID: sliceID, batch: 2,
             followUps: pendingFollowUps(batch: 2, in: detail.followUps), client: client)
-        XCTAssertEqual(client.writes, ["slice-triage \(sliceID) queue=[] fold=[] drop=[4, 5]"])
+        XCTAssertEqual(client.writes, ["slice triage \(sliceID) queue=[] fold=[] drop=[4, 5]"])
         XCTAssertEqual(result?.dropped.count, 2)
     }
 
@@ -187,7 +187,7 @@ final class FollowUpStoreTests: XCTestCase {
     func testTriageArgumentsRepeatEachFlag() {
         XCTAssertEqual(
             NatClient.triageArguments(projectID: "p", sliceRef: "s", queue: [1, 4], fold: [2], drop: [3]),
-            ["slice-triage", "--project", "p", "--json", "--queue", "1", "--queue", "4", "--fold", "2", "--drop", "3", "s"])
+            ["slice", "triage", "--project", "p", "--json", "--queue", "1", "--queue", "4", "--fold", "2", "--drop", "3", "s"])
     }
 
     func testTriageResultDecodes() throws {

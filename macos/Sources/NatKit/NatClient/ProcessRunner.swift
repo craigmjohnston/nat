@@ -47,7 +47,7 @@ public final class ProcessRunner: CommandRunning {
         async let stderrData = drain(stderrPipe)
 
         // A cancelled call ends its process — `GitHubReadingStore` abandoning
-        // a stuck `pr-status`, say — and so closes the pipes the drains read.
+        // a stuck `pr status`, say — and so closes the pipes the drains read.
         let stopper = Stopper(process)
         let exitCode: Int32 = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in

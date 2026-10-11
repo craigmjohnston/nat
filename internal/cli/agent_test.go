@@ -149,13 +149,13 @@ func TestAgentSendRefusesEmptyPrompt(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-send", sliceID, "--text", "", "--project", "project-1",
+		"agent", "send", sliceID, "--text", "", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("agent-send: expected error for empty prompt")
+		t.Errorf("agent send: expected error for empty prompt")
 	}
 	if !strings.Contains(err.Error(), "no prompt") {
-		t.Errorf("agent-send error: %v, want 'no prompt'", err)
+		t.Errorf("agent send error: %v, want 'no prompt'", err)
 	}
 }
 
@@ -165,13 +165,13 @@ func TestAgentSendRefusesWrongArgumentCount(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-send", "--project", "project-1",
+		"agent", "send", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("agent-send: expected error for missing slice")
+		t.Errorf("agent send: expected error for missing slice")
 	}
 	if !strings.Contains(err.Error(), "want exactly one") {
-		t.Errorf("agent-send error: %v, want 'want exactly one'", err)
+		t.Errorf("agent send error: %v, want 'want exactly one'", err)
 	}
 }
 
@@ -190,10 +190,10 @@ func TestAgentSendWithLiveSession(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-send", testSliceID, "--text", "Fix the button", "--project", "project-1",
+		"agent", "send", testSliceID, "--text", "Fix the button", "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Errorf("agent-send: unexpected error: %v", err)
+		t.Errorf("agent send: unexpected error: %v", err)
 	}
 	if len(runner.sends) != 1 {
 		t.Fatalf("sends: got %d, want 1", len(runner.sends))
@@ -221,13 +221,13 @@ func TestAgentSendRefusesNoLiveSession(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-send", testSliceID, "--text", "Fix the button", "--project", "project-1",
+		"agent", "send", testSliceID, "--text", "Fix the button", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("agent-send: expected error for no live session")
+		t.Errorf("agent send: expected error for no live session")
 	}
 	if !strings.Contains(err.Error(), "no live session") {
-		t.Errorf("agent-send error: %v, want 'no live session'", err)
+		t.Errorf("agent send error: %v, want 'no live session'", err)
 	}
 }
 
@@ -247,10 +247,10 @@ func TestAgentSendFromStdin(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-send", testSliceID, "--project", "project-1",
+		"agent", "send", testSliceID, "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Errorf("agent-send: unexpected error: %v", err)
+		t.Errorf("agent send: unexpected error: %v", err)
 	}
 	if len(runner.sends) != 1 {
 		t.Fatalf("sends: got %d, want 1", len(runner.sends))
@@ -276,10 +276,10 @@ func TestAgentSendFailure(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-send", testSliceID, "--text", "Fix the button", "--project", "project-1",
+		"agent", "send", testSliceID, "--text", "Fix the button", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("agent-send: expected error from tmux")
+		t.Errorf("agent send: expected error from tmux")
 	}
 }
 
@@ -289,13 +289,13 @@ func TestAgentInterruptRefusesWrongArgumentCount(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-interrupt", "--project", "project-1",
+		"agent", "interrupt", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("agent-interrupt: expected error for missing slice")
+		t.Errorf("agent interrupt: expected error for missing slice")
 	}
 	if !strings.Contains(err.Error(), "want exactly one") {
-		t.Errorf("agent-interrupt error: %v, want 'want exactly one'", err)
+		t.Errorf("agent interrupt error: %v, want 'want exactly one'", err)
 	}
 }
 
@@ -314,10 +314,10 @@ func TestAgentInterruptWithLiveSession(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-interrupt", testSliceID, "--project", "project-1",
+		"agent", "interrupt", testSliceID, "--project", "project-1",
 	}, env)
 	if err != nil {
-		t.Errorf("agent-interrupt: unexpected error: %v", err)
+		t.Errorf("agent interrupt: unexpected error: %v", err)
 	}
 	if len(runner.interrupts) != 1 {
 		t.Fatalf("interrupts: got %d, want 1", len(runner.interrupts))
@@ -342,13 +342,13 @@ func TestAgentInterruptRefusesNoLiveSession(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-interrupt", testSliceID, "--project", "project-1",
+		"agent", "interrupt", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("agent-interrupt: expected error for no live session")
+		t.Errorf("agent interrupt: expected error for no live session")
 	}
 	if !strings.Contains(err.Error(), "no live session") {
-		t.Errorf("agent-interrupt error: %v, want 'no live session'", err)
+		t.Errorf("agent interrupt error: %v, want 'no live session'", err)
 	}
 }
 
@@ -368,10 +368,10 @@ func TestAgentInterruptFailure(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-interrupt", testSliceID, "--project", "project-1",
+		"agent", "interrupt", testSliceID, "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("agent-interrupt: expected error from tmux")
+		t.Errorf("agent interrupt: expected error from tmux")
 	}
 }
 
@@ -381,13 +381,13 @@ func TestAgentSendInvalidSliceID(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-send", "not-a-uuid", "--text", "Fix it", "--project", "project-1",
+		"agent", "send", "not-a-uuid", "--text", "Fix it", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("agent-send: expected error for invalid slice ID")
+		t.Errorf("agent send: expected error for invalid slice ID")
 	}
 	if !strings.Contains(err.Error(), "not a slice") {
-		t.Errorf("agent-send error: %v, want 'not a slice'", err)
+		t.Errorf("agent send error: %v, want 'not a slice'", err)
 	}
 }
 
@@ -397,13 +397,13 @@ func TestAgentInterruptInvalidSliceID(t *testing.T) {
 	env.Out = &out
 
 	err := Run(context.Background(), []string{
-		"agent-interrupt", "not-a-uuid", "--project", "project-1",
+		"agent", "interrupt", "not-a-uuid", "--project", "project-1",
 	}, env)
 	if err == nil {
-		t.Errorf("agent-interrupt: expected error for invalid slice ID")
+		t.Errorf("agent interrupt: expected error for invalid slice ID")
 	}
 	if !strings.Contains(err.Error(), "not a slice") {
-		t.Errorf("agent-interrupt error: %v, want 'not a slice'", err)
+		t.Errorf("agent interrupt error: %v, want 'not a slice'", err)
 	}
 }
 
@@ -416,7 +416,7 @@ func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 func TestAgentSendRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-send", testSliceID, "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "send", testSliceID, "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -427,7 +427,7 @@ func TestAgentSendRefusesAnUnknownFlag(t *testing.T) {
 func TestAgentSendRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-send", testSliceID, "--text", "x", "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"agent", "send", testSliceID, "--text", "x", "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -438,7 +438,7 @@ func TestAgentSendRefusesNoStdin(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	env.In = nil
 
-	err := Run(context.Background(), []string{"agent-send", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "send", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no stdin") {
 		t.Errorf("err = %v, want 'no stdin'", err)
@@ -449,7 +449,7 @@ func TestAgentSendReportsAFailedStdinRead(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 	env.In = errReader{err: errors.New("pipe closed")}
 
-	err := Run(context.Background(), []string{"agent-send", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "send", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "read the prompt: pipe closed") {
 		t.Errorf("err = %v, want the read's failure named", err)
@@ -467,7 +467,7 @@ func TestAgentSendReportsAFailedLiveRead(t *testing.T) {
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
 	err := Run(context.Background(), []string{
-		"agent-send", testSliceID, "--text", "Fix it", "--project", "project-1",
+		"agent", "send", testSliceID, "--text", "Fix it", "--project", "project-1",
 	}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "could not read live sessions") {
@@ -478,7 +478,7 @@ func TestAgentSendReportsAFailedLiveRead(t *testing.T) {
 func TestAgentInterruptRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-interrupt", testSliceID, "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "interrupt", testSliceID, "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -489,7 +489,7 @@ func TestAgentInterruptRefusesAnUnknownFlag(t *testing.T) {
 func TestAgentInterruptRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-interrupt", testSliceID, "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"agent", "interrupt", testSliceID, "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -506,7 +506,7 @@ func TestAgentInterruptReportsAFailedLiveRead(t *testing.T) {
 	runner := &agentTestRunner{liveFatalErr: "no server running"}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-interrupt", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "interrupt", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "could not read live sessions") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -516,27 +516,27 @@ func TestAgentInterruptReportsAFailedLiveRead(t *testing.T) {
 func TestAgentKillRefusesWrongArgumentCount(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-kill", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "want exactly one") {
-		t.Errorf("agent-kill error: %v, want 'want exactly one'", err)
+		t.Errorf("agent kill error: %v, want 'want exactly one'", err)
 	}
 }
 
 func TestAgentKillInvalidSliceID(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-kill", "not-a-uuid", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", "not-a-uuid", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "not a slice") {
-		t.Errorf("agent-kill error: %v, want 'not a slice'", err)
+		t.Errorf("agent kill error: %v, want 'not a slice'", err)
 	}
 }
 
 func TestAgentKillRefusesAnUnknownFlag(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--bogus", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", testSliceID, "--bogus", "--project", "project-1"}, env)
 
 	var usage *UsageError
 	if !errors.As(err, &usage) {
@@ -547,7 +547,7 @@ func TestAgentKillRefusesAnUnknownFlag(t *testing.T) {
 func TestAgentKillRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", testSliceID, "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -559,10 +559,10 @@ func TestAgentKillWithLiveSession(t *testing.T) {
 	runner := &agentTestRunner{liveSessions: map[string]string{testSliceID: "nat-abcd1234"}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", testSliceID, "--project", "project-1"}, env)
 
 	if err != nil {
-		t.Errorf("agent-kill: unexpected error: %v", err)
+		t.Errorf("agent kill: unexpected error: %v", err)
 	}
 	if len(runner.kills) != 1 || runner.kills[0] != "nat-abcd1234" {
 		t.Errorf("kills = %v, want the slice's own session killed once", runner.kills)
@@ -574,10 +574,10 @@ func TestAgentKillRefusesNoLiveSession(t *testing.T) {
 	runner := &agentTestRunner{liveSessions: map[string]string{}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no live session") {
-		t.Errorf("agent-kill error: %v, want 'no live session'", err)
+		t.Errorf("agent kill error: %v, want 'no live session'", err)
 	}
 }
 
@@ -586,7 +586,7 @@ func TestAgentKillReportsAFailedLiveRead(t *testing.T) {
 	runner := &agentTestRunner{liveFatalErr: "no server running"}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "could not read live sessions") {
 		t.Errorf("err = %v, want the failed read named", err)
@@ -596,10 +596,10 @@ func TestAgentKillReportsAFailedLiveRead(t *testing.T) {
 func TestAgentKillWorkshopRefusesASliceArgument(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-kill", "--workshop", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", "--workshop", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "takes no slice argument") {
-		t.Errorf("agent-kill error: %v, want 'takes no slice argument'", err)
+		t.Errorf("agent kill error: %v, want 'takes no slice argument'", err)
 	}
 }
 
@@ -608,10 +608,10 @@ func TestAgentKillWorkshopWithLiveSession(t *testing.T) {
 	runner := &agentTestRunner{liveSessions: map[string]string{agent.PlanTag("project-1"): "nat-plan-abcd1234"}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", "--workshop", "--project", "project-1"}, env)
 
 	if err != nil {
-		t.Errorf("agent-kill --workshop: unexpected error: %v", err)
+		t.Errorf("agent kill --workshop: unexpected error: %v", err)
 	}
 	if len(runner.kills) != 1 || runner.kills[0] != "nat-plan-abcd1234" {
 		t.Errorf("kills = %v, want the planning session killed once", runner.kills)
@@ -623,10 +623,10 @@ func TestAgentKillWorkshopFallsBackToTheLegacySentinel(t *testing.T) {
 	runner := &agentTestRunner{liveSessions: map[string]string{agent.PlanSentinel: "nat-plan"}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", "--workshop", "--project", "project-1"}, env)
 
 	if err != nil {
-		t.Errorf("agent-kill --workshop: unexpected error: %v", err)
+		t.Errorf("agent kill --workshop: unexpected error: %v", err)
 	}
 	if len(runner.kills) != 1 || runner.kills[0] != "nat-plan" {
 		t.Errorf("kills = %v, want the legacy sentinel session killed once", runner.kills)
@@ -638,10 +638,10 @@ func TestAgentKillWorkshopRefusesNoLiveSession(t *testing.T) {
 	runner := &agentTestRunner{liveSessions: map[string]string{}}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", "--workshop", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no live planning session") {
-		t.Errorf("agent-kill --workshop error: %v, want 'no live planning session'", err)
+		t.Errorf("agent kill --workshop error: %v, want 'no live planning session'", err)
 	}
 }
 
@@ -653,7 +653,7 @@ func TestAgentKillWorkshopFailure(t *testing.T) {
 	}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", "--workshop", "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "kill the session") {
 		t.Errorf("err = %v, want the kill's failure named", err)
@@ -663,7 +663,7 @@ func TestAgentKillWorkshopFailure(t *testing.T) {
 func TestAgentKillWorkshopRefusesAnUnknownProject(t *testing.T) {
 	env, _ := testEnv(testClaimConfig(t), &fakeAPI{})
 
-	err := Run(context.Background(), []string{"agent-kill", "--workshop", "--project", "nope"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", "--workshop", "--project", "nope"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "no project nope") {
 		t.Errorf("err = %v, want the unknown project named", err)
@@ -678,7 +678,7 @@ func TestAgentKillFailure(t *testing.T) {
 	}
 	env.NewTmux = func() *agent.Tmux { return agent.NewTmuxWithRunner(runner) }
 
-	err := Run(context.Background(), []string{"agent-kill", testSliceID, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"agent", "kill", testSliceID, "--project", "project-1"}, env)
 
 	if err == nil || !strings.Contains(err.Error(), "kill the session") {
 		t.Errorf("err = %v, want the kill's failure named", err)

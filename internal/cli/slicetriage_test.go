@@ -13,17 +13,17 @@ import (
 	"github.com/craigmjohnston/nat/internal/store"
 )
 
-// triaged runs slice-triage --json over the three proposals and decodes what it
+// triaged runs slice triage --json over the three proposals and decodes what it
 // printed.
 func (fp *followUpsPlan) triaged(t *testing.T, decision ...string) triageJSON {
 	t.Helper()
 	fp.propose(t)
-	if err := fp.run(append([]string{"slice-triage", sliceID, "--json"}, decision...)...); err != nil {
-		t.Fatalf("slice-triage: %v", err)
+	if err := fp.run(append([]string{"slice", "triage", sliceID, "--json"}, decision...)...); err != nil {
+		t.Fatalf("slice triage: %v", err)
 	}
 	var got triageJSON
 	if err := json.Unmarshal(fp.out.Bytes(), &got); err != nil {
-		t.Fatalf("decode slice-triage: %v\n%s", err, fp.out)
+		t.Fatalf("decode slice triage: %v\n%s", err, fp.out)
 	}
 	return got
 }
@@ -42,7 +42,7 @@ func TestSliceTriageQueueOnly(t *testing.T) {
 		t.Errorf("printed %+v, want all three queued in their own order", got)
 	}
 	want := "Follow-ups decided. Queued as slices: 1 (Persist the split width), 2 (Render the picker in a story), " +
-		"3 (Remove dead code).\nNothing to fold in — hand back now with nat complete-slice as usual."
+		"3 (Remove dead code).\nNothing to fold in — hand back now with nat slice complete as usual."
 	if len(fp.runner.sends) != 1 || fp.runner.sends[0].prompt != want {
 		t.Errorf("sends = %+v, want\n%s", fp.runner.sends, want)
 	}
@@ -73,7 +73,7 @@ Fold in before handing back:
    Nothing calls it.
    Done when: it is gone.
 
-Then hand back with nat complete-slice as usual.`
+Then hand back with nat slice complete as usual.`
 	if len(fp.runner.sends) != 1 || fp.runner.sends[0].prompt != want {
 		t.Errorf("sends = %+v, want\n%s", fp.runner.sends, want)
 	}
@@ -84,8 +84,8 @@ Then hand back with nat complete-slice as usual.`
 func TestSliceTriageDropAllWithNoAgent(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, false, nil)
 	fp.propose(t)
-	if err := fp.run("slice-triage", sliceID, "--drop-all"); err != nil {
-		t.Fatalf("slice-triage: %v", err)
+	if err := fp.run("slice", "triage", sliceID, "--drop-all"); err != nil {
+		t.Fatalf("slice triage: %v", err)
 	}
 	want := `# Render the board
 
@@ -111,8 +111,8 @@ No live agent was told; the decision is recorded on the slice page.
 func TestSliceTriageMarkdownNamesTheQueuedSlices(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	fp.propose(t)
-	if err := fp.run("slice-triage", sliceID, "--queue", "1", "--drop", "2", "--drop", "3"); err != nil {
-		t.Fatalf("slice-triage: %v", err)
+	if err := fp.run("slice", "triage", sliceID, "--queue", "1", "--drop", "2", "--drop", "3"); err != nil {
+		t.Fatalf("slice triage: %v", err)
 	}
 	if !strings.Contains(fp.out.String(), "Queued 1 slice · folding in 0 · dropped 2.\n- Persist the split width: ") ||
 		strings.Contains(fp.out.String(), "No live agent") {
@@ -121,12 +121,12 @@ func TestSliceTriageMarkdownNamesTheQueuedSlices(t *testing.T) {
 }
 
 // The record is written before the message is sent, so a send that fails still
-// leaves complete-slice free to go: the command says what failed.
+// leaves slice complete free to go: the command says what failed.
 func TestSliceTriageFailedSendLeavesTheRecord(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	fp.runner.sendErr = "pane gone"
 	fp.propose(t)
-	err := fp.run("slice-triage", sliceID, "--fold", "1", "--drop", "2", "--drop", "3")
+	err := fp.run("slice", "triage", sliceID, "--fold", "1", "--drop", "2", "--drop", "3")
 	if err == nil || !strings.Contains(err.Error(), "the triage is recorded, but telling the agent failed") {
 		t.Fatalf("err = %v, want the failed send named", err)
 	}
@@ -164,7 +164,7 @@ func TestSliceTriageRefusals(t *testing.T) {
 				fp.propose(t)
 			}
 			before := fp.body(t)
-			err := fp.run(append([]string{"slice-triage", sliceID}, tt.args...)...)
+			err := fp.run(append([]string{"slice", "triage", sliceID}, tt.args...)...)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want %q", err, tt.want)
 			}
@@ -181,11 +181,11 @@ func TestSliceTriageOverAnUnreadableTmux(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	fp.runner.liveFatalErr = "tmux broke"
 	fp.propose(t)
-	if err := fp.run("slice-triage", sliceID, "--fold", "1", "--drop", "2", "--drop", "3"); err == nil ||
+	if err := fp.run("slice", "triage", sliceID, "--fold", "1", "--drop", "2", "--drop", "3"); err == nil ||
 		!strings.Contains(err.Error(), "could not read live sessions") {
 		t.Errorf("fold: err = %v, want the failed read", err)
 	}
-	if err := fp.run("slice-triage", sliceID, "--drop-all"); err != nil {
+	if err := fp.run("slice", "triage", sliceID, "--drop-all"); err != nil {
 		t.Errorf("drop-all: %v, want it to go ahead", err)
 	}
 	if n := fp.pendingAfter(t); n != 0 {
@@ -196,28 +196,28 @@ func TestSliceTriageOverAnUnreadableTmux(t *testing.T) {
 func TestSliceTriageMisuseAndFailures(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	for name, args := range map[string][]string{
-		"no slice":    {"slice-triage", "--drop-all"},
-		"not a slice": {"slice-triage", "the board", "--drop-all"},
-		"bad flag":    {"slice-triage", sliceID, "--nope"},
+		"no slice":    {"slice", "triage", "--drop-all"},
+		"not a slice": {"slice", "triage", "the board", "--drop-all"},
+		"bad flag":    {"slice", "triage", sliceID, "--nope"},
 	} {
 		if err := fp.run(args...); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
 	}
-	if err := Run(context.Background(), []string{"slice-triage", sliceID, "--drop-all"}, fp.env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "triage", sliceID, "--drop-all"}, fp.env); err == nil {
 		t.Error("no project: want an error")
 	}
 
 	broken := &fakeAPI{dataSourceErr: errors.New("boom")}
 	env, _ := testEnv(testClaimConfig(t), broken)
-	if err := Run(context.Background(), []string{"slice-triage", sliceID, "--drop-all", "--project", "project-1"}, env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "triage", sliceID, "--drop-all", "--project", "project-1"}, env); err == nil {
 		t.Error("an unreadable workspace: want an error")
 	}
 
 	fp = newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	fp.propose(t)
 	fp.env.Out = failingWriter{}
-	if err := Run(context.Background(), []string{"slice-triage", sliceID, "--drop-all", "--json", "--project", "project-1"}, fp.env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "triage", sliceID, "--drop-all", "--json", "--project", "project-1"}, fp.env); err == nil {
 		t.Error("an unwritable output: want an error")
 	}
 }
@@ -253,7 +253,7 @@ func TestSliceTriageReadAndWriteFailures(t *testing.T) {
 			}
 			_ = db.Close()
 
-			err = fp.run(append([]string{"slice-triage", sliceID}, tt.decision...)...)
+			err = fp.run(append([]string{"slice", "triage", sliceID}, tt.decision...)...)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want %q", err, tt.want)
 			}
@@ -268,12 +268,12 @@ func TestSliceTriageReadAndWriteFailures(t *testing.T) {
 // user: one follow-up, titled as given.
 func (fp *followUpsPlan) proposeAgain(t *testing.T, title string) {
 	t.Helper()
-	if err := fp.run("slice-followups", sliceID, "--follow-up", title+"\n\nMore.\nDone when: done."); err != nil {
-		t.Fatalf("slice-followups: %v", err)
+	if err := fp.run("slice", "followups", sliceID, "--follow-up", title+"\n\nMore.\nDone when: done."); err != nil {
+		t.Fatalf("slice followups: %v", err)
 	}
 }
 
-// Two batches handed in are both pending, each by its batch in slice-show —
+// Two batches handed in are both pending, each by its batch in slice show —
 // its pending items and its log event alike — and each is triaged on its own:
 // deciding the second whole leaves the first pending and tells the agent only
 // of what was decided; a third batch after changes neither; and the hand-back
@@ -289,7 +289,7 @@ func TestSliceTriageOneBatchOfTwo(t *testing.T) {
 		batches = append(batches, f.Batch)
 	}
 	if len(shown.FollowUps) != 4 || !equalInts(batches, []int{1, 1, 1, 2}) || shown.FollowUps[3].Index != 4 {
-		t.Fatalf("slice-show followUps = %+v, want four pending, the last of batch 2 and index 4", shown.FollowUps)
+		t.Fatalf("slice show followUps = %+v, want four pending, the last of batch 2 and index 4", shown.FollowUps)
 	}
 	var eventBatches []int
 	for _, e := range shown.Events {
@@ -301,10 +301,10 @@ func TestSliceTriageOneBatchOfTwo(t *testing.T) {
 		t.Errorf("follow_ups events' batches = %v, want [1 2]", eventBatches)
 	}
 
-	if err := fp.run("slice-triage", sliceID, "--drop", "4"); err != nil {
-		t.Fatalf("slice-triage of batch 2: %v", err)
+	if err := fp.run("slice", "triage", sliceID, "--drop", "4"); err != nil {
+		t.Fatalf("slice triage of batch 2: %v", err)
 	}
-	want := "Follow-ups decided. Dropped: 4 (Name the second thing).\nNothing to fold in — hand back now with nat complete-slice as usual."
+	want := "Follow-ups decided. Dropped: 4 (Name the second thing).\nNothing to fold in — hand back now with nat slice complete as usual."
 	if len(fp.runner.sends) != 1 || fp.runner.sends[0].prompt != want {
 		t.Errorf("sends = %+v, want\n%s", fp.runner.sends, want)
 	}
@@ -312,9 +312,9 @@ func TestSliceTriageOneBatchOfTwo(t *testing.T) {
 	if len(pending) != 3 || pending[0].Batch != 1 || pending[2].Index != 3 {
 		t.Errorf("pending = %+v, want batch 1 whole and alone", pending)
 	}
-	if err := fp.run("complete-slice", sliceID, "--branch", "slice/x", "--summary", "Did it."); err == nil ||
+	if err := fp.run("slice", "complete", sliceID, "--branch", "slice/x", "--summary", "Did it."); err == nil ||
 		!strings.Contains(err.Error(), "3 follow-ups await") {
-		t.Errorf("complete-slice with batch 1 pending: err = %v, want the refusal", err)
+		t.Errorf("slice complete with batch 1 pending: err = %v, want the refusal", err)
 	}
 
 	fp.proposeAgain(t, "Name the third thing")
@@ -323,11 +323,11 @@ func TestSliceTriageOneBatchOfTwo(t *testing.T) {
 		t.Errorf("pending after a third batch = %+v, want batch 1 then batch 3", pending)
 	}
 
-	if err := fp.run("slice-triage", sliceID, "--drop-all"); err != nil {
-		t.Fatalf("slice-triage --drop-all: %v", err)
+	if err := fp.run("slice", "triage", sliceID, "--drop-all"); err != nil {
+		t.Fatalf("slice triage --drop-all: %v", err)
 	}
-	if err := fp.run("complete-slice", sliceID, "--branch", "slice/x", "--summary", "Did it."); err != nil {
-		t.Errorf("complete-slice with every batch decided: %v", err)
+	if err := fp.run("slice", "complete", sliceID, "--branch", "slice/x", "--summary", "Did it."); err != nil {
+		t.Errorf("slice complete with every batch decided: %v", err)
 	}
 }
 
@@ -353,7 +353,7 @@ func TestSliceTriageRefusesPartOfABatch(t *testing.T) {
 			fp.propose(t)
 			fp.proposeAgain(t, tt.title)
 			before := fp.body(t)
-			err := fp.run(append([]string{"slice-triage", sliceID}, tt.args...)...)
+			err := fp.run(append([]string{"slice", "triage", sliceID}, tt.args...)...)
 			if err == nil || err.Error() != tt.want {
 				t.Errorf("err = %v, want %q", err, tt.want)
 			}
@@ -368,8 +368,8 @@ func TestSliceTriageRefusesPartOfABatch(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	fp.propose(t)
 	fp.proposeAgain(t, "Remove dead code")
-	if err := fp.run("slice-triage", sliceID, "--drop", "1", "--drop", "2", "--queue", "3", "--drop", "4"); err != nil {
-		t.Fatalf("slice-triage of both: %v", err)
+	if err := fp.run("slice", "triage", sliceID, "--drop", "1", "--drop", "2", "--queue", "3", "--drop", "4"); err != nil {
+		t.Fatalf("slice triage of both: %v", err)
 	}
 	if n := fp.pendingAfter(t); n != 0 {
 		t.Errorf("pending = %d, want none", n)
@@ -386,7 +386,7 @@ func TestSliceTriageRefusesPartOfABatch(t *testing.T) {
 }
 
 // A Done slice's undecided items — a batch an earlier nat let a later one
-// supersede — are history: slice-show lists nothing pending, and slice-triage
+// supersede — are history: slice show lists nothing pending, and slice triage
 // finds nothing to decide.
 func TestADoneSlicesUndecidedBatchIsHistory(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceDone, false, func(db *sql.DB) {
@@ -397,11 +397,11 @@ func TestADoneSlicesUndecidedBatchIsHistory(t *testing.T) {
 		}
 	})
 	if shown := fp.shown(t); len(shown.FollowUps) != 0 {
-		t.Errorf("slice-show followUps = %+v, want none on a Done slice", shown.FollowUps)
+		t.Errorf("slice show followUps = %+v, want none on a Done slice", shown.FollowUps)
 	}
-	if err := fp.run("slice-triage", sliceID, "--drop-all"); err == nil ||
+	if err := fp.run("slice", "triage", sliceID, "--drop-all"); err == nil ||
 		!strings.Contains(err.Error(), "no follow-ups awaiting a decision") {
-		t.Errorf("slice-triage: err = %v, want nothing pending", err)
+		t.Errorf("slice triage: err = %v, want nothing pending", err)
 	}
 }
 

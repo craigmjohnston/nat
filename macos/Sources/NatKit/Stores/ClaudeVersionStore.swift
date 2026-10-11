@@ -6,7 +6,7 @@ public enum ClaudeUpdateState: Equatable, Sendable {
     /// The window is up and nothing has run: the user has yet to press
     /// Update, and may close it instead.
     case confirming
-    /// `nat claude-update` is running.
+    /// `nat claude update` is running.
     case running
     /// It finished. What the updater printed is not kept: the window shows
     /// the installed version as read again.
@@ -19,9 +19,9 @@ public enum ClaudeUpdateState: Equatable, Sendable {
 /// gnat's Claude Code update notice: the app says once, in the status bar,
 /// that a newer Claude Code exists, and on a click opens a window saying what
 /// an update would do, which runs it only on Update. Reads `nat
-/// claude-version` at launch and every `refreshIntervalSeconds` after (nat
+/// claude version` at launch and every `refreshIntervalSeconds` after (nat
 /// keeps the release feed's answer an hour itself), and runs `nat
-/// claude-update` when Update is pressed.
+/// claude update` when Update is pressed.
 @MainActor
 @Observable
 public final class ClaudeVersionStore {

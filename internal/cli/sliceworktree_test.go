@@ -49,11 +49,11 @@ func realGitRepo(t *testing.T, sp *sourceProject) (repo string, gitRun func(args
 	return dir, gitRun
 }
 
-// sliceWorktreeOf runs slice-worktree --json and decodes it.
+// sliceWorktreeOf runs slice worktree --json and decodes it.
 func (sp *sourceProject) sliceWorktreeOf(t *testing.T, args ...string) actions.SliceWorktree {
 	t.Helper()
 	var wt actions.SliceWorktree
-	out := sp.run(t, append(append([]string{"slice-worktree"}, args...), "--json", "--project", sp.id)...)
+	out := sp.run(t, append(append([]string{"slice", "worktree"}, args...), "--json", "--project", sp.id)...)
 	if err := json.Unmarshal([]byte(out), &wt); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, out)
 	}
@@ -70,7 +70,7 @@ func TestSliceWorktreeAgainstRealGit(t *testing.T) {
 
 	// Fresh: cut from the base, on the derived branch; the text form is the
 	// path alone.
-	if out := sp.run(t, "slice-worktree", task, "--repo", repo, "--project", sp.id); out != want+"\n" {
+	if out := sp.run(t, "slice", "worktree", task, "--repo", repo, "--project", sp.id); out != want+"\n" {
 		t.Errorf("text = %q, want the path alone", out)
 	}
 	if got := gitRun("-C", want, "rev-parse", "--abbrev-ref", "HEAD"); got != "slice/fix-the-login-page" {
@@ -103,7 +103,7 @@ func TestSliceWorktreeAgainstRealGit(t *testing.T) {
 	}
 
 	// With no --repo, the slice's recorded repository is the one.
-	sp.run(t, "slice-repo", task, "--repo", repo, "--project", sp.id)
+	sp.run(t, "slice", "repo", task, "--repo", repo, "--project", sp.id)
 	if got := sp.sliceWorktreeOf(t, task); got.Path != want || got.Created {
 		t.Errorf("recorded repo = %+v", got)
 	}
@@ -118,7 +118,7 @@ func TestSliceWorktreeRefusals(t *testing.T) {
 		want string
 	}{
 		{[]string{"--project", sp.id}, "want exactly one slice"},
-		{[]string{"not-an-id", "--project", sp.id}, "slice-worktree"},
+		{[]string{"not-an-id", "--project", sp.id}, "slice worktree"},
 		{[]string{task, "--repo", "/no/such/dir", "--project", sp.id}, "/no/such/dir is not there"},
 		{[]string{task}, "--project"},
 		{[]string{task, "--bogus", "--project", sp.id}, "flag provided but not defined"},
@@ -127,13 +127,13 @@ func TestSliceWorktreeRefusals(t *testing.T) {
 		// Outside a repository: git's own words.
 		{[]string{task, "--repo", t.TempDir(), "--project", sp.id}, "not a git repository"},
 	} {
-		if err := sp.fail(t, append([]string{"slice-worktree"}, tt.args...)...); !strings.Contains(err.Error(), tt.want) {
+		if err := sp.fail(t, append([]string{"slice", "worktree"}, tt.args...)...); !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%v: err = %v, want %q", tt.args, err, tt.want)
 		}
 	}
 
 	// A slice the plan does not hold, then a plan that will not open at all.
-	if err := sp.fail(t, "slice-worktree", "0123456789abcdef0123456789abcdef", "--project", sp.id); err == nil {
+	if err := sp.fail(t, "slice", "worktree", "0123456789abcdef0123456789abcdef", "--project", sp.id); err == nil {
 		t.Error("unknown slice: want an error")
 	}
 	plan := sp.planPath(t)
@@ -143,7 +143,7 @@ func TestSliceWorktreeRefusals(t *testing.T) {
 	if err := os.Mkdir(plan, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := sp.fail(t, "slice-worktree", task, "--project", sp.id); err == nil {
+	if err := sp.fail(t, "slice", "worktree", task, "--project", sp.id); err == nil {
 		t.Error("broken plan: want an error")
 	}
 }

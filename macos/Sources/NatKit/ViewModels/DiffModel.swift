@@ -105,7 +105,7 @@ public struct DiffRow: Identifiable, Equatable, Sendable {
 /// hidden, all of it at once.
 ///
 /// Lines are numbered on the branch's side, which is the side `nat
-/// slice-file` reads; every hidden line is context, on both sides, so its old
+/// slice file` reads; every hidden line is context, on both sides, so its old
 /// number is its new one plus `oldOffset`.
 public struct DiffGap: Equatable, Sendable {
     /// What one control reveals.
@@ -151,7 +151,7 @@ public struct DiffGap: Equatable, Sendable {
         return [.down, .up]
     }
 
-    /// The lines a control reveals, as `nat slice-file` takes them: 1-based,
+    /// The lines a control reveals, as `nat slice file` takes them: 1-based,
     /// inclusive, `to` nil for the rest of the file.
     public func range(for control: Control) -> (from: Int, to: Int?) {
         switch control {
@@ -332,8 +332,8 @@ public struct DiffModel: Equatable, Sendable {
 // MARK: - Building
 
 /// Builds a render-ready `DiffModel` from the wire response of
-/// `nat slice-diff --json`. `expandable` reads it for a viewer that can
-/// reveal the lines between hunks (`nat slice-file`): every gap — above the
+/// `nat slice diff --json`. `expandable` reads it for a viewer that can
+/// reveal the lines between hunks (`nat slice file`): every gap — above the
 /// first hunk, between each pair, after the last — becomes a break carrying
 /// its `DiffGap`.
 public func buildDiffModel(from diff: SliceDiff, expandable: Bool = false) -> DiffModel {

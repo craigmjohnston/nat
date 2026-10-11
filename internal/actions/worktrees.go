@@ -220,8 +220,8 @@ func worktreeOn(w Worktrees, r Repo, dir, branch string) (path string, created b
 	return path, true, nil
 }
 
-// SliceWorktree is where a slice's worktree is, as `nat slice-worktree` and
-// `nat slice-repo` report it: its path, its branch ([AgentBranch]), the base
+// SliceWorktree is where a slice's worktree is, as `nat slice worktree` and
+// `nat slice repo` report it: its path, its branch ([AgentBranch]), the base
 // the repository's slices are cut from and measured against, and whether this
 // call cut it.
 type SliceWorktree struct {

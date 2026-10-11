@@ -39,7 +39,7 @@ func sum(data string) string {
 	return hex.EncodeToString(h[:])
 }
 
-// The round an agent makes: images handed in, read back by slice-show in
+// The round an agent makes: images handed in, read back by slice show in
 // order, a relative path filed absolute with its hash and a URI as given with
 // none; then a second hand-in that re-renders one at the same path, gives
 // another a before and removes the third; then one that changes nothing; then
@@ -51,11 +51,11 @@ func TestSliceVisualsAreFiledAndReadBack(t *testing.T) {
 	light := shotOf(t, dir, "light.png", "light")
 	stubGetwd(t, dir, nil)
 
-	if err := fp.run("slice-visuals", sliceID,
+	if err := fp.run("slice", "visuals", sliceID,
 		"--visual", "Settings pane, dark\n"+dark,
 		"--visual", "Settings pane, light\nlight.png",
 		"--visual", "The docs page\nhttps://example.com/docs.png"); err != nil {
-		t.Fatalf("slice-visuals: %v", err)
+		t.Fatalf("slice visuals: %v", err)
 	}
 	wantFiled := `# Render the board
 
@@ -72,7 +72,7 @@ As it now stands, 3 visual changes:
 Carry on — the user's comments on them, if any, arrive as a message.
 `
 	if fp.out.String() != wantFiled {
-		t.Errorf("slice-visuals printed\n%s\nwant\n%s", fp.out, wantFiled)
+		t.Errorf("slice visuals printed\n%s\nwant\n%s", fp.out, wantFiled)
 	}
 	if fp.nudges != 1 {
 		t.Errorf("nudges = %d, want one for the filing", fp.nudges)
@@ -83,14 +83,14 @@ Carry on — the user's comments on them, if any, arrive as a message.
 		{Index: 3, Name: "The docs page", URI: "https://example.com/docs.png", Changed: true},
 	}
 	if got := fp.shown(t).Visuals; !slices.Equal(got, want) {
-		t.Errorf("slice-show visuals = %+v, want %+v", got, want)
+		t.Errorf("slice show visuals = %+v, want %+v", got, want)
 	}
 
 	shotOf(t, dir, "dark.png", "re-rendered")
 	before := shotOf(t, dir, "light-before.png", "old light")
-	if err := fp.run("slice-visuals", sliceID, "--visual", "Settings pane, dark\nfile://"+dark,
+	if err := fp.run("slice", "visuals", sliceID, "--visual", "Settings pane, dark\nfile://"+dark,
 		"--before", "Settings pane, light\n"+before, "--remove", "The docs page"); err != nil {
-		t.Fatalf("slice-visuals again: %v", err)
+		t.Fatalf("slice visuals again: %v", err)
 	}
 	wantFiled = `# Render the board
 
@@ -107,7 +107,7 @@ As it now stands, 2 visual changes:
 Carry on — the user's comments on them, if any, arrive as a message.
 `
 	if fp.out.String() != wantFiled {
-		t.Errorf("slice-visuals printed\n%s\nwant\n%s", fp.out, wantFiled)
+		t.Errorf("slice visuals printed\n%s\nwant\n%s", fp.out, wantFiled)
 	}
 	want = []visualJSON{
 		{Index: 1, Name: "Settings pane, dark", URI: dark, Hash: sum("re-rendered"), Changed: true},
@@ -115,49 +115,49 @@ Carry on — the user's comments on them, if any, arrive as a message.
 			Before: visualBeforeJSON{URI: before, Hash: sum("old light")}, Changed: true},
 	}
 	if got := fp.shown(t).Visuals; !slices.Equal(got, want) {
-		t.Errorf("slice-show after a second hand-in = %+v, want %+v", got, want)
+		t.Errorf("slice show after a second hand-in = %+v, want %+v", got, want)
 	}
 
 	// A re-render with the same bytes keeps the before it has, and leaves both
 	// unchanged since the last hand-in.
-	if err := fp.run("slice-visuals", sliceID, "--visual", "Settings pane, light\n"+light); err != nil {
-		t.Fatalf("slice-visuals a third time: %v", err)
+	if err := fp.run("slice", "visuals", sliceID, "--visual", "Settings pane, light\n"+light); err != nil {
+		t.Fatalf("slice visuals a third time: %v", err)
 	}
 	want[0].Changed, want[1].Changed = false, false
 	if got := fp.shown(t).Visuals; !slices.Equal(got, want) {
-		t.Errorf("slice-show after an unchanged hand-in = %+v, want %+v", got, want)
+		t.Errorf("slice show after an unchanged hand-in = %+v, want %+v", got, want)
 	}
 
-	if err := fp.run("slice-visuals", sliceID, "--remove", "Settings pane, dark", "--remove", "Settings pane, light"); err != nil {
-		t.Fatalf("slice-visuals removing the rest: %v", err)
+	if err := fp.run("slice", "visuals", sliceID, "--remove", "Settings pane, dark", "--remove", "Settings pane, light"); err != nil {
+		t.Fatalf("slice visuals removing the rest: %v", err)
 	}
 	if !strings.Contains(fp.out.String(), "No visual changes are filed now.") {
-		t.Errorf("slice-visuals removing the rest printed\n%s", fp.out)
+		t.Errorf("slice visuals removing the rest printed\n%s", fp.out)
 	}
 	if got := fp.shown(t).Visuals; len(got) != 0 {
-		t.Errorf("slice-show after removing every one = %+v, want none", got)
+		t.Errorf("slice show after removing every one = %+v, want none", got)
 	}
 }
 
-// slice-show names its fields as the app decodes them, leaves the list out
+// slice show names its fields as the app decodes them, leaves the list out
 // where nothing was handed in, and leaves an item's hash and before out where
 // it has none.
 func TestSliceShowVisualsJSONShape(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
-	if err := fp.run("slice-show", sliceID, "--json"); err != nil {
-		t.Fatalf("slice-show: %v", err)
+	if err := fp.run("slice", "show", sliceID, "--json"); err != nil {
+		t.Fatalf("slice show: %v", err)
 	}
 	if strings.Contains(fp.out.String(), `"visuals"`) {
-		t.Errorf("slice-show with nothing handed in carries visuals:\n%s", fp.out)
+		t.Errorf("slice show with nothing handed in carries visuals:\n%s", fp.out)
 	}
 	dir := t.TempDir()
 	path, before := shot(t, dir, "a.png"), shotOf(t, dir, "b.png", "before")
-	if err := fp.run("slice-visuals", sliceID, "--visual", "A\n"+path, "--before", "A\n"+before,
+	if err := fp.run("slice", "visuals", sliceID, "--visual", "A\n"+path, "--before", "A\n"+before,
 		"--visual", "B\nhttps://example.com/b.png"); err != nil {
-		t.Fatalf("slice-visuals: %v", err)
+		t.Fatalf("slice visuals: %v", err)
 	}
-	if err := fp.run("slice-show", sliceID, "--json"); err != nil {
-		t.Fatalf("slice-show: %v", err)
+	if err := fp.run("slice", "show", sliceID, "--json"); err != nil {
+		t.Fatalf("slice show: %v", err)
 	}
 	var raw struct {
 		Visuals []map[string]any `json:"visuals"`
@@ -208,7 +208,7 @@ func TestSliceVisualsRefusals(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fp := newFollowUpsPlan(t, tt.status, true, nil)
-			err := fp.run(append([]string{"slice-visuals", sliceID}, tt.args...)...)
+			err := fp.run(append([]string{"slice", "visuals", sliceID}, tt.args...)...)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want %q", err, tt.want)
 			}
@@ -244,7 +244,7 @@ func TestSliceVisualsRefusesADoneSlice(t *testing.T) {
 					t.Fatalf("set the slice up: %v", err)
 				}
 			})
-			err := fp.run("slice-visuals", sliceID, "--visual", "A\n"+path)
+			err := fp.run("slice", "visuals", sliceID, "--visual", "A\n"+path)
 			if err == nil || err.Error() != tt.refuse {
 				t.Errorf("err = %v, want %q", err, tt.refuse)
 			}
@@ -260,10 +260,10 @@ func TestSliceVisualsMisuseAndFailures(t *testing.T) {
 	visual := "A\n" + path
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	for name, args := range map[string][]string{
-		"no slice":    {"slice-visuals", "--visual", visual},
-		"not a slice": {"slice-visuals", "the board", "--visual", visual},
-		"bad flag":    {"slice-visuals", sliceID, "--nope"},
-		"no project":  {"slice-visuals", sliceID, "--visual", visual},
+		"no slice":    {"slice", "visuals", "--visual", visual},
+		"not a slice": {"slice", "visuals", "the board", "--visual", visual},
+		"bad flag":    {"slice", "visuals", sliceID, "--nope"},
+		"no project":  {"slice", "visuals", sliceID, "--visual", visual},
 	} {
 		var err error
 		if name == "no project" {
@@ -277,20 +277,20 @@ func TestSliceVisualsMisuseAndFailures(t *testing.T) {
 	}
 
 	stubGetwd(t, "", errors.New("gone"))
-	if err := fp.run("slice-visuals", sliceID, "--visual", "A\na.png"); err == nil || !strings.Contains(err.Error(), "resolve") {
+	if err := fp.run("slice", "visuals", sliceID, "--visual", "A\na.png"); err == nil || !strings.Contains(err.Error(), "resolve") {
 		t.Errorf("an unreadable working directory: err = %v", err)
 	}
 
 	cfg := testConfig(t)
 	env, _ := testEnv(cfg, &fakeAPI{})
-	err := Run(context.Background(), []string{"slice-visuals", sliceID, "--visual", visual, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "visuals", sliceID, "--visual", visual, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no assignee in the config") {
 		t.Errorf("no assignee: err = %v", err)
 	}
 
 	broken := &fakeAPI{dataSourceErr: errors.New("boom")}
 	env, _ = testEnv(testClaimConfig(t), broken)
-	if err := Run(context.Background(), []string{"slice-visuals", sliceID, "--visual", visual, "--project", "project-1"}, env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "visuals", sliceID, "--visual", visual, "--project", "project-1"}, env); err == nil {
 		t.Error("an unreadable workspace: want an error")
 	}
 }
@@ -314,7 +314,7 @@ func TestSliceVisualsReadAndWriteFailures(t *testing.T) {
 					t.Fatalf("break the plan: %v", err)
 				}
 			})
-			if err := fp.run("slice-visuals", sliceID, "--visual", "A\n"+path); err == nil {
+			if err := fp.run("slice", "visuals", sliceID, "--visual", "A\n"+path); err == nil {
 				t.Error("want an error")
 			}
 			if fp.nudges != 0 {
@@ -328,7 +328,7 @@ func TestSliceVisualsReportsAFailedWrite(t *testing.T) {
 	path := shot(t, t.TempDir(), "a.png")
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	fp.env.Out = failingWriter{}
-	if err := Run(context.Background(), []string{"slice-visuals", sliceID, "--visual", "A\n" + path,
+	if err := Run(context.Background(), []string{"slice", "visuals", sliceID, "--visual", "A\n" + path,
 		"--project", "project-1"}, fp.env); err == nil {
 		t.Error("an unwritable output: want an error")
 	}

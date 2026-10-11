@@ -1,6 +1,6 @@
 import Foundation
 
-/// `nat scratch-open --json`'s own reading (mirrors `internal/cli/scratch.go`'s
+/// `nat scratch open --json`'s own reading (mirrors `internal/cli/scratch.go`'s
 /// `scratchOpenJSON`): the reserved scratch project's ID, and whether this call
 /// is the one that made it.
 public struct ScratchOpenResult: Codable, Equatable, Sendable {
@@ -13,7 +13,7 @@ public struct ScratchOpenResult: Codable, Equatable, Sendable {
     }
 }
 
-/// `nat done-clear --json`'s own reading (mirrors `internal/cli/scratch.go`'s
+/// `nat project done clear --json`'s own reading (mirrors `internal/cli/scratch.go`'s
 /// `doneClearJSON`): what was removed, slices and milestones by name and
 /// sessions by ID.
 public struct DoneClearResult: Codable, Equatable, Sendable {

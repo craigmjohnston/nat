@@ -92,9 +92,9 @@ func (fp *followUpsPlan) run(args ...string) error {
 // propose hands in the three follow-ups.
 func (fp *followUpsPlan) propose(t *testing.T) {
 	t.Helper()
-	if err := fp.run("slice-followups", sliceID,
+	if err := fp.run("slice", "followups", sliceID,
 		"--follow-up", followUpA, "--follow-up", followUpB, "--follow-up", followUpC); err != nil {
-		t.Fatalf("slice-followups: %v", err)
+		t.Fatalf("slice followups: %v", err)
 	}
 }
 
@@ -119,15 +119,15 @@ func (fp *followUpsPlan) body(t *testing.T) string {
 	return body
 }
 
-// shown is slice-show --json's reading of the slice.
+// shown is slice show --json's reading of the slice.
 func (fp *followUpsPlan) shown(t *testing.T) sliceShowJSON {
 	t.Helper()
-	if err := fp.run("slice-show", sliceID, "--json"); err != nil {
-		t.Fatalf("slice-show: %v", err)
+	if err := fp.run("slice", "show", sliceID, "--json"); err != nil {
+		t.Fatalf("slice show: %v", err)
 	}
 	var got sliceShowJSON
 	if err := json.Unmarshal(fp.out.Bytes(), &got); err != nil {
-		t.Fatalf("decode slice-show: %v\n%s", err, fp.out)
+		t.Fatalf("decode slice show: %v\n%s", err, fp.out)
 	}
 	return got
 }
@@ -151,15 +151,15 @@ func TestFollowUpsAreProposedTriagedAndThenHandedBack(t *testing.T) {
 Waiting for the user's decision — it arrives as a message; do not hand back before it does.
 `
 	if fp.out.String() != wantFiled {
-		t.Errorf("slice-followups printed\n%s\nwant\n%s", fp.out, wantFiled)
+		t.Errorf("slice followups printed\n%s\nwant\n%s", fp.out, wantFiled)
 	}
 	if fp.nudges != 1 {
 		t.Errorf("nudges = %d, want one for the filing", fp.nudges)
 	}
 
-	err := fp.run("complete-slice", sliceID, "--branch", "slice/x", "--summary", "Did it.")
+	err := fp.run("slice", "complete", sliceID, "--branch", "slice/x", "--summary", "Did it.")
 	if err == nil || !strings.Contains(err.Error(), "3 follow-ups await the user's decision") {
-		t.Fatalf("complete-slice with follow-ups pending: err = %v, want the refusal", err)
+		t.Fatalf("slice complete with follow-ups pending: err = %v, want the refusal", err)
 	}
 
 	shown := fp.shown(t)
@@ -169,20 +169,20 @@ Waiting for the user's decision — it arrives as a message; do not hand back be
 		{1, 3, "Remove dead code", "Nothing calls it.\nDone when: it is gone."},
 	}
 	if !equalFollowUps(shown.FollowUps, wantShown) {
-		t.Errorf("slice-show followUps = %+v, want %+v", shown.FollowUps, wantShown)
+		t.Errorf("slice show followUps = %+v, want %+v", shown.FollowUps, wantShown)
 	}
 
-	if err := fp.run("slice-triage", sliceID, "--queue", "1", "--fold", "2", "--drop", "3", "--json"); err != nil {
-		t.Fatalf("slice-triage: %v", err)
+	if err := fp.run("slice", "triage", sliceID, "--queue", "1", "--fold", "2", "--drop", "3", "--json"); err != nil {
+		t.Fatalf("slice triage: %v", err)
 	}
 	var outcome triageJSON
 	if err := json.Unmarshal(fp.out.Bytes(), &outcome); err != nil {
-		t.Fatalf("decode slice-triage: %v\n%s", err, fp.out)
+		t.Fatalf("decode slice triage: %v\n%s", err, fp.out)
 	}
 	if len(outcome.Queued) != 1 || outcome.Queued[0].Title != "Persist the split width" || outcome.Queued[0].ID == "" ||
 		!equalLines(outcome.Folded, []string{"Render the picker in a story"}) ||
 		!equalLines(outcome.Dropped, []string{"Remove dead code"}) {
-		t.Errorf("slice-triage printed %+v", outcome)
+		t.Errorf("slice triage printed %+v", outcome)
 	}
 	wantSent := `Follow-ups decided. Queued as slices: 1 (Persist the split width). Dropped: 3 (Remove dead code).
 Fold in before handing back:
@@ -191,16 +191,16 @@ Fold in before handing back:
    No story shows it open.
    Done when: a story shows it open.
 
-Then hand back with nat complete-slice as usual.`
+Then hand back with nat slice complete as usual.`
 	if len(fp.runner.sends) != 1 || fp.runner.sends[0].session != "nat-render" || fp.runner.sends[0].prompt != wantSent {
 		t.Errorf("sends = %+v, want one message to the agent:\n%s", fp.runner.sends, wantSent)
 	}
 
 	if shown := fp.shown(t); len(shown.FollowUps) != 0 {
-		t.Errorf("slice-show after the triage: followUps = %+v, want none", shown.FollowUps)
+		t.Errorf("slice show after the triage: followUps = %+v, want none", shown.FollowUps)
 	}
-	if err := fp.run("complete-slice", sliceID, "--branch", "slice/x", "--summary", "Did it."); err != nil {
-		t.Fatalf("complete-slice after the triage: %v", err)
+	if err := fp.run("slice", "complete", sliceID, "--branch", "slice/x", "--summary", "Did it."); err != nil {
+		t.Fatalf("slice complete after the triage: %v", err)
 	}
 
 	queued, _, err := fp.local(t).Slice(context.Background(), outcome.Queued[0].ID)
@@ -239,15 +239,15 @@ func equalFollowUps(got, want []followUpJSON) bool {
 // let stop whatever is pending.
 func TestCompleteSliceOverPendingFollowUps(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
-	if err := fp.run("slice-followups", sliceID, "--follow-up", followUpA); err != nil {
-		t.Fatalf("slice-followups: %v", err)
+	if err := fp.run("slice", "followups", sliceID, "--follow-up", followUpA); err != nil {
+		t.Fatalf("slice followups: %v", err)
 	}
-	err := fp.run("complete-slice", sliceID, "--summary", "Did it.")
+	err := fp.run("slice", "complete", sliceID, "--summary", "Did it.")
 	if err == nil || !strings.Contains(err.Error(), "1 follow-up awaits the user's decision; hand back once it has arrived") {
 		t.Errorf("err = %v, want the singular refusal", err)
 	}
-	if err := fp.run("complete-slice", sliceID, "--blocked", "--summary", "Stuck."); err != nil {
-		t.Errorf("complete-slice --blocked: %v, want it let through", err)
+	if err := fp.run("slice", "complete", sliceID, "--blocked", "--summary", "Stuck."); err != nil {
+		t.Errorf("slice complete --blocked: %v, want it let through", err)
 	}
 }
 
@@ -257,7 +257,7 @@ func TestCompleteSliceReportsAFailedFollowUpsRead(t *testing.T) {
 			t.Fatalf("break the body column: %v", err)
 		}
 	})
-	err := fp.run("complete-slice", sliceID, "--summary", "Did it.")
+	err := fp.run("slice", "complete", sliceID, "--summary", "Did it.")
 	if err == nil || !strings.Contains(err.Error(), "read the slice for follow-ups") {
 		t.Errorf("err = %v, want the failed read named", err)
 	}
@@ -282,7 +282,7 @@ func TestSliceFollowUpsRefusals(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fp := newFollowUpsPlan(t, tt.status, true, nil)
-			err := fp.run(append([]string{"slice-followups", sliceID}, tt.args...)...)
+			err := fp.run(append([]string{"slice", "followups", sliceID}, tt.args...)...)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want %q", err, tt.want)
 			}
@@ -296,10 +296,10 @@ func TestSliceFollowUpsRefusals(t *testing.T) {
 func TestSliceFollowUpsMisuseAndFailures(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	for name, args := range map[string][]string{
-		"no slice":    {"slice-followups", "--follow-up", followUpA},
-		"not a slice": {"slice-followups", "the board", "--follow-up", followUpA},
-		"bad flag":    {"slice-followups", sliceID, "--nope"},
-		"no project":  {"slice-followups", sliceID, "--follow-up", followUpA},
+		"no slice":    {"slice", "followups", "--follow-up", followUpA},
+		"not a slice": {"slice", "followups", "the board", "--follow-up", followUpA},
+		"bad flag":    {"slice", "followups", sliceID, "--nope"},
+		"no project":  {"slice", "followups", sliceID, "--follow-up", followUpA},
 	} {
 		var err error
 		if name == "no project" {
@@ -314,14 +314,14 @@ func TestSliceFollowUpsMisuseAndFailures(t *testing.T) {
 
 	cfg := testConfig(t)
 	env, _ := testEnv(cfg, &fakeAPI{})
-	err := Run(context.Background(), []string{"slice-followups", sliceID, "--follow-up", followUpA, "--project", "project-1"}, env)
+	err := Run(context.Background(), []string{"slice", "followups", sliceID, "--follow-up", followUpA, "--project", "project-1"}, env)
 	if err == nil || !strings.Contains(err.Error(), "no assignee in the config") {
 		t.Errorf("no assignee: err = %v", err)
 	}
 
 	broken := &fakeAPI{dataSourceErr: errors.New("boom")}
 	env, _ = testEnv(testClaimConfig(t), broken)
-	if err := Run(context.Background(), []string{"slice-followups", sliceID, "--follow-up", followUpA, "--project", "project-1"}, env); err == nil {
+	if err := Run(context.Background(), []string{"slice", "followups", sliceID, "--follow-up", followUpA, "--project", "project-1"}, env); err == nil {
 		t.Error("an unreadable workspace: want an error")
 	}
 }
@@ -343,7 +343,7 @@ func TestSliceFollowUpsReadAndWriteFailures(t *testing.T) {
 					t.Fatalf("break the plan: %v", err)
 				}
 			})
-			if err := fp.run("slice-followups", sliceID, "--follow-up", followUpA); err == nil {
+			if err := fp.run("slice", "followups", sliceID, "--follow-up", followUpA); err == nil {
 				t.Error("want an error")
 			}
 			if fp.nudges != 0 {
@@ -356,7 +356,7 @@ func TestSliceFollowUpsReadAndWriteFailures(t *testing.T) {
 func TestSliceFollowUpsReportsAFailedWrite(t *testing.T) {
 	fp := newFollowUpsPlan(t, notion.SliceInProgress, true, nil)
 	fp.env.Out = failingWriter{}
-	if err := Run(context.Background(), []string{"slice-followups", sliceID, "--follow-up", followUpA,
+	if err := Run(context.Background(), []string{"slice", "followups", sliceID, "--follow-up", followUpA,
 		"--project", "project-1"}, fp.env); err == nil {
 		t.Error("an unwritable output: want an error")
 	}
