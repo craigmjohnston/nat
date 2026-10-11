@@ -68,6 +68,7 @@ public protocol NatClientProtocol: Sendable {
     func natVersion() async throws -> String
     func claudeVersion() async throws -> ClaudeVersion
     func claudeUpdate() async throws -> String
+    func storageUsage() async throws -> StorageUsageAnswer
     func planFile(projectID: String) async throws -> String?
     func defaultBase(projectID: String) async throws -> String?
 }
@@ -88,6 +89,12 @@ extension NatClientProtocol {
 
     public func claudeUpdate() async throws -> String {
         throw NatError.commandFailed("claude-update: not supported by this client")
+    }
+
+    /// Settings ▸ GitHub's read: only `NatClient` and the fixture client
+    /// implement it, the same reasoning as `natVersion`.
+    public func storageUsage() async throws -> StorageUsageAnswer {
+        throw NatError.commandFailed("storage-usage: not supported by this client")
     }
 
     /// The project settings sheet's Plan row: only `NatClient` and the

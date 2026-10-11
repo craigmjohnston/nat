@@ -181,7 +181,18 @@ unauthenticated HTTPS read — no gh — kept per channel in `<state
 dir>/claude-version-<channel>.json` for an hour; either side unread is absent and
 `update_available` false, never a failure; `update_method` — `homebrew`, with
 `homebrew_cask`, or `claude` — and the text's `updates with:` line say how
-`claude-update` would run, from the same `claudeUpdateMethod` it runs by) and `claude-update` (`brew upgrade
+`claude-update` would run, from the same `claudeUpdateMethod` it runs by), `storage-usage` (`storageusage.go`: the GitHub account's
+artifact storage this month, `gh.CLI.ArtifactStorage` through a budgetless
+gh — `newStorageReader`, never the GraphQL budget — shared out by project:
+a project's repositories are its working directory's origin and, for a
+source project, its tasks' `Repo`s read off the plan file alone; each
+repository goes to the first claimant in name order, the rest to `other`.
+JSON `{login, plan, allowance_gb, year, month, days_left, total_gb,
+projects: [{id, name, color, repos, gb}], other: {gb, repos: [{repo,
+gb}]}}`, every project listed, arrays never null; `days_left` counts today,
+UTC. gh lacking the `user` scope is, under `--json`, no error but
+`{needs_scope: "user", scope_command}` — gnat offers the command; any other
+failed read is the command's error, gnat showing it as said) and `claude-update` (`brew upgrade
 <cask>` where claude's real path holds `/Caskroom/<cask>/` — there `claude
 update` installs nothing, only printing the brew command and exiting 0 —
 else `claude update`; output relayed, `--json` `{output}`, a failure the

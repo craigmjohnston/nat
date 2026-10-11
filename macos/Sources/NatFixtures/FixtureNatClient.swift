@@ -58,6 +58,7 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     private let config: ConfigDoc
     private let usageReading: UsageReading
     private let claudeVersionReading: ClaudeVersion
+    private let storageReading: StorageUsageAnswer
     /// What `claude-update` answers: its output, or nil to refuse.
     private let claudeUpdateOutput: String?
     private let sessionsList: [Session]
@@ -157,8 +158,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
         plugins: PluginListing = Fixtures.pluginListing,
         sources: [SourcePlugin] = Fixtures.sourcePlugins,
         prStatus: PRStatusDoc = Fixtures.prStatusDoc,
-        prStatusByProject: [String: PRStatusDoc] = [:]
+        prStatusByProject: [String: PRStatusDoc] = [:],
+        storage: StorageUsageAnswer = .reading(Fixtures.storageUsage)
     ) {
+        self.storageReading = storage
         self.prStatusDoc = prStatus
         self.prStatusByProject = Box(prStatusByProject.mapValues { Optional($0) })
         self.plugins = plugins
@@ -412,6 +415,10 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
 
     public func claudeVersion() async throws -> ClaudeVersion {
         try await answer(claudeVersionReading)
+    }
+
+    public func storageUsage() async throws -> StorageUsageAnswer {
+        try await answer(storageReading)
     }
 
     /// Recorded as `claude-update`; refused, with claude's own words, where

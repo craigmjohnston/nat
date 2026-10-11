@@ -100,14 +100,24 @@ the traffic lights over the sidebar; tile + name, each tile a fixed
 the accent; About apart under a rule) beside the section's groups (bold heading,
 `settingRow`s left-aligned under it), one fixed 760×560 window whose
 sections scroll — reads `nat config-show`, writes one `nat config-set <key>
-<value>` per changed key. Sections: General, Agents, Sources, About. About
+<value>` per changed key. Sections: General, Agents, Sources, GitHub, About.
+GitHub is `StorageUsageSection` over `StorageUsageModel` (NatKit, tested):
+`nat storage-usage` read when the section is first shown and on Refresh,
+never polled; the bar (`segments`: a project holding storage in its colour,
+one taking none in a quiet grey, other repositories in the system grey, the
+width the allowance or the total where more), the total against the
+allowance and the days left, then `legend` — every project, then Other —
+or nat's refusal as said. gh lacking the "user" scope is its own state
+(`.needsScope`, nat's `needs_scope`; never red): what the permission is, the
+command with Copy, that nothing else needs it, and Check Again. Stories:
+`settings-github`, `-loading`, `-failed`, `-needs-scope`. About
 reads `Bundle.main` (`AppVersion`, `dev` where unset) and `nat --version`
 (`NatClient.natVersion`), and is the app's one About: the app menu's About
 gnat (`AboutGnatButton`, replacing the standard panel) leaves
 `AppModel.requestSettingsAbout` and opens Settings, which takes it once
 (`takeSettingsAboutRequest`) on opening or while open; ⌘, asks nothing and
 opens as ever. Stories: `settings`, `settings-agents*`,
-`settings-sources*`, `settings-about`. **Per-project settings are not
+`settings-sources*`, `settings-github*`, `settings-about`. **Per-project settings are not
 here**: the project menu's Project settings… (a project row's right-click
 or its hover-only three-dot) opens `ProjectSettingsView`, a sheet on the
 main window — one grouped `Form` that scrolls, no sidebar or tabs, Cancel

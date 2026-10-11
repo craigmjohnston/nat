@@ -94,6 +94,18 @@ human has read the diff.
   cancels whole runs only, and refuses a re-run of a run still going (403;
   gh: "run <id> cannot be rerun; …", per gh's source). These log method, ids
   and exit code only (`logRunCall`), never gh's words.
+- `ArtifactStorage(now)` — this month's artifact storage for the signed-in
+  user (`storage.go`): `gh api user` (login, `plan.name`) then `gh api
+  users/<login>/settings/billing/usage?year=&month=`, both REST, in no
+  directory. Items with product `actions` and SKU `Actions storage` (never
+  the cache's; read off a real report, October 2026 — the docs name neither)
+  are summed per repository (a bare name, as the report gives a user's own,
+  taken as `<login>/<name>`; lower-cased) in GB-hours and
+  divided by the month's hours (`HoursInMonth`, UTC) into GB-months, as
+  GitHub's billing page counts them; any other unit is refused. The
+  allowance is `planStorageGB` (free 0.5, pro 1, team 2 GB; else 0). Both
+  reads need gh's `user` scope; gh's bare 404 for its lack becomes
+  `ErrBillingScope`, naming `gh auth refresh -h github.com -s user`.
 - `NormaliseURL(url)` — strips query/fragment, trailing slash, lowercases
   owner/repo — so a URL pasted from a review comment matches the canonical
   one gh prints. `ParsePRURL` reads owner, repository and number off that
