@@ -31,13 +31,13 @@ import Foundation
 ///
 /// It also keeps gnat's own spend this session — the points its readings
 /// cost (`cost`) and one per action that spent one (`actionRan`) — and when
-/// the app launched: what Settings ▸ About's Diagnostics puts beside the
+/// the app launched: what Settings ▸ GitHub's Diagnostics puts beside the
 /// shared budget, which cannot say whose spend it is.
 @MainActor
 @Observable
 public final class GitHubReadingStore {
     /// GitHub's budget as the last reading left it — the status bar's
-    /// readout and the Diagnostics foldout.
+    /// readout and Settings' Diagnostics.
     public private(set) var rateLimit: GitHubRateLimit?
 
     /// The points gnat has spent since launch: every reading's `cost`, and

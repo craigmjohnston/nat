@@ -1,7 +1,7 @@
 import XCTest
 @testable import NatKit
 
-/// The status bar's GitHub readout and Settings ▸ About's Diagnostics rows.
+/// The status bar's GitHub readout and Settings ▸ GitHub's Diagnostics rows.
 final class GitHubBudgetDisplayTests: XCTestCase {
     private var calendar: Calendar {
         var c = Calendar(identifier: .gregorian)

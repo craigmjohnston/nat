@@ -75,7 +75,7 @@ public func budgetClock(_ date: Date, now: Date, calendar: Calendar = .current) 
     return formatter.string(from: date)
 }
 
-/// Settings ▸ About's Diagnostics rows, each a label and a value.
+/// Settings ▸ GitHub's Diagnostics rows, each a label and a value.
 public enum DiagnosticsFormat {
     /// `GitHub budget`: the last reading's remaining of its limit and when it
     /// resets, the state after it where throttled or paused; before any
