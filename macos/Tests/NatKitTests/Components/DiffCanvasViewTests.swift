@@ -58,6 +58,10 @@ final class DiffCanvasViewTests: XCTestCase {
         let window = NSWindow(
             contentRect: canvas.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        // Far off screen: the viewport reads the real pointer
+        // (`refreshHover`), and a window at the screen's corner put a row
+        // under it wherever the pointer happened to rest.
+        window.setFrameOrigin(NSPoint(x: -100_000, y: -100_000))
         window.contentView = canvas
         self.window = window
         canvas.update(files: files ?? self.files, state: state)

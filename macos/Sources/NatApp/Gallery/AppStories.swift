@@ -199,20 +199,20 @@ enum AppStories {
         return StatusBarView(appModel: await Fixtures.startedAppModel(client: client))
     }
 
-    /// Settings ▸ About, Diagnostics open: launched 2h 14m before the
-    /// gallery's clock, a throttled reading in, and a tally of readings and
-    /// actions behind it.
-    private static func aboutDiagnostics() async -> some View {
+    /// Settings ▸ GitHub, its API usage under Artifact storage: a throttled
+    /// reading in, and a tally of readings and actions behind it.
+    private static func githubAPIUsage() async -> some View {
         let client = FixtureNatClient()
         client.setRateLimit(GitHubRateLimit(
             limit: 5000, remaining: 412, resetAt: Fixtures.now.addingTimeInterval(46 * 60),
             projectedRemainingAtReset: 120, throttled: true, pollAfterSeconds: 300, cost: 1))
-        let launched = Fixtures.now.addingTimeInterval(-(2 * 3600 + 14 * 60))
-        let appModel = await Fixtures.startedAppModel(client: client, now: { launched })
+        let appModel = await Fixtures.startedAppModel(client: client)
         for _ in 0..<3 { appModel.githubActionRan() }
         await appModel.githubReadingStore?.idle()
         for _ in 0..<4 { await appModel.githubReadingStore?.read() }
-        return SettingsView(appModel: appModel, client: client, initialTab: .about, diagnosticsExpanded: true)
+        let storage = StorageUsageModel(client: client)
+        await storage.loadIfNeeded()
+        return SettingsView(appModel: appModel, client: client, initialTab: .github, storage: storage)
     }
 
     /// The size the PR section's Checks stories are drawn at: the
@@ -3129,13 +3129,13 @@ enum AppStories {
         },
 
         Story(
-            name: "settings-about-diagnostics",
-            summary: "About with Diagnostics unfolded: a throttled GitHub reading's used and total and its "
-                + "reset, gnat's own points, readings and actions this session, and how long it has been open.",
+            name: "settings-github-api-usage",
+            summary: "GitHub with API usage under Artifact storage: a throttled GitHub reading's used and "
+                + "total and its reset, and gnat's own points, readings and actions this session.",
             size: CGSize(width: 760, height: 560),
             colorScheme: .light
         ) {
-            await aboutDiagnostics()
+            await githubAPIUsage()
         },
 
         Story(

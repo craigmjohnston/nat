@@ -78,8 +78,7 @@ extension Fixtures {
             activityStoreFactory: { ActivityStore(client: client) },
             usageStoreFactory: { UsageStore(client: client, cache: NullUsageCache()) },
             claudeVersionStoreFactory: { ClaudeVersionStore(client: client) },
-            // The live clock unless a story pins it — what the GitHub
-            // reading's launch time, and so Diagnostics' session length, read.
+            // The live clock unless a story pins it.
             now: now,
             // Pinned by the tab, so an Untitled tab's planning session has
             // the same name every run and two tabs still differ.
