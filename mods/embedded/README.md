@@ -5,7 +5,7 @@ with `claude --plugin-dir`, for that one session only; it is never installed
 and never reaches a session nat did not start. Nothing here is meant to be
 loaded by hand.
 
-Tested with Claude Code **2.1.294**.
+Tested with Claude Code **2.1.296**.
 
 - `hooks/register.ts` — the hooks, which quiet the pane's chrome by
   rewriting Claude Code's own render-site props: the prompt hint
@@ -28,13 +28,22 @@ Tested with Claude Code **2.1.294**.
   And they record a resume: a prompt the user typed (`origin.kind`
   `composer` or `bridge`) on a session with `NAT_SLICE` and `NAT_PROJECT`
   set runs `nat slice resume` with the prompt on stdin before it goes on.
-  And they hand the session its brief: `prompt.context` appends the file
-  `NAT_BRIEF` names as a `natBrief` context block, which the model reads
-  and the pane never draws; nat starts the session on one opening line
-  pointing at it. Checked live on 2.1.294: hidden in the pane and under
-  ctrl+o, re-read from the file on `/compact`, kept as recorded (not
-  re-read) on `claude --resume`. A session whose mod never loads (an older
-  Claude Code) has the opening line alone and asks what to work.
+  And they hand the session its brief: `prompt.submit` attaches the file
+  `NAT_BRIEF` names to the conversation's opening prompt (no turn before
+  it) as context wrapped in `<natBrief>` tags, which the model reads and
+  the pane never draws; nat starts the session on one opening line
+  pointing at it. `prompt.context` appends it as a `natBrief` block to the
+  context blocks a compaction or `/clear` computes afresh, passing over the
+  opening prompt's own. Not `prompt.context` alone: on a Team or
+  Enterprise plan, or with managed settings, Claude Code's own guard
+  `sec-default@builtin` sits ahead of every user mod and its
+  `prompt.context` hook skips the user tier, so the brief never arrived;
+  it leaves `prompt.submit` to a person's mods. Checked live on 2.1.296:
+  hidden in the pane and under ctrl+o, briefed once, re-read from the
+  file on `/compact`, kept as recorded (not re-read) on `claude --resume`.
+  Behind the guard, a compaction keeps only what its summary says of it.
+  A session whose mod never loads (an older Claude Code) has the opening
+  line alone and asks what to work.
   And they report the account's rate limits: `session.measure` writes the
   five-hour and seven-day windows to the file `NAT_USAGE` names (temp file,
   then `mv`), which `nat usage` answers from while any agent is live.
