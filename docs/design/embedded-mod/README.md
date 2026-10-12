@@ -162,23 +162,60 @@ it is. The opening line is one sentence per prompt kind
 slice "<title>": your brief is the natBrief block of this message.`,
 `Continue …` for a session resuming work — and is all the pane shows.
 
-The mod's `prompt.context` hook, which fires when the engine computes the
-context blocks of a conversation's first user message (`claudeMd`,
-`currentDate`, …), reads `NAT_BRIEF` and appends `{ name: 'natBrief', text }`
-after the engine's blocks. A read that fails is logged to debug and the
-blocks pass through: the agent has the opening line alone and asks.
+The mod hands the brief over twice, through two hooks:
 
-Checked live on Claude Code 2.1.294 (haiku, a private tmux socket):
+- **`prompt.submit`**, on the conversation's opening prompt — the one
+  `$.session.turns()` reads `0` for — reads `NAT_BRIEF` and adds the file to
+  the prompt's `context`, wrapped as `<natBrief>…</natBrief>` (`context` is
+  plain text, with no block name of its own). The opening line arrives as
+  `origin.kind` `composer`, as a typed prompt does, so the turn count, not
+  the origin, is what tells it apart. Every later prompt, and the prompt a
+  `claude --resume` opens with, passes through: the transcript already
+  holds the brief. The count is the engine's, so a hot reload of the mod
+  changes nothing.
+- **`prompt.context`**, which fires when the engine computes the context
+  blocks of a conversation's first user message (`claudeMd`,
+  `currentDate`, …), appends `{ name: 'natBrief', text }` after the
+  engine's blocks — except where the count is `0`: those are the opening
+  prompt's own blocks, computed just after `prompt.submit` briefed it. The
+  next request after a compaction or a `/clear` computes them afresh, and
+  the brief comes back with them.
+
+`prompt.submit` is the one every machine runs. On a Team or Enterprise
+plan, or a machine with managed settings, Claude Code seats its built-in
+guard, `sec-default@builtin`, ahead of every user mod, and the guard's
+`prompt.context` hook (`next.to(e, 'append')`) skips the whole user tier,
+where a `--plugin-dir` mod sits: under `prompt.context` alone, the brief
+never arrived there. The guard leaves `prompt.submit` and its additive
+context to a person's mods. Behind it, nothing re-reads the brief: a
+compaction keeps only what its summary says of it (checked here with the
+`prompt.submit` hook alone — a short session's `/compact` dropped the
+brief's text), and a `/clear` loses it.
+
+A read that fails is logged to debug and the prompt or the blocks pass
+through: the agent has the opening line alone and asks. A turn count that
+cannot be read is logged too; it briefs no prompt, and briefs the blocks,
+so the model reads the brief twice rather than not at all.
+
+Checked live on Claude Code 2.1.296 (haiku, a private tmux socket):
 
 - the pane shows the opening line and the agent's reply, never the block —
   under ctrl+o either;
-- the agent starts on the brief without asking;
-- `/compact` re-runs the hook and re-reads the file: the brief file was
-  changed after launch, and after the compaction the block held the new
-  text, so the file must stay where it is for the session's life;
+- the model sees one `natBrief` block on a fresh session, not two;
+- `/compact` re-runs `prompt.context` on the next request and re-reads the
+  file: the brief file was changed after launch, and after the compaction
+  the block held the new text, so the file must stay where it is for the
+  session's life;
 - `claude --resume` of the session keeps the block **as the transcript
   recorded it** — it is not re-read on resume (the file had changed again,
-  and the resumed session still answered from the old text).
+  and the resumed session still answered from the old text);
+- the opening line's `prompt.submit` reads `origin.kind` `composer` and a
+  turn count of `0`; a resumed session's opening prompt reads `1` or more,
+  and so does the first prompt after a `/clear` (the `/clear` counts).
+
+`prompt.submit` on a Team plan behind the guard was checked on that
+machine (2.1.296): the context it attaches is hidden in the pane and under
+ctrl+o, and present on `claude --resume`.
 
 Degrade: where no mod could be written, the brief stays the positional prompt
 exactly as before. A session whose mod is written but never loads (an older

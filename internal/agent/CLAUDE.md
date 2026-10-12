@@ -177,7 +177,8 @@ running agent's state.
 - `resumeCommand`: `[NAT_BRIEF=<brief>] claude --resume <id> <flags>
   "$(cat <resume file>)"` — checked live on 2.1.296: an initial prompt with
   `--resume` is sent as the resumed transcript's next turn; NAT_BRIEF stays
-  for a later compaction, which re-reads it. A resume that exits non-zero
+  for a later compaction, which re-reads it (the mod briefs no resumed
+  conversation's opening prompt: it has turns). A resume that exits non-zero
   within `resumeFailWindow` (15 s; an unknown id exits 1 in about 2 s) falls
   through to `freshCommand` in the same pane, so a failed resume is retried
   fresh in the same launch. That fallback happens in the pane's shell, so
@@ -252,8 +253,14 @@ running agent's state.
   With the mod, `agentCommand` hands the brief over by path —
   `NAT_BRIEF=<prompt file> claude … '<opening line>'` (`OpeningLine`/
   `PlanOpeningLine`/`NewProjectOpeningLine`, `opening.go`) — and the mod
-  appends it as the `natBrief` context block; without one, the brief is the
-  positional prompt as before. A compaction re-reads the file, so it is
+  attaches it to the opening prompt (`prompt.submit` context, wrapped as
+  `<natBrief>`), and as a `natBrief` block to the context blocks a
+  compaction or `/clear` recomputes (`prompt.context`); without one, the
+  brief is the positional prompt as before. Not `prompt.context` alone: on a
+  Team/Enterprise plan or a managed machine, Claude Code's
+  `sec-default@builtin` guard routes `prompt.context` past the user tier a
+  `--plugin-dir` mod sits in, and the brief never arrived; it leaves
+  `prompt.submit` to user mods. A compaction re-reads the file, so it is
   never removed under a live session: `WritePromptFile` writes it to
   `<state dir>/agent-brief/<session>.md` (dir `0700`, file `0600`, temp +
   rename, overwritten by the session's next launch) — never `$TMPDIR`, which

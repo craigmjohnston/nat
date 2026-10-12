@@ -900,12 +900,13 @@ func modelFlags(m config.AgentModel, sink, mod string) string {
 //
 // Where the mod was written (mod non-empty), the brief goes by path, not
 // argv: `NAT_BRIEF=<promptFile>`, set in this command so no tmux -e is
-// involved, and the mod appends the file to the first message's context
-// blocks, which the pane never draws; claude's positional prompt is opening
-// alone. With no mod there is nothing to read the variable, so the brief is
-// the positional prompt, read back from the file. Verified live on 2.1.294:
-// a compaction re-reads the file, so it stays where [WritePromptFile] put it
-// for as long as the session lives.
+// involved, and the mod attaches the file to the opening prompt as context,
+// which the pane never draws; claude's positional prompt is opening alone.
+// With no mod there is nothing to read the variable, so the brief is the
+// positional prompt, read back from the file. Verified live on 2.1.296: a
+// compaction re-reads the file (where no managed guard skips the mod's
+// `prompt.context`), so it stays where [WritePromptFile] put it for as long
+// as the session lives.
 func agentCommand(workdir, promptFile, opening string, m config.AgentModel, sink, mod string) string {
 	return inWorkdir(workdir, freshCommand(promptFile, opening, m, sink, mod))
 }
@@ -931,10 +932,10 @@ var resumeFailWindow = 15
 // prompt read back from its file — checked live on 2.1.296, a prompt given
 // with --resume is sent as the next turn of the resumed transcript. With the
 // mod, NAT_BRIEF still names the full brief: the transcript already holds it
-// and the resume does not re-read it, but a compaction does. A resume that
-// fails within [resumeFailWindow] — no transcript for that id here — falls
-// through to [freshCommand] in the same pane, so the launch still starts an
-// agent, briefed afresh.
+// and the mod briefs only a conversation's opening prompt, but a compaction
+// re-reads it. A resume that fails within [resumeFailWindow] — no transcript
+// for that id here — falls through to [freshCommand] in the same pane, so the
+// launch still starts an agent, briefed afresh.
 func resumeCommand(workdir, promptFile, opening string, r Resumption, m config.AgentModel, sink, mod string) string {
 	brief := ""
 	if mod != "" {

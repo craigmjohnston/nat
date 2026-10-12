@@ -1,8 +1,9 @@
 package agent
 
 // briefBlock is the context block the embedded mod hands a session its brief
-// in (`mods/embedded/hooks/register.ts`, `prompt.context`): what every opening
-// line points the agent at.
+// in (`mods/embedded/hooks/register.ts`: `<natBrief>` context on the opening
+// prompt, and a `natBrief` block after a compaction): what every opening line
+// points the agent at.
 const briefBlock = "natBrief"
 
 // briefPointer ends every opening line: where the brief the line stands in for

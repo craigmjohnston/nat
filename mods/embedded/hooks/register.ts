@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, SessionRateLimit, StateDollar } from 'claude-code'
+import type { EngineInterface, PromptSubmitInput, Register, SessionRateLimit, StateDollar } from 'claude-code'
 
 import type { Wait } from '../types'
 
@@ -163,6 +163,57 @@ async function resume($: ResumeEngine, text: string): Promise<void> {
   }
 }
 
+type BriefEngine = Pick<EngineInterface, 'env' | 'fs' | 'session' | 'ui'>
+
+// The session's brief, from the file nat leaves it in (`NAT_BRIEF`) rather
+// than argv; null for a session nat gave none. One that cannot be read is
+// logged and is null too — the agent then has the opening line alone and
+// asks, a visible failure.
+async function readBrief($: BriefEngine): Promise<string | null> {
+  const path = await $.env.get('NAT_BRIEF')
+  if (!path) return null
+  try {
+    return await $.fs.read(path)
+  } catch (err) {
+    $.ui.log(`agent brief not read: ${String(err)}`, { to: 'debug' })
+    return null
+  }
+}
+
+// The brief rides the conversation's opening prompt as context, wrapped as
+// the `natBrief` block the opening line points at: the model reads it and the
+// pane never draws it. It goes with the prompt, not as a `prompt.context`
+// block alone: on a Team or Enterprise plan, or a machine with managed
+// settings, Claude Code seats its own guard (`sec-default@builtin`) ahead of
+// every user mod, and its `prompt.context` hook passes straight past the user
+// tier a `--plugin-dir` mod sits in, while `prompt.submit` and the context it
+// attaches are left to a person's mods.
+//
+// Only a prompt the conversation has no turn before is briefed: the opening
+// line, which arrives as `composer` like a typed prompt, so its origin cannot
+// tell it apart. A `claude --resume` (which nat starts with a prompt and
+// `NAT_BRIEF` set) already carries the brief in its transcript and is not
+// briefed twice; the count is the engine's, so a hot reload changes nothing.
+// A count that cannot be read is logged and briefs nothing.
+async function briefed($: BriefEngine, e: PromptSubmitInput): Promise<PromptSubmitInput> {
+  if (!(await $.env.get('NAT_BRIEF'))) return e
+  if ((await turns($)) !== 0) return e
+  const text = await readBrief($)
+  if (text === null) return e
+  return { ...e, context: [...(e.context ?? []), `<natBrief>\n${text}\n</natBrief>`] }
+}
+
+// How many prompts the conversation has had; null, logged, where the engine
+// cannot say.
+async function turns($: BriefEngine): Promise<number | null> {
+  try {
+    return await $.session.turns()
+  } catch (err) {
+    $.ui.log(`turns not read for the agent brief: ${String(err)}`, { to: 'debug' })
+    return null
+  }
+}
+
 // The rate-limit windows `nat usage` reads, by the name the statusline payload
 // gives them; any other kind (a gateway's spend limit) is not one it shows.
 const windows: ReadonlySet<string> = new Set(['five_hour', 'seven_day'])
@@ -219,22 +270,17 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // The session's brief, which nat leaves in a file (`NAT_BRIEF`) rather than
-  // in argv, rides the first user message as a context block beside
-  // CLAUDE.md's: the model reads it, the pane never draws it, and a
-  // compaction or `/clear` re-reads it here. The pane shows only nat's one
-  // opening line. A brief that cannot be read is logged and left out — the
-  // agent then has the opening line alone and asks, a visible failure.
+  // Where nothing seated ahead of the mod skips it, the brief also rides the
+  // context blocks the engine computes for a conversation's first user
+  // message beside CLAUDE.md's, which the next request after a compaction or
+  // a `/clear` computes afresh — the brief a summary would otherwise leave
+  // behind. The opening prompt's own blocks, computed with no turn yet and
+  // just after it was briefed, are passed over; a count that cannot be read
+  // briefs the blocks, so the model reads it twice rather than not at all.
   on('prompt.context', async ($, e, next) => {
-    const path = await $.env.get('NAT_BRIEF')
-    if (!path) return next(e)
-    let text: string
-    try {
-      text = await $.fs.read(path)
-    } catch (err) {
-      $.ui.log(`agent brief not read: ${String(err)}`, { to: 'debug' })
-      return next(e)
-    }
+    if ((await turns($)) === 0) return next(e)
+    const text = await readBrief($)
+    if (text === null) return next(e)
     return next({ ...e, blocks: [...e.blocks, { name: 'natBrief', text }] })
   })
 
@@ -295,10 +341,12 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // A prompt also puts a typed one on the record as a resume, and the
+  // conversation's opening one carries the brief.
   on('prompt.submit', async ($, e, next) => {
     await mark($, null)
     if (typed.has(e.origin.kind)) await resume($, e.text)
-    return next(e)
+    return next(await briefed($, e))
   })
 
   // An AskUserQuestion dialog waits from before it is drawn until it is

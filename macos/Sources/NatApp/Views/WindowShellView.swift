@@ -512,7 +512,11 @@ struct WindowShellView: View {
         @ViewBuilder navigator: () -> Navigator, @ViewBuilder main: () -> Main
     ) -> some View {
         VStack(spacing: 0) {
+            // Above the navigator's own zIndex(1): macOS 26 paints the
+            // navigator over the band laid out above it, where macOS 15
+            // did not, leaving its fill where the band should be.
             titlebar
+                .zIndex(2)
             HStack(spacing: 0) {
                 navigator()
                     .frame(width: liveNavigatorWidth ?? navigatorWidth)
