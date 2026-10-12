@@ -67,8 +67,17 @@ func (a *app) runAction(ctx context.Context) (string, error) {
 		if input == "" {
 			return "", errors.New("shortcut: a comment needs some text")
 		}
-		if err := notFound(a.sc.CreateComment(ctx, id, input), id); err != nil {
+		var parent int64
+		if c := a.req.Target.Comment; c != "" {
+			if parent, err = strconv.ParseInt(c, 10, 64); err != nil || parent <= 0 {
+				return "", fmt.Errorf("shortcut: %q is not a comment id", c)
+			}
+		}
+		if err := notFound(a.sc.CreateComment(ctx, id, input, parent), id); err != nil {
 			return "", err
+		}
+		if parent != 0 {
+			return fmt.Sprintf("Replied on sc-%d", id), nil
 		}
 		return fmt.Sprintf("Commented on sc-%d", id), nil
 	case "assign":
@@ -320,14 +329,14 @@ func (a *app) runEvent(ctx context.Context) error {
 		if live := liveComments(st); len(live) > 0 && strings.TrimSpace(live[len(live)-1].Text) == text {
 			return nil
 		}
-		return a.sc.CreateComment(ctx, id, text)
+		return a.sc.CreateComment(ctx, id, text, 0)
 	case source.EventApproved:
 		if task.PR == "" || slices.ContainsFunc(liveComments(st), func(c shortcut.Comment) bool {
 			return strings.Contains(c.Text, task.PR)
 		}) {
 			return nil
 		}
-		return a.sc.CreateComment(ctx, id, "Pull request opened: "+task.PR)
+		return a.sc.CreateComment(ctx, id, "Pull request opened: "+task.PR, 0)
 	case source.EventClaimed:
 		return a.claim(ctx, st)
 	}

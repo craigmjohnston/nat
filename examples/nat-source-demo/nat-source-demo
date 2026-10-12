@@ -52,11 +52,11 @@ CARDS = {
             "within a second, and resolving it updates both panes."
         ),
         "comments": [
-            {"by": "Dana Wolfe", "when": "3d ago",
+            {"id": "c1-1", "by": "Dana Wolfe", "when": "3d ago",
              "text": "Pairs with the syntax highlighting work. Worth landing both in the same release so the diff feels finished."},
-            {"by": "Craig", "when": "2d ago",
-             "text": "Agreed. Splitting into three tasks: comments → agent, highlighting, hunk folding."},
-            {"by": "Jonas Tran", "when": "2h ago",
+            {"id": "c1-2", "parent": "c1-1", "by": "Craig", "when": "2d ago",
+             "text": "> Worth landing both in the same release\n\nAgreed. Splitting into three tasks: comments → agent, highlighting, hunk folding."},
+            {"id": "c1-3", "by": "Jonas Tran", "when": "2h ago",
              "text": "The agent turn format should match what nat already emits for CI logs so the transcript stays uniform."},
         ],
         "links": [
@@ -84,7 +84,7 @@ CARDS = {
             "18px rows."
         ),
         "comments": [
-            {"by": "Priya Deol", "when": "5d ago",
+            {"id": "c2-1", "by": "Priya Deol", "when": "5d ago",
              "text": "Keyboard parity is non-negotiable; mouse is additive."},
         ],
         "links": [
@@ -316,12 +316,25 @@ def action(req):
         if not text.strip():
             raise Fail("demo: comment needs some text")
         data = load_comments()
-        data.setdefault(cid, []).append({
+        added = data.setdefault(cid, [])
+        comment = {
+            "id": f"{cid}-added-{len(added) + 1}",
             "by": os.environ.get("USER") or "you",
             "when": time.strftime("%d %b %H:%M"),
             "text": text.strip(),
-        })
+        }
+        parent = target.get("comment")
+        if parent:
+            # A reply answers a comment of this card; threads are one level
+            # deep, so a reply to a reply answers the comment opening it.
+            known = {c["id"]: c for c in list(card(cid)["comments"]) + added}
+            if parent not in known:
+                raise Fail(f"demo: no comment {parent} on dm-{cid}")
+            comment["parent"] = known[parent].get("parent") or parent
+        added.append(comment)
         save_comments(data)
+        if parent:
+            return {"message": f"Replied on dm-{cid}"}
         return {"message": f"Commented on dm-{cid}"}
     if aid == "follow":
         if not cid:

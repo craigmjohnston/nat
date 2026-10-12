@@ -103,18 +103,20 @@ public final class NatClient: Sendable {
 
     /// Run one of a source plugin's own actions — `nat source action`. The
     /// target is the group or container whose menu it came from (neither:
-    /// the source header; the CLI refuses both). The input, where the action
+    /// the source header; the CLI refuses both); `replyTo`, with a container,
+    /// the comment a composer's text answers. The input, where the action
     /// takes one, goes over stdin (`--input -`), as `agentSend`'s prompt does:
     /// a comment may run to several lines.
     ///
     /// - Returns: What the plugin said, if anything
     /// - Throws: NatError carrying the plugin's refusal
     public func sourceAction(
-        projectID: String, action: String, group: String?, container: String?, input: String?
+        projectID: String, action: String, group: String?, container: String?, replyTo: String?, input: String?
     ) async throws -> SourceActionResult {
         var arguments = ["source", "action", "--project", projectID, "--action", action]
         if let group, !group.isEmpty { arguments += ["--group", group] }
         if let container, !container.isEmpty { arguments += ["--container", container] }
+        if let replyTo, !replyTo.isEmpty { arguments += ["--reply-to", replyTo] }
         var standardInput: Data?
         if let input {
             arguments += ["--input", "-"]

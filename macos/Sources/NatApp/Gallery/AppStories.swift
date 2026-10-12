@@ -1596,6 +1596,16 @@ enum AppStories {
         },
 
         Story(
+            name: "window-sidebar-folds-aligned",
+            summary: "Projects and Scratch both folded at the sidebar's foot, a divider over each and each a navigator heading tall, beside a navigator: their rules run straight across into the navigator's.",
+            size: window
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.twoProjectConfig)
+            appModel.selectedSliceID = Fixtures.mergeBoxSliceID
+            return shell(appModel, folds: ["work": true, "scratch": true])
+        },
+
+        Story(
             name: "window-sidebar-default-folds",
             summary: "A fresh launch's milestone folds: M2, partly done, open; M3 opened by revealing the selected slice in it; M4, untouched, folded to its head.",
             size: window
@@ -2345,9 +2355,11 @@ enum AppStories {
 
         Story(
             name: "window-container",
-            summary: "A card selected: its card mark (the Shortcut logo and MOB), a slash, the card glyph and title in the titlebar, Story open with its facts "
-                + "and tasks and New task, Comments and Links folded with their counts; the story and its "
-                + "comments with the composer in the main pane, Open in Demo source at the trailing edge.",
+            summary: "A card selected: its card mark (the Shortcut logo and MOB), a slash, the card glyph and title in the "
+                + "titlebar; Story open with its facts and tasks and Open in Demo source, Links folded, no Comments; "
+                + "the action row at the foot, Launch agent greyed (the card has tasks) with its split. The main pane: "
+                + "the description under its heading with a quote and the plugin's copy of an image, then the "
+                + "comments, a reply under the comment it answers, an unreadable image as its placeholder.",
             size: window
         ) {
             await sourceShell(container: Fixtures.sourceCardID)
@@ -2362,6 +2374,38 @@ enum AppStories {
             await sourceShell(
                 container: Fixtures.sourceCardID,
                 containerFocus: ContainerFocus(open: ["links"], main: .section("links")))
+        },
+
+        Story(
+            name: "window-container-launch",
+            summary: "A card with no task yet: the action row's Launch agent live, Workshop and New task behind its "
+                + "split.",
+            size: window
+        ) {
+            await sourceShell(container: Fixtures.sourceMineCardID)
+        },
+
+        Story(
+            name: "container-reply",
+            summary: "A card's comments with every Reply shown and the first thread's reply composer open, under its "
+                + "reply.",
+            size: CGSize(width: 760, height: 900)
+        ) {
+            let appModel = await Fixtures.startedAppModel(config: Fixtures.sourceConfig)
+            await appModel.selectContainer(Fixtures.sourceCardID, inProject: Fixtures.sourceProjectID)
+            await appModel.containerStore(projectID: Fixtures.sourceProjectID).fetch(containerID: Fixtures.sourceCardID)
+            return ContainerPane(appModel: appModel, containerID: Fixtures.sourceCardID, mode: .story, replyingTo: "101")
+                .environment(\.hoverForced, true)
+        },
+
+        Story(
+            name: "card-action-menu",
+            summary: "The card action row's split menu, drawn on its own as its popover's content: Workshop and New "
+                + "task.",
+            size: CGSize(width: 240, height: 90)
+        ) {
+            CardActionMenu(taskNoun: "task", onWorkshop: {}, onNewTask: {})
+                .surface(.window)
         },
 
         Story(
@@ -3005,6 +3049,15 @@ enum AppStories {
         },
 
         Story(
+            name: "markdown-quotes-images",
+            summary: "A comment with a block quote holding bold text, an image drawn from a local "
+                + "copy, and an image that cannot be had, shown as a placeholder with its link.",
+            size: CGSize(width: 420, height: 280)
+        ) {
+            MarkdownQuotesImagesStory()
+        },
+
+        Story(
             name: "markdown-details",
             summary: "A comment carrying two GitHub <details> folds: one shut on its summary, one "
                 + "written open showing the markdown it folds.",
@@ -3447,6 +3500,47 @@ enum AppStories {
     ])
 }
 
+/// Quotes and images, the image a two-colour PNG written to a temp dir.
+private struct MarkdownQuotesImagesStory: View {
+    var body: some View {
+        let path = Self.fixturePNG()
+        MarkdownView(text: """
+            Reproduced it on the card page:
+
+            > The **Reply** button is missing
+            > when the comment has no author.
+
+            ![screenshot](https://media.app.shortcut.com/api/attachments/files/shot.png)
+
+            And this one is gone from Shortcut:
+
+            ![old build](https://media.app.shortcut.com/api/attachments/files/missing.png)
+            """, size: 13.5,
+            images: ["https://media.app.shortcut.com/api/attachments/files/shot.png": path])
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .surface(.window)
+    }
+
+    static func fixturePNG() -> String {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("gnat-md-story", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("shot.png")
+        let image = NSImage(size: NSSize(width: 240, height: 90))
+        image.lockFocus()
+        NSColor.systemTeal.setFill()
+        NSRect(x: 0, y: 0, width: 120, height: 90).fill()
+        NSColor.systemOrange.setFill()
+        NSRect(x: 120, y: 0, width: 120, height: 90).fill()
+        image.unlockFocus()
+        if let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+           let png = rep.representation(using: .png, properties: [:]) {
+            try? png.write(to: file)
+        }
+        return file.path
+    }
+}
+
 /// `PRComposerView` holding a typed comment, which its binding needs a home
 /// of its own for.
 private struct MarkdownTableStory: View {
@@ -3479,6 +3573,7 @@ private struct MarkdownTableStoryBody: View {
                     Text(prose.trimmingCharacters(in: .newlines)).font(.system(size: Typo.scaled(13.5))).ink(.primary)
                 case .table(let table): MarkdownTableView(table: table, size: 13.5, initiallyExpanded: expanded)
                 case .details(let details): MarkdownDetailsView(details: details, size: 13.5, ink: .primary)
+                case .quote, .image: EmptyView()
                 }
             }
         }

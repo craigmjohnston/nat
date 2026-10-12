@@ -131,9 +131,11 @@ type Story struct {
 	ExternalLinks []string      `json:"external_links"`
 }
 
-// Comment is one comment on a story.
+// Comment is one comment on a story. ParentID is the comment it replies to,
+// zero for none (Shortcut sends null).
 type Comment struct {
 	ID        int64  `json:"id"`
+	ParentID  int64  `json:"parent_id,omitempty"`
 	AuthorID  string `json:"author_id"`
 	Text      string `json:"text"`
 	CreatedAt Time   `json:"created_at"`

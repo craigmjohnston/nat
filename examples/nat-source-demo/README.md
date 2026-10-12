@@ -67,9 +67,11 @@ echo "{$P,\"id\":\"zz\"}" | ./nat-source-demo container  # exit 1: demo: no card
   coloured project badge (`NA` / `BD`), its estimate as `meta`, and a
   **Follow** menu.
 - `container` — facts, a *Story* prose section, a *Comments* section with a
-  composer (action `comment`), a *Links* section, and a `task_note`.
+  composer (action `comment`) and one reply threaded under its comment, a
+  *Links* section, and a `task_note`.
 - `action` — `comment` stores the comment so the next `container` read
-  shows it; `refresh` answers "Refreshed"; `rename`, `owner`, `remove` and
+  shows it — a reply to the comment `target.comment` names, where it names
+  one; `refresh` answers "Refreshed"; `rename`, `owner`, `remove` and
   `follow` answer with a message and change nothing.
 - `event` — appends the event as one JSON line to the log and answers `{}`.
 - `setup` — refused with `demo: nothing to set up`: the demo needs no

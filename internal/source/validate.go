@@ -2,6 +2,7 @@ package source
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -108,17 +109,63 @@ func validateGroup(g Group, seen map[string]bool) error {
 }
 
 // ValidateContainer refuses a container's detail carrying an action nat could
-// not offer, on its menu or as a section's composer.
+// not offer, on its menu or as a section's composer; a comments section gnat
+// could not thread (validateComments); and an image copy it could not open —
+// no link, or a file named by anything but an absolute path.
 func ValidateContainer(d ContainerDetail) error {
 	if err := validateActions("the container menu", d.Menu); err != nil {
 		return err
 	}
 	for _, s := range d.Sections {
+		if err := validateComments(s); err != nil {
+			return err
+		}
 		if s.Composer == nil {
 			continue
 		}
 		if err := validateActions(fmt.Sprintf("section %q's composer", s.ID), []Action{*s.Composer}); err != nil {
 			return err
+		}
+	}
+	for _, im := range d.Images {
+		if im.URL == "" {
+			return fmt.Errorf("an image has no url")
+		}
+		if !filepath.IsAbs(im.File) {
+			return fmt.Errorf("image %q: file %q is not an absolute path", im.URL, im.File)
+		}
+	}
+	return nil
+}
+
+// validateComments refuses a comment with no id or one its section already
+// used, and a reply naming a comment that is not in its section or is itself
+// a reply — a thread is one level deep, and a reply gnat cannot place under
+// its parent would be lost.
+func validateComments(s Section) error {
+	ids := map[string]bool{}
+	replies := map[string]bool{}
+	for _, c := range s.Comments {
+		if c.ID == "" {
+			return fmt.Errorf("section %q: a comment has no id", s.ID)
+		}
+		if ids[c.ID] {
+			return fmt.Errorf("section %q: comment id %q is used more than once", s.ID, c.ID)
+		}
+		ids[c.ID] = true
+		if c.Parent != "" {
+			replies[c.ID] = true
+		}
+	}
+	for _, c := range s.Comments {
+		if c.Parent == "" {
+			continue
+		}
+		if !ids[c.Parent] {
+			return fmt.Errorf("section %q: comment %q replies to %q, which is not there", s.ID, c.ID, c.Parent)
+		}
+		if replies[c.Parent] {
+			return fmt.Errorf("section %q: comment %q replies to %q, itself a reply", s.ID, c.ID, c.Parent)
 		}
 	}
 	return nil

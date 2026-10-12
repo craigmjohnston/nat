@@ -159,6 +159,18 @@ built from is `docs/design/task-sources/shortcut-plugin-brief.md`.
   (complete) if `created` never landed, so a late `created` finds it. A
   claim on a story already started or done is left alone. `released` and
   unknown events do nothing, successfully.
+- **Comments thread one level.** Each comment carries its Shortcut id and,
+  for a reply, `parent` — the comment opening its thread (a reply to a
+  reply is lifted to it; one whose parent is deleted stands alone). The
+  `comment` action with `target.comment` posts a real reply (`parent_id`).
+- **Images.** Every Markdown image in the story or a comment that the token
+  is needed for (`Client.Holds`: the API's own host, or
+  `media.app.shortcut.com` from the live API — the only other place the
+  token is ever sent) is copied by `Client.Fetch` (image types only, 20 MB
+  cap) under `<cache dir>/images/<sha of url><ext>`, never fetched again,
+  and listed in the container's `images`. A failed copy is left out, never
+  an error. The fake serves `/files/<name>` and writes its own address for
+  `{fake}` in what it answers.
 - **Lenient decoding.** Every Shortcut field may be missing, null or
   renamed; it degrades to an empty fact (`—`), never a failed call.
   `shortcut.Time` reads anything unparseable as zero.

@@ -151,6 +151,35 @@ func TestValidateContainer(t *testing.T) {
 	}
 }
 
+// TestValidateContainerThreadsAndImages: a reply sits under a comment of its
+// own section, one level deep, and an image copy is an absolute path.
+func TestValidateContainerThreadsAndImages(t *testing.T) {
+	thread := []Comment{{ID: "1"}, {ID: "2", Parent: "1"}, {ID: "3"}}
+	ok := ContainerDetail{
+		Sections: []Section{{ID: "comments", Kind: KindComments, Comments: thread}},
+		Images:   []Image{{URL: "https://media.example/a.png", File: "/tmp/cache/a.png"}},
+	}
+	if err := ValidateContainer(ok); err != nil {
+		t.Errorf("ValidateContainer() = %v, want nil", err)
+	}
+	for _, tc := range []struct {
+		name string
+		d    ContainerDetail
+		want string
+	}{
+		{"no id", ContainerDetail{Sections: []Section{{ID: "c", Comments: []Comment{{}}}}}, `section "c": a comment has no id`},
+		{"a repeated id", ContainerDetail{Sections: []Section{{ID: "c", Comments: []Comment{{ID: "1"}, {ID: "1"}}}}}, `comment id "1" is used more than once`},
+		{"a reply to nothing", ContainerDetail{Sections: []Section{{ID: "c", Comments: []Comment{{ID: "1"}, {ID: "2", Parent: "9"}}}}}, `comment "2" replies to "9", which is not there`},
+		{"a reply to a reply", ContainerDetail{Sections: []Section{{ID: "c", Comments: []Comment{{ID: "1"}, {ID: "2", Parent: "1"}, {ID: "3", Parent: "2"}}}}}, `comment "3" replies to "2", itself a reply`},
+		{"an image with no url", ContainerDetail{Images: []Image{{File: "/a.png"}}}, "an image has no url"},
+		{"a relative image file", ContainerDetail{Images: []Image{{URL: "u", File: "a.png"}}}, `image "u": file "a.png" is not an absolute path`},
+	} {
+		if err := ValidateContainer(tc.d); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: ValidateContainer() = %v, want %q", tc.name, err, tc.want)
+		}
+	}
+}
+
 // TestExecRefusesInvalidResponses: each decoding method runs its validation,
 // and the refusal names the plugin, the method and the rule.
 func TestExecRefusesInvalidResponses(t *testing.T) {

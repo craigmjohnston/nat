@@ -1398,14 +1398,17 @@ public final class AppModel {
     /// Runs one of a source plugin's own actions — the source header's (no
     /// target), a group's or a container's — then reads the project's plan
     /// again (nat re-reads the plugin's tree after any action) and the
-    /// container on screen. Answers with what went wrong, or nil.
+    /// container on screen. `replyTo`, with a container, is the comment a
+    /// composer's text answers. Answers with what went wrong, or nil.
     @discardableResult
     public func runSourceAction(
-        projectID: String, action: SourceAction, group: String? = nil, container: String? = nil, input: String? = nil
+        projectID: String, action: SourceAction, group: String? = nil, container: String? = nil,
+        replyTo: String? = nil, input: String? = nil
     ) async -> String? {
         do {
             _ = try await clientFactory().sourceAction(
-                projectID: projectID, action: action.id, group: group, container: container, input: input)
+                projectID: projectID, action: action.id, group: group, container: container, replyTo: replyTo,
+                input: input)
         } catch let error as NatError {
             if case .commandFailed(let message) = error { return message }
             return error.localizedDescription
@@ -1415,6 +1418,61 @@ public final class AppModel {
         await rereadSource(projectID: projectID)
         if let container { await containerStore(projectID: projectID).fetch(containerID: container) }
         return nil
+    }
+
+    /// The cards a Launch agent is under way on, by container id — its row's
+    /// button a spinner meanwhile.
+    public private(set) var cardLaunches: Set<String> = []
+
+    /// A source card's Launch agent: one task filed under the card — titled
+    /// after it, its brief the card's story (`CardActions`) — launched at
+    /// once with the project's slice pair, then selected. Refused where the
+    /// card already has a task, so a second click can never file a second.
+    /// Answers with what went wrong, or nil; a launch that fails leaves the
+    /// task filed, as a Todo the user can launch from its row.
+    @discardableResult
+    public func launchCardAgent(projectID: String, containerID: String, card: CardActions) async -> String? {
+        guard card.canLaunchAgent, !cardLaunches.contains(containerID) else { return card.launchRefusal }
+        cardLaunches.insert(containerID)
+        defer { cardLaunches.remove(containerID) }
+        let client = clientFactory()
+        let agent = config?.sliceAgent(for: projectID)
+        do {
+            let added = try await client.sliceAdd(
+                projectID: projectID, title: card.taskTitle, container: containerID, description: card.taskBrief)
+            await rereadSource(projectID: projectID)
+            await containerStore(projectID: projectID).fetch(containerID: containerID)
+            _ = try await client.sliceLaunch(
+                projectID: projectID, sliceRef: added.id, model: agent?.model, effort: agent?.effort)
+            await selectSlice(added.id, inProject: projectID)
+            activityStore?.kick()
+        } catch let error as NatError {
+            if case .commandFailed(let message) = error { return message }
+            return error.localizedDescription
+        } catch {
+            return error.localizedDescription
+        }
+        await rereadSource(projectID: projectID)
+        return nil
+    }
+
+    /// A card's actions as its freshly read detail gives them — what the
+    /// sidebar row's menu, which holds no story, acts on — or why the card
+    /// could not be read.
+    public func cardActions(projectID: String, containerID: String) async -> Result<CardActions, CardReadError> {
+        let store = containerStore(projectID: projectID)
+        await store.fetch(containerID: containerID)
+        let state = store.state(for: containerID)
+        if let show = state.show { return .success(ContainerNavigatorModel(show: show).actions) }
+        return .failure(CardReadError(message: state.errorMessage ?? "The card could not be read."))
+    }
+
+    /// A source card's Workshop: the project's workshop opened and its
+    /// planning agent started on the card — its title and story as the
+    /// request. With a planning agent already live, it is shown instead.
+    public func workshopCard(projectID: String, card: CardActions) async {
+        await selectWorkshop(inProject: projectID)
+        await launchWorkshop(request: card.workshopRequest)
     }
 
     /// Reads a source project's plan — and so its plugin's tree — again: what

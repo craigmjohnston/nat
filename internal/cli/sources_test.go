@@ -526,6 +526,9 @@ func TestSourceAction(t *testing.T) {
 	if out := sp.run(t, "source", "action", "--action", "comment", "--group", "g", "--input", "-", "--project", sp.id); out != "Commented.\n" {
 		t.Errorf("text = %q", out)
 	}
+	if out := sp.run(t, "source", "action", "--action", "comment", "--container", "c1", "--reply-to", "7", "--input", "yes", "--project", sp.id); out != "Commented.\n" {
+		t.Errorf("reply = %q", out)
+	}
 	fake.ActionResult = source.ActionResult{}
 	if out := sp.run(t, "source", "action", "--action", "refresh", "--project", sp.id); out != "Ran refresh.\n" {
 		t.Errorf("text = %q", out)
@@ -533,6 +536,7 @@ func TestSourceAction(t *testing.T) {
 	want := []source.ActionCall{
 		{Action: "comment", Target: source.Target{Container: "c1"}, Input: "hi"},
 		{Action: "comment", Target: source.Target{Group: "g"}, Input: "line one\nline two"},
+		{Action: "comment", Target: source.Target{Container: "c1", Comment: "7"}, Input: "yes"},
 		{Action: "refresh"},
 	}
 	for i := range fake.Actions {
@@ -541,7 +545,7 @@ func TestSourceAction(t *testing.T) {
 	if !reflect.DeepEqual(fake.Actions, want) {
 		t.Errorf("actions = %+v, want %+v", fake.Actions, want)
 	}
-	if sp.nudges < 3 {
+	if sp.nudges < 4 {
 		t.Errorf("nudges = %d, want one per action", sp.nudges)
 	}
 }
@@ -556,6 +560,7 @@ func TestSourceActionRefusals(t *testing.T) {
 		{"--project", sp.id},
 		{"--action", "x", "--group", "g", "--container", "c", "--project", sp.id},
 		{"--action", "x", "--input", "-", "--project", sp.id},
+		{"--action", "x", "--group", "g", "--reply-to", "7", "--project", sp.id},
 	} {
 		if err := sp.fail(t, append([]string{"source", "action"}, args...)...); !errors.As(err, &usage) {
 			t.Errorf("%v: err = %v, want a usage error", args, err)

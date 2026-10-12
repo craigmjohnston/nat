@@ -7,6 +7,90 @@ public enum MarkdownBlock: Equatable, Sendable {
     case text(String)
     case table(MarkdownTable)
     case details(MarkdownDetails)
+    /// A block quote: its lines with the `>` marker stripped, itself markdown.
+    case quote(String)
+    /// A markdown image, on a block of its own.
+    case image(MarkdownImage)
+}
+
+/// `![alt](url)` as written: the alt text and the url exactly as it appeared
+/// (angle brackets and any title dropped).
+public struct MarkdownImage: Equatable, Sendable {
+    public let alt: String
+    public let url: String
+
+    public init(alt: String, url: String) {
+        self.alt = alt
+        self.url = url
+    }
+}
+
+/// Where an image is drawn from.
+public enum MarkdownImageSource: Equatable, Sendable {
+    /// A local file holding a copy.
+    case file(String)
+    /// An http(s) address to load.
+    case remote(URL)
+    /// Neither: draw the placeholder.
+    case none
+}
+
+/// Which source to draw an image from: the local copy `images` maps its url
+/// to where `fileExists` finds one, else the url itself where it is http(s),
+/// else none.
+public func markdownImageSource(
+    url: String, images: [String: String], fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+) -> MarkdownImageSource {
+    if let path = images[url], fileExists(path) { return .file(path) }
+    if let parsed = URL(string: url), let scheme = parsed.scheme?.lowercased(),
+       scheme == "http" || scheme == "https", parsed.host != nil {
+        return .remote(parsed)
+    }
+    return .none
+}
+
+private let imagePattern = try! NSRegularExpression(
+    pattern: #"!\[([^\]]*)\]\(\s*(<[^>]*>|[^)\s]+)(?:\s+"[^"]*")?\s*\)"#)
+
+/// Splits prose around its images: text before one stays a text block, the
+/// image its own, the text after another. Fenced code is left alone.
+private func splitImages(_ lines: [String]) -> [MarkdownBlock] {
+    var blocks: [MarkdownBlock] = []
+    var current: [String] = []
+    var inFence = false
+
+    func flush() {
+        guard !current.isEmpty else { return }
+        blocks.append(.text(current.joined(separator: "\n")))
+        current = []
+    }
+
+    for line in lines {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        let isFence = trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~")
+        if isFence { inFence.toggle() }
+        let ns = line as NSString
+        let matches = inFence || isFence
+            ? [] : imagePattern.matches(in: line, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else {
+            current.append(line)
+            continue
+        }
+        var cursor = 0
+        for match in matches {
+            let before = ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            if !before.trimmingCharacters(in: .whitespaces).isEmpty { current.append(before) }
+            flush()
+            var url = ns.substring(with: match.range(at: 2))
+            if url.hasPrefix("<"), url.hasSuffix(">") { url = String(url.dropFirst().dropLast()) }
+            blocks.append(.image(MarkdownImage(alt: ns.substring(with: match.range(at: 1)), url: url)))
+            cursor = match.range.location + match.range.length
+        }
+        let after = ns.substring(from: cursor)
+        if !after.trimmingCharacters(in: .whitespaces).isEmpty { current.append(after) }
+    }
+    flush()
+    return blocks
 }
 
 /// A `<details>` element as GitHub draws one: its `<summary>` line, always
@@ -55,7 +139,7 @@ public func markdownBlocks(_ text: String) -> [MarkdownBlock] {
 
     func flushProse() {
         guard !prose.isEmpty else { return }
-        blocks.append(.text(prose.joined(separator: "\n")))
+        blocks.append(contentsOf: splitImages(prose))
         prose = []
     }
 
@@ -63,6 +147,22 @@ public func markdownBlocks(_ text: String) -> [MarkdownBlock] {
         let line = lines[index]
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { inFence.toggle() }
+        if !inFence, trimmed.hasPrefix(">") {
+            var quoted: [String] = []
+            var next = index
+            while next < lines.count {
+                let candidate = lines[next].trimmingCharacters(in: .whitespaces)
+                guard candidate.hasPrefix(">") else { break }
+                var inner = candidate.dropFirst()
+                if inner.hasPrefix(" ") { inner = inner.dropFirst() }
+                quoted.append(String(inner))
+                next += 1
+            }
+            flushProse()
+            blocks.append(.quote(quoted.joined(separator: "\n")))
+            index = next
+            continue
+        }
         if !inFence, trimmed.lowercased().hasPrefix("<details") {
             let (details, next) = detailsBlock(lines, from: index)
             flushProse()

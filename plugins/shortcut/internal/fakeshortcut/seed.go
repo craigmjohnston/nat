@@ -1,6 +1,10 @@
 package fakeshortcut
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"time"
 
 	"github.com/craigmjohnston/nat/plugins/shortcut/internal/shortcut"
@@ -42,6 +46,23 @@ const (
 	StoryDone         int64 = 4756
 	StoryDoneThisWeek int64 = 4760
 )
+
+// ReviewPanePNG is the seeded upload a story's description shows: a small
+// image, two colours, so a test or a scratch run can tell it drew.
+var ReviewPanePNG = func() []byte {
+	img := image.NewRGBA(image.Rect(0, 0, 48, 32))
+	for y := range 32 {
+		for x := range 48 {
+			img.Set(x, y, color.RGBA{R: 0x3d, G: 0x6f, B: 0xd9, A: 0xff})
+			if y < 8 {
+				img.Set(x, y, color.RGBA{R: 0xe5, G: 0x73, B: 0x2a, A: 0xff})
+			}
+		}
+	}
+	var b bytes.Buffer
+	_ = png.Encode(&b, img)
+	return b.Bytes()
+}()
 
 // SeedNow is the moment the seeded timestamps are relative to: a Saturday,
 // so this week began on Monday 28 September.
@@ -104,7 +125,9 @@ func Seed(token string) *Server {
 		Stories: map[int64]*shortcut.Story{
 			StoryDoing: {
 				ID: StoryDoing, Name: "Improve diff review ergonomics", AppURL: "https://app.shortcut.com/scratch/story/4821",
-				Description: "Comments left on a diff never reach the agent.\n\n**Acceptance:** they do, within a second.",
+				Description: "Comments left on a diff never reach the agent.\n\n" +
+					"> A comment I leave mid-session should land in the transcript.\n\n" +
+					"![Review pane]({fake}/files/review-pane.png)\n\n**Acceptance:** they do, within a second.",
 				StoryType:   "feature", WorkflowID: WorkflowEng, WorkflowStateID: StateInDev, Estimate: est(3),
 				EpicID: EpicParity, ProjectID: ProjectMobile, GroupID: TeamNative, IterationID: IterationSprint41,
 				OwnerIDs: []string{MeID}, RequestedByID: DanaID,
@@ -114,6 +137,7 @@ func Seed(token string) *Server {
 					{ID: 2, AuthorID: MeID, Text: "Agreed. Splitting into three tasks.", CreatedAt: at(2 * 24 * time.Hour)},
 					{ID: 1, AuthorID: DanaID, Text: "Pairs with the syntax highlighting work.", CreatedAt: at(3 * 24 * time.Hour)},
 					{ID: 3, AuthorID: DanaID, Text: "(removed)", CreatedAt: at(time.Hour), Deleted: true},
+					{ID: 4, ParentID: 1, AuthorID: PriyaID, Text: "> Pairs with the syntax highlighting work.\n\nThat one merged last week.", CreatedAt: at(36 * time.Hour)},
 				},
 				PullRequests: []shortcut.PullRequest{{ID: 418, Number: 418, Title: "Diff comments reach the agent", URL: "https://github.com/scratch/app/pull/418"}},
 				Branches: []shortcut.Branch{
@@ -153,7 +177,8 @@ func Seed(token string) *Server {
 				CompletedAt: at(2 * time.Hour),
 			},
 		},
-		Now: func() time.Time { return SeedNow },
+		Files: map[string][]byte{"review-pane.png": ReviewPanePNG},
+		Now:   func() time.Time { return SeedNow },
 	}
 	s.Me.ID, s.Me.Name, s.Me.MentionName = MeID, "Craig Scratch", "craig"
 	s.Me.Workspace2.URLSlug = "scratch"

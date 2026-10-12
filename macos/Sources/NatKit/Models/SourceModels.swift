@@ -395,15 +395,22 @@ public struct SourceFact: Codable, Equatable, Sendable {
     }
 }
 
-/// One comment of a `comments` section; `when` is free text.
+/// One comment of a `comments` section; `when` is free text, `text`
+/// Markdown. `id` is the plugin's own, unique within its section; `parent`,
+/// where set, the id of the comment it replies to — threads are one level
+/// deep, which nat checks before gnat sees them.
 public struct SourceComment: Codable, Equatable, Sendable {
+    public let id: String
+    public let parent: String?
     public let by: String
     public let when: String
     public let text: String
 
-    enum CodingKeys: String, CodingKey { case by, when, text }
+    enum CodingKeys: String, CodingKey { case id, parent, by, when, text }
 
-    public init(by: String, when: String, text: String) {
+    public init(id: String = "", parent: String? = nil, by: String, when: String, text: String) {
+        self.id = id
+        self.parent = parent
         self.by = by
         self.when = when
         self.text = text
@@ -411,9 +418,24 @@ public struct SourceComment: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = c.lenientString(.id)
+        parent = c.optionalString(.parent)
         by = c.lenientString(.by)
         when = c.lenientString(.when)
         text = c.lenientString(.text)
+    }
+}
+
+/// A copy the plugin saved of an image its prose or comments link to — one
+/// only the plugin's own credential can fetch: `url` as the Markdown gives
+/// it, `file` the copy's absolute path.
+public struct SourceImage: Codable, Equatable, Sendable {
+    public let url: String
+    public let file: String
+
+    public init(url: String, file: String) {
+        self.url = url
+        self.file = file
     }
 }
 
@@ -524,17 +546,21 @@ public struct ContainerDetail: Codable, Equatable, Sendable, Identifiable {
     public let menu: [SourceAction]
     /// Drawn in the PR section of every task under this container.
     public let taskNote: String?
+    /// The plugin's copies of images only it can fetch.
+    public let images: [SourceImage]
 
     enum CodingKeys: String, CodingKey {
         case id, title
         case externalURL = "external_url"
         case facts, sections, menu
         case taskNote = "task_note"
+        case images
     }
 
     public init(
         id: String, title: String, externalURL: String? = nil, facts: [SourceFact] = [],
-        sections: [SourceSection] = [], menu: [SourceAction] = [], taskNote: String? = nil
+        sections: [SourceSection] = [], menu: [SourceAction] = [], taskNote: String? = nil,
+        images: [SourceImage] = []
     ) {
         self.id = id
         self.title = title
@@ -543,6 +569,13 @@ public struct ContainerDetail: Codable, Equatable, Sendable, Identifiable {
         self.sections = sections
         self.menu = menu
         self.taskNote = taskNote
+        self.images = images
+    }
+
+    /// The image copies by the link each stands in for — what a Markdown
+    /// render draws in a link's place.
+    public var imageFiles: [String: String] {
+        Dictionary(images.map { ($0.url, $0.file) }, uniquingKeysWith: { first, _ in first })
     }
 
     public init(from decoder: Decoder) throws {
@@ -554,6 +587,7 @@ public struct ContainerDetail: Codable, Equatable, Sendable, Identifiable {
         sections = try c.list(SourceSection.self, .sections)
         menu = try c.list(SourceAction.self, .menu)
         taskNote = c.optionalString(.taskNote)
+        images = try c.list(SourceImage.self, .images)
     }
 }
 

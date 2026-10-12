@@ -2,6 +2,56 @@ import XCTest
 @testable import NatKit
 
 final class MarkdownBlocksTests: XCTestCase {
+    // MARK: - Quotes and images
+
+    func testQuoteRunIsOneBlockAndBlankLineEndsIt() {
+        XCTAssertEqual(markdownBlocks("Hi\n> one\n>two\n>\n> **three**\n\n> next\nafter"), [
+            .text("Hi"), .quote("one\ntwo\n\n**three**"), .text(""), .quote("next"), .text("after"),
+        ])
+    }
+
+    func testQuoteMarkerInsideCodeFenceIsNotAQuote() {
+        let text = "```\n> not a quote\n```"
+        XCTAssertEqual(markdownBlocks(text), [.text(text)])
+    }
+
+    func testImageAloneOnALine() {
+        XCTAssertEqual(markdownBlocks("![shot](https://x.test/a.png)"),
+                       [.image(MarkdownImage(alt: "shot", url: "https://x.test/a.png"))])
+    }
+
+    func testImageMidParagraphSplitsIt() {
+        XCTAssertEqual(markdownBlocks("see\nthis ![a](u1) and ![b](u2) ok\nend"), [
+            .text("see\nthis "), .image(MarkdownImage(alt: "a", url: "u1")),
+            .text(" and "), .image(MarkdownImage(alt: "b", url: "u2")), .text(" ok\nend"),
+        ])
+    }
+
+    func testImageTitleAndAngleBracketForms() {
+        XCTAssertEqual(markdownBlocks("![a](u.png \"A title\")"), [.image(MarkdownImage(alt: "a", url: "u.png"))])
+        XCTAssertEqual(markdownBlocks("![](<my file.png>)"), [.image(MarkdownImage(alt: "", url: "my file.png"))])
+    }
+
+    func testImageInsideAQuoteStaysMarkdownInTheQuote() {
+        XCTAssertEqual(markdownBlocks("> look\n> ![a](u.png)"), [.quote("look\n![a](u.png)")])
+        XCTAssertEqual(markdownBlocks("look\n![a](u.png)"), [.text("look"), .image(MarkdownImage(alt: "a", url: "u.png"))])
+    }
+
+    func testImageInsideCodeFenceIsNotAnImage() {
+        let text = "```\n![a](u.png)\n```"
+        XCTAssertEqual(markdownBlocks(text), [.text(text)])
+    }
+
+    func testImageSourceChoice() {
+        let images = ["u": "/tmp/a.png"]
+        XCTAssertEqual(markdownImageSource(url: "u", images: images, fileExists: { _ in true }), .file("/tmp/a.png"))
+        XCTAssertEqual(markdownImageSource(url: "u", images: images, fileExists: { _ in false }), .none)
+        XCTAssertEqual(markdownImageSource(url: "https://x.test/a.png", images: [:], fileExists: { _ in false }),
+                       .remote(URL(string: "https://x.test/a.png")!))
+        XCTAssertEqual(markdownImageSource(url: "ftp://x/a.png", images: [:], fileExists: { _ in false }), .none)
+        XCTAssertEqual(markdownImageSource(url: "rel.png", images: [:]), .none)
+    }
+
     // MARK: - Tables
 
     func testProseWithNoTableIsOneBlock() {

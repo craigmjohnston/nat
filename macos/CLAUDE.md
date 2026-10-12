@@ -929,7 +929,9 @@ picker (a `.menu` picker builds every option before the popover can show:
 `SourceFilterDraft`, "Any" naming what it falls through to, a `loading`
 field read once more through `AppModel.rereadSource` — `destructive` is
 confirmed), then re-read the plan. Every section but Active, folded, pins to
-the sidebar's foot under the open ones (`SidebarView.foldSlots`); open ones
+the sidebar's foot under the open ones (`SidebarView.foldSlots`), each under a 1pt rule
+(`foldRule`, the navigator heading's token) and one navigator heading tall, so
+its rules meet the navigator's (story `window-sidebar-folds-aligned`); open ones
 take at most their natural height and share the room only when short of it.
 A source project takes **no badge** anywhere (its `SidebarProject.tag`,
 its Active rows' `projectTag` and `RunProject.tag` are empty). Outside its
@@ -945,8 +947,23 @@ container is a third selection kind (`selectedContainerID`, exclusive with
 slice, session and workshop); `ContainerStore` caches `container show` per
 project and, like the PR screen, keeps a stale reading on a failed re-read.
 `ContainerNavigatorModel` decides the sections (the first prose section's
-facts and tasks, then comments/links; unknown kinds skipped) and
-`ContainerFocus` what is open and what `ContainerPane` shows. A task under a
+facts and tasks with Open in <source> in its head, then links and other
+prose — comments are the main pane's alone; unknown kinds skipped), the
+comment `threads` (one level, `CommentThread.replyTarget` the thread's first
+comment) and the card's `actions` (`CardActions`), and `ContainerFocus` what
+is open and what `ContainerPane` shows: a "Description" `NavHeading` over the
+prose, then the threads (`SourceCommentThreadView`: replies stepped in, a
+hover Reply on every comment opening the thread's composer, sent as
+`source action --reply-to`), images drawn from the plugin's copies
+(`ContainerDetail.imageFiles` → `MarkdownView.images`). At the navigator's
+foot `CardActionBar`: Launch agent (`AppModel.launchCardAgent` — `slice add
+--container`, titled after the card, its story the brief, then `slice
+launch` and select; only while the card has no task) with Workshop
+(`workshopCard`: the workshop opened and started on the card) and New task in
+its split; a card row's right-click menu offers the same three
+(`cardActions` reads the card first). Stories: `window-container`,
+`window-container-launch`, `container-reply`, `card-action-menu`,
+`markdown-quotes-images`. A task under a
 container shows the container and its `facts` in place of the milestone,
 the PR section its `task_note`, and the breadcrumb `<card mark> /
 <container> / <task>` — the card mark in the project crumb's place, no group

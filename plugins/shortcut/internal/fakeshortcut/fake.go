@@ -12,6 +12,7 @@
 package fakeshortcut
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -61,6 +62,12 @@ type Server struct {
 	Epics      []shortcut.Epic
 	Iterations []shortcut.Iteration
 	Stories    map[int64]*shortcut.Story
+
+	// Files are the workspace's uploads, served at /files/<name> (under
+	// Prefix, behind the token, as the live media host's are) as PNGs. A
+	// story's text links one as `{fake}/files/<name>`: the fake writes its
+	// own address in place of `{fake}` on every answer.
+	Files map[string][]byte
 
 	// Fail answers a route with a status instead of serving it, keyed
 	// "METHOD /path" (no prefix, no query) — "GET /search/stories".
@@ -139,6 +146,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"injected failure"}`, code)
 		return
 	}
+	if name, ok := strings.CutPrefix(path, "/files/"); ok && r.Method == http.MethodGet {
+		b, found := s.Files[name]
+		if !found {
+			http.Error(w, `{"message":"Resource not found."}`, http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(b)
+		return
+	}
 	status, out := s.route(r.Method, path, req)
 	if status == 0 {
 		status = http.StatusOK
@@ -146,7 +163,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if out != nil {
-		_ = json.NewEncoder(w).Encode(out)
+		// Every value served is one of the API's own structs, which Marshal
+		// cannot fail on.
+		b, _ := json.Marshal(out)
+		self, _ := json.Marshal("http://" + r.Host + Prefix)
+		b = bytes.ReplaceAll(b, []byte("{fake}"), self[1:len(self)-1])
+		_, _ = w.Write(append(b, '\n'))
 	}
 }
 
@@ -226,6 +248,9 @@ func (s *Server) story(method string, rest []string, st *shortcut.Story, body st
 		var c shortcut.Comment
 		if json.Unmarshal([]byte(body), &c) != nil || c.Text == "" {
 			return http.StatusBadRequest, nil
+		}
+		if c.ParentID != 0 && !slices.ContainsFunc(st.Comments, func(p shortcut.Comment) bool { return p.ID == c.ParentID }) {
+			return http.StatusBadRequest, map[string]string{"message": "parent_id names no comment on this story"}
 		}
 		c.ID, c.AuthorID, c.CreatedAt = s.id(), s.Me.ID, shortcut.Time{Time: s.now()}
 		st.Comments = append(st.Comments, c)

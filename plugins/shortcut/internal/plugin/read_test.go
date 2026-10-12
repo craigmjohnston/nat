@@ -1,10 +1,13 @@
 package plugin
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -433,8 +436,9 @@ func TestContainer(t *testing.T) {
 		t.Errorf("comments = %+v", comments)
 	}
 	wantComments := []source.Comment{
-		{By: "Dana Wolfe", When: "3d ago", Text: "Pairs with the syntax highlighting work."},
-		{By: "Craig Scratch", When: "2d ago", Text: "Agreed. Splitting into three tasks."},
+		{ID: "1", By: "Dana Wolfe", When: "3d ago", Text: "Pairs with the syntax highlighting work."},
+		{ID: "2", By: "Craig Scratch", When: "2d ago", Text: "Agreed. Splitting into three tasks."},
+		{ID: "4", Parent: "1", By: "Priya Deol", When: "1d ago", Text: "> Pairs with the syntax highlighting work.\n\nThat one merged last week."},
 	}
 	if !slices.Equal(comments.Comments, wantComments) {
 		t.Errorf("comments = %+v", comments.Comments)
@@ -457,6 +461,114 @@ func TestContainer(t *testing.T) {
 	}
 	if d.TaskNote != "Linked to sc-4821. Merging moves the card to Done when it's the last open task." {
 		t.Errorf("task_note = %q", d.TaskNote)
+	}
+	// The description's upload is copied under the cache with the token, and
+	// the copy is what the response points at.
+	if len(d.Images) != 1 || !strings.HasSuffix(d.Images[0].URL, fakeshortcut.Prefix+"/files/review-pane.png") ||
+		!strings.Contains(story.Body, d.Images[0].URL) {
+		t.Fatalf("images = %+v", d.Images)
+	}
+	if b, err := os.ReadFile(d.Images[0].File); err != nil || !bytes.Equal(b, fakeshortcut.ReviewPanePNG) ||
+		!strings.HasPrefix(d.Images[0].File, filepath.Join(h.dir, "cache", "nat-source-shortcut", "images")) ||
+		filepath.Ext(d.Images[0].File) != ".png" {
+		t.Errorf("copy %s: %v", d.Images[0].File, err)
+	}
+}
+
+// TestContainerImages: an upload already copied is not fetched again; one
+// that can't be fetched, and an image on any other host, are left for gnat
+// to draw from the link (or its placeholder); none of this fails the read.
+func TestContainerImages(t *testing.T) {
+	h := newHarness(t)
+	base := h.vars["SHORTCUT_API_URL"]
+	h.fake.Stories[fakeshortcut.StoryBug].Description = "![a](" + base + "/files/review-pane.png) " +
+		"![gone](" + base + "/files/gone.png \"title\") ![elsewhere](https://example.com/x.png) ![a again](" + base + "/files/review-pane.png)"
+	h.fake.Stories[fakeshortcut.StoryBug].Comments = []shortcut.Comment{{ID: 1, Text: "![page](" + base + "/stories/4811)"}}
+	d := detail(t, h.call("container", `"id":"4811"`))
+	if len(d.Images) != 1 || d.Images[0].URL != base+"/files/review-pane.png" {
+		t.Fatalf("images = %+v", d.Images)
+	}
+	h.fake.Reset()
+	h.now = h.now.Add(time.Hour) // past the response cache
+	again := detail(t, h.call("container", `"id":"4811"`))
+	if !slices.Equal(again.Images, d.Images) {
+		t.Errorf("images = %+v, want %+v", again.Images, d.Images)
+	}
+	for _, r := range h.fake.Requests() {
+		if r.Path == "/files/review-pane.png" {
+			t.Error("an image already copied was fetched again")
+		}
+	}
+}
+
+// TestContainerImageCopies: a copy is named by its media type, else its
+// link's extension; one that can't be written is left out.
+func TestContainerImageCopies(t *testing.T) {
+	h := newHarness(t)
+	base := h.vars["SHORTCUT_API_URL"]
+	h.fake.Files["shot.bmp"] = []byte("BM")
+	h.fake.Stories[fakeshortcut.StoryBug].Description = "![b](" + base + "/files/shot.bmp)"
+	// The fake serves every upload as image/png; the extension is the type's.
+	d := detail(t, h.call("container", `"id":"4811"`))
+	if len(d.Images) != 1 || filepath.Ext(d.Images[0].File) != ".png" {
+		t.Errorf("images = %+v", d.Images)
+	}
+
+	images := filepath.Join(h.dir, "cache", "nat-source-shortcut", "images")
+	for _, blocked := range []func(){
+		func() { _ = os.RemoveAll(images); _ = os.WriteFile(images, nil, 0o600) }, // no directory to write to
+		func() { _ = os.RemoveAll(images); _ = os.MkdirAll(images, 0o500) },       // one it can't write in
+	} {
+		blocked()
+		h.now = h.now.Add(time.Hour)
+		h.fake.Stories[fakeshortcut.StoryBug].Description = "![a](" + base + "/files/review-pane.png)"
+		if d := detail(t, h.call("container", `"id":"4811"`)); len(d.Images) != 0 {
+			t.Errorf("images = %+v, want none", d.Images)
+		}
+	}
+	_ = os.Chmod(images, 0o700)
+}
+
+// TestImageExtension: with a type it doesn't know, a copy keeps its link's
+// extension, and a link with none (or a long one) gives it none.
+func TestImageExtension(t *testing.T) {
+	for _, tc := range []struct{ kind, url, want string }{
+		{"image/png", "https://x/a", ".png"},
+		{"image/bmp", "https://x/a.bmp", ".bmp"},
+		{"image/bmp", "https://x/a", ""},
+		{"image/bmp", "https://x/a.toolong", ""},
+	} {
+		if got := imageExt(tc.kind, tc.url); got != tc.want {
+			t.Errorf("imageExt(%q, %q) = %q, want %q", tc.kind, tc.url, got, tc.want)
+		}
+	}
+}
+
+// TestContainerThreads: a reply to a reply answers the comment opening its
+// thread, and a reply whose comment is deleted stands on its own.
+func TestContainerThreads(t *testing.T) {
+	h := newHarness(t)
+	ts := func(h int) shortcut.Time {
+		return shortcut.Time{Time: fakeshortcut.SeedNow.Add(time.Duration(h) * time.Hour)}
+	}
+	h.fake.Stories[fakeshortcut.StoryBug].Comments = []shortcut.Comment{
+		{ID: 1, Text: "root", CreatedAt: ts(-5)},
+		{ID: 2, ParentID: 1, Text: "reply", CreatedAt: ts(-4)},
+		{ID: 3, ParentID: 2, Text: "deeper", CreatedAt: ts(-3)},
+		{ID: 4, Text: "gone", Deleted: true, CreatedAt: ts(-2)},
+		{ID: 5, ParentID: 4, Text: "orphan", CreatedAt: ts(-1)},
+		{ID: 6, ParentID: 6, Text: "loop", CreatedAt: ts(0)},
+		{ID: 7, ParentID: 8, Text: "a", CreatedAt: ts(0)},
+		{ID: 8, ParentID: 7, Text: "b", CreatedAt: ts(0)},
+		{ID: 9, ParentID: 5, Text: "under the orphan", CreatedAt: ts(1)},
+	}
+	d := detail(t, h.call("container", `"id":"4811"`))
+	var got []string
+	for _, c := range d.Sections[1].Comments {
+		got = append(got, c.ID+"<"+c.Parent)
+	}
+	if want := []string{"1<", "2<1", "3<1", "5<", "6<", "7<", "8<", "9<5"}; !slices.Equal(got, want) {
+		t.Errorf("threads = %v, want %v", got, want)
 	}
 }
 

@@ -240,12 +240,70 @@ func (c *Client) UpdateStory(ctx context.Context, id int64, u StoryUpdate) error
 	return c.do(ctx, http.MethodPut, fmt.Sprintf("/stories/%d", id), u, nil)
 }
 
-// CreateComment is POST /stories/{id}/comments.
-func (c *Client) CreateComment(ctx context.Context, id int64, text string) error {
+// CreateComment is POST /stories/{id}/comments: a reply to comment parent,
+// or a comment of its own where parent is zero.
+func (c *Client) CreateComment(ctx context.Context, id int64, text string, parent int64) error {
 	body := struct {
-		Text string `json:"text"`
-	}{text}
+		Text     string `json:"text"`
+		ParentID int64  `json:"parent_id,omitempty"`
+	}{text, parent}
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/stories/%d/comments", id), body, nil)
+}
+
+// MaxImage is the most of one image Fetch reads; a bigger one is refused.
+const MaxImage = 20 << 20
+
+// mediaHost is where Shortcut serves the files uploaded to the live API's
+// workspaces, behind the same token.
+const mediaHost = "media.app.shortcut.com"
+
+// Holds says whether rawURL is one of this workspace's own files — on the
+// API's host, or the live API's media host — which the token is needed to
+// read, and the only URLs Fetch sends it to.
+func (c *Client) Holds(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
+		return false
+	}
+	base, _ := url.Parse(c.BaseURL)
+	if u.Host == base.Host && u.Scheme == base.Scheme {
+		return true
+	}
+	return u.Scheme == "https" && u.Host == mediaHost && c.BaseURL == DefaultBaseURL
+}
+
+// Fetch reads one of the workspace's own images (Holds) with the token, and
+// says its media type: an answer that is not an image, or is larger than
+// MaxImage, is refused. The error names the host alone — a file's path can
+// carry its name, which is the user's.
+func (c *Client) Fetch(ctx context.Context, rawURL string) ([]byte, string, error) {
+	if !c.Holds(rawURL) {
+		return nil, "", errors.New("shortcut: not a Shortcut file")
+	}
+	u, _ := url.Parse(rawURL)
+	// Holds parsed rawURL as an http(s) URL, which a GET cannot refuse.
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	req.Header.Set("Shortcut-Token", c.Token)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("shortcut: GET image on %s: unreachable (%s)", u.Host, reason(err))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, "", &StatusError{Method: http.MethodGet, Path: "image on " + u.Host, Status: resp.StatusCode}
+	}
+	kind, _, _ := strings.Cut(resp.Header.Get("Content-Type"), ";")
+	if !strings.HasPrefix(kind, "image/") {
+		return nil, "", fmt.Errorf("shortcut: GET image on %s: not an image", u.Host)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, MaxImage+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("shortcut: GET image on %s: %s", u.Host, reason(err))
+	}
+	if len(b) > MaxImage {
+		return nil, "", fmt.Errorf("shortcut: GET image on %s: larger than %d MB", u.Host, MaxImage>>20)
+	}
+	return b, kind, nil
 }
 
 // CreateTask is POST /stories/{id}/tasks.

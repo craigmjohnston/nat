@@ -66,12 +66,12 @@ final class SourceFixtureClientTests: XCTestCase {
         XCTAssertNotNil(plugins[1].error)
 
         let header = try await client.sourceAction(
-            projectID: Fixtures.sourceProjectID, action: "refresh", group: nil, container: nil, input: nil)
+            projectID: Fixtures.sourceProjectID, action: "refresh", group: nil, container: nil, replyTo: nil, input: nil)
         XCTAssertEqual(header.message, "Ran refresh.")
         _ = try await client.sourceAction(
-            projectID: Fixtures.sourceProjectID, action: "segment-owner", group: "seg-mine", container: nil, input: "me")
+            projectID: Fixtures.sourceProjectID, action: "segment-owner", group: "seg-mine", container: nil, replyTo: nil, input: "me")
         _ = try await client.sourceAction(
-            projectID: Fixtures.sourceProjectID, action: "comment", group: nil, container: "4821", input: "Hi")
+            projectID: Fixtures.sourceProjectID, action: "comment", group: nil, container: "4821", replyTo: nil, input: "Hi")
         XCTAssertEqual(client.writes, [
             "source action refresh",
             "source action segment-owner --group seg-mine",
@@ -112,7 +112,7 @@ final class SourceFixtureClientTests: XCTestCase {
             XCTAssertTrue(message.hasPrefix("container show"))
         } catch { XCTFail("\(error)") }
         do {
-            _ = try await client.sourceAction(projectID: "p", action: "a", group: nil, container: nil, input: nil)
+            _ = try await client.sourceAction(projectID: "p", action: "a", group: nil, container: nil, replyTo: nil, input: nil)
             XCTFail("expected a refusal")
         } catch NatError.commandFailed(let message) {
             XCTAssertTrue(message.hasPrefix("source action"))

@@ -30,4 +30,23 @@ func TestDemoPluginOverTheWire(t *testing.T) {
 	if _, err := demo.Setup(ctx, "token", "anything"); err == nil || err.Error() != "nat-source-demo setup: demo: nothing to set up" {
 		t.Errorf("Setup() = %v, want the demo's refusal", err)
 	}
+
+	// Its card's comments pass nat's validation, a reply threaded under its
+	// comment; a reply sent back lands under the comment it names, and one
+	// naming no comment is refused.
+	p := Project{ID: "p1"}
+	if _, err := demo.Action(ctx, p, "comment", Target{Container: "c1", Comment: "c1-2"}, "Sounds right."); err != nil {
+		t.Fatalf("reply: %v", err)
+	}
+	d2, err := demo.Container(ctx, p, "c1")
+	if err != nil {
+		t.Fatalf("Container() = %v", err)
+	}
+	comments := d2.Sections[1].Comments
+	if last := comments[len(comments)-1]; last.Parent != "c1-1" || last.Text != "Sounds right." || comments[1].Parent != "c1-1" {
+		t.Errorf("comments = %+v, want the replies under c1-1", comments)
+	}
+	if _, err := demo.Action(ctx, p, "comment", Target{Container: "c1", Comment: "nope"}, "x"); err == nil {
+		t.Error("a reply to no comment was taken")
+	}
 }

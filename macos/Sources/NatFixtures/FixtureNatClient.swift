@@ -771,10 +771,11 @@ public final class FixtureNatClient: NatClientProtocol, @unchecked Sendable {
     /// Remembered by action and target, and answered with the message a
     /// plugin would give.
     public func sourceAction(
-        projectID: String, action: String, group: String?, container: String?, input: String?
+        projectID: String, action: String, group: String?, container: String?, replyTo: String?, input: String?
     ) async throws -> SourceActionResult {
         let target = group.map { " --group \($0)" } ?? container.map { " --container \($0)" } ?? ""
-        try await record("source action \(action)\(target)")
+        let reply = replyTo.map { " --reply-to \($0)" } ?? ""
+        try await record("source action \(action)\(target)\(reply)")
         return SourceActionResult(message: "Ran \(action).")
     }
 

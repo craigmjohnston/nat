@@ -311,6 +311,10 @@ struct SidebarView: View {
         let open: Bool
         var ruleHidden = false
         var afterRows = false
+        /// A folded heading that is the sidebar's last thing: its rule takes
+        /// no room of its own, as the navigator's action bar's shares the
+        /// last section's, so the heading is exactly a navigator heading tall.
+        var atFoot = false
 
         var id: String {
             switch kind {
@@ -339,6 +343,9 @@ struct SidebarView: View {
             endsInSelection = slots[i].open && foldEndsInSelection(slots[i].kind, model)
             afterRows = slots[i].open
         }
+        if let last = slots.indices.last, !slots[last].open, !appModel.mirrorNudgeShown {
+            slots[last].atFoot = true
+        }
         return slots
     }
 
@@ -353,9 +360,18 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func foldView(_ fold: FoldSlot, _ model: SidebarModel) -> some View {
-        Rule(.separator)
-            .opacity(fold.ruleHidden ? 0 : 1)
-            .padding(.top, fold.afterRows ? 4 : 0)
+        // The navigator's section rule — the same token, a full point — so a
+        // folded heading is a navigator heading's height plus its rule and
+        // the lines run straight across the columns. The 4pt of air over an
+        // open section stays; a folded one has none, which would shift it.
+        Group {
+            if fold.atFoot {
+                Color.clear.frame(height: 0).overlay(alignment: .top) { foldRule(fold) }.zIndex(1)
+            } else {
+                foldRule(fold)
+            }
+        }
+        .padding(.top, fold.afterRows && fold.open ? 4 : 0)
         switch fold.kind {
         case .projects:
             projectsFold(model, fold: fold)
@@ -364,6 +380,12 @@ struct SidebarView: View {
         case .scratch(let scratch):
             scratchFold(scratch, fold: fold)
         }
+    }
+
+    private func foldRule(_ fold: FoldSlot) -> some View {
+        DesignTokens.rule(.separator, on: .chrome)
+            .frame(height: 1)
+            .opacity(fold.ruleHidden ? 0 : 1)
     }
 
     /// The Projects fold: its heading, then — open — the projects' tree in a
@@ -805,15 +827,47 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func containerMenu(_ container: SidebarContainer, project: SidebarProject, source: SidebarSource) -> some View {
+        // The card's own actions, as its navigator's action row has them.
+        Button("Launch agent", systemImage: "arrow.right") { launchCard(container, projectID: project.id) }
+            .disabled(!container.tasks.isEmpty || appModel.cardLaunches.contains(container.id))
+        Button("Workshop", systemImage: workshopSymbol) { workshopCard(container, projectID: project.id) }
         Button("New \(source.taskNoun)\u{2026}", systemImage: "plus") {
             newTaskContainer = NewTaskContainer(projectID: project.id, container: container, noun: source.containerNoun)
         }
+        Divider()
         if let url = container.externalURL.flatMap(URL.init(string:)) {
             Button("Open in \(source.title)", systemImage: SourceGlyph.externalLink) { NSWorkspace.shared.open(url) }
         }
         if !container.menu.isEmpty {
             Divider()
             actionItems(container.menu, projectID: project.id, container: container.id)
+        }
+    }
+
+    /// A card row's Launch agent: the card read for its story, then a task
+    /// filed under it and launched — nat's and the plugin's refusals shown as
+    /// any row action's are.
+    private func launchCard(_ container: SidebarContainer, projectID: String) {
+        Task {
+            switch await appModel.cardActions(projectID: projectID, containerID: container.id) {
+            case .success(let card):
+                if let refusal = await appModel.launchCardAgent(projectID: projectID, containerID: container.id, card: card) {
+                    actionError = refusal
+                }
+            case .failure(let error):
+                actionError = error.message
+            }
+        }
+    }
+
+    /// A card row's Workshop: the card read for its story, then the
+    /// project's workshop started on it.
+    private func workshopCard(_ container: SidebarContainer, projectID: String) {
+        Task {
+            switch await appModel.cardActions(projectID: projectID, containerID: container.id) {
+            case .success(let card): await appModel.workshopCard(projectID: projectID, card: card)
+            case .failure(let error): actionError = error.message
+            }
         }
     }
 

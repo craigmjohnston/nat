@@ -37,7 +37,10 @@ plan itself is an ordinary `store.Local`, wrapped by `store.Sourced`.
   `ValidateSidebar` (`ValidateGroups` — children *xor* containers, one level
   of children, unique group ids, no empty or `_`-prefixed group/container id —
   `_` is nat's, for `_unlisted` — and every menu — then the header menu),
-  `Container` → `ValidateContainer` (menu and composers). Every action check
+  `Container` → `ValidateContainer` (menu and composers; every comment an
+  `id`, unique in its section, a `parent` naming a comment of that section
+  that is itself no reply — threads are one level deep; each `images` entry
+  a `url` and an absolute `file`). Every action check
   is the same: a `choice` with no options, and any `secret` input (a setup
   field's alone), is refused; a `filter` with no fields, an empty or
   repeated field or option id, two values in a field not `multi`, or a value
