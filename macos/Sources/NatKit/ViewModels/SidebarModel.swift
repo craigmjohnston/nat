@@ -98,12 +98,11 @@ public struct SidebarMilestone: Equatable, Identifiable, Sendable {
     /// milestone is a plan still to be filled, not a finished one.
     public var isComplete: Bool { total > 0 && done == total }
 
-    /// Whether its folder starts open, where the user has not folded it:
-    /// partly done, or holding the selected slice. One with nothing done
-    /// starts folded — its work in progress is already on show in Active.
-    public func opensByDefault(selecting sliceID: String?) -> Bool {
-        (done > 0 && done < total) || sliceID.map { id in slices.contains { $0.sliceID == id } } ?? false
-    }
+    /// Whether its folder starts open, where the user has not folded or
+    /// opened it and no selection has revealed it (`SidebarFolds`): partly
+    /// done. One with nothing done starts folded — its work in progress is
+    /// already on show in Active.
+    public var opensByDefault: Bool { done > 0 && done < total }
 
     public init(name: String, done: Int, total: Int, slices: [SidebarSliceRow]) {
         self.name = name
@@ -180,15 +179,10 @@ public struct SidebarProject: Equatable, Identifiable, Sendable {
         self.tag = kind == .untitled ? "" : tag
     }
 
-    /// Whether the project files a slice, for the default-open rule.
+    /// Whether the project files a slice.
     public func contains(sliceID: String) -> Bool {
         loose.contains { $0.sliceID == sliceID }
             || (milestones + doneMilestones).contains { $0.slices.contains { $0.sliceID == sliceID } }
-    }
-
-    /// Whether the Done folder holds a slice — what opens it by default.
-    public func doneContains(sliceID: String) -> Bool {
-        doneMilestones.contains { $0.slices.contains { $0.sliceID == sliceID } }
     }
 
     /// The project as View ▸ Hide Done Items draws it: no Done folder, and

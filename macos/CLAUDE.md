@@ -711,7 +711,18 @@ the sidebar. Every "merge" icon is `MergeIcon` — the Merge button's own `Merge
 never `arrow.triangle.merge` (the Task log's Merged item through
 `ThreadIcon`, the conflict mark). A sidebar milestone row (and the Done and Ad hoc sessions folders)
 folds as a project row does: washed under the pointer, its folder giving way
-to the chevron (`TreeMilestoneLine.folds`; story `sidebar-milestone-hovered`). `AppModel` keeps its one *active* project —
+to the chevron (`TreeMilestoneLine.folds`; story `sidebar-milestone-hovered`).
+The sidebar's folds are `SidebarFolds` (NatKit), kept across launches in
+`FoldMemory` (UserDefaults; `.inMemory()` for tests and stories). Defaults
+never read the selection — a project, the Done folder and its milestones
+and Scratch start folded, a milestone open exactly when partly done
+(`SidebarMilestone.opensByDefault`). The selection is *revealed* instead,
+as VS Code and Zed reveal the active file: each time it changes, every
+fold over its row (`sidebarRevealKeys`; the active project's own tree where
+nothing in it is selected, or a live session is) is opened and kept open; reveal
+never folds, runs once per selection (a fold the user then makes over it
+stands until the selection moves), and waits for a row not yet drawn (story
+`window-sidebar-default-folds`). `AppModel` keeps its one *active* project —
 every per-project reading is keyed by it — and the sidebar selects across
 projects by activating first (`selectSlice(_:inProject:)`). The Thread shows
 only what nat reports (`buildThreadEvents`). The titlebar is two bands:
