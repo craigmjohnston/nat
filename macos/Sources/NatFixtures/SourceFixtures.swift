@@ -1,4 +1,6 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 import NatKit
 
 // MARK: - A source project
@@ -278,15 +280,28 @@ extension Fixtures {
             Send each comment to the agent's session as it is posted, with the file \
             and line it was left on, and show the agent's reply in the thread.
 
+            > A comment I leave mid-session should land in the transcript,
+            > not wait for the session to end.
+
+            ![Review pane](\(sourceCardImageURL))
+
             **Acceptance:** a comment posted mid-session shows up in the transcript \
             within a second, and a reply lands under the comment it answers.
             """),
             SourceSection(
                 id: "comments", title: "Comments", kind: .comments,
                 comments: [
-                    SourceComment(by: "Dana Wolfe", when: "3d ago", text: "Pairs with the syntax highlighting work."),
-                    SourceComment(by: "Craig", when: "2d ago", text: "Agreed. Splitting into three tasks."),
-                    SourceComment(by: "Sam Ortiz", when: "5h ago", text: "Thread jumping would help the review pass a lot."),
+                    SourceComment(id: "101", by: "Dana Wolfe", when: "3d ago", text: "Pairs with the syntax highlighting work."),
+                    SourceComment(id: "102", parent: "101", by: "Craig", when: "2d ago", text: """
+                    > Pairs with the syntax highlighting work.
+
+                    Agreed. Splitting into three tasks.
+                    """),
+                    SourceComment(id: "103", by: "Sam Ortiz", when: "5h ago", text: """
+                    Thread jumping would help the review pass a lot. The old pane, for reference:
+
+                    ![Old review pane](https://media.app.shortcut.com/api/attachments/files/old-pane.png)
+                    """),
                 ],
                 composer: SourceAction(id: "comment", label: "Comment", input: .text)
             ),
@@ -303,8 +318,39 @@ extension Fixtures {
             ),
         ],
         menu: sourceCardMenu,
-        taskNote: sourceCardTaskNote
+        taskNote: sourceCardTaskNote,
+        images: [SourceImage(url: sourceCardImageURL, file: sourceCardImageFile)]
     )
+
+    /// The upload the first card's story shows, as Shortcut links it: one
+    /// only the plugin's token reads, so the plugin's copy is what is drawn.
+    static let sourceCardImageURL = "https://media.app.shortcut.com/api/attachments/files/review-pane.png"
+
+    /// The plugin's copy of that upload: a small two-band PNG, written once
+    /// to the temporary directory so a story draws it as gnat draws a copy.
+    public static let sourceCardImageFile: String = {
+        let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("gnat-fixture-review-pane.png")
+        let width = 360, height = 150
+        guard let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return path }
+        context.setFillColor(CGColor(red: 0.24, green: 0.44, blue: 0.85, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(red: 0.9, green: 0.45, blue: 0.16, alpha: 1))
+        context.fill(CGRect(x: 0, y: height - 28, width: width, height: 28))
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.85))
+        for row in 0..<4 {
+            context.fill(CGRect(x: 18, y: 18 + row * 22, width: 200 - row * 30, height: 10))
+        }
+        if let image = context.makeImage(),
+           let destination = CGImageDestinationCreateWithURL(
+               URL(fileURLWithPath: path) as CFURL, "public.png" as CFString, 1, nil) {
+            CGImageDestinationAddImage(destination, image, nil)
+            CGImageDestinationFinalize(destination)
+        }
+        return path
+    }()
 
     /// `container show` for any card: the first card's full detail, else a
     /// plain one built from the sidebar row, with the plan's tasks under it.

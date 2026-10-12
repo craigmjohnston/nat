@@ -679,6 +679,9 @@ struct MarkdownView: View {
     let text: String
     let size: CGFloat
     var ink: InkRole = .primary
+    /// An image's url as written in the markdown -> an absolute local path
+    /// holding a copy of it.
+    var images: [String: String] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -698,10 +701,92 @@ struct MarkdownView: View {
                 case .table(let table):
                     MarkdownTableView(table: table, size: size)
                 case .details(let details):
-                    MarkdownDetailsView(details: details, size: size, ink: ink)
+                    MarkdownDetailsView(details: details, size: size, ink: ink, images: images)
+                case .quote(let quoted):
+                    HStack(alignment: .top, spacing: 10) {
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(DesignTokens.ink(.tertiary, on: .window))
+                            .frame(width: 3)
+                        MarkdownView(text: quoted, size: size, ink: .secondary, images: images)
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                case .image(let image):
+                    MarkdownImageView(image: image, size: size, localCopy: images[image.url])
                 }
             }
         }
+    }
+}
+
+/// A markdown image: the local copy where there is one, else the address
+/// loaded, scaled down to fit and never up. Anything else — loading, a
+/// failed load, no usable source — is a placeholder with the link.
+struct MarkdownImageView: View {
+    let image: MarkdownImage
+    let size: CGFloat
+    let localCopy: String?
+
+    var body: some View {
+        let images = localCopy.map { [image.url: $0] } ?? [:]
+        switch markdownImageSource(url: image.url, images: images) {
+        case .file(let path):
+            if let ns = NSImage(contentsOfFile: path) {
+                picture(Image(nsImage: ns), natural: ns.size)
+            } else {
+                placeholder
+            }
+        case .remote(let url):
+            AsyncImage(url: url) { phase in
+                if let loaded = phase.image {
+                    loaded.resizable().scaledToFit().modifier(ImageFrame())
+                } else {
+                    placeholder
+                }
+            }
+        case .none:
+            placeholder
+        }
+    }
+
+    private func picture(_ image: Image, natural: CGSize) -> some View {
+        image.resizable().scaledToFit()
+            .frame(maxWidth: max(natural.width, 1), maxHeight: max(natural.height, 1))
+            .modifier(ImageFrame())
+    }
+
+    private var placeholder: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "photo").font(.system(size: size)).ink(.tertiary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(image.alt.isEmpty ? "Image" : image.alt)
+                    .font(.system(size: size - 1)).ink(.secondary).lineLimit(1)
+                if let link = URL(string: image.url), link.scheme != nil {
+                    Link(destination: link) {
+                        Text(image.url)
+                            .font(Typo.mono(size: size - 2))
+                            .lineLimit(1).truncationMode(.middle)
+                    }
+                } else {
+                    Text(image.url)
+                        .font(Typo.mono(size: size - 2)).ink(.tertiary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1) }
+    }
+}
+
+/// An image's frame: a small corner radius and a 1pt separator border, hugging
+/// the picture and left-aligned in its room.
+private struct ImageFrame: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1) }
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -711,13 +796,15 @@ struct MarkdownDetailsView: View {
     let details: MarkdownDetails
     let size: CGFloat
     let ink: InkRole
+    var images: [String: String] = [:]
 
     @State private var isOpen: Bool
 
-    init(details: MarkdownDetails, size: CGFloat, ink: InkRole) {
+    init(details: MarkdownDetails, size: CGFloat, ink: InkRole, images: [String: String] = [:]) {
         self.details = details
         self.size = size
         self.ink = ink
+        self.images = images
         _isOpen = State(initialValue: details.open)
     }
 
@@ -742,7 +829,7 @@ struct MarkdownDetailsView: View {
             .help(isOpen ? "Fold" : "Show the details")
 
             if isOpen && !details.body.isEmpty {
-                MarkdownView(text: details.body, size: size, ink: ink)
+                MarkdownView(text: details.body, size: size, ink: ink, images: images)
                     .padding(.leading, size + 2)
             }
         }

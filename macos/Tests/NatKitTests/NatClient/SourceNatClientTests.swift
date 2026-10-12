@@ -64,7 +64,7 @@ final class SourceNatClientTests: XCTestCase {
     func testSourceActionOnTheHeaderWithNoInput() async throws {
         let runner = StubRunner(stdout: "{}")
         let result = try await NatClient(commandRunner: runner).sourceAction(
-            projectID: "p", action: "refresh", group: nil, container: nil, input: nil)
+            projectID: "p", action: "refresh", group: nil, container: nil, replyTo: nil, input: nil)
         XCTAssertEqual(runner.lastArguments, ["source", "action", "--project", "p", "--action", "refresh", "--json"])
         XCTAssertNil(runner.lastStandardInput)
         XCTAssertNil(result.message)
@@ -73,7 +73,7 @@ final class SourceNatClientTests: XCTestCase {
     func testSourceActionOnAGroupWithAChoice() async throws {
         let runner = StubRunner(stdout: #"{"message": "Mine now shows unassigned cards"}"#)
         let result = try await NatClient(commandRunner: runner).sourceAction(
-            projectID: "p", action: "segment-owner", group: "seg-mine", container: nil, input: "unassigned")
+            projectID: "p", action: "segment-owner", group: "seg-mine", container: nil, replyTo: nil, input: "unassigned")
         XCTAssertEqual(runner.lastArguments, [
             "source", "action", "--project", "p", "--action", "segment-owner",
             "--group", "seg-mine", "--input", "-", "--json",
@@ -85,12 +85,22 @@ final class SourceNatClientTests: XCTestCase {
     func testSourceActionOnAContainerSendsMultiLineInputOverStdin() async throws {
         let runner = StubRunner(stdout: "{}")
         _ = try await NatClient(commandRunner: runner).sourceAction(
-            projectID: "p", action: "comment", group: "", container: "4821", input: "Line one\nLine two")
+            projectID: "p", action: "comment", group: "", container: "4821", replyTo: nil, input: "Line one\nLine two")
         XCTAssertEqual(runner.lastArguments, [
             "source", "action", "--project", "p", "--action", "comment",
             "--container", "4821", "--input", "-", "--json",
         ])
         XCTAssertEqual(runner.lastStandardInput, Data("Line one\nLine two".utf8))
+    }
+
+    func testSourceActionReplyNamesTheCommentItAnswers() async throws {
+        let runner = StubRunner(stdout: "{}")
+        _ = try await NatClient(commandRunner: runner).sourceAction(
+            projectID: "p", action: "comment", group: nil, container: "4821", replyTo: "101", input: "Yes")
+        XCTAssertEqual(runner.lastArguments, [
+            "source", "action", "--project", "p", "--action", "comment",
+            "--container", "4821", "--reply-to", "101", "--input", "-", "--json",
+        ])
     }
 
     func testSourceListTakesNoProject() async throws {

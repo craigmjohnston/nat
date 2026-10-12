@@ -55,6 +55,32 @@ func TestActionComment(t *testing.T) {
 	}
 }
 
+// TestActionReply: a composer's text naming a comment goes to Shortcut as a
+// reply to it — a real thread, its parent_id set — and lands under that
+// comment on the next read.
+func TestActionReply(t *testing.T) {
+	h := newHarness(t)
+	if got := h.act("comment", `{"container":"4821","comment":"2"}`, "On it."); got != `{"message":"Replied on sc-4821"}`+"\n" {
+		t.Errorf("message = %q", got)
+	}
+	if got := h.writes(); got != `POST /stories/4821/comments {"text":"On it.","parent_id":2}` {
+		t.Errorf("writes = %s", got)
+	}
+	d := detail(t, h.call("container", `"id":"4821"`))
+	last := d.Sections[1].Comments[len(d.Sections[1].Comments)-1]
+	if last.Text != "On it." || last.Parent != "2" {
+		t.Errorf("reply read back as %+v", last)
+	}
+	for _, tc := range []struct{ target, want string }{
+		{`{"container":"4821","comment":"x"}`, `shortcut: "x" is not a comment id`},
+		{`{"container":"4821","comment":"77"}`, "shortcut: POST /stories/4821/comments: 400 Bad Request"},
+	} {
+		if errs := h.actFail("comment", tc.target, "hi"); errs != tc.want {
+			t.Errorf("reply %s: %q, want %q", tc.target, errs, tc.want)
+		}
+	}
+}
+
 func TestActionAssignFollow(t *testing.T) {
 	h := newHarness(t)
 	if got := h.act("assign", `{"container":"4811"}`, ""); !strings.Contains(got, "Assigned sc-4811 to you") {

@@ -449,10 +449,11 @@ usage:
   nat container show <container> [--json] --project ID
                       print one of a source project's containers as its
                       plugin describes it, with the project's tasks under it
-  nat source action --action ID [--group ID | --container ID]
+  nat source action --action ID [--group ID | --container ID [--reply-to ID]]
                         [--input TEXT|-] [--json] --project ID
                       run one of a source project's plugin actions, against a
                       group, a container or (neither) the source itself;
+                      --reply-to names the comment a composer's text answers;
                       --input - reads the input from stdin
   nat source setup <plugin> --id ID [--json] < VALUE
                       set one of a task-source plugin's setup fields (an API

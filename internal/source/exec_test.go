@@ -137,7 +137,7 @@ func TestSidebarReportsAFailedCall(t *testing.T) {
 }
 
 func TestContainerSendsTheIDAndDecodes(t *testing.T) {
-	f := &fakeRunner{out: `{"id":"c1","title":"Fix it","external_url":"https://x/c1","facts":[{"label":"state","value":"Doing","color":"blue"}],"sections":[{"id":"body","title":"Story","kind":"prose","body":"words"},{"id":"talk","title":"Comments","kind":"comments","comments":[{"by":"a","when":"now","text":"hi"}],"composer":{"id":"comment","label":"Comment","input":"text"}},{"id":"links","title":"Links","kind":"links","links":[{"label":"PR","text":"#4","state":"open","url":"https://x/4"}]}],"task_note":"Linked."}`}
+	f := &fakeRunner{out: `{"id":"c1","title":"Fix it","external_url":"https://x/c1","facts":[{"label":"state","value":"Doing","color":"blue"}],"sections":[{"id":"body","title":"Story","kind":"prose","body":"words"},{"id":"talk","title":"Comments","kind":"comments","comments":[{"id":"1","by":"a","when":"now","text":"hi"},{"id":"2","parent":"1","by":"b","when":"now","text":"> hi\n\nyes"}],"composer":{"id":"comment","label":"Comment","input":"text"}},{"id":"links","title":"Links","kind":"links","links":[{"label":"PR","text":"#4","state":"open","url":"https://x/4"}]}],"task_note":"Linked.","images":[{"url":"https://media.x/a.png","file":"/cache/a.png"}]}`}
 	d, err := NewWithRunner("sc", "/bin/nat-source-sc", f).Container(context.Background(), testProject, "c1")
 	if err != nil {
 		t.Fatalf("Container() = %v", err)
@@ -146,11 +146,11 @@ func TestContainerSendsTheIDAndDecodes(t *testing.T) {
 		Facts: []Fact{{Label: "state", Value: "Doing", Color: "blue"}},
 		Sections: []Section{
 			{ID: "body", Title: "Story", Kind: KindProse, Body: "words"},
-			{ID: "talk", Title: "Comments", Kind: KindComments, Comments: []Comment{{By: "a", When: "now", Text: "hi"}},
+			{ID: "talk", Title: "Comments", Kind: KindComments, Comments: []Comment{{ID: "1", By: "a", When: "now", Text: "hi"}, {ID: "2", Parent: "1", By: "b", When: "now", Text: "> hi\n\nyes"}},
 				Composer: &Action{ID: "comment", Label: "Comment", Input: InputText}},
 			{ID: "links", Title: "Links", Kind: KindLinks, Links: []Link{{Label: "PR", Text: "#4", State: "open", URL: "https://x/4"}}},
 		},
-		TaskNote: "Linked."}
+		TaskNote: "Linked.", Images: []Image{{URL: "https://media.x/a.png", File: "/cache/a.png"}}}
 	if !reflect.DeepEqual(d, want) {
 		t.Errorf("Container() = %+v, want %+v", d, want)
 	}
@@ -175,6 +175,17 @@ func TestActionSendsTheActionTargetAndInput(t *testing.T) {
 		t.Errorf("Action() = %+v, want the plugin's message", r)
 	}
 	assertSent(t, f, "action", map[string]any{"action": "move", "target": map[string]any{"container": "c1"}, "input": "Ready"})
+}
+
+// TestActionSendsTheCommentAReplyAnswers: a composer's reply names the
+// comment it answers beside the container.
+func TestActionSendsTheCommentAReplyAnswers(t *testing.T) {
+	f := &fakeRunner{out: `{}`}
+	if _, err := NewWithRunner("sc", "/bin/nat-source-sc", f).Action(context.Background(), testProject, "comment",
+		Target{Container: "c1", Comment: "7"}, "Agreed"); err != nil {
+		t.Fatalf("Action() = %v", err)
+	}
+	assertSent(t, f, "action", map[string]any{"action": "comment", "target": map[string]any{"container": "c1", "comment": "7"}, "input": "Agreed"})
 }
 
 // TestActionLeavesOutAnEmptyInputAndTarget: the spec's input and target

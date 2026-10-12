@@ -54,7 +54,7 @@ public protocol NatClientProtocol: Sendable {
     func projectMirror(projectID: String, parent: NotionPlace) async throws -> ProjectMirrored
     func info(projectID: String, refresh: Bool, expand: [String]) async throws -> ProjectInfo
     func containerShow(projectID: String, containerID: String) async throws -> ContainerShow
-    func sourceAction(projectID: String, action: String, group: String?, container: String?, input: String?) async throws -> SourceActionResult
+    func sourceAction(projectID: String, action: String, group: String?, container: String?, replyTo: String?, input: String?) async throws -> SourceActionResult
     func sourceList() async throws -> [SourcePlugin]
     func pluginList() async throws -> PluginListing
     func pluginInstall(name: String, source: String?, version: String?) async throws -> PluginInstalled
@@ -305,7 +305,7 @@ extension NatClientProtocol {
     }
 
     public func sourceAction(
-        projectID: String, action: String, group: String?, container: String?, input: String?
+        projectID: String, action: String, group: String?, container: String?, replyTo: String?, input: String?
     ) async throws -> SourceActionResult {
         throw NatError.commandFailed("source action: not supported by this client")
     }

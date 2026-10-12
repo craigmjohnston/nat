@@ -1,6 +1,7 @@
 package fakeshortcut
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -93,6 +94,22 @@ func TestSearchOperators(t *testing.T) {
 	}
 }
 
+// TestFiles: an upload is served as a PNG, and a story's text names the
+// fake's own address where the seed wrote {fake}.
+func TestFiles(t *testing.T) {
+	s := Seed("t")
+	r := httptest.NewRequest("GET", Prefix+"/files/review-pane.png", nil)
+	r.Header.Set("Shortcut-Token", "t")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+	if w.Code != 200 || w.Header().Get("Content-Type") != "image/png" || !bytes.Equal(w.Body.Bytes(), ReviewPanePNG) {
+		t.Errorf("file = %d %s", w.Code, w.Header())
+	}
+	if _, body := do(t, s, "GET", "/stories/4821", ""); !strings.Contains(body, "![Review pane](http://example.com/api/v3/files/review-pane.png)") {
+		t.Errorf("story = %s", body)
+	}
+}
+
 func TestRoutesAndFailures(t *testing.T) {
 	s := Seed("t")
 	var log strings.Builder
@@ -113,6 +130,8 @@ func TestRoutesAndFailures(t *testing.T) {
 		{"PATCH", "/stories/4821", "", 404},
 		{"PUT", "/stories/4821", "nope", 400},
 		{"POST", "/stories/4821/comments", `{"text":""}`, 400},
+		{"POST", "/stories/4821/comments", `{"text":"x","parent_id":77}`, 400},
+		{"GET", "/files/nope.png", "", 404},
 		{"POST", "/stories/4821/tasks", `{}`, 400},
 		{"PUT", "/stories/4821/tasks/1", `{}`, 404},
 		{"POST", "/stories/4821/tasks", `{"description":"x"}`, 201},
@@ -132,7 +151,7 @@ func TestRoutesAndFailures(t *testing.T) {
 		}
 	}
 	if st := s.Story(StoryDoing); !st.CompletedAt.IsZero() || st.Tasks[0].Complete || len(st.Tasks) != 1 ||
-		st.OwnerIDs[0] != "x" || st.FollowerIDs[0] != "y" || st.Comments[3].AuthorID != MeID {
+		st.OwnerIDs[0] != "x" || st.FollowerIDs[0] != "y" || st.Comments[4].AuthorID != MeID {
 		t.Errorf("story = %+v", st)
 	}
 

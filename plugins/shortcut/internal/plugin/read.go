@@ -242,6 +242,11 @@ func (a *app) buildContainer(ctx context.Context, id int64) (source.ContainerDet
 		},
 	)
 	sid := "sc-" + strconv.FormatInt(st.ID, 10)
+	comments := r.comments(st, a.now)
+	texts := []string{st.Description}
+	for _, c := range comments {
+		texts = append(texts, c.Text)
+	}
 	return source.ContainerDetail{
 		ID:          strconv.FormatInt(st.ID, 10),
 		Title:       st.Name,
@@ -249,12 +254,13 @@ func (a *app) buildContainer(ctx context.Context, id int64) (source.ContainerDet
 		Facts:       r.facts(st, a.now),
 		Sections: []source.Section{
 			{ID: "story", Title: "Story", Kind: source.KindProse, Body: st.Description},
-			{ID: "comments", Title: "Comments", Kind: source.KindComments, Comments: r.comments(st, a.now),
+			{ID: "comments", Title: "Comments", Kind: source.KindComments, Comments: comments,
 				Composer: &source.Action{ID: "comment", Label: "Comment", Input: source.InputText}},
 			{ID: "links", Title: "Links", Kind: source.KindLinks, Links: links(st)},
 		},
 		Menu:     cardMenu,
 		TaskNote: "Linked to " + sid + ". Merging moves the card to Done when it's the last open task.",
+		Images:   a.images(ctx, texts...),
 	}, nil
 }
 
@@ -320,16 +326,50 @@ func (r *refs) facts(st shortcut.Story, now time.Time) []source.Fact {
 	}
 }
 
-// comments are the story's live comments, oldest first.
+// comments are the story's live comments, oldest first, each a reply to the
+// comment that opens its thread: threads are one level deep, so a reply to a
+// reply answers the first comment above it, and a reply whose comment is
+// deleted or gone stands on its own.
 func (r *refs) comments(st shortcut.Story, now time.Time) []source.Comment {
 	cs := slices.Clone(st.Comments)
 	slices.SortStableFunc(cs, func(x, y shortcut.Comment) int { return x.CreatedAt.Compare(y.CreatedAt.Time) })
+	parent := map[int64]int64{}
+	for _, c := range cs {
+		if !c.Deleted {
+			parent[c.ID] = c.ParentID
+		}
+	}
+	// root is the comment opening id's thread, or 0 where none is live —
+	// stopping at a loop, which Shortcut should never send.
+	root := func(id int64) int64 {
+		seen := map[int64]bool{}
+		for {
+			up, live := parent[id]
+			if !live || seen[id] {
+				return 0
+			}
+			if up == 0 {
+				return id
+			}
+			seen[id] = true
+			if _, ok := parent[up]; !ok {
+				return id
+			}
+			id = up
+		}
+	}
 	out := []source.Comment{}
 	for _, c := range cs {
 		if c.Deleted {
 			continue
 		}
-		out = append(out, source.Comment{By: r.name(c.AuthorID), When: ago(now, c.CreatedAt.Time), Text: c.Text})
+		sc := source.Comment{ID: strconv.FormatInt(c.ID, 10), By: r.name(c.AuthorID), When: ago(now, c.CreatedAt.Time), Text: c.Text}
+		if c.ParentID != 0 {
+			if top := root(c.ParentID); top != 0 && top != c.ID {
+				sc.Parent = strconv.FormatInt(top, 10)
+			}
+		}
+		out = append(out, sc)
 	}
 	return out
 }

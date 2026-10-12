@@ -70,7 +70,7 @@ func TestReads(t *testing.T) {
 		t.Errorf("Iteration = %+v, %v", it, err)
 	}
 	st, err := c.Story(ctx, fakeshortcut.StoryDoing)
-	if err != nil || st.Name != "Improve diff review ergonomics" || *st.Estimate != 3 || len(st.Comments) != 3 || st.ProjectID != fakeshortcut.ProjectMobile ||
+	if err != nil || st.Name != "Improve diff review ergonomics" || *st.Estimate != 3 || len(st.Comments) != 4 || st.Comments[3].ParentID != 1 || st.ProjectID != fakeshortcut.ProjectMobile ||
 		!st.CreatedAt.Equal(fakeshortcut.SeedNow.Add(-15*24*time.Hour)) {
 		t.Errorf("Story = %+v, %v", st, err)
 	}
@@ -97,7 +97,7 @@ func TestHeaders(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := shortcut.New(srv.URL, "secret")
-	if err := c.CreateComment(context.Background(), 1, "x"); err != nil {
+	if err := c.CreateComment(context.Background(), 1, "x", 0); err != nil {
 		t.Fatal(err)
 	}
 	if got.Get("Shortcut-Token") != "secret" || got.Get("Content-Type") != "application/json" || got.Get("Accept") != "application/json" {
@@ -122,7 +122,7 @@ func TestWrites(t *testing.T) {
 		func() error {
 			return c.UpdateStory(ctx, fakeshortcut.StoryBug, shortcut.StoryUpdate{FollowerIDs: []string{"b"}})
 		},
-		func() error { return c.CreateComment(ctx, fakeshortcut.StoryBug, "hello") },
+		func() error { return c.CreateComment(ctx, fakeshortcut.StoryBug, "hello", 0) },
 		func() error { return c.CreateTask(ctx, fakeshortcut.StoryBug, "Try it (nat:t1)", false) },
 		func() error { return c.CompleteTask(ctx, fakeshortcut.StoryBug, 900002) },
 		func() error { return c.DeleteTask(ctx, fakeshortcut.StoryBug, 900002) },
@@ -297,5 +297,82 @@ func TestTime(t *testing.T) {
 	b, _ := json.Marshal(v)
 	if string(b) != `{"A":"2026-10-03T12:00:00Z","B":null,"C":null,"D":null}` {
 		t.Errorf("encoded = %s", b)
+	}
+}
+
+// TestHolds: the token goes to the API's own host, and to the live media host
+// only from the live API — never anywhere else.
+func TestHolds(t *testing.T) {
+	live := shortcut.New("", "t")
+	scratch := shortcut.New("http://127.0.0.1:9/api/v3", "t")
+	for _, tc := range []struct {
+		c    *shortcut.Client
+		url  string
+		want bool
+	}{
+		{live, "https://media.app.shortcut.com/api/attachments/files/a.png", true},
+		{live, "https://api.app.shortcut.com/x.png", true},
+		{live, "http://media.app.shortcut.com/a.png", false},
+		{live, "https://example.com/a.png", false},
+		{live, "ftp://media.app.shortcut.com/a.png", false},
+		{live, "::", false},
+		{scratch, "http://127.0.0.1:9/api/v3/files/a.png", true},
+		{scratch, "https://127.0.0.1:9/a.png", false},
+		{scratch, "https://media.app.shortcut.com/a.png", false},
+	} {
+		if got := tc.c.Holds(tc.url); got != tc.want {
+			t.Errorf("%s Holds(%q) = %v, want %v", tc.c.BaseURL, tc.url, got, tc.want)
+		}
+	}
+}
+
+// TestFetch: an image comes back with its type and the token sent; anything
+// else is refused in words naming the host alone.
+func TestFetch(t *testing.T) {
+	var token string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token = r.Header.Get("Shortcut-Token")
+		switch r.URL.Path {
+		case "/img.png":
+			w.Header().Set("Content-Type", "image/png; charset=binary")
+			_, _ = w.Write([]byte("PNG"))
+		case "/page":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html>"))
+		case "/short":
+			w.Header().Set("Content-Type", "image/png")
+			w.Header().Set("Content-Length", "100")
+			_, _ = w.Write([]byte("PNG"))
+		case "/huge":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(make([]byte, shortcut.MaxImage+1))
+		default:
+			w.WriteHeader(http.StatusForbidden)
+		}
+	}))
+	defer srv.Close()
+	c := shortcut.New(srv.URL, "secret")
+	ctx := context.Background()
+	b, kind, err := c.Fetch(ctx, srv.URL+"/img.png")
+	if err != nil || string(b) != "PNG" || kind != "image/png" || token != "secret" {
+		t.Errorf("Fetch = %q, %q, %v (token %q)", b, kind, err, token)
+	}
+	host := strings.TrimPrefix(srv.URL, "http://")
+	for path, want := range map[string]string{
+		"/page":   "shortcut: GET image on " + host + ": not an image",
+		"/huge":   "shortcut: GET image on " + host + ": larger than 20 MB",
+		"/secret": "shortcut: GET image on " + host + ": 403 Forbidden",
+		"/short":  "shortcut: GET image on " + host + ": unexpected EOF",
+	} {
+		if _, _, err := c.Fetch(ctx, srv.URL+path); err == nil || err.Error() != want {
+			t.Errorf("Fetch(%s) = %v, want %q", path, err, want)
+		}
+	}
+	if _, _, err := c.Fetch(ctx, "https://example.com/a.png"); err == nil || err.Error() != "shortcut: not a Shortcut file" {
+		t.Errorf("Fetch elsewhere = %v", err)
+	}
+	srv.Close()
+	if _, _, err := c.Fetch(ctx, srv.URL+"/img.png"); err == nil || !strings.Contains(err.Error(), "unreachable") {
+		t.Errorf("Fetch closed = %v", err)
 	}
 }

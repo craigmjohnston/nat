@@ -203,7 +203,8 @@ Badge     { text, color, title? }
 Fact      { label, value, color?, badge?: Badge }
 Section   { id, title, kind: "prose" | "comments" | "links", body?, comments?: [Comment],
             links?: [Link], composer?: Action }
-Comment   { by, when, text }
+Comment   { id, parent?, by, when, text }
+Image     { url, file }
 Link      { label, text, state?, url }
 Action    { id, label, input: "none" | "text" | "choice" | "filter", options?: [string],
             fields?: [FilterField], destructive? }
@@ -219,7 +220,9 @@ Setup     { id, label, input: "secret" | "text", hint?, set? }
   are folded, and `expand` names them — and unique across the whole tree.
 - **Colours** (`Badge.color`, `Fact.color`) are `#rrggbb`. gnat draws one
   it can't parse in secondary ink.
-- **Text** is plain unless stated: only `Section.body` is Markdown.
+- **Text** is plain unless stated: only `Section.body` and `Comment.text`
+  are Markdown. gnat draws headings, lists, code, links, block quotes (lines
+  starting `>`) and images (`![alt](url)`) in both.
 - **`Action.input`**: `none` runs on click; `text` asks for a line of text
   (a small sheet); `choice` offers `options` (a submenu) and is invalid
   without them — nat refuses a `describe`, `sidebar` or `container`
@@ -443,11 +446,12 @@ Response:
   ],
   "sections": [
     { "id": "story", "title": "Story", "kind": "prose",
-      "body": "Comments left on a diff in the app never reach the working agent.\n\n**Acceptance:** a comment posted mid-session shows up in the transcript within a second." },
+      "body": "Comments left on a diff in the app never reach the working agent.\n\n![Review pane](https://media.app.shortcut.com/api/attachments/files/review-pane.png)\n\n**Acceptance:** a comment posted mid-session shows up in the transcript within a second." },
     { "id": "comments", "title": "Comments", "kind": "comments",
       "comments": [
-        { "by": "Dana Wolfe", "when": "3d ago", "text": "Pairs with the syntax highlighting work." },
-        { "by": "Craig", "when": "2d ago", "text": "Agreed. Splitting into three tasks." }
+        { "id": "101", "by": "Dana Wolfe", "when": "3d ago", "text": "Pairs with the syntax highlighting work." },
+        { "id": "102", "parent": "101", "by": "Craig", "when": "2d ago",
+          "text": "> Pairs with the syntax highlighting work.\n\nAgreed. Splitting into three tasks." }
       ],
       "composer": { "id": "comment", "label": "Comment", "input": "text" } },
     { "id": "links", "title": "Links", "kind": "links",
@@ -457,7 +461,11 @@ Response:
       ] }
   ],
   "menu": [ { "id": "unassign-me", "label": "Remove Me as Owner", "input": "none" } ],
-  "task_note": "Linked to sc-4821. Merging moves the card to Done when it's the last open task."
+  "task_note": "Linked to sc-4821. Merging moves the card to Done when it's the last open task.",
+  "images": [
+    { "url": "https://media.app.shortcut.com/api/attachments/files/review-pane.png",
+      "file": "/Users/craig/Library/Caches/nat-source-shortcut/images/3f9a….png" }
+  ]
 }
 ```
 
@@ -472,14 +480,35 @@ Response:
   - `prose` — `body`, Markdown. The **first** `prose` section is also what
     the agent prompt quotes as the container's story.
   - `comments` — `comments` oldest first; `when` is free text ("3d ago",
-    "18 Sep"). `composer`, an Action with `input: "text"`, draws as a
-    compose box; sending runs it with `target: {"container": id}` and the
-    text as `input`.
+    "18 Sep"); `text` is Markdown. Each comment has an `id`, the plugin's
+    own and unique within the section. **Threads are one level deep:** a
+    reply carries `parent`, the `id` of the comment it answers, which must be
+    a comment of the same section with no `parent` of its own — a plugin
+    whose tracker nests deeper sends the comment opening the thread. gnat
+    draws each reply under its parent. nat refuses a section with a comment
+    missing its `id`, an `id` used twice, or a `parent` naming a comment that
+    is not there or is itself a reply. `composer`, an Action with `input:
+    "text"`, draws as a compose box under the comments, and as a Reply on
+    each one; sending runs it with `target: {"container": id}` — plus
+    `"comment": <the comment's id>` for a reply, the thread's first comment
+    where the user replied to a reply — and the text as `input`. The reply
+    should be the tracker's own (Shortcut's `parent_id`), not a quoted copy.
   - `links` — `label` (a short tag, "PR #418"), `text`, `url`; `state` is
     free text drawn as a pill ("open", "merged").
   A section of an unknown `kind` is skipped, not refused.
 - `task_note` (optional) is drawn in the PR section of every task under
   this container.
+- `images` (optional) lets gnat draw an image the prose or a comment links
+  to that only the plugin can fetch — a Shortcut upload, behind its API
+  token, which nat and gnat never hold. Each is the `url` exactly as the
+  Markdown gives it and `file`, an absolute path to a copy the plugin saved
+  (in its own cache; a copy is never fetched twice, since an upload never
+  changes under its link). gnat draws the copy in place of the link. An
+  image not listed is loaded from its `url` directly; one that can't be had
+  either way draws as a placeholder with its link, and never breaks the
+  text around it. nat refuses an image with no `url` or a `file` that is
+  not an absolute path. A copy that fails to fetch is simply left out — it
+  never fails the call.
 - An unknown `id` is an error (exit non-zero, a stderr line).
 
 ### `action`
@@ -504,7 +533,8 @@ Response:
 
 - `target` says whose menu the action came from: `{}` the source header
   (`describe`'s `menu`), `{"group": id}` a group's, `{"container": id}` a
-  container's menu or a section composer.
+  container's menu or a section composer, `{"container": id, "comment":
+  id}` a composer's reply to that comment.
 - `input`: absent for `none`; the text for `text`; exactly one of
   `options` for `choice`; for `filter`, a string holding a JSON object of
   field id to the option ids chosen — every field named, an empty list
@@ -642,11 +672,12 @@ source project. A failed plugin read is the command's error. Without
 ### New: `source action`
 
 ```
-nat source action --project <id> --action <action id> [--group <id> | --container <id>] [--input <text> | --input -] [--json]
+nat source action --project <id> --action <action id> [--group <id> | --container <id> [--reply-to <comment id>]] [--input <text> | --input -] [--json]
 ```
 
 Runs `action` with the target built from `--group`/`--container` (neither:
-the source header). `--input -` reads the input from stdin (multi-line
+the source header), `--reply-to` adding the comment a composer's text
+answers (refused without `--container`). `--input -` reads the input from stdin (multi-line
 comments); the input is trimmed of surrounding whitespace either way.
 Prints the plugin's `message` (`Ran <action id>.` when it gave none);
 `--json` prints `{ "message": "…" }`. Refused on a non-source project, with
@@ -979,9 +1010,20 @@ a version that doesn't read that way is never newer.
   field of hundreds of options (Shortcut's epics) costs nothing until opened.
 - **Container selected.** A third selection kind beside slices and
   sessions, mutually exclusive with both. Navigator: titlebar icon + tag +
-  title; a facts card with **New task**; one section per `sections` entry
-  by kind (prose, comments with composer, links). Main pane: the prose and
-  comments; titlebar **Open in <title>** (`external_url`).
+  title; the facts card, its head carrying **Open in <title>**
+  (`external_url`); the tasks; the links (no comments — they are the main
+  pane's). At its foot a pinned action row, as a slice's: **Launch agent**
+  the main action, **Workshop** and **New task** in a split off it. Launch
+  agent files a task under the container, titled after it, its brief the
+  first prose section, and launches it at once — offered only while the
+  container has no task of its own, and greyed with a reason otherwise.
+  Workshop opens the project's workshop with the container's title and
+  first prose section as the request, and starts it. The container's row in
+  the sidebar offers the same three on its right-click menu. Main pane: the
+  first prose section under a **Description** heading, then the comments
+  under **Comments**, threaded one level (each reply under its parent, a
+  hover Reply opening an inline composer, the composer at the foot for a
+  comment of its own); `images` drawn inline.
 - **Task under a container.** Brief facts show the container's `facts`
   instead of the milestone; the PR section appends `task_note`; the status
   bar crumb is `<container title> / <task>`.

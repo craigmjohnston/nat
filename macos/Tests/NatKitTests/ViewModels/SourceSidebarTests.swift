@@ -203,7 +203,7 @@ final class SourceSidebarTests: XCTestCase {
 
     // MARK: - The container navigator
 
-    func testTheNavigatorsSectionsFollowTheStoryAndSkipUnknownKinds() {
+    func testTheNavigatorsSectionsFollowTheStoryAndLeaveCommentsToThePane() {
         let detail = ContainerDetail(id: "c", title: "C", sections: [
             SourceSection(id: "comments", title: "Comments", kind: .comments,
                           comments: [SourceComment(by: "a", when: "1d", text: "x")]),
@@ -215,11 +215,11 @@ final class SourceSidebarTests: XCTestCase {
         let model = ContainerNavigatorModel(show: ContainerShow(container: detail, tasks: Fixtures.sourceTasks))
         XCTAssertEqual(model.storyID, "body")
         XCTAssertEqual(model.storyTitle, "Description")
-        XCTAssertEqual(model.sections.map(\.id), ["comments", "notes", "links"])
+        XCTAssertEqual(model.sections.map(\.id), ["notes", "links"], "comments are the main pane's alone")
         XCTAssertEqual(model.comments?.id, "comments")
-        XCTAssertEqual(model.meta(for: model.sections[0]), "1")
-        XCTAssertNil(model.meta(for: model.sections[1]))
-        XCTAssertEqual(model.meta(for: model.sections[2]), "none")
+        XCTAssertEqual(model.meta(for: model.comments!), "1")
+        XCTAssertNil(model.meta(for: model.sections[0]))
+        XCTAssertEqual(model.meta(for: model.sections[1]), "none")
         XCTAssertEqual(model.paneMode(for: "links"), .section("links"))
         XCTAssertEqual(model.paneMode(for: "comments"), .story)
         XCTAssertEqual(model.paneMode(for: "nope"), .story)
@@ -234,7 +234,55 @@ final class SourceSidebarTests: XCTestCase {
         XCTAssertEqual(model.tasksFact, "none yet")
         XCTAssertNil(model.comments)
         let fixture = ContainerNavigatorModel(show: Fixtures.sourceContainerShow(id: Fixtures.sourceCardID))
-        XCTAssertEqual(fixture.meta(for: fixture.sections[1]), "3")
+        XCTAssertEqual(fixture.meta(for: fixture.sections[0]), "3")
+        XCTAssertEqual(model.threads, [])
+    }
+
+    func testCommentsThreadOneLevelUnderTheCommentTheyAnswer() {
+        let comments = [
+            SourceComment(id: "1", by: "a", when: "", text: "root"),
+            SourceComment(id: "2", by: "b", when: "", text: "other"),
+            SourceComment(id: "3", parent: "1", by: "c", when: "", text: "reply"),
+            SourceComment(id: "4", parent: "3", by: "d", when: "", text: "reply to a reply"),
+            SourceComment(id: "5", parent: "9", by: "e", when: "", text: "parent gone"),
+            SourceComment(id: "6", parent: "6", by: "f", when: "", text: "its own parent"),
+            SourceComment(id: "7", parent: "", by: "g", when: "", text: "empty parent"),
+            SourceComment(id: "8", parent: "1", by: "h", when: "", text: "second reply"),
+        ]
+        let detail = ContainerDetail(id: "c", title: "C", sections: [
+            SourceSection(id: "comments", title: "Comments", kind: .comments, comments: comments),
+        ])
+        let threads = ContainerNavigatorModel(show: ContainerShow(container: detail)).threads
+        XCTAssertEqual(threads.map(\.id), ["1", "2", "5", "6", "7", "4"])
+        XCTAssertEqual(threads[0].replies.map(\.id), ["3", "8"])
+        XCTAssertEqual(threads.map(\.replyTarget), threads.map(\.id), "a reply answers the thread's first comment")
+        XCTAssertTrue(threads[1].replies.isEmpty)
+    }
+
+    func testACardsActionsAreLaunchWhileItHasNoTaskAndWorkshopOnItsStory() {
+        let fresh = CardActions(title: "  Kanban column view ", story: "\nShow milestones as columns.\n", taskCount: 0)
+        XCTAssertTrue(fresh.canLaunchAgent)
+        XCTAssertNil(fresh.launchRefusal)
+        XCTAssertEqual(fresh.taskTitle, "Kanban column view")
+        XCTAssertEqual(fresh.taskBrief, "Show milestones as columns.")
+        XCTAssertEqual(fresh.workshopRequest, "Kanban column view\n\nShow milestones as columns.")
+
+        let worked = CardActions(title: "T", story: "  ", taskCount: 2)
+        XCTAssertFalse(worked.canLaunchAgent)
+        XCTAssertNotNil(worked.launchRefusal)
+        XCTAssertNil(worked.taskBrief)
+        XCTAssertEqual(worked.workshopRequest, "T")
+
+        let long = String(repeating: "word ", count: 20) + "end"
+        let cut = CardActions(title: long, story: "", taskCount: 0).taskTitle
+        XCTAssertLessThanOrEqual(cut.unicodeScalars.count, CardActions.maxTaskTitle)
+        XCTAssertTrue(cut.hasSuffix("word\u{2026}"), cut)
+        let unbroken = CardActions(title: String(repeating: "x", count: 80), story: "", taskCount: 0).taskTitle
+        XCTAssertEqual(unbroken.unicodeScalars.count, CardActions.maxTaskTitle)
+
+        let fixture = ContainerNavigatorModel(show: Fixtures.sourceContainerShow(id: Fixtures.sourceCardID))
+        XCTAssertEqual(fixture.actions.title, "Improve diff review ergonomics")
+        XCTAssertFalse(fixture.actions.canLaunchAgent, "the fixture card has tasks")
     }
 
     func testTheContainerFocusFollowsTheNavigatorsHeaderRules() {

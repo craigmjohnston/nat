@@ -252,7 +252,8 @@ final class SourceModelsTests: XCTestCase {
       "sections": [
         { "id": "story", "title": "Story", "kind": "prose", "body": "Comments **never** arrive." },
         { "id": "comments", "title": "Comments", "kind": "comments",
-          "comments": [ { "by": "Dana Wolfe", "when": "3d ago", "text": "Pairs with highlighting." } ],
+          "comments": [ { "id": "101", "by": "Dana Wolfe", "when": "3d ago", "text": "Pairs with highlighting." },
+                        { "id": "102", "parent": "101", "by": "Craig", "when": "2d ago", "text": "> Pairs\\n\\nAgreed." } ],
           "composer": { "id": "comment", "label": "Comment", "input": "text" } },
         { "id": "links", "title": "Links", "kind": "links",
           "links": [
@@ -262,7 +263,8 @@ final class SourceModelsTests: XCTestCase {
         { "id": "chart", "title": "Burndown", "kind": "chart" }
       ],
       "menu": [ { "id": "unassign-me", "label": "Remove Me as Owner", "input": "none" } ],
-      "task_note": "Linked to sc-4821."
+      "task_note": "Linked to sc-4821.",
+      "images": [ { "url": "https://media.app.shortcut.com/a.png", "file": "/cache/a.png" } ]
     }
     """
 
@@ -280,7 +282,12 @@ final class SourceModelsTests: XCTestCase {
         XCTAssertEqual(detail.sections.map(\.kind), [.prose, .comments, .links, .unknown("chart")])
         XCTAssertEqual(detail.sections.map(\.kind.word), ["prose", "comments", "links", "chart"])
         XCTAssertEqual(detail.sections[0].body, "Comments **never** arrive.")
-        XCTAssertEqual(detail.sections[1].comments, [SourceComment(by: "Dana Wolfe", when: "3d ago", text: "Pairs with highlighting.")])
+        XCTAssertEqual(detail.sections[1].comments, [
+            SourceComment(id: "101", by: "Dana Wolfe", when: "3d ago", text: "Pairs with highlighting."),
+            SourceComment(id: "102", parent: "101", by: "Craig", when: "2d ago", text: "> Pairs\n\nAgreed."),
+        ])
+        XCTAssertEqual(detail.images, [SourceImage(url: "https://media.app.shortcut.com/a.png", file: "/cache/a.png")])
+        XCTAssertEqual(detail.imageFiles, ["https://media.app.shortcut.com/a.png": "/cache/a.png"])
         XCTAssertEqual(detail.sections[1].composer, SourceAction(id: "comment", label: "Comment", input: .text))
         XCTAssertEqual(detail.sections[2].links[0].state, "open")
         XCTAssertEqual(detail.sections[2].links[1], SourceLink(label: "Design", text: "Figma"))

@@ -117,6 +117,68 @@ final class SourceSelectionTests: XCTestCase {
         XCTAssertEqual(refused, "no token")
     }
 
+    func testAReplyNamesTheCommentItAnswers() async {
+        let client = FixtureNatClient()
+        let appModel = await started(client)
+        let refusal = await appModel.runSourceAction(
+            projectID: Fixtures.sourceProjectID, action: SourceAction(id: "comment", label: "Comment", input: .text),
+            container: Fixtures.sourceCardID, replyTo: "101", input: "On it")
+        XCTAssertNil(refusal)
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("source action") }, [
+            "source action comment --container \(Fixtures.sourceCardID) --reply-to 101",
+        ])
+    }
+
+    func testLaunchAgentFilesATaskUnderTheCardThenLaunchesAndSelectsIt() async {
+        let client = FixtureNatClient()
+        let appModel = await started(client)
+        let work = Fixtures.sourceProjectID
+        let card = CardActions(title: "Kanban column view", story: "Show milestones as columns.", taskCount: 0)
+        let refusal = await appModel.launchCardAgent(projectID: work, containerID: Fixtures.sourceMineCardID, card: card)
+        XCTAssertNil(refusal)
+        XCTAssertEqual(client.writes.filter { $0.hasPrefix("slice") }, [
+            "slice add Kanban column view --container \(Fixtures.sourceMineCardID)",
+            "slice launch f1x7500c-0000-4000-8000-000000000099",
+        ])
+        XCTAssertEqual(appModel.selectedSliceID, "f1x7500c-0000-4000-8000-000000000099")
+        XCTAssertTrue(appModel.cardLaunches.isEmpty)
+
+        let worked = CardActions(title: "T", story: "", taskCount: 1)
+        let before = client.writes.count
+        let refused = await appModel.launchCardAgent(projectID: work, containerID: Fixtures.sourceCardID, card: worked)
+        XCTAssertEqual(refused, worked.launchRefusal)
+        XCTAssertEqual(client.writes.count, before, "a card with tasks files nothing")
+
+        let refusing = await Fixtures.startedAppModel(
+            client: FixtureNatClient(behaviour: .refusing("no such card")), config: Fixtures.sourceConfig)
+        let failed = await refusing.launchCardAgent(projectID: work, containerID: Fixtures.sourceMineCardID, card: card)
+        XCTAssertEqual(failed, "no such card")
+    }
+
+    func testACardsActionsAreReadFromItsDetail() async {
+        let appModel = await started()
+        let read = await appModel.cardActions(projectID: Fixtures.sourceProjectID, containerID: Fixtures.sourceCardID)
+        XCTAssertEqual(try? read.get().title, "Improve diff review ergonomics")
+
+        let refusing = await Fixtures.startedAppModel(
+            client: FixtureNatClient(behaviour: .refusing("plugin broke")), config: Fixtures.sourceConfig)
+        let failed = await refusing.cardActions(projectID: Fixtures.sourceProjectID, containerID: Fixtures.sourceCardID)
+        if case .failure(let error) = failed {
+            XCTAssertFalse(error.message.isEmpty)
+        } else {
+            XCTFail("a refused read read a card")
+        }
+    }
+
+    func testWorkshopOnACardStartsThePlannerOnItsStory() async {
+        let client = FixtureNatClient()
+        let appModel = await started(client)
+        let card = CardActions(title: "Kanban column view", story: "Show milestones as columns.", taskCount: 0)
+        await appModel.workshopCard(projectID: Fixtures.sourceProjectID, card: card)
+        XCTAssertTrue(appModel.workshopSelected)
+        XCTAssertTrue(client.writes.contains("workshop launch \(Fixtures.sourceProjectID)"))
+    }
+
     func testThePluginsAreReadOnceAndAFailureLeavesNone() async {
         let appModel = await started()
         await appModel.loadSourcePlugins()

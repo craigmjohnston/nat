@@ -323,14 +323,15 @@ type sourceActionJSON struct {
 }
 
 // sourceAction runs one of a source project's plugin actions: against a
-// group with --group, a container with --container, the source itself with
-// neither. It is a write — the plugin's — so a board watching is nudged.
+// group with --group, a container with --container (a reply to one of its
+// comments with --reply-to too), the source itself with neither. It is a write — the plugin's — so a board watching is nudged.
 func sourceAction(ctx context.Context, args []string, env Env) error {
 	flags := flag.NewFlagSet("source action", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	action := flags.String("action", "", "the plugin action to run, by `id` (required)")
 	group := flags.String("group", "", "run it against this sidebar group, by `id`")
 	container := flags.String("container", "", "run it against this container, by `id`")
+	replyTo := flags.String("reply-to", "", "with --container, the comment a composer's text replies to, by `id`")
 	input := flags.String("input", "", "the action's input, for a text or choice action; `-` reads it from stdin")
 	asJSON := flags.Bool("json", false, "print structured JSON instead of plain text")
 	projectRef := projectFlag(flags)
@@ -345,9 +346,13 @@ func sourceAction(ctx context.Context, args []string, env Env) error {
 	if id == "" {
 		return usageErrorf("source action: no action given: pass --action")
 	}
-	target := source.Target{Group: strings.TrimSpace(*group), Container: strings.TrimSpace(*container)}
+	target := source.Target{Group: strings.TrimSpace(*group), Container: strings.TrimSpace(*container),
+		Comment: strings.TrimSpace(*replyTo)}
 	if target.Group != "" && target.Container != "" {
 		return usageErrorf("source action: --group and --container are mutually exclusive")
+	}
+	if target.Comment != "" && target.Container == "" {
+		return usageErrorf("source action: --reply-to needs --container, the container the comment is on")
 	}
 	text, err := briefText("source action", "--input", *input, env.In)
 	if err != nil {

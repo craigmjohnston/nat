@@ -2,11 +2,11 @@ import AppKit
 import SwiftUI
 import NatKit
 
-// A source container selected: its navigator (the story's facts, then one
-// section per section the plugin declared) and its main pane (the story and
-// its comments, or a links section's list), over `ContainerStore`'s reading
-// of `nat container show`. What is open and what the pane shows are the
-// shell's (`ContainerFocus`), as a slice's are.
+// A source container selected: its navigator (the story's facts, then its
+// links and any further prose, then the card's action row) and its main pane
+// (the description and its comment threads, or a links section's list), over
+// `ContainerStore`'s reading of `nat container show`. What is open and what
+// the pane shows are the shell's (`ContainerFocus`), as a slice's are.
 
 /// The container's `container show` reading, as the views draw it.
 @MainActor
@@ -16,14 +16,18 @@ private func containerState(_ appModel: AppModel, _ containerID: String) -> Cont
 
 /// A selected container's navigator: the first section — titled by the
 /// story's own title — holding its facts and how far its tasks are, with
-/// Open in <source> (where the plugin gave the container a URL) and **New
-/// task** in its header; then each section the plugin declared, of a
-/// kind this build draws.
+/// Open in <source> (where the plugin gave the container a URL) in its
+/// header; then each further section the plugin declared that the navigator
+/// draws (links, any other prose — the comments are the main pane's); then,
+/// pinned at the foot as a slice's action bar is, the card's actions.
 struct ContainerNavigatorView: View {
     @Bindable var appModel: AppModel
     let containerID: String
     @Binding var focus: ContainerFocus
     let onNewTask: () -> Void
+    /// Whether the action row's split menu is open — its popover's, or a
+    /// story's.
+    var actionMenuOpen = false
 
     private var source: SidebarSource? { appModel.source(ofProject: appModel.activeProjectID ?? "") }
 
@@ -46,10 +50,6 @@ struct ContainerNavigatorView: View {
                             NSWorkspace.shared.open(url)
                         }
                     }
-                    Button(action: onNewTask) {
-                        HeaderActionLabel(title: "New \(source?.taskNoun ?? "task")", systemImage: "plus")
-                    }
-                    .buttonStyle(GnatHeaderButtonStyle(primary: true))
                 } content: {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 8) {
@@ -82,6 +82,11 @@ struct ContainerNavigatorView: View {
                         sectionBody(section)
                     }
                 }
+            } footer: {
+                CardActionBar(
+                    appModel: appModel, projectID: appModel.activeProjectID ?? "", containerID: containerID,
+                    actions: model.actions, taskNoun: source?.taskNoun ?? "task",
+                    onNewTask: onNewTask, menuOpen: actionMenuOpen)
             }
         } else {
             NavigatorColumn(anyOpen: true) {
@@ -111,18 +116,6 @@ struct ContainerNavigatorView: View {
     private func sectionBody(_ section: SourceSection) -> some View {
         ScrollView {
             switch section.kind {
-            case .comments:
-                if section.comments.isEmpty {
-                    NavProse { Text("No comments yet.").ink(.secondary) }
-                } else {
-                    VStack(alignment: .leading, spacing: LogMetrics.spacing) {
-                        ForEach(Array(section.comments.enumerated()), id: \.offset) { _, comment in
-                            ThreadEventCard(event: ThreadEvent(
-                                .agent, who: comment.by, meta: comment.when, body: comment.text, metaIsAction: false))
-                        }
-                    }
-                    .taskLogPadding()
-                }
             case .links:
                 SourceLinkList(links: section.links)
                     .padding(.vertical, 4)
@@ -130,11 +123,95 @@ struct ContainerNavigatorView: View {
                 NavProse {
                     MarkdownView(text: section.body ?? "", size: Typo.scaled(13.5))
                 }
-            case .unknown:
+            case .comments, .unknown:
                 EmptyView()
             }
         }
         .thinScrollers()
+    }
+}
+
+/// A card's action row, pinned at its navigator's foot as a slice's action
+/// bar is: **Launch agent** the main action — greyed, saying why, on a card
+/// that already has tasks — with **Workshop** and **New task** in a split off
+/// it. A launch that fails says so over the row.
+struct CardActionBar: View {
+    @Bindable var appModel: AppModel
+    let projectID: String
+    let containerID: String
+    let actions: CardActions
+    let taskNoun: String
+    let onNewTask: () -> Void
+    @State private var menuOpen: Bool
+    @State private var launchError: String?
+
+    init(
+        appModel: AppModel, projectID: String, containerID: String, actions: CardActions, taskNoun: String,
+        onNewTask: @escaping () -> Void, menuOpen: Bool = false
+    ) {
+        self.appModel = appModel
+        self.projectID = projectID
+        self.containerID = containerID
+        self.actions = actions
+        self.taskNoun = taskNoun
+        self.onNewTask = onNewTask
+        _menuOpen = State(initialValue: menuOpen)
+    }
+
+    private var launching: Bool { appModel.cardLaunches.contains(containerID) }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let launchError {
+                NavNotice(text: launchError)
+            }
+            NavigatorActionBar {
+                HeaderSplitButton(
+                    primary: true, mainDisabled: !actions.canLaunchAgent || launching,
+                    mainHelp: actions.launchRefusal ?? "File a \(taskNoun) named after this card and launch an agent on it",
+                    chevronLabel: "More actions", menuOpen: $menuOpen, action: launch
+                ) {
+                    HeaderActionLabel(title: "Launch agent", systemImage: "arrow.right", isBusy: launching)
+                } menu: {
+                    CardActionMenu(taskNoun: taskNoun, onWorkshop: {
+                        menuOpen = false
+                        workshop()
+                    }, onNewTask: {
+                        menuOpen = false
+                        onNewTask()
+                    })
+                }
+            }
+        }
+        .onChange(of: containerID) { _, _ in launchError = nil }
+    }
+
+    private func launch() {
+        launchError = nil
+        let appModel = appModel, projectID = projectID, containerID = containerID, actions = actions
+        Task {
+            launchError = await appModel.launchCardAgent(projectID: projectID, containerID: containerID, card: actions)
+        }
+    }
+
+    private func workshop() {
+        let appModel = appModel, projectID = projectID, actions = actions
+        Task { await appModel.workshopCard(projectID: projectID, card: actions) }
+    }
+}
+
+/// The card action row's split menu, and the card row's right-click menu's
+/// last two items: Workshop and New task.
+struct CardActionMenu: View {
+    let taskNoun: String
+    let onWorkshop: () -> Void
+    let onNewTask: () -> Void
+
+    var body: some View {
+        HeaderSplitMenuList(items: [
+            HeaderSplitMenuList.Item(title: "Workshop", systemImage: workshopSymbol, action: onWorkshop),
+            HeaderSplitMenuList.Item(title: "New \(taskNoun)", systemImage: "plus", action: onNewTask),
+        ])
     }
 }
 
@@ -184,17 +261,25 @@ struct SourceLinkList: View {
     }
 }
 
-/// A selected container's main pane: its story — the prose, then under a
-/// rule its comments thread with the composer at its foot — or a links
-/// section's list.
+/// A selected container's main pane: its story — the description under its
+/// heading, then under a rule its comment threads, each reply under the
+/// comment it answers, a hover Reply on every comment opening a composer in
+/// its thread, and the composer for a comment of its own at the foot — or a
+/// links section's list. Images the plugin saved a copy of draw from it.
 struct ContainerPane: View {
     @Bindable var appModel: AppModel
     let containerID: String
     let mode: ContainerPaneMode
+    /// The thread whose reply composer is open — a story's, at first.
+    var replyingTo: String?
 
     @State private var commentText = ""
     @State private var isSending = false
     @State private var commentError: String?
+    @State private var replyThread: String?
+    @State private var replyText = ""
+    @State private var isReplying = false
+    @State private var replyError: String?
 
     private static var textSize: CGFloat { Typo.headline }
 
@@ -224,19 +309,23 @@ struct ContainerPane: View {
             }
         }
         .surface(.window)
+        .onAppear { replyThread = replyingTo }
         .onChange(of: containerID) { _, _ in
             commentText = ""
             commentError = nil
+            closeReply()
         }
     }
 
     private var noun: String { appModel.source(ofProject: appModel.activeProjectID ?? "")?.containerNoun ?? "container" }
 
     private func story(_ model: ContainerNavigatorModel) -> some View {
-        ScrollView {
+        let images = model.detail.imageFiles
+        return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                NavHeading(text: "Description")
                 if let body = model.prose?.body, !body.isEmpty {
-                    MarkdownView(text: body, size: Self.textSize)
+                    MarkdownView(text: body, size: Self.textSize, images: images)
                 } else {
                     Text("No description.").font(.system(size: Self.textSize)).ink(.secondary)
                 }
@@ -247,8 +336,10 @@ struct ContainerPane: View {
                     if comments.comments.isEmpty {
                         Text("No comments yet.").font(.system(size: Self.textSize)).ink(.secondary)
                     }
-                    ForEach(Array(comments.comments.enumerated()), id: \.offset) { _, comment in
-                        SourceCommentView(comment: comment, textSize: Self.textSize)
+                    ForEach(model.threads) { thread in
+                        SourceCommentThreadView(
+                            thread: thread, textSize: Self.textSize, images: images,
+                            reply: comments.composer.map { composer in reply(to: thread, composer) })
                     }
                     if let composer = comments.composer {
                         PRComposerView(
@@ -272,6 +363,28 @@ struct ContainerPane: View {
         .thinScrollers()
     }
 
+    /// A thread's reply as its view holds it: open while it is the one
+    /// replied to, one at a time — opening another moves the draft's box.
+    private func reply(to thread: CommentThread, _ composer: SourceAction) -> PRReply {
+        PRReply(
+            isOpen: replyThread == thread.id, text: $replyText, isSending: isReplying,
+            error: replyThread == thread.id ? replyError : nil,
+            onOpen: {
+                if replyThread != thread.id {
+                    replyThread = thread.id
+                    replyError = nil
+                }
+            },
+            onCancel: closeReply,
+            onSend: { Task { await sendReply(composer, to: thread) } })
+    }
+
+    private func closeReply() {
+        replyThread = nil
+        replyText = ""
+        replyError = nil
+    }
+
     private func send(_ composer: SourceAction) async {
         let text = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSending, let projectID = appModel.activeProjectID else { return }
@@ -282,14 +395,70 @@ struct ContainerPane: View {
         if commentError == nil { commentText = "" }
         isSending = false
     }
+
+    private func sendReply(_ composer: SourceAction, to thread: CommentThread) async {
+        let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isReplying, let projectID = appModel.activeProjectID else { return }
+        isReplying = true
+        replyError = nil
+        replyError = await appModel.runSourceAction(
+            projectID: projectID, action: composer, container: containerID, replyTo: thread.replyTarget, input: text)
+        if replyError == nil { closeReply() }
+        isReplying = false
+    }
 }
 
-/// One comment of a container's thread, boxed as the pull request's are
-/// (`PRConversationEntryView`): an avatar of the author's initials, their
-/// name and when — the plugin's own words for it — over the markdown.
+/// One comment thread of a container, boxed as the pull request's entries
+/// are (`PRConversationEntryView`): the comment, then each reply under it,
+/// stepped in past the avatar, then — while it is the one replied to — the
+/// reply composer. Every comment's byline ends in a Reply under the pointer;
+/// any of them answers the thread, which is one level deep.
+struct SourceCommentThreadView: View {
+    let thread: CommentThread
+    var textSize: CGFloat = Typo.headline
+    var images: [String: String] = [:]
+    var reply: PRReply?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SourceCommentView(comment: thread.comment, textSize: textSize, images: images, reply: reply)
+            ForEach(thread.replies, id: \.id) { comment in
+                SourceCommentView(comment: comment, textSize: textSize, images: images, reply: reply)
+                    .padding(.leading, SourceCommentView.replyIndent)
+                    .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+            }
+            if let reply, reply.isOpen {
+                PRComposerView(
+                    placeholder: "Reply to \(thread.comment.by)\u{2026}",
+                    text: reply.text, isSending: reply.isSending, error: reply.error,
+                    onSend: reply.onSend, onCancel: reply.onCancel)
+                    .padding(.leading, SourceCommentView.replyIndent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay {
+            RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
+        }
+    }
+}
+
+/// One comment of a container's thread: an avatar of the author's initials,
+/// their name and when — the plugin's own words for it — and, under the
+/// pointer, Reply; then the markdown.
 struct SourceCommentView: View {
     let comment: SourceComment
     var textSize: CGFloat = Typo.headline
+    var images: [String: String] = [:]
+    var reply: PRReply?
+    @Environment(\.hoverForced) private var hoverForced
+    @State private var hovering = false
+
+    /// How far a reply steps in under the comment it answers.
+    static let replyIndent: CGFloat = 28
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -307,6 +476,11 @@ struct SourceCommentView: View {
                 Text(comment.when)
                     .font(.system(size: Typo.caption))
                     .ink(.tertiary)
+                if let reply {
+                    PRHoverIconButton(
+                        systemImage: "arrowshape.turn.up.left", help: "Reply to \(comment.by)",
+                        shown: hovering || hoverForced, action: reply.onOpen)
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -314,16 +488,13 @@ struct SourceCommentView: View {
             .surface(.chrome)
 
             if !comment.text.isEmpty {
-                MarkdownView(text: comment.text, size: textSize, ink: .primary)
+                MarkdownView(text: comment.text, size: textSize, ink: .primary, images: images)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .overlay(alignment: .top) { DesignTokens.rule(.separator, on: .window).frame(height: 1) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .overlay {
-            RoundedRectangle(cornerRadius: 4).strokeBorder(DesignTokens.rule(.separator, on: .window), lineWidth: 1)
-        }
+        .onHover { hovering = $0 }
     }
 }

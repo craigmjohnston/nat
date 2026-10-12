@@ -166,6 +166,16 @@ type ContainerDetail struct {
 	Sections    []Section `json:"sections"`
 	Menu        []Action  `json:"menu,omitempty"`
 	TaskNote    string    `json:"task_note,omitempty"`
+	Images      []Image   `json:"images,omitempty"`
+}
+
+// Image is a copy the plugin saved of an image a prose body or comment links
+// to — one that needs the plugin's own credential to fetch — so gnat can draw
+// it with no credential of its own. URL is the link exactly as the Markdown
+// gives it; File, an absolute path, is the copy.
+type Image struct {
+	URL  string `json:"url"`
+	File string `json:"file"`
 }
 
 // Fact is one label/value line of a container's facts list. Badge, where
@@ -199,11 +209,16 @@ type Section struct {
 	Composer *Action   `json:"composer,omitempty"`
 }
 
-// Comment is one entry of a comments section.
+// Comment is one entry of a comments section. ID is the plugin's own,
+// unique within its section; Parent, where set, is the ID of the comment it
+// replies to — itself never a reply, since threads are one level deep. Text
+// is Markdown.
 type Comment struct {
-	By   string `json:"by"`
-	When string `json:"when"`
-	Text string `json:"text"`
+	ID     string `json:"id"`
+	Parent string `json:"parent,omitempty"`
+	By     string `json:"by"`
+	When   string `json:"when"`
+	Text   string `json:"text"`
 }
 
 // Link is one entry of a links section — a PR with its state, or a document.
@@ -215,10 +230,12 @@ type Link struct {
 }
 
 // Target is what an action is run against: a group, a container, or neither
-// (an action off the source's own menu).
+// (an action off the source's own menu). Comment, with Container alone, names
+// the comment a composer's text replies to.
 type Target struct {
 	Group     string `json:"group,omitempty"`
 	Container string `json:"container,omitempty"`
+	Comment   string `json:"comment,omitempty"`
 }
 
 // ActionResult is a plugin's answer to an action: a message worth showing,
