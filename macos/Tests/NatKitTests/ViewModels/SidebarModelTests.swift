@@ -80,8 +80,8 @@ final class SidebarModelTests: XCTestCase {
                        "a done slice waits for its milestone, at its foot")
         XCTAssertEqual(project.doneMilestones.map(\.name), ["M1"])
         XCTAssertTrue(project.doneMilestones[0].isComplete)
-        XCTAssertTrue(project.doneContains(sliceID: "1"))
-        XCTAssertFalse(project.doneContains(sliceID: "3"))
+        XCTAssertEqual(project.revealKeys(of: "1"), ["d:p", "m:p/M1"])
+        XCTAssertEqual(project.revealKeys(of: "3"), ["m:p/M2"])
         XCTAssertTrue(project.contains(sliceID: "1"))
     }
 
@@ -101,7 +101,7 @@ final class SidebarModelTests: XCTestCase {
         XCTAssertEqual(model.projects[0].milestones.map(\.total), [1, 0])
     }
 
-    func testOnlyAPartlyDoneMilestoneOrTheSelectionsOpensByDefault() {
+    func testOnlyAPartlyDoneMilestoneOpensByDefault() {
         func row(_ id: String) -> SidebarSliceRow {
             SidebarSliceRow(sliceID: id, projectID: "p", title: id, state: .todo, live: false)
         }
@@ -110,13 +110,10 @@ final class SidebarModelTests: XCTestCase {
         let finished = SidebarMilestone(name: "finished", done: 2, total: 2, slices: [row("e"), row("f")])
         let empty = SidebarMilestone(name: "empty", done: 0, total: 0, slices: [])
 
-        XCTAssertTrue(partly.opensByDefault(selecting: nil))
-        XCTAssertFalse(untouched.opensByDefault(selecting: nil))
-        XCTAssertFalse(untouched.opensByDefault(selecting: "a"))
-        XCTAssertTrue(untouched.opensByDefault(selecting: "d"))
-        XCTAssertFalse(finished.opensByDefault(selecting: nil))
-        XCTAssertTrue(finished.opensByDefault(selecting: "e"))
-        XCTAssertFalse(empty.opensByDefault(selecting: "a"))
+        XCTAssertTrue(partly.opensByDefault)
+        XCTAssertFalse(untouched.opensByDefault, "holding the selection is a reveal's business, not a default's")
+        XCTAssertFalse(finished.opensByDefault)
+        XCTAssertFalse(empty.opensByDefault)
     }
 
     func testEachPlanStatusIsReadOffTheLoad() {

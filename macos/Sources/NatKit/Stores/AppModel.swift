@@ -172,6 +172,9 @@ public final class AppModel {
     @ObservationIgnored private let seenMemory: SeenMemory
     /// Which projects' tabs the user closed — see `ClosedTabMemory`.
     @ObservationIgnored private let closedTabMemory: ClosedTabMemory
+    /// Where the sidebar keeps its folds across launches — see `FoldMemory`;
+    /// the sidebar's `SidebarFolds` reads and writes it, nothing here does.
+    @ObservationIgnored public let foldMemory: FoldMemory
 
     /// Bumped by "Keep workshopping"; the workshop terminal takes keyboard
     /// focus on each change.
@@ -607,6 +610,7 @@ public final class AppModel {
         mirrorNudgeMemory: MirrorNudgeMemory = .inMemory(),
         seenMemory: SeenMemory = .inMemory(),
         closedTabMemory: ClosedTabMemory = .inMemory(),
+        foldMemory: FoldMemory = .inMemory(),
         workshopCache: WorkshopCaching = InMemoryWorkshopCache(),
         workshopSaveWait: @escaping @MainActor @Sendable () async -> Void = {
             try? await Task.sleep(nanoseconds: 500_000_000)
@@ -621,6 +625,7 @@ public final class AppModel {
         self.mirrorNudgeMemory = mirrorNudgeMemory
         self.seenMemory = seenMemory
         self.closedTabMemory = closedTabMemory
+        self.foldMemory = foldMemory
         self.mirrorNudgePending = mirrorNudgeMemory.pending
         self.toolsReady = toolsReady
         self.configReader = configReader

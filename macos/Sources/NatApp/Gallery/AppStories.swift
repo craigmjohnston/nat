@@ -1597,7 +1597,7 @@ enum AppStories {
 
         Story(
             name: "window-sidebar-default-folds",
-            summary: "A fresh launch's milestone folds: M2, partly done, open; M3 open for the selected slice in it; M4, untouched, folded to its head.",
+            summary: "A fresh launch's milestone folds: M2, partly done, open; M3 opened by revealing the selected slice in it; M4, untouched, folded to its head.",
             size: window
         ) {
             let appModel = await Fixtures.startedAppModel(

@@ -37,13 +37,13 @@ struct SidebarView: View {
     /// View ▸ Show/Hide Done Items.
     @Environment(\.showsDoneItems) private var showsDoneItems
 
-    /// The folds the user has made, by key: `active`, `work`, `scratch`,
-    /// `p:<project>` and `m:<project>/<milestone>`. A project with no entry is
-    /// open exactly when it holds the selection — the design's own default —
-    /// a milestone with no entry is open exactly when it is partly done or
-    /// holds the selection (`SidebarMilestone.opensByDefault`), and Scratch
-    /// starts folded.
-    @State private var fold: [String: Bool]
+    /// The folds, by key (`SidebarFolds`), kept across launches in the app
+    /// model's `FoldMemory`. Where none has been made, a project starts
+    /// folded, a milestone open exactly when it is partly done
+    /// (`SidebarMilestone.opensByDefault`), the Done folder and the
+    /// milestones in it folded, and Scratch folded; the selection's own row
+    /// is revealed — every fold over it opened — each time it changes.
+    @State private var folds: SidebarFolds
 
     /// The slice a delete is confirming, with its status as the plan read it —
     /// which says what the confirmation warns of (`SliceRemovalRules`).
@@ -94,6 +94,8 @@ struct SidebarView: View {
     @State private var sourceContentHeights: [String: CGFloat] = [:]
 
     /// - Parameters:
+    ///   - folded: folds to start from — a story's, standing over the
+    ///     starting selection's reveal as a fold the user made after it.
     ///   - hoveredContainer: a container row to draw under the pointer — a
     ///     story's, since a render has no pointer.
     ///   - hoveredGroup: a source group's row to draw under the pointer, the
@@ -121,7 +123,7 @@ struct SidebarView: View {
         self.hoveredSlice = hoveredSlice
         self.hoveredActiveRow = hoveredActiveRow
         self.hoveredMilestone = hoveredMilestone
-        _fold = State(initialValue: folded)
+        _folds = State(initialValue: SidebarFolds(memory: appModel.foldMemory, seed: folded))
         _hoveredProject = State(initialValue: hoveredProject)
         _hoveredSourceRow = State(initialValue: hoveredContainer.map {
             Self.sourceRowKey($0.projectID, container: $0.containerID)
@@ -217,6 +219,11 @@ struct SidebarView: View {
         // row's menu and never putting it up
         // (`docs/debugging/context-menus.md`).
         .background(ContextMenuRegion())
+        // Each new selection opens every fold over its row, once — again
+        // whenever the tree changes until the row is there to reveal.
+        .onChange(of: revealRequest(model), initial: true) { _, request in
+            self.folds.follow(request.selection, keys: request.keys)
+        }
         .modifier(SidebarDialogs(view: self))
         .focusedSceneValue(\.sidebarMenu, menuActions)
     }
@@ -247,14 +254,11 @@ struct SidebarView: View {
     // MARK: - Fold
 
     private func isOpen(_ key: String, byDefault: Bool = true) -> Bool {
-        fold[key].map { !$0 } ?? byDefault
+        folds.isOpen(key, byDefault: byDefault)
     }
 
     private func isProjectOpen(_ project: SidebarProject) -> Bool {
-        if let folded = fold["p:\(project.id)"] { return !folded }
-        guard appModel.activeProjectID == project.id else { return false }
-        if let slice = appModel.selectedSliceID { return project.contains(sliceID: slice) }
-        return true
+        isOpen("p:\(project.id)", byDefault: false)
     }
 
     /// Snapped, not animated: a fold opening or closing puts its rows in
@@ -262,7 +266,31 @@ struct SidebarView: View {
     private func toggle(_ key: String, open: Bool) {
         var snap = Transaction()
         snap.disablesAnimations = true
-        withTransaction(snap) { fold[key] = open }
+        withTransaction(snap) { folds.set(key, folded: open) }
+    }
+
+    /// The selection, and the folds over its row where the sidebar draws it
+    /// — what `SidebarFolds.follow` reveals, once per selection.
+    private struct RevealRequest: Equatable {
+        let selection: SidebarSelection?
+        let keys: [String]?
+    }
+
+    private func revealRequest(_ model: SidebarModel) -> RevealRequest {
+        guard let projectID = appModel.activeProjectID else { return RevealRequest(selection: nil, keys: nil) }
+        let selection = SidebarSelection(
+            projectID: projectID, sliceID: appModel.selectedSliceID, sessionID: appModel.selectedSessionID)
+        return RevealRequest(
+            selection: selection,
+            keys: sidebarRevealKeys(for: selection, in: model, endedSessions: drawnEndedSessionIDs))
+    }
+
+    /// The active project's ended sessions where the tree draws them — only
+    /// while done items show.
+    private var drawnEndedSessionIDs: Set<String> {
+        guard showsDoneItems else { return [] }
+        let live = (appModel.activityStore?.displayedAgents ?? [:]).mapValues { AgentActivity($0.activity) }
+        return Set((appModel.sessionStore?.sessions ?? []).filter { sessionIsDone($0, liveAgents: live) }.map(\.id))
     }
 
     // MARK: - Sections
@@ -1211,10 +1239,9 @@ struct SidebarView: View {
         // tree, where a milestone would sit, under no folder of their own.
         // The dot's 12pt column centred on a folder's 16pt one.
         ForEach(project.loose) { sliceRow($0, indent: 28 - outdent) }
-        let selected = appModel.activeProjectID == project.id ? appModel.selectedSliceID : nil
         ForEach(project.milestones) { milestone in
             let key = "m:\(project.id)/\(milestone.name)"
-            let opensItself = milestone.opensByDefault(selecting: selected)
+            let opensItself = milestone.opensByDefault
             milestoneHead(
                 name: milestone.name.isEmpty ? "No milestone" : milestone.name,
                 count: "\(milestone.done)/\(milestone.total)", key: key, indent: 26 - outdent,
@@ -1276,10 +1303,8 @@ struct SidebarView: View {
             return last.sliceID == selectedSlice
         }
         if let last = project.doneMilestones.last {
-            let holdsSelection = selectedSlice.map(project.doneContains) ?? false
-            guard isOpen("d:\(project.id)", byDefault: holdsSelection) else { return false }
-            let opensItself = selectedSlice.map { id in last.slices.contains { $0.sliceID == id } } ?? false
-            return endsIn(last, key: "m:\(project.id)/\(last.name)", byDefault: opensItself)
+            guard isOpen("d:\(project.id)", byDefault: false) else { return false }
+            return endsIn(last, key: "m:\(project.id)/\(last.name)", byDefault: false)
         }
         if isActive && showsDoneItems {
             let live = (appModel.activityStore?.displayedAgents ?? [:]).mapValues { AgentActivity($0.activity) }
@@ -1291,9 +1316,7 @@ struct SidebarView: View {
             }
         }
         if let last = project.milestones.last {
-            return endsIn(
-                last, key: "m:\(project.id)/\(last.name)",
-                byDefault: last.opensByDefault(selecting: selectedSlice))
+            return endsIn(last, key: "m:\(project.id)/\(last.name)", byDefault: last.opensByDefault)
         }
         return project.loose.last.map { $0.sliceID == selectedSlice } ?? false
     }
@@ -1390,28 +1413,25 @@ struct SidebarView: View {
     }
 
     /// The project's finished milestones, once it has one: a Done folder at
-    /// the foot of its tree, folded unless it holds the selected slice, each
-    /// milestone in it a folder of its own, folded the same way.
+    /// the foot of its tree, folded until opened or revealed, each milestone
+    /// in it a folder of its own, folded the same way.
     @ViewBuilder
     private func doneFolder(_ project: SidebarProject, outdent: CGFloat = 0) -> some View {
         if !project.doneMilestones.isEmpty {
-            let selected = appModel.activeProjectID == project.id ? appModel.selectedSliceID : nil
             let key = "d:\(project.id)"
-            let holdsSelection = selected.map(project.doneContains) ?? false
             let sliceCount = project.doneMilestones.reduce(0) { $0 + $1.total }
             milestoneHead(
                 name: "Done", count: "\(sliceCount)", key: key, indent: 26 - outdent,
-                openByDefault: holdsSelection, isDone: true)
-            if isOpen(key, byDefault: holdsSelection) {
+                openByDefault: false, isDone: true)
+            if isOpen(key, byDefault: false) {
                 ForEach(project.doneMilestones) { milestone in
                     let milestoneKey = "m:\(project.id)/\(milestone.name)"
-                    let opensItself = selected.map { id in milestone.slices.contains { $0.sliceID == id } } ?? false
                     milestoneHead(
                         name: milestone.name, count: "\(milestone.done)/\(milestone.total)", key: milestoneKey,
-                        indent: 36 - outdent, openByDefault: opensItself,
+                        indent: 36 - outdent, openByDefault: false,
                         menu: { AnyView(milestoneMenu(project.id, milestone.name)) })
                         .contextMenu { milestoneMenu(project.id, milestone.name) }
-                    if isOpen(milestoneKey, byDefault: opensItself) {
+                    if isOpen(milestoneKey, byDefault: false) {
                         ForEach(milestone.slices) { sliceRow($0, indent: 44 - outdent) }
                     }
                 }
@@ -1601,9 +1621,7 @@ struct SidebarView: View {
         guard !trimmed.isEmpty, trimmed != ref.name else { return }
         let from = ref.name
         run { try await NatClient().milestoneRename(projectID: ref.projectID, from: from, to: trimmed) }
-        if let folded = fold.removeValue(forKey: "m:\(ref.projectID)/\(from)") {
-            fold["m:\(ref.projectID)/\(trimmed)"] = folded
-        }
+        folds.rename("m:\(ref.projectID)/\(from)", to: "m:\(ref.projectID)/\(trimmed)")
     }
 
     fileprivate func addMilestone(_ projectID: String) {
