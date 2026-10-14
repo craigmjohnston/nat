@@ -83,7 +83,22 @@ xcrun notarytool submit "$DMG_PATH" \
     --wait --timeout 30m
 
 echo "Stapling ticket..."
-xcrun stapler staple "$DMG_PATH"
+# Retried: stapler fetches the ticket from Apple's CloudKit ticket-delivery
+# endpoint, which drops connections now and then (NSURLErrorDomain -1005,
+# "Error 68"). The ticket exists once notarization is Accepted, so asking
+# again is safe — one dropped connection must not cost the release. Each
+# attempt prints stapler's own error; the last one is the one that fails.
+attempt=1
+until xcrun stapler staple "$DMG_PATH"; do
+    if [ "$attempt" -ge 5 ]; then
+        echo "error: stapling failed after $attempt attempts" >&2
+        exit 1
+    fi
+    delay=$((10 * 2 ** (attempt - 1)))
+    echo "Stapling failed (attempt $attempt of 5); retrying in ${delay}s..." >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+done
 xcrun stapler validate "$DMG_PATH"
 
 echo "✓ Notarized dmg at $DMG_PATH"
