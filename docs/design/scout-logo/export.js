@@ -27,7 +27,7 @@ const svg = (f, color) => `data:image/svg+xml;base64,${Buffer.from(fs.readFileSy
   // (the plate already fills the canvas, and the cairn sits inside the inner 80% circle).
   await shot(`<div style="width:180px;height:180px;background:#1C1B19">${img('scout-icon.svg', 180)}</div>`, 180, 180, 'apple-touch-icon.png');
   for (const s of [192, 512])
-    await shot(`<div style="width:${s}px;height:${s}px;background:#1C1B19">${img('scout-mark.svg', Math.round(s * 0.56), '#E9A23B').replace('display:block', `display:block;margin:${Math.round(s * 0.22)}px auto 0`)}</div>`, s, s, `maskable-${s}.png`);
+    await shot(`<div style="width:${s}px;height:${s}px;background:#1C1B19;display:flex;align-items:center;justify-content:center">${img('scout-mark.svg', Math.round(s * 0.56), '#E9A23B')}</div>`, s, s, `maskable-${s}.png`);
   // Mark alone, for READMEs and docs.
   for (const [name, color] of [['charcoal', '#1C1B19'], ['cream', '#F6EEDC'], ['amber', '#E9A23B']])
     await shot(img('scout-mark.svg', 512, color), 512, 512, `scout-mark-${name}-512.png`, true);
