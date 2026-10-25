@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="100 100 824 824" width="512" height="512">
+<!-- scout mark for light surfaces: the tile, full bleed (no canvas margin). -->
+<defs><clipPath id="plate"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath></defs>
+<rect x="100" y="100" width="824" height="824" rx="185" fill="#F4F1EA"/>
+<g clip-path="url(#plate)"><path d="M704.8 -17.8 A300 300 0 1 0 512 512 A300 300 0 1 1 319.2 1041.8" fill="none" stroke="#1C1B19" stroke-width="175" transform="rotate(8 512 512)"/></g>
+</svg>

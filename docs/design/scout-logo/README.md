@@ -1,129 +1,150 @@
 # scout — logo and app icon
 
-Status: **proposal, 2026-10-25**. A mark for `scout`, the tool Craig uses to
-research and plan third-party integrations. Everything here was drawn from
-the brief below; the exploration that led to it is in `concepts/`.
+Status: **proposal v2, 2026-10-25**. A mark for `scout`, the tool Craig uses
+to research and plan third-party integrations. v1 (a cairn) was reviewed,
+found wanting and withdrawn; the record of why is at the end, and the
+exploration sheets for both are in `concepts/`.
 
 ## The mark
 
-A **cairn**: three stones stacked by a scout to mark the route for the
-people who follow. That is what the tool does — it goes ahead into a third
-party's docs and API, works out the way through, and leaves a plan the
-builders can walk. Each stone tilts a little, so the stack reads as placed by
-hand rather than extruded, in the way Claude's uneven burst does.
+One stroke: an **S that is also a route**, built from two circles of the same
+radius, leaned 8° forward, and cropped by the icon's frame.
 
 ![scout lockup](png/scout-lockup-light.png)
 
-Why a cairn and not the obvious things:
+The crop is the design. What the frame leaves is a path that enters at the
+top edge and leaves at the bottom, so the route visibly continues beyond what
+you can see — the territory the scout has gone into. The stroke divides the
+plate into two fields, here and there, with the route the only thing
+crossing between them. At 16px it is simply the letter S. The lean is the
+only asymmetry, and it is the forward one.
 
-- **Compass** — Docker Scout already is a compass on a green disc.
-- **Magnifying glass, radar, telescope** — read as search, monitoring, and
-  astronomy; all crowded.
-- **Plug, puzzle piece, braces, node graph** — the generic integration set.
-- **A route ending in a ring** (explored at length, `concepts/round-3.png`)
-  reads as a key at every size.
+It is the kind of object the brief's references are: Zed's Z filling and
+cutting its square, OpenAI's blossom derived from six circles — one fused
+abstract form, built from a rule, with internal structure (two counters, two
+fields), not a picture of a scouting prop. Because the crop is the design,
+**the mark is never used without its frame**: the tile is the mark.
 
-The cairn is one colour, one silhouette, and nothing in the dev-tool space
-uses it. It survives 16px as three bars, which no other candidate did.
+## Geometry
 
-## Palette
+Spelled once, in `build.py`, which writes every SVG here.
 
-Two colours per surface, one brand colour overall.
+| | |
+|---|---|
+| Canvas | 1024 × 1024; plate 824 × 824 at (100, 100), corner radius 185 |
+| Circles | radius 300 (centreline), centres (512, 212) and (512, 812) |
+| Stroke | 175, butt caps; terminals at −50° (top circle) and 130° (bottom), both outside the plate |
+| Lean | 8° clockwise about the centre, which puts both exits on the plate's flat edges |
+| Visible stroke | 175/824 of the plate (21%); narrowest counter 125 (15%) — nothing thinner than 1/16 |
 
-| Role | Hex | Where |
+## Colour
+
+| Role | Hex | Contrast |
 |---|---|---|
-| Amber (brand) | `#E9A23B` | the cairn on the app icon, favicon and lockups |
-| Charcoal | `#1C1B19` | icon plate; the mark on light surfaces |
-| Cream | `#F6EEDC` | plate of the light alternates; the mark on dark surfaces |
+| Pine (plate) | `#17402D` | paper on pine 10.3:1; pine on white 11.6:1 |
+| Paper (route, light surfaces) | `#F4F1EA` | |
+| Ink (mono mark, dark tile) | `#1C1B19` | paper on ink 15.3:1 |
 
-Trail blazes are painted amber for the same reason it works here: it is
-rare on screen, warm, and reads against both charcoal and cream. The amber
-sits well away from Claude's terracotta and Raycast's red, and is nowhere
-near Docker Scout's mint.
+One brand colour, chosen last and against the field: Zed's blue, Claude's
+terracotta, Raycast's red, Linear's indigo, Arc's purple, Docker Scout's
+mint, AWS and Firebase's orange and amber, Supabase's neon green are all
+taken; a deep pine is held by none of them, and says terrain and outdoors
+without a prop. Petrol was dropped for sitting in Docker Scout's hue family.
+Everywhere but the app icon the mark is mono: ink on paper, paper on ink.
 
-Alternates, for a decision, in `concepts/`'s last sheet and as files:
-
-- `scout-icon-light.svg` — charcoal cairn on cream. Quietest.
-- `scout-icon-navy.svg` — navy `#1E3A8A` on cream, the gnat family's paper
-  and ink. Pick this to make scout read as gnat's sibling.
-- `scout-icon-amber.svg` — charcoal cairn on an amber plate. Loudest.
+Alternates, as files, for one decision: `scout-icon-ink.svg` (mono plate)
+and `scout-icon-navy.svg` — gnat's cream on navy (`#122B6E`, 11.6:1), to be
+chosen only if scout is meant to read as a nat-family product.
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `scout-mark.svg` | The cairn alone, `fill="currentColor"`, tight square viewBox. Use in READMEs and docs; colour it with CSS. |
-| `scout-icon.svg` | App icon master, 1024 canvas, 824 plate, corner radius 185: amber cairn on charcoal. One icon for both appearances, as Raycast ships. |
-| `scout-icon-{light,navy,amber}.svg` | The alternates above. |
-| `scout-glyph-16.svg` | The cairn redrawn on a 16-pixel grid with 1px gaps. Scaling the master to 16px merges the stones; this does not. |
-| `scout-favicon.svg` | The 16px glyph on its plate. |
-| `scout-lockup-{dark,light}.svg` | Mark + "scout" in Inter SemiBold, converted to outlines, so no font is needed to render it. |
-| `png/scout-icon-{16…1024}.png` | The `.iconset` sizes. 16 and 32 come from the 16px glyph, the rest from the master. |
-| `png/favicon.ico` | 16 + 32 + 48. |
-| `png/apple-touch-icon.png` | 180px, opaque (iOS fills transparency with black). |
-| `png/maskable-{192,512}.png` | PWA maskable icons; the cairn sits inside the inner 80% safe circle. |
-| `png/scout-mark-{charcoal,cream,amber}-512.png` | The mark alone, transparent. |
-| `png/social-preview.png` | 1280×640 for the GitHub repository's social preview. |
-| `export.js` | Regenerates every PNG from the SVGs with Playwright's Chromium. |
-| `concepts/round-*.png` | The five exploration sheets, in order. |
+| `build.py` | Writes every SVG below from the geometry above. Python 3; fonttools and Inter for the lockups and social preview. |
+| `export.js` | Renders `png/` from the SVGs with Playwright's Chromium. |
+| `scout-icon.svg` | App icon master: paper route on pine, 1024 canvas, 824 plate. |
+| `scout-icon-ink.svg`, `scout-icon-navy.svg` | The alternates. |
+| `scout-tile-dark.svg`, `scout-tile-light.svg` | The mark for READMEs and docs: the tile, full bleed, fixed colours (no `currentColor`, which is black inside an `<img>`). |
+| `scout-favicon.svg` | The tile, full bleed, pine. |
+| `scout-layer.svg` | Icon Composer layer: the route alone, transparent, already at the system plate's scale (see macOS). |
+| `scout-lockup-{dark,light}.svg` | Tile at cap height + "scout" as outlines. **Inter SemiBold is a placeholder face** — it is also Docker Scout's treatment; the typeface is an open decision. |
+| `scout-social.svg` | 1280 × 640 GitHub social preview with one line saying what scout does. |
+| `png/scout.iconset/` | `icon_16x16.png` … `icon_512x512@2x.png`, named as `iconutil` expects, every size from the same inset-plate master. |
+| `png/scout-layer-1024.png` | The Icon Composer layer. |
+| `png/favicon-{32,180,192,512}.png`, `png/favicon.ico` (16/32/48) | Web set: 180 is the opaque apple-touch-icon; 192/512 are maskable — the tile fills the canvas and the route crosses the whole plate. |
+| `png/scout-tile-{dark,light}-256.png`, `png/scout-lockup-*.png`, `png/social-preview.png` | For READMEs and the repository settings. |
+| `concepts/round-*.png` | Exploration, in order: 1–5 the cairn (withdrawn), 6–10 this mark. |
+
+### README snippet
+
+```html
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/design/scout-logo/png/scout-tile-dark-256.png">
+  <img alt="scout" width="96" src="docs/design/scout-logo/png/scout-tile-light-256.png">
+</picture>
+```
 
 ### macOS
 
-For a classic bundle, feed `png/scout-icon-*.png` to `iconutil` as an
-iconset, the way `macos/Scripts/make-icon.sh` does for gnat. For macOS 26,
-open `scout-icon.svg`'s cairn (the `<g>`; drop the plate rect) in Icon
-Composer as the one layer: the system draws plate, rim and shadow; set the
-default and dark fill to charcoal, and the glyph is already a single colour
-so the tinted and clear appearances need nothing more.
+Classic bundle, on a Mac:
+
+```sh
+iconutil -c icns docs/design/scout-logo/png/scout.iconset -o AppIcon.icns
+```
+
+macOS 26 (Icon Composer): new icon, one layer from `png/scout-layer-1024.png`,
+fill `#17402D`. The layer is already rendered at 1024/824 — a layer's canvas
+is the whole icon, so the plate's 824 maps onto 1024, the same scaling
+`macos/Scripts/make-icon.sh` does for gnat — and the system draws plate,
+rim and shadow and masks to its squircle. The route is one colour, so the
+tinted and clear appearances need no second asset. **Not verified from
+here**: this container has no Icon Composer or `iconutil`; the layer's
+placement should be checked once on a Mac.
 
 ### Regenerating
 
 ```sh
-node docs/design/scout-logo/export.js
-cd docs/design/scout-logo/png && convert scout-icon-16.png scout-icon-32.png \( scout-icon-64.png -resize 48x48 \) favicon.ico
+python3 docs/design/scout-logo/build.py
+node docs/design/scout-logo/export.js      # needs `playwright` resolvable (NODE_PATH or a local install)
+cd docs/design/scout-logo/png && convert favicon-32.png \( favicon-32.png -resize 16x16 \) \( favicon-192.png -resize 48x48 \) favicon.ico
 ```
-
-The lockup's outlines came from Inter SemiBold via fonttools (520 units,
-−1% tracking); re-run only if the wordmark changes.
 
 ## Brief
 
-The parameters this was drawn to, from the research pass (three agents:
-reference-brand visual language, scout metaphors and name collisions,
-platform specs). Kept so the next revision argues with the same facts.
+The parameters the design was drawn to, from the research pass (three
+agents: reference-brand visual language, scout metaphors and name
+collisions, platform specs).
 
 **Form.** One simple flat shape, uniform weight, built on a grid with
 rounded corners; no texture, bevel, shadow or 3D. Asymmetry is fine. A
-gradient is optional at most (Zed sanctions a flat variant; Linear and
-Cursor both moved from gradients to flat). OpenAI's redraw made its stroke
-uniform. Modern marks are modified only by flattening or rounding, never by
-decorating.
+gradient is optional at most. Modern marks are modified only by flattening
+or rounding, never by decorating. Each reference is one fused abstract
+glyph — a letterform (Zed), a gesture (Claude), a derived knot (OpenAI) —
+never an illustration of an object.
 
-**Colour.** Two at most on any surface: one accent plus a neutral. Separate
-light and dark artwork; a mono glyph for macOS 26's tinted mode. Reference
-palettes: Zed one blue; Claude one terracotta; OpenAI black or white; Cursor
-near-black and off-white; Raycast one red on `#151515`.
+**Colour.** Two at most on any surface: one accent plus a neutral. Light
+and dark artwork; a mono glyph for macOS 26's tinted mode.
 
-**Meaning.** Research + plan + connect, told as scouting: go first, look,
-mark the way. Shortlist from the metaphor pass: trail blaze, waypoint
-route, S-path with nodes, lookout, cairn, bold spyglass.
+**Avoid.** Compass (Docker Scout: needle on a mint disc), red square with
+white chevrons (Laravel Scout), magnifier, radar, plug, puzzle piece,
+braces, node graph, stacked stones (an existing Dashboard Icons mark, and
+the wellness motif).
 
-**Avoid.** Compass (Docker Scout: compass needle on a mint disc), red
-square with white chevrons (Laravel Scout), magnifier, radar (Stripe and
-Cloudflare Radar), plug, puzzle piece, braces, node graph.
+**Technical.** 1024 master; plate 824, corner radius ≈0.225 of the plate;
+nothing thinner than 1/16 of the mark; favicon as SVG + 32 PNG + 180
+apple-touch + 192/512 maskable; GitHub social preview 1280 × 640; README
+logo via `<picture>` with a `prefers-color-scheme: dark` source.
 
-**Technical.** 1024 master; plate 824 with corner radius ≈0.225 of the
-plate; mark about 60% of the plate's height; nothing thinner than 1/16 of
-the mark, so a 16px render keeps every stroke at a pixel; a separate glyph
-on the 16-pixel grid rather than a scaled master; favicon as SVG + 32 PNG
-+ 180 apple-touch + 192/512 maskable (inner 80% circle safe); GitHub
-social preview 1280×640; README logo via `<picture>` with a
-`prefers-color-scheme: dark` source.
+## What v1 got wrong, for the record
 
-**Rounds.** Pictograms (route, spyglass, lookout, blaze) in rounds 1–3 were
-too small and off-centre for the taste set, where every mark is one bold
-centred shape, and the route family read as keys. Round 4 moved to bold
-centred forms; the cairn won over the periscope (reads as stairs), the
-binoculars (reads as an infinity sign) and a fat S (handsome, says nothing).
-Round 5 flattened the stones so the stack stops reading as a figure at
-16px, widened the gaps so they survive 32px, and tried the palettes.
+v1 was a cairn: three stacked stones, "the marker a scout leaves for those
+who follow". An adversarial review found a near-identical icon already in
+Dashboard Icons, found the form reading as a figure, a stack or a traffic
+cone at 16–32px, and found the amber-on-cream lockup at 1.9:1. The deeper
+fault was a category error: a pictogram of an object where every reference
+is an abstract fused form; three disconnected blobs with nothing happening
+inside them, decorated with arbitrary tilts; and a story (stones → trail
+marker → scout) that took three hops and lost at the first, since stacked
+stones read as zen. The rounds that followed (`concepts/round-6` on) were
+judged in mono first so colour could rescue nothing, and only forms built
+from a rule were kept.

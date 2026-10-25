@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-<!-- scout app icon: amber cairn on charcoal (primary, both appearances). Plate 824/1024, r=185; the cairn is one colour. -->
-<rect x="100" y="100" width="824" height="824" rx="185" fill="#1C1B19"/>
-<g fill="#E9A23B"><rect x="262" y="588" width="500" height="172" rx="72" transform="rotate(-2.5 512 674)"/><rect x="346" y="400" width="340" height="148" rx="64" transform="rotate(3 516 474)"/><rect x="424" y="232" width="210" height="128" rx="56" transform="rotate(-5 529 296)"/></g>
+<!-- scout app icon: the route in paper on a pine plate. 1024 canvas, 824 plate. -->
+<defs><clipPath id="plate"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath></defs>
+<rect x="100" y="100" width="824" height="824" rx="185" fill="#17402D"/>
+<g clip-path="url(#plate)"><path d="M704.8 -17.8 A300 300 0 1 0 512 512 A300 300 0 1 1 319.2 1041.8" fill="none" stroke="#F4F1EA" stroke-width="175" transform="rotate(8 512 512)"/></g>
 </svg>

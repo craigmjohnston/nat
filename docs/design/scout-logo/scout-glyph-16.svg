@@ -1,4 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-<!-- scout at 16px: drawn on the pixel grid rather than scaled from the mark; 1px gaps survive. -->
-<rect x="3" y="11" width="10" height="3" rx="1.5"/><rect x="4.5" y="7" width="7" height="3" rx="1.5"/><rect x="6" y="3" width="4" height="3" rx="1.5"/>
-</svg>

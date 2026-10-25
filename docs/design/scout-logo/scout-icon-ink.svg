@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<!-- scout app icon, mono alternate: paper route on ink. -->
+<defs><clipPath id="plate"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath></defs>
+<rect x="100" y="100" width="824" height="824" rx="185" fill="#1C1B19"/>
+<g clip-path="url(#plate)"><path d="M704.8 -17.8 A300 300 0 1 0 512 512 A300 300 0 1 1 319.2 1041.8" fill="none" stroke="#F4F1EA" stroke-width="175" transform="rotate(8 512 512)"/></g>
+</svg>
